@@ -7,7 +7,7 @@ tarball prueba un consumidor Node y uno Deno desde un directorio limpio.
 
 El contrato que implementa es el [OpenAPI publicado](https://hcnvknpsbadplnfcflxx.supabase.co/functions/v1/api-v1/v1/openapi.json), autoridad para los campos y respuestas HTTP.
 
-> **Licencia:** Los metadatos del paquete dicen `UNLICENSED`; todavía no se ha elegido una licencia que autorice la reutilización.
+> **Licencia:** MIT. Consulta [LICENSE](LICENSE).
 
 ```ts
 import { Facta } from "@facta/api";

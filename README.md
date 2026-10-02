@@ -6,7 +6,7 @@ Read the [Spanish README](README.es.md). The full [method reference](guides/refe
 
 > **Publication status:** `@facta/api` has not been published to npm. This repository contains the standalone SDK source; do not infer a registry release from the GitHub repository or README.
 
-> **License status:** The package metadata is `UNLICENSED`; a license granting reuse has not been selected.
+> **License:** MIT. See [LICENSE](LICENSE).
 
 ## Runtime support
 
