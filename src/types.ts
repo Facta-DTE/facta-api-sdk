@@ -1,0 +1,393 @@
+// The wire types, transcribed from openapi.yaml.
+//
+// Deliberately thin. Everything here is a shape the server owns; the SDK's job
+// is to carry it, not to interpret it. Note what is NOT in this file: no VAT
+// rate, no rounding rule, no control-number format, no catalog. Those live in
+// `dte-core`, on the server, and a second copy of them here would be a second
+// fiscal engine (`docs/plan/tareas/sdks-de-la-api.md` §5).
+
+export interface Address {
+  departamento: string;
+  municipio: string;
+  distrito?: string;
+  complemento: string;
+}
+
+export interface Recipient {
+  /** A customer already stored in Facta. Combines with the fields below:
+   * whatever is spelled out wins over what is stored. */
+  customerId?: string;
+  nombre?: string;
+  tipoDocumento?: string;
+  numDocumento?: string;
+  nrc?: string;
+  codActividad?: string;
+  descActividad?: string;
+  direccion?: Address;
+  telefono?: string | null;
+  correo?: string;
+  nombreComercial?: string | null;
+}
+
+/** Foreign recipient used only by an export invoice (11). */
+export interface ExportRecipient {
+  nombre: string;
+  tipoDocumento?: string;
+  numDocumento: string;
+  codPais: string;
+  nombrePais: string;
+  complemento: string;
+  tipoPersona: 1 | 2;
+  descActividad: string;
+  correo: string;
+  telefono?: string | null;
+  nombreComercial?: string | null;
+}
+
+/** Recipient used only by an excluded-subject invoice (14). */
+export interface ExcludedSubjectRecipient {
+  numDocumento: string;
+  nombre: string;
+  direccion: Address;
+  tipoDocumento?: string;
+  codActividad?: string | null;
+  telefono?: string | null;
+  correo?: string | null;
+}
+
+export interface LineItem {
+  /** Optional when productId resolves this field from the encrypted catalog. */
+  descripcion?: string;
+  cantidad: number;
+  /** FE (01): VAT INCLUDED. CCF (03): VAT EXCLUDED. The official schemas
+   * differ and the server does not guess. */
+  /** Optional when productId resolves this field from the encrypted catalog. */
+  precioUni?: number;
+  /** Facta catalog product reference; resolved locally by the SDK. */
+  productId?: string;
+  /** 05/06: target document number when the note corrects multiple documents. */
+  numeroDocumento?: string;
+  codigo?: string | null;
+  tipoItem?: 1 | 2 | 3 | 4;
+  uniMedida?: number;
+}
+
+export type DteType = "01" | "03" | "05" | "06" | "11" | "14";
+
+export type RelatedDocument =
+  /** The API can resolve this short form for a document in the same company. */
+  | { codigoGeneracion: string; tipoDocumento?: never; numeroDocumento?: never; fechaEmision?: never; tipoGeneracion?: never }
+  /** Full reference for a document not present in the company's Facta index. */
+  | { codigoGeneracion?: never; tipoDocumento: string; numeroDocumento: string; fechaEmision: string; tipoGeneracion?: 1 | 2 };
+
+export interface ExportDetails {
+  tipoItemExpor: 1 | 2 | 3;
+  incoterms?: string | null;
+  recintoFiscal?: string | null;
+  tipoRegimen?: string | null;
+  regimen?: string | null;
+  flete?: number;
+  seguro?: number;
+}
+
+interface DteRequestBase {
+  items: LineItem[];
+  condicionOperacion?: 1 | 2 | 3;
+  plazo?: "01" | "02" | "03" | null;
+  periodo?: number | null;
+  formaPago?: string;
+  observaciones?: string | null;
+}
+
+/** DTE request union. DTE-specific fields are available only on their type. */
+export type DteRequest =
+  | (DteRequestBase & { tipoDte: "01"; receptor?: Recipient | null; documentosRelacionados?: never; exportacion?: never; aplicarReteRenta?: never; numPagoElectronico?: never })
+  | (DteRequestBase & { tipoDte: "03"; receptor?: Recipient | null; documentosRelacionados?: never; exportacion?: never; aplicarReteRenta?: never; numPagoElectronico?: never })
+  | (DteRequestBase & { tipoDte: "05"; receptor?: Recipient | null; documentosRelacionados: RelatedDocument[]; exportacion?: never; aplicarReteRenta?: never; numPagoElectronico?: never })
+  | (DteRequestBase & { tipoDte: "06"; receptor?: Recipient | null; documentosRelacionados: RelatedDocument[]; numPagoElectronico?: string | null; exportacion?: never; aplicarReteRenta?: never })
+  | (DteRequestBase & { tipoDte: "11"; receptor: ExportRecipient; exportacion: ExportDetails; documentosRelacionados?: never; aplicarReteRenta?: never; numPagoElectronico?: never })
+  | (DteRequestBase & { tipoDte: "14"; receptor: ExcludedSubjectRecipient; aplicarReteRenta?: boolean; documentosRelacionados?: never; exportacion?: never; numPagoElectronico?: never });
+
+export interface CatalogSnapshot {
+  version: 1;
+  customers: CatalogCustomer[];
+  products: CatalogProduct[];
+}
+
+/** Public synchronization facts for this process-local catalog cache. */
+export interface CatalogState {
+  freshness: "fresh" | "stale" | "missing";
+  localRevision: number | null;
+  fetchedAt: string | null;
+  desiredRevision: number | null;
+  publishedRevision: number | null;
+  syncStatus: string | null;
+  /** Safe error code when the API could not be reached; never includes response data. */
+  statusError: string | null;
+}
+
+/** Explicit opt-in for non-fiscal catalog reads from the last process-local snapshot. */
+export interface CatalogReadOptions {
+  allowStale?: boolean;
+}
+
+/** Decrypted customer fields shared with this API key. */
+export interface CatalogCustomer {
+  id: string;
+  name?: string | null;
+  doc_type?: string | null;
+  doc_number?: string | null;
+  nrc?: string | null;
+  activity_code?: string | null;
+  address?: Address | null;
+  phone?: string | null;
+  email?: string | null;
+  [field: string]: unknown;
+}
+
+/** Decrypted product fields shared with this API key. */
+export interface CatalogProduct {
+  id: string;
+  code?: string | null;
+  barcode?: string | null;
+  description?: string | null;
+  item_type?: string | number | null;
+  unit_of_measure?: string | number | null;
+  unit_price?: number | null;
+  vat_included?: boolean | null;
+  active?: boolean;
+  [field: string]: unknown;
+}
+
+export interface CatalogSearchOptions {
+  /** Maximum number of local matches. Defaults to 50; valid range is 1–500. */
+  limit?: number;
+  /** Permit the last process-local snapshot if status is unreachable or sync is pending. */
+  allowStale?: boolean;
+}
+
+/** Computed by the server. Read them; never recompute them. */
+export interface Totals {
+  totalNoSuj: number;
+  totalExenta: number;
+  totalGravada: number;
+  totalDescu: number;
+  totalIva: number;
+  montoTotalOperacion: number;
+  totalPagar: number;
+  totalLetras: string;
+}
+
+export interface SealedDte {
+  estado: "sellado";
+  codigoGeneracion: string;
+  numeroControl: string;
+  tipoDte: DteType;
+  ambiente: string;
+  fecEmi: string;
+  horEmi: string;
+  selloRecibido: string;
+  fhProcesamiento: string | null;
+  observaciones: string[];
+  totales: Totals;
+  documento: Record<string, unknown>;
+  /** Archive THIS. Re-serializing `documento` does not reproduce the bytes
+   * whose signature Hacienda validated. */
+  jws: string;
+}
+
+export interface DteInContingency {
+  estado: "contingencia";
+  codigoGeneracion: string;
+  numeroControl: string;
+  tipoDte: DteType;
+  ambiente: string;
+  fecEmi: string;
+  horEmi: string;
+  detalle: string;
+  documento: Record<string, unknown>;
+  jws: string;
+}
+
+export type IssueResult = SealedDte | DteInContingency;
+
+export interface PreparedDte {
+  estado: "preparado";
+  codigoGeneracion: string;
+  numeroControl: string;
+  tipoDte: DteType;
+  ambiente: string;
+  totales: Totals;
+  documento: Record<string, unknown>;
+  prepareToken: string;
+}
+
+export interface DocumentStatus {
+  estado:
+    | "sellado"
+    | "firmado"
+    | "rechazado"
+    | "contingencia"
+    | "invalidado"
+    | "reservado"
+    | "liberado"
+    | "descartado";
+  codigoGeneracion: string;
+  numeroControl: string;
+  tipoDte: DteType;
+  ambiente: string;
+  fecEmi: string;
+  horEmi?: string | null;
+  selloRecibido: string | null;
+  observaciones?: string[];
+  motivo?: unknown;
+  totales: Record<string, unknown>;
+  receptor?: Record<string, unknown> | null;
+}
+
+export interface ListDocumentsFilters {
+  desde?: string;
+  hasta?: string;
+  estado?: "contingencia" | "firmado" | "invalidado" | "sellado";
+  tipoDte?: DteType;
+  limit?: number;
+  cursor?: string;
+}
+
+export interface ListedDte {
+  estado: "sellado" | "firmado" | "contingencia" | "invalidado";
+  codigoGeneracion: string;
+  numeroControl: string;
+  tipoDte: DteType;
+  fecEmi: string;
+  horEmi?: string;
+  selloRecibido?: string | null;
+  totales?: { totalGravada?: number; totalIva?: number; totalPagar?: number };
+  receptor?: { nombre?: string | null; numDocumento?: string | null };
+}
+
+export interface DtePage {
+  documentos: ListedDte[];
+  siguiente: string | null;
+}
+
+export interface InvalidationPerson {
+  nombre: string;
+  tipoDocumento: string;
+  numDocumento: string;
+}
+
+export interface InvalidationRequest {
+  tipoAnulacion: 1 | 2 | 3;
+  motivo?: string | null;
+  codigoGeneracionReemplazo?: string | null;
+  responsable: InvalidationPerson;
+  solicita: InvalidationPerson;
+}
+
+export interface CompleteInvalidationResult {
+  estado: "invalidado";
+  codigoGeneracion: string;
+  numeroControl: string;
+  tipoDte: DteType;
+  ambiente: string;
+  yaEstabaInvalidado?: false;
+  evento: { codigoGeneracion: string; selloRecibido: string; fhProcesamiento?: string; observaciones?: string[]; tipoAnulacion: number };
+  documento: Record<string, unknown>;
+  jws: string;
+  anotadoEnElIndice: boolean;
+}
+
+/** Idempotent server response when the target was already invalidated. */
+export interface AlreadyInvalidatedResult {
+  estado: "invalidado";
+  codigoGeneracion: string;
+  numeroControl: string;
+  yaEstabaInvalidado: true;
+}
+
+export type InvalidationResult = CompleteInvalidationResult | AlreadyInvalidatedResult;
+
+export interface RetainedDocument {
+  codigoGeneracion: string;
+  ambiente: "00" | "01";
+  whereLanded: "holding" | "synced";
+  gaveUp: boolean;
+  attempts: number;
+  expiresAt: string;
+  downloadedAt?: string | null;
+  downloadCount: number;
+  syncedAt?: string | null;
+  createdAt: string;
+}
+
+export interface HoldingPage { documentos: RetainedDocument[]; }
+
+export interface DownloadedDocument {
+  codigoGeneracion: string;
+  kind: "json" | "pdf" | "ticket";
+  bytes: Uint8Array;
+  contentType: string;
+  filename: string | null;
+  /** Present for tickets; defaults to 80 mm when not requested. */
+  paperWidthMm?: number;
+}
+
+export interface RateLimitWindow {
+  limit: number;
+  used: number;
+  remaining: number;
+}
+
+export type SyncState = "legacy" | "ready" | "pending" | "error";
+
+export interface SyncRevision {
+  desiredRevision?: number;
+  publishedRevision?: number | null;
+  status: SyncState;
+}
+
+export interface ApiSyncStatus {
+  environment?: "00" | "01";
+  sign?: SyncRevision;
+  destinations?: SyncRevision;
+  catalog?: SyncRevision;
+}
+
+export interface Status {
+  ok: boolean;
+  version: string;
+  ambiente: string;
+  emisor: { nit: string; nombre: string; ambiente: string } | null;
+  llave: {
+    keyId: string;
+    label: string | null;
+    modo: "custodian" | "byok";
+    alcances: string[];
+    tiposDte: DteType[];
+    venceEl: string | null;
+  };
+  /** Whether this key can sign and its signing origin. The vault has no read
+   * endpoint; only separately registered public certificate facts are exposed. */
+  firma?: {
+    vaultDeFirma: boolean;
+    origenDeLaFirma: "vault" | "plataforma" | "sin-provisionar";
+    cabecera: string;
+    /** Public certificate metadata matched by the vault's public fingerprint. */
+    certificado?: {
+      fingerprint: string | null;
+      validFrom: string | null;
+      validTo: string | null;
+      nit: string | null;
+      environment: string | null;
+    } | null;
+  };
+  /** Published/current revisions for signing, storage destinations, and the encrypted catalog. */
+  sincronizacion?: ApiSyncStatus | null;
+  limites: {
+    hora: RateLimitWindow | null;
+    dia: RateLimitWindow | null;
+    estado: RateLimitWindow | null;
+    montoMaximoPorDocumentoCentavos: number;
+  };
+}
