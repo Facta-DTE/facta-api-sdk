@@ -65,12 +65,14 @@ jobs:
         with:
           script: |
             const marker = '<!-- facta-sdk-staging-live-result -->';
-            const body = `${marker}
-            ## SDK staging live test: ${process.env.RESULT}
-
-            The live test issues one FE (`01`) for **$0.01** in the staging test environment (`00`). When issuance and local artifact archival succeed, the run includes the exact server-returned JSON and PDF in the `staging-invoice` artifact, retained for 7 days.
-
-            [Open this run and download its artifacts](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`;
+            const body = [
+              marker,
+              `## SDK staging live test: ${process.env.RESULT}`,
+              '',
+              'The live workflow is configured to issue one FE (`01`) for **$0.01** in the staging test environment (`00`). When issuance and local artifact archival succeed, the run includes the exact server-returned JSON and PDF in the staging-invoice artifact, retained for 7 days.',
+              '',
+              `[Open this run and download its artifacts](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`,
+            ].join('\n');
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
