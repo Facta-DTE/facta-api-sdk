@@ -4,9 +4,10 @@ For exact public method signatures, scopes, defaults, side effects, and
 recovery behavior, see the [SDK method reference](reference.md). Read the
 [Spanish guide](deno.es.md) for the Spanish version.
 
-**Status:** source and tarball are verified with Deno 2.6.6. The package is not
-published to JSR or npm. Do not use a registry import in production until a
-beta release has passed staging.
+**Status:** source and tarball are verified with Deno 2.6.6. Version
+`0.1.0-beta.1` is published to npm, but the package is not published to JSR.
+The stable `0.1.0` npm release is being prepared and will be available after
+staging approval.
 
 ## Requirements and installation
 
@@ -26,8 +27,9 @@ pnpm test
 pnpm pack:check
 ```
 
-In a consumer project, use an explicit published version such as
-`npm:@facta-dte/api@0.1.0-beta.1` once it is available in the registry. Pin that
+In a consumer project, use an explicit approved version such as
+`npm:@facta-dte/api@0.1.0` after the stable release is approved. Until then,
+the available beta is `npm:@facta-dte/api@0.1.0-beta.1`. Pin the selected
 version in `deno.json` and check the lockfile into version control.
 
 ## Minimum permissions
@@ -50,7 +52,7 @@ the production command or config. Do not use `-A` for a deployed integration.
 ## Client and a test invoice
 
 ```ts
-import { Facta } from "npm:@facta-dte/api@0.1.0-beta.1";
+import { Facta } from "npm:@facta-dte/api@0.1.0";
 
 const facta = new Facta({
   apiKey: Deno.env.get("FACTA_API_KEY")!,

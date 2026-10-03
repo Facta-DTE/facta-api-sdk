@@ -4,9 +4,7 @@ The SDK uses npm Trusted Publishing from GitHub Actions. Releases are submitted 
 
 ## One-time npm setup
 
-The package must first exist on npm before npm can associate it with a trusted publisher. Do not configure a long-lived npm token in GitHub Actions. npm supports creating a new package through staged publishing, but the package name can become visible with a placeholder while the staged files remain unavailable. Review the tarball and choose how to bootstrap the package before doing that step.
-
-After the first version has been created on npm, open the package's **Settings → Trusted publishers** page and add a GitHub Actions publisher with:
+The npm Trusted Publisher is configured for this package. GitHub Actions uses OIDC; no long-lived npm token is stored in GitHub. The publisher settings are:
 
 - Organization: `Facta-DTE`
 - Repository: `facta-api-sdk`
@@ -19,11 +17,11 @@ Trusted publishing requires GitHub-hosted runners, Node.js 22.14 or newer, npm 1
 ## Release a version
 
 1. Update `version` in `package.json` and commit the release to `main`.
-2. Create and push a matching version tag, such as `v0.1.0-beta.1`:
+2. Create and push a matching version tag, such as `v0.1.0`:
 
    ```sh
-   git tag v0.1.0-beta.1
-   git push origin v0.1.0-beta.1
+   git tag v0.1.0
+   git push origin v0.1.0
    ```
 
 3. GitHub Actions verifies that the tag matches `package.json`, that its commit is reachable from `main`, runs tests and the packed-consumer check, then stages the package on npm.
@@ -32,7 +30,3 @@ Trusted publishing requires GitHub-hosted runners, Node.js 22.14 or newer, npm 1
 Prerelease versions are staged with a dist-tag derived from the prerelease identifier (`beta`, `rc`, and so on). Stable versions use `latest`.
 
 The workflow does not publish directly. npm generates provenance attestations for trusted publishing, and staged publishing keeps the version unavailable until a maintainer approves it.
-
-## First package bootstrap
-
-Trusted publisher setup depends on the package already existing on npm, so the first package creation cannot use this GitHub publisher yet. After reviewing the local tarball, create the package once through npm. `npm stage publish` can create a new package while keeping the staged version unavailable pending approval, though npm may show a public placeholder for the package name. A direct first publish makes the version public immediately. Once the package exists, configure the trusted publisher above; later versions can be staged by this workflow for manual approval.

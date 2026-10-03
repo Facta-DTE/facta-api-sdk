@@ -3,9 +3,9 @@
 Para conocer las firmas públicas, alcances, valores predeterminados, efectos
 y mecanismos de recuperación, consulta la [referencia de métodos del SDK](reference.es.md).
 
-**Estado:** contrato implementado en la rama de desarrollo. `@facta-dte/api` aún
-no está publicado en npm. No apuntes una integración de producción a un
-paquete o contrato que no se haya publicado después de verificar staging.
+**Estado:** `0.1.0-beta.1` está publicado en npm. Se está preparando la versión
+estable `0.1.0`; no estará disponible hasta aprobar su revisión de staging en
+npm.
 
 ## Requisitos e instalación
 
@@ -15,17 +15,17 @@ paquete o contrato que no se haya publicado después de verificar staging.
 - Al abrir snapshots locales, también `FACTA_UNLOCK_KEY`. Al issue, además
   `FACTA_SIGN_KEY`.
 
-Mientras el paquete siga sin publicar, valida una copia del repositorio con:
+Valida una copia del repositorio con:
 
 ```sh
 pnpm install --frozen-lockfile
 pnpm pack:check
 ```
 
-Esto prueba el tarball en consumidores limpios. Cuando haya una versión beta
-publicada, instala esa versión concreta y fija el número en el lockfile de la
-aplicación; la instalación npm todavía no es una instrucción ejecutable para
-un consumidor externo.
+Esto prueba el tarball en consumidores limpios. Instala una versión aprobada y
+explícita, y fija el número en el lockfile de la aplicación. Cuando se apruebe
+`0.1.0`, usa esa versión estable; hasta entonces, usa la beta de forma
+intencional.
 
 ## Configurar el cliente
 

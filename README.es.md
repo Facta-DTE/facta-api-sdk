@@ -3,7 +3,9 @@
 Emite un DTE sellado por el Ministerio de Hacienda desde Node 22/24. El paquete
 publicado contiene JavaScript ESM compilado y sus tipos se leen del contrato
 TypeScript. El código fuente también funciona con Deno 2.6.6; el chequeo del
-tarball prueba un consumidor Node y uno Deno desde un directorio limpio.
+tarball prueba un consumidor Node y uno Deno desde un directorio limpio. La
+versión beta `0.1.0-beta.1` está publicada en npm; la versión estable `0.1.0`
+está en preparación.
 
 El contrato que implementa es el [OpenAPI publicado](https://hcnvknpsbadplnfcflxx.supabase.co/functions/v1/api-v1/v1/openapi.json), autoridad para los campos y respuestas HTTP.
 
@@ -46,7 +48,7 @@ pnpm pack:check
 
 `pack:check` genera ESM y declaraciones `.d.ts`, crea el tarball e instala ese
 tarball en consumidores temporales limpios para comprobar importación, tipos,
-ejecución en Node y ejecución en Deno. Aún no está publicado en npm.
+ejecución en Node y ejecución en Deno.
 
 When the repository's local Supabase stack is already running, the optional
 `pnpm test:sdk:local-storage` check exercises the compiled Supabase Storage

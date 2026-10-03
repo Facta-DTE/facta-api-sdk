@@ -4,9 +4,8 @@ For exact public method signatures, scopes, defaults, side effects, and
 recovery behavior, see the [SDK method reference](reference.md). Read the
 [Spanish guide](node.es.md) for the Spanish version.
 
-**Status:** implementation is in the development branch. `@facta-dte/api` has not
-been published to npm. Do not point a production integration at a package or
-contract that has not been published after staging verification.
+**Status:** `0.1.0-beta.1` is published to npm. The stable `0.1.0` release is
+being prepared and is not available until its npm staging review is approved.
 
 ## Requirements and installation
 
@@ -16,16 +15,16 @@ contract that has not been published after staging verification.
 - `FACTA_UNLOCK_KEY` is also needed to open local snapshots. `FACTA_SIGN_KEY`
   is required to issue.
 
-While the package remains unpublished, validate a repository checkout with:
+Validate a repository checkout with:
 
 ```sh
 pnpm install --frozen-lockfile
 pnpm pack:check
 ```
 
-This tests the tarball with clean consumers. Once a beta version is published,
-install that exact version and pin it in the application lockfile. npm install
-is not yet an executable instruction for external consumers.
+This tests the tarball with clean consumers. Install an approved version
+explicitly and pin it in the application lockfile. After `0.1.0` is approved,
+use that stable version; until then, use the beta version intentionally.
 
 ## Configure the client
 
