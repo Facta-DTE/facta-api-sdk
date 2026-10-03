@@ -155,6 +155,8 @@ export interface ArchiveEmissionOptions {
   operationId: string;
   /** Stable across process restarts; the API keeps idempotency claims for 24 h. */
   idempotencyKey: string;
+  /** Include a regenerated ticket in the archive; defaults to true. */
+  includeTicket?: boolean;
   /** Ticket width to archive with each new issue; defaults to 80 mm. Valid range: 40–120 mm. */
   ticketPaperWidthMm?: number;
   signal?: AbortSignal;

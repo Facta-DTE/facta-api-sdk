@@ -167,6 +167,7 @@ const archive = await FileInvoiceArchive.open({
 });
 
 const issued = await facta.issueAndArchive(request, {
+  includeTicket: false,
   archive,
   operationId: erpOrderId,
   idempotencyKey: erpOrderId,

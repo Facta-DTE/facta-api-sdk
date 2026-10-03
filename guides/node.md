@@ -169,6 +169,16 @@ const diagnostic = await facta.diagnose({ dteType: "03", archive });
 if (!diagnostic.canIssueAndArchive) {
   throw new Error(diagnostic.checks.map((item) => item.message).join("; "));
 }
+
+const issued = await facta.issueAndArchive({
+  tipoDte: "01",
+  items: [{ descripcion: "Sample item", cantidad: 1, precioUni: 10 }],
+}, {
+  archive,
+  operationId: "order-1042",
+  idempotencyKey: "order-1042",
+  includeTicket: false,
+});
 ```
 
 Certificate diagnostics use only the public fingerprint, validity dates, NIT,
@@ -185,8 +195,15 @@ continues checking signing provisioning, certificate facts, scopes, environment,
 quotas, and archive readiness. A present but null or incomplete block, pending
 or failed synchronization, and mismatched revisions still prevent issuance.
 
+The current public API does not provide ticket PDF downloads: requesting
+`kind=ticket` currently returns JSON. Use `includeTicket: false` when archiving
+with that deployment; completion then requires JSON, PDF and JWS only. The
+journal retains this choice for recovery. Ticket archival remains enabled by
+default for compatibility with servers that support it. An explicit ticket
+width cannot be combined with `includeTicket: false`.
+
 `issueAndArchive()` records the idempotency key first, then encrypts exact JSON,
-PDF, JWS, and ticket bytes. It defaults to an 80 mm ticket; set
+PDF, JWS, and ticket bytes. For an API that supports ticket PDF downloads, it defaults to an 80 mm ticket; set
 `ticketPaperWidthMm` (40–120 mm) to choose another supported width. The choice
 is stored in the journal and reused during recovery. After a restart, list
 `facta.listPendingOperations(archive)` and call

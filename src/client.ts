@@ -659,11 +659,15 @@ export class Facta {
     const { operationId, idempotencyKey, signal } = options;
     throwIfAborted(signal);
     const remoteDestinations = options.remoteDestinations ?? this.#runtime.remoteDestinations;
-    const ticketPaperWidthMm = options.ticketPaperWidthMm ?? this.#config.ticketPaperWidthMm ?? 80;
+    if (options.includeTicket === false && options.ticketPaperWidthMm !== undefined) {
+      throw new TypeError("ticketPaperWidthMm cannot be supplied when includeTicket is false.");
+    }
+    const ticketPaperWidthMm = options.includeTicket === false
+      ? undefined : options.ticketPaperWidthMm ?? this.#config.ticketPaperWidthMm ?? 80;
     if (!operationId.trim() || !idempotencyKey.trim()) {
       throw new TypeError("operationId and idempotencyKey are required for issueAndArchive.");
     }
-    if (!Number.isInteger(ticketPaperWidthMm) || ticketPaperWidthMm < 40 || ticketPaperWidthMm > 120) {
+    if (ticketPaperWidthMm !== undefined && (!Number.isInteger(ticketPaperWidthMm) || ticketPaperWidthMm < 40 || ticketPaperWidthMm > 120)) {
       throw new TypeError("ticketPaperWidthMm must be an integer from 40 through 120 millimeters.");
     }
     await archive.assertReady();
@@ -681,7 +685,7 @@ export class Facta {
       request: resolved,
       createdAt: new Date().toISOString(),
       state: "started",
-      ticketPaperWidthMm,
+      ...(ticketPaperWidthMm === undefined ? {} : { ticketPaperWidthMm }),
     });
     if (!created) {
       return await this.recoverOperation(operationId, {
@@ -693,7 +697,7 @@ export class Facta {
     }
 
     const emission = await this.#request<IssueResult>("POST", "/v1/dte", resolved, { idempotencyKey, ...(signal ? { signal } : {}) });
-    return await this.#archiveEmission({ id: operationId, idempotencyKey, requestSha256, createdAt: new Date().toISOString(), state: "started", ticketPaperWidthMm }, emission, archive, signal, remoteDestinations);
+    return await this.#archiveEmission({ id: operationId, idempotencyKey, requestSha256, createdAt: new Date().toISOString(), state: "started", ...(ticketPaperWidthMm === undefined ? {} : { ticketPaperWidthMm }) }, emission, archive, signal, remoteDestinations);
   }
 
   /**

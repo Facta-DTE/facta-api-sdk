@@ -170,6 +170,16 @@ const diagnostic = await facta.diagnose({ dteType: "03", archive });
 if (!diagnostic.canIssueAndArchive) {
   throw new Error(diagnostic.checks.map((item) => item.message).join("; "));
 }
+
+const issued = await facta.issueAndArchive({
+  tipoDte: "01",
+  items: [{ descripcion: "Sample item", cantidad: 1, precioUni: 10 }],
+}, {
+  archive,
+  operationId: "order-1042",
+  idempotencyKey: "order-1042",
+  includeTicket: false,
+});
 ```
 
 Los diagnósticos del certificado usan solo la huella pública, las fechas de
@@ -187,8 +197,15 @@ permisos, el ambiente, los límites y el archivo local. Si el bloque está prese
 pero es nulo o incompleto, hay sincronización pendiente o fallida, o las
 revisiones no coinciden, la emisión sigue bloqueada.
 
+La API pública actual no ofrece la descarga de tickets PDF: una petición con
+`kind=ticket` devuelve JSON. Con esa versión, use `includeTicket: false` para
+archivar JSON, PDF y JWS; esos tres archivos determinan que el archivo esté
+completo. La operación guarda esa elección para recuperarla después. El ticket
+sigue activado por defecto por compatibilidad con servidores que lo admiten.
+No combine un ancho explícito con `includeTicket: false`.
+
 `issueAndArchive()` registra primero la clave de idempotencia y luego cifra los
-bytes exactos de JSON, PDF, JWS y ticket. El ancho predeterminado del ticket es
+bytes exactos de JSON, PDF, JWS y ticket. Para una API que admita tickets PDF, el ancho predeterminado del ticket es
 80 mm; usa `ticketPaperWidthMm` (40–120 mm) para elegir otro ancho admitido. La
 elección se guarda en el journal y se reutiliza al recuperar. Tras reiniciar,
 lista `facta.listPendingOperations(archive)` y llama a

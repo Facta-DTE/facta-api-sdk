@@ -88,6 +88,7 @@ const sale: DteRequest = {
   items: [{ descripcion: "Sample item", cantidad: 1, precioUni: 10 }],
 };
 const result = await facta.issueAndArchive(sale, {
+  includeTicket: false,
   operationId: "order-1042",
   idempotencyKey: "order-1042",
 });
@@ -97,7 +98,7 @@ if (result.archive.state !== "complete") {
 }
 ```
 
-`issueAndArchive` stores the immutable resolved request and operation identity before the fiscal request. It archives the exact signed JSON and PDF returned by the server, derives the JWS from that JSON, and can create a receipt ticket PDF. Recovery verifies endpoint, API key identity, issuer, and environment before any fiscal request. Legacy journals without that identity remain inspectable but cannot be replayed automatically.
+`issueAndArchive` stores the immutable resolved request and operation identity before the fiscal request. It archives the exact signed JSON and PDF returned by the server, derives the JWS from that JSON, and optionally requests a receipt ticket PDF only from APIs that support it. The current public API requires `includeTicket: false`; its ticket download route currently returns JSON. Recovery verifies endpoint, API key identity, issuer, and environment before any fiscal request. Legacy journals without that identity remain inspectable but cannot be replayed automatically.
 
 An archive is sensitive data. `FileInvoiceArchive` uses authenticated encryption and restrictive local file permissions; its passphrase must be independent from API, signing, and vault credentials. Keep backups and retention under the application's control. Read [storage adapters](guides/storage-adapters.md) for remote-copy adapters and reconciliation.
 

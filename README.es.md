@@ -295,10 +295,10 @@ if (!readiness.canIssueAndArchive) {
 }
 
 const result = await facta.issueAndArchive(solicitud, {
+  includeTicket: false,
   archive,                     // implementa InvoiceArchive
   operationId: order.id,        // ID estable de la venta
   idempotencyKey: order.id,     // reutilizar al reintentar
-  ticketPaperWidthMm: 58,       // default 80; supported range 40–120 mm
 });
 
 if (result.archive.state === "needs_attention") {
@@ -675,6 +675,7 @@ const destination = {
 };
 
 const issued = await facta.issueAndArchive(request, {
+  includeTicket: false,
   archive,
   operationId: order.id,
   idempotencyKey: order.id,

@@ -43,6 +43,8 @@ const { FileInvoiceArchive } = await import("../dist/node.js");
 const scratch = await mkdtemp(join(tmpdir(), "facta-sdk-integration-"));
 const archivePassphrase = Buffer.from(crypto.getRandomValues(new Uint8Array(48))).toString("base64url");
 
+const requestOutcomes = [];
+
 try {
   const archive = await FileInvoiceArchive.open({
     directory: join(scratch, "archive"),
@@ -51,8 +53,20 @@ try {
   const requestUrls = [];
   const facta = new Facta({
     fetch: async (input, init) => {
-      requestUrls.push(new URL(input instanceof Request ? input.url : String(input)));
-      return globalThis.fetch(input, init);
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      requestUrls.push(url);
+      const response = await globalThis.fetch(input, init);
+      let errorCode = null;
+      if (!response.ok) {
+        try {
+          const body = await response.clone().json();
+          const candidate = body?.error?.code;
+          errorCode = typeof candidate === "string" && /^[a-z][a-z0-9_]{0,63}$/.test(candidate)
+            ? candidate : "unrecognized_error";
+        } catch { errorCode = "unreadable_error"; }
+      }
+      requestOutcomes.push({ pathname: url.pathname, kind: url.searchParams.get("kind"), status: response.status, errorCode });
+      return response;
     },
     apiKey,
     signKey,
@@ -130,13 +144,12 @@ try {
   }, {
     operationId,
     idempotencyKey,
-    ticketPaperWidthMm: 58,
+    includeTicket: false,
   });
 
-  const [legalJson, pdf, ticket] = await Promise.all([
+  const [legalJson, pdf] = await Promise.all([
     archive.getArtifact(result.emission.codigoGeneracion, "json"),
     archive.getArtifact(result.emission.codigoGeneracion, "pdf"),
-    archive.getArtifact(result.emission.codigoGeneracion, "ticket"),
   ]);
   await mkdir(reportDir, { recursive: true });
   if (legalJson) await writeFile(join(reportDir, "invoice.json"), legalJson.bytes, { mode: 0o600 });
@@ -147,19 +160,21 @@ try {
   assert.equal(result.emission.ambiente, "00", "issued document must be in test environment");
   assert.equal(result.emission.tipoDte, "01", "issued document must be FE");
   if (result.archive.state !== "complete") {
-    throw new Error(`Invoice was accepted, but SDK archiving is ${result.archive.state}.`);
+    const classification = requestOutcomes.some((request) => request.kind === "ticket" && request.status >= 400)
+      ? "ticket_download_failed" : "archive_incomplete";
+    console.log(`ARCHIVE outcome: ${JSON.stringify({ state: result.archive.state, classification,
+      archivedKinds: result.archive.artifacts.map((artifact) => artifact.kind) })}`);
+    throw new Error(`Invoice was accepted, but SDK archiving is ${result.archive.state} (${classification}).`);
   }
   console.log(`PASS issueAndArchive: ${result.emission.estado}; archive complete`);
 
   assert(legalJson && legalJson.bytes.byteLength > 0, "inline signed JSON must be archived");
   assert(pdf && pdf.bytes.byteLength > 0, "inline PDF must be archived");
-  assert(ticket && ticket.bytes.byteLength > 0, "ticket must be archived");
   assert.match(legalJson.contentType, /json/i, "signed JSON must have a JSON content type");
   const parsedJson = JSON.parse(new TextDecoder().decode(legalJson.bytes));
   assert.equal(parsedJson.jws, result.emission.jws, "archived JSON must preserve the server-signed JWS");
   assert.match(pdf.contentType, /pdf/i, "document must be a PDF");
   assert.match(new TextDecoder().decode(pdf.bytes.subarray(0, 5)), /^%PDF-/);
-  assert.match(ticket.contentType, /pdf/i, "ticket must be a PDF");
   assert.equal(typeof result.emission.archivoJson, "string", "API must return inline signed JSON");
   assert(result.emission.representacionGrafica, "API must return the inline PDF");
   assert.deepEqual(Buffer.from(legalJson.bytes), Buffer.from(result.emission.archivoJson, "utf8"),
@@ -167,9 +182,8 @@ try {
   assert.deepEqual(Buffer.from(pdf.bytes), Buffer.from(result.emission.representacionGrafica, "base64"),
     "archived PDF must match the exact response bytes");
   const fileRequests = requestUrls.filter((url) => /\/v1\/dte\/[^/]+\/file$/.test(url.pathname));
-  assert(fileRequests.every((url) => url.searchParams.get("kind") === "ticket"),
-    "initial archival must not download JSON or PDF; ticket requests are allowed");
-  console.log("PASS inline archive: exact signed JSON and PDF saved without redownloading; ticket generated");
+  assert.equal(fileRequests.length, 0, "inline archival must not call any file download endpoint");
+  console.log("PASS inline archive: exact signed JSON and PDF saved without any file download");
   const documentStatus = await facta.getDocumentStatus(result.emission.codigoGeneracion);
   assert.equal(documentStatus.codigoGeneracion, result.emission.codigoGeneracion);
   assert.equal(documentStatus.ambiente, "00");
@@ -188,6 +202,8 @@ try {
   console.log("PASS archive recovery: operation journal completed");
   await saveReport(result.emission, "All integration checks passed; inline JSON/PDF byte equality and no repeated download confirmed.");
 } finally {
+  await mkdir(reportDir, { recursive: true });
+  await writeFile(join(reportDir, "request-outcomes.json"), JSON.stringify(requestOutcomes, null, 2), { mode: 0o600 });
   await rm(scratch, { recursive: true, force: true });
 }
 
@@ -206,6 +222,7 @@ async function saveReport(emission, validation) {
     "| Environment | Test / staging (`00`) |",
     `| API base URL | ${apiBaseUrl} |`,
     "| DTE | FE (`01`) |",
+    "| Ticket | Not requested: the current public staging API does not support ticket PDF downloads |",
     `| Status | ${emission.estado} |`,
     `| Control number | ${emission.numeroControl} |`,
     `| Generation code | ${emission.codigoGeneracion} |`,

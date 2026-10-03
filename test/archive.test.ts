@@ -1197,3 +1197,27 @@ Deno.test("invalidation archive refuses a response for a different target docume
   assertEquals(error.code, "internal_error");
   assertEquals((await archive.findInvalidation("mismatched-invalidation"))?.state, "needs_attention");
 });
+
+Deno.test("inline archival can explicitly omit the unsupported optional ticket and recover that choice", async () => {
+  const archive = new MemoryArchive();
+  const { fetch, calls } = transport();
+  const facta = new Facta({ apiKey: "facta_test_x.secret", fetch, runtime: { version: 1, archive }, config: { version: 1, ticketPaperWidthMm: 58 } });
+  const result = await facta.issueAndArchive(request, { operationId: "no-ticket", idempotencyKey: "no-ticket", includeTicket: false });
+  assertEquals(result.archive.state, "complete");
+  assertEquals(archive.operation?.ticketPaperWidthMm, undefined);
+  assertEquals(archive.artifacts.map((row) => row.kind), ["json", "jws", "pdf"]);
+  assertEquals(calls.some((call) => call.url.includes("/file?")), false);
+  const recovered = await facta.recoverOperation("no-ticket");
+  assertEquals(recovered.archive.state, "complete");
+  assertEquals(calls.some((call) => call.url.includes("/file?")), false);
+});
+
+Deno.test("ticket opt-out rejects an explicit width before any request", async () => {
+  const archive = new MemoryArchive();
+  const { fetch, calls } = transport();
+  const facta = new Facta({ apiKey: "facta_test_x.secret", fetch });
+  await assertRejects(() => facta.issueAndArchive(request, {
+    archive, operationId: "conflict", idempotencyKey: "conflict", includeTicket: false, ticketPaperWidthMm: 58,
+  }), TypeError, "ticketPaperWidthMm cannot be supplied");
+  assertEquals(calls.length, 0);
+});
