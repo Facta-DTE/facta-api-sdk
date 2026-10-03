@@ -300,8 +300,10 @@ try {
 Emite y conserva una copia cifrada recuperable. Requiere un `InvoiceArchive`,
 un `operationId` estable y un `idempotencyKey` estable. El SDK comprueba que el
 archivo pueda escribir antes de pedir un correlativo y conserva los bytes
-exactos del JSON, PDF, JWS y ticket. La descarga o el guardado posterior pueden
-fallar aunque Hacienda ya haya aceptado la factura: revise
+exactos del JSON firmado y del PDF devueltos por el servidor, sin volver a
+solicitarlos. Deriva el JWS del JSON y solo descarga el ticket opcional. Las
+respuestas antiguas de la API que no incluyan esos archivos usan la descarga
+como compatibilidad. El guardado posterior puede fallar aunque Hacienda ya haya aceptado la factura: revise
 `result.archive.state` y `result.archive.detail` por separado del resultado
 fiscal.
 

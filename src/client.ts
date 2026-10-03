@@ -195,6 +195,11 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
   return Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+function base64Bytes(value: string): Uint8Array {
+  const binary = atob(value);
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+
 const cancelled = () => new DOMException("Operation cancelled.", "AbortError");
 const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, reject) => {
   throwIfAborted(signal);
@@ -1048,7 +1053,15 @@ export class Facta {
     const artifacts: ArchiveEmissionResult["archive"]["artifacts"] = [];
     try {
       await archive.markIssued(operation.id, emission);
-      const archived = await this.#archiveArtifacts(operation.id, emission.codigoGeneracion, archive, signal, operation.ticketPaperWidthMm, remoteDestinations);
+      const archived = await this.#archiveArtifacts(
+        operation.id,
+        emission.codigoGeneracion,
+        archive,
+        signal,
+        operation.ticketPaperWidthMm,
+        remoteDestinations,
+        emission,
+      );
       return { emission, archive: archived };
     } catch (cause) {
       const detail = cause instanceof Error ? cause.message : String(cause);
@@ -1064,21 +1077,54 @@ export class Facta {
     signal?: AbortSignal,
     ticketPaperWidthMm?: number,
     remoteDestinations?: readonly RemoteArtifactDestination[],
+    emission?: IssueResult,
   ): Promise<ArchiveEmissionResult["archive"]> {
     const artifacts: ArchiveEmissionResult["archive"]["artifacts"] = [];
     try {
-      for (const kind of ["json", "pdf"] as const) {
+      const kinds = emission?.estado === "contingencia" ? ["json"] as const : ["json", "pdf"] as const;
+      for (const kind of kinds) {
         let artifact = await this.#getVerifiedArtifact(archive, generationCode, kind);
         if (!artifact) {
-          const downloaded = await this.downloadDocument(generationCode, kind, signal ? { signal } : {});
-          artifact = {
-            codigoGeneracion: generationCode,
-            kind,
-            filename: downloaded.filename,
-            contentType: downloaded.contentType,
-            bytes: downloaded.bytes,
-            sha256: await sha256Hex(downloaded.bytes),
-          };
+          const inlineBytes = kind === "json" && typeof emission?.archivoJson === "string"
+            ? new TextEncoder().encode(emission.archivoJson)
+            : kind === "pdf" && emission?.estado === "sellado" && emission.representacionGrafica
+            ? base64Bytes(emission.representacionGrafica)
+            : null;
+          if (inlineBytes !== null) {
+            if (kind === "json") {
+              const signed = JSON.parse(new TextDecoder().decode(inlineBytes)) as Record<string, unknown>;
+              if (
+                signed["codigoGeneracion"] !== generationCode ||
+                signed["ambiente"] !== emission!.ambiente ||
+                signed["jws"] !== emission!.jws
+              ) {
+                throw new FactaError("archive_integrity_error", "The inline legal JSON does not match the issued DTE.", 0, { codigoGeneracion: generationCode });
+              }
+            } else if (
+              inlineBytes.length < 5 ||
+              new TextDecoder().decode(inlineBytes.subarray(0, 5)) !== "%PDF-"
+            ) {
+              throw new FactaError("archive_integrity_error", "The inline document representation is not a PDF.", 0, { codigoGeneracion: generationCode });
+            }
+            artifact = {
+              codigoGeneracion: generationCode,
+              kind,
+              filename: `${generationCode}.${kind}`,
+              contentType: kind === "json" ? "application/json" : "application/pdf",
+              bytes: inlineBytes,
+              sha256: await sha256Hex(inlineBytes),
+            };
+          } else {
+            const downloaded = await this.downloadDocument(generationCode, kind, signal ? { signal } : {});
+            artifact = {
+              codigoGeneracion: generationCode,
+              kind,
+              filename: downloaded.filename,
+              contentType: downloaded.contentType,
+              bytes: downloaded.bytes,
+              sha256: await sha256Hex(downloaded.bytes),
+            };
+          }
           await archive.saveArtifact(artifact);
         }
         artifacts.push({ kind, sha256: artifact.sha256 });
@@ -1104,7 +1150,7 @@ export class Facta {
           artifacts.push({ kind: "jws", sha256: storedJws?.sha256 ?? expectedJws.sha256 });
         }
       }
-      if (ticketPaperWidthMm !== undefined) {
+      if (ticketPaperWidthMm !== undefined && emission?.estado !== "contingencia") {
         let ticket = await this.#getVerifiedArtifact(archive, generationCode, "ticket");
         if (!ticket) {
           const downloaded = await this.downloadDocument(generationCode, "ticket", {

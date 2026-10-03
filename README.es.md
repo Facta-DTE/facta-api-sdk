@@ -104,7 +104,7 @@ const readiness = await facta.diagnose();
 | `invalidateAndArchive(codigoGeneracion, request, options)` | Anula y guarda de forma cifrada el evento y su JWS para recuperación. | Sí |
 | `recoverInvalidation(operationId, archive?)`, `listPendingInvalidations(archive?)` | Reanuda o lista anulaciones locales pendientes; reusa la misma clave de idempotencia. | Si reanuda |
 | `downloadDocument(codigoGeneracion, kind?)` | Descarga los bytes exactos de JSON o PDF. | No |
-| `issueAndArchive(request, options)` | Verifies the archive before reserving a number, issues, and retains encrypted JSON, PDF, JWS, and ticket bytes. | `issue` and `download` |
+| `issueAndArchive(request, options)` | Verifica el archivo antes de reservar un número, emite y conserva los bytes exactos del JSON firmado y PDF que devuelve el servidor; deriva el JWS y descarga solo el ticket opcional. | `issue` y `download` (ticket y recuperación) |
 | `listPendingOperations(archive?)` | Lista operaciones locales que aún requieren recuperación o conciliación. | No |
 | `replicateArchive(operationId, archive, destinations)` | Reproduce los bytes archivados exactos mediante los adaptadores remotos de la aplicación y registra el resultado por artefacto en el journal cifrado. |
 | `diagnoseDestinations(operationId, archive, destinations)` | Inspección de solo lectura de copias remotas existentes; confirma los bytes exactos cuando el adaptador lo permite, sin escribir archivos de prueba. | None |

@@ -30,6 +30,8 @@ const issuance: IssueResult = {
   totales: {} as Totals,
   documento: {},
   jws: "signed-jws",
+  archivoJson: '{"codigoGeneracion":"7875BC7A-9580-441D-94E4-FA455E9D8BD0","ambiente":"00","jws":"signed-jws"}',
+  representacionGrafica: btoa("%PDF-test"),
 };
 const request = {
   tipoDte: "03" as const,
@@ -180,7 +182,7 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
   return Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function transport(pdfStatus = 200, ticketStatus = 200) {
+function transport(pdfStatus = 200, ticketStatus = 200, issueResponse: unknown = issuance) {
   const calls: Array<{ url: string; key?: string }> = [];
   const fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -192,7 +194,7 @@ function transport(pdfStatus = 200, ticketStatus = 200) {
       emisor: { nit: "0614-010101-101-1", nombre: "Issuer", ambiente: "00" },
       llave: { keyId: "facta_test_x", label: null, modo: "byok", alcances: [], tiposDte: [], venceEl: null },
     });
-    if (url.endsWith("/v1/dte")) return Response.json(issuance);
+    if (url.endsWith("/v1/dte")) return Response.json(issueResponse);
     if (url.endsWith("/v1/dte/" + issuance.codigoGeneracion)) {
       return Response.json({
         estado: "sellado",
@@ -266,14 +268,58 @@ Deno.test("runtime archive defaults store exact JSON/PDF/JWS/ticket bytes after 
   assertEquals(archive.artifacts.map((row) => row.kind), ["json", "jws", "pdf", "ticket"]);
   assertEquals(
     new TextDecoder().decode(archive.artifacts[0].bytes),
-    '{"exact":"json","jws":"signed-jws"}',
+    issuance.archivoJson,
   );
   assertEquals(new TextDecoder().decode(archive.artifacts[1].bytes), "signed-jws");
-  assertEquals([...archive.artifacts[2].bytes], [37, 80, 68, 70]);
+  assertEquals([...archive.artifacts[2].bytes], [37, 80, 68, 70, 45, 116, 101, 115, 116]);
   assertEquals([...archive.artifacts[3].bytes], [37, 80, 68, 70, 45, 84]);
   assertEquals(calls.find((call) => call.key)?.key, "sale-2");
-  assertEquals(calls.length, 5);
-  assertEquals(calls[4].url.endsWith("kind=ticket&paperWidthMm=80"), true);
+  assertEquals(calls.filter((call) => call.url.includes("/file?")).length, 1);
+  assertEquals(calls.some((call) => call.url.includes("kind=json") || call.url.includes("kind=pdf")), false);
+  assertEquals(calls.find((call) => call.url.includes("kind=ticket"))?.url.endsWith("kind=ticket&paperWidthMm=80"), true);
+});
+
+Deno.test("old API responses fall back to JSON/PDF downloads when inline files are unavailable", async () => {
+  const archive = new MemoryArchive();
+  const oldResponse = { ...issuance, archivoJson: undefined, representacionGrafica: undefined };
+  const { fetch, calls } = transport(200, 200, oldResponse);
+  const facta = new Facta({ apiKey: "facta_test_x.secret", fetch, runtime: { version: 1, archive } });
+  const result = await facta.issueAndArchive(request, {
+    operationId: "sale-old-server",
+    idempotencyKey: "sale-old-server",
+  });
+  assertEquals(result.archive.state, "complete");
+  assertEquals(calls.filter((call) => call.url.includes("/file?")).length, 3);
+  assertEquals(calls.some((call) => call.url.includes("kind=json")), true);
+  assertEquals(calls.some((call) => call.url.includes("kind=pdf")), true);
+});
+
+Deno.test("contingency archives the server-signed JSON without requesting a PDF or ticket", async () => {
+  const archive = new MemoryArchive();
+  const contingency = {
+    estado: "contingencia",
+    codigoGeneracion: issuance.codigoGeneracion,
+    numeroControl: issuance.numeroControl,
+    tipoDte: issuance.tipoDte,
+    ambiente: issuance.ambiente,
+    fecEmi: issuance.fecEmi,
+    horEmi: issuance.horEmi,
+    detalle: "Hacienda is unreachable",
+    documento: issuance.documento,
+    jws: issuance.jws,
+    archivoJson: issuance.archivoJson,
+  } as const;
+  const { fetch, calls } = transport(404, 404, contingency);
+  const facta = new Facta({ apiKey: "facta_test_x.secret", fetch });
+  const result = await facta.issueAndArchive(request, {
+    archive,
+    operationId: "sale-contingency",
+    idempotencyKey: "sale-contingency",
+  });
+  assertEquals(result.emission?.estado, "contingencia");
+  assertEquals(result.archive.state, "complete");
+  assertEquals(archive.artifacts.map((row) => row.kind), ["json", "jws"]);
+  assertEquals(calls.some((call) => call.url.includes("/file?")), false);
 });
 
 Deno.test("remote writes are idempotent, persisted per artifact, and reconciled without reissuing", async () => {
@@ -393,7 +439,7 @@ Deno.test("remote destination diagnostics read existing artifacts without writin
   assertEquals(checks, 2);
   assertEquals(writes, 0);
   assertEquals(archive.operation, before);
-  assertEquals(new TextDecoder().decode((await archive.getArtifact(issuance.codigoGeneracion, "json"))?.bytes), '{"exact":"json","jws":"signed-jws"}');
+  assertEquals(new TextDecoder().decode((await archive.getArtifact(issuance.codigoGeneracion, "json"))?.bytes), issuance.archivoJson);
 
   archive.artifacts = archive.artifacts.filter((artifact) => artifact.kind !== "ticket");
   await assertRejects(
@@ -406,7 +452,7 @@ Deno.test("remote destination diagnostics read existing artifacts without writin
 
 Deno.test("PDF failure is reported as issued with archive attention, not as an issuance failure", async () => {
   const archive = new MemoryArchive();
-  const { fetch } = transport(404);
+  const { fetch } = transport(404, 200, { ...issuance, representacionGrafica: null });
   const facta = new Facta({ apiKey: "facta_test_x.secret", fetch });
   const result = await facta.issueAndArchive(request, {
     archive,

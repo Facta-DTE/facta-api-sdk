@@ -194,6 +194,10 @@ export interface SealedDte {
   /** Archive THIS. Re-serializing `documento` does not reproduce the bytes
    * whose signature Hacienda validated. */
   jws: string;
+  /** Exact server-generated JSON archive contents; persist this verbatim. */
+  archivoJson?: string;
+  /** Server-rendered PDF as base64, present after a successful seal. */
+  representacionGrafica?: string | null;
 }
 
 export interface DteInContingency {
@@ -207,6 +211,8 @@ export interface DteInContingency {
   detalle: string;
   documento: Record<string, unknown>;
   jws: string;
+  /** Exact server-generated JSON archive contents; persist this verbatim. */
+  archivoJson?: string;
 }
 
 export type IssueResult = SealedDte | DteInContingency;

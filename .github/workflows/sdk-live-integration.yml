@@ -68,7 +68,7 @@ jobs:
             const body = `${marker}
             ## SDK staging live test: ${process.env.RESULT}
 
-            The live test issues one FE (`01`) for **$0.01** in the staging test environment (`00`). When issuance and downloads succeed, the run includes the exact JSON and PDF in the `staging-invoice` artifact, retained for 7 days.
+            The live test issues one FE (`01`) for **$0.01** in the staging test environment (`00`). When issuance and local artifact archival succeed, the run includes the exact server-returned JSON and PDF in the `staging-invoice` artifact, retained for 7 days.
 
             [Open this run and download its artifacts](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`;
             const { data: comments } = await github.rest.issues.listComments({
