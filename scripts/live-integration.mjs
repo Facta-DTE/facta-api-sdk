@@ -48,7 +48,12 @@ try {
     directory: join(scratch, "archive"),
     passphrase: archivePassphrase,
   });
+  const requestUrls = [];
   const facta = new Facta({
+    fetch: async (input, init) => {
+      requestUrls.push(new URL(input instanceof Request ? input.url : String(input)));
+      return globalThis.fetch(input, init);
+    },
     apiKey,
     signKey,
     unlockKey,
@@ -113,6 +118,17 @@ try {
     ticketPaperWidthMm: 58,
   });
 
+  const [legalJson, pdf, ticket] = await Promise.all([
+    archive.getArtifact(result.emission.codigoGeneracion, "json"),
+    archive.getArtifact(result.emission.codigoGeneracion, "pdf"),
+    archive.getArtifact(result.emission.codigoGeneracion, "ticket"),
+  ]);
+  await mkdir(reportDir, { recursive: true });
+  if (legalJson) await writeFile(join(reportDir, "invoice.json"), legalJson.bytes, { mode: 0o600 });
+  if (pdf) await writeFile(join(reportDir, "invoice.pdf"), pdf.bytes, { mode: 0o600 });
+  await saveReport(result.emission, "Invoice issued; subsequent integration checks are pending.");
+  assert.equal(result.emission.estado, "sellado", "test invoice must be sealed by Hacienda");
+  assert.equal(result.emission.totales.totalPagar, 0.01, "test invoice must total exactly $0.01");
   assert.equal(result.emission.ambiente, "00", "issued document must be in test environment");
   assert.equal(result.emission.tipoDte, "01", "issued document must be FE");
   if (result.archive.state !== "complete") {
@@ -120,21 +136,6 @@ try {
   }
   console.log(`PASS issueAndArchive: ${result.emission.estado}; archive complete`);
 
-  const documentStatus = await facta.getDocumentStatus(result.emission.codigoGeneracion);
-  assert.equal(documentStatus.codigoGeneracion, result.emission.codigoGeneracion);
-  assert.equal(documentStatus.ambiente, "00");
-  let listed = false;
-  for (let attempt = 0; attempt < 6 && !listed; attempt++) {
-    const page = await facta.listDocuments({ tipoDte: "01", limit: 20 });
-    listed = page.documentos.some((document) => document.codigoGeneracion === result.emission.codigoGeneracion);
-    if (!listed && attempt < 5) await new Promise((resolve) => setTimeout(resolve, 2_000));
-  }
-  assert(listed, "the new FE must appear in the document list");
-  const [legalJson, pdf, ticket] = await Promise.all([
-    archive.getArtifact(result.emission.codigoGeneracion, "json"),
-    archive.getArtifact(result.emission.codigoGeneracion, "pdf"),
-    archive.getArtifact(result.emission.codigoGeneracion, "ticket"),
-  ]);
   assert(legalJson && legalJson.bytes.byteLength > 0, "inline signed JSON must be archived");
   assert(pdf && pdf.bytes.byteLength > 0, "inline PDF must be archived");
   assert(ticket && ticket.bytes.byteLength > 0, "ticket must be archived");
@@ -144,36 +145,33 @@ try {
   assert.match(pdf.contentType, /pdf/i, "document must be a PDF");
   assert.match(new TextDecoder().decode(pdf.bytes.subarray(0, 5)), /^%PDF-/);
   assert.match(ticket.contentType, /pdf/i, "ticket must be a PDF");
-  await mkdir(reportDir, { recursive: true });
-  await writeFile(join(reportDir, "invoice.json"), legalJson.bytes, { mode: 0o600 });
-  await writeFile(join(reportDir, "invoice.pdf"), pdf.bytes, { mode: 0o600 });
+  assert.equal(typeof result.emission.archivoJson, "string", "API must return inline signed JSON");
+  assert(result.emission.representacionGrafica, "API must return the inline PDF");
+  assert.deepEqual(Buffer.from(legalJson.bytes), Buffer.from(result.emission.archivoJson, "utf8"),
+    "archived JSON must match the exact response bytes");
+  assert.deepEqual(Buffer.from(pdf.bytes), Buffer.from(result.emission.representacionGrafica, "base64"),
+    "archived PDF must match the exact response bytes");
+  const fileRequests = requestUrls.filter((url) => /\/v1\/dte\/[^/]+\/file$/.test(url.pathname));
+  assert(fileRequests.every((url) => url.searchParams.get("kind") === "ticket"),
+    "initial archival must not download JSON or PDF; ticket requests are allowed");
   console.log("PASS inline archive: exact signed JSON and PDF saved without redownloading; ticket generated");
+  const documentStatus = await facta.getDocumentStatus(result.emission.codigoGeneracion);
+  assert.equal(documentStatus.codigoGeneracion, result.emission.codigoGeneracion);
+  assert.equal(documentStatus.ambiente, "00");
+  assert.equal(documentStatus.estado, "sellado", "queried invoice must remain sealed");
+  let listed = false;
+  for (let attempt = 0; attempt < 6 && !listed; attempt++) {
+    const page = await facta.listDocuments({ tipoDte: "01", limit: 20 });
+    listed = page.documentos.some((document) => document.codigoGeneracion === result.emission.codigoGeneracion);
+    if (!listed && attempt < 5) await new Promise((resolve) => setTimeout(resolve, 2_000));
+  }
+  assert(listed, "the new FE must appear in the document list");
   console.log(`PASS query: ${documentStatus.estado}; list match`);
 
   const pending = await facta.listPendingOperations();
   assert(!pending.some((operation) => operation.id === operationId), "completed operation must leave no pending archive journal");
   console.log("PASS archive recovery: operation journal completed");
-  const report = [
-    "## Staging live invoice",
-    "",
-    "| Field | Result |",
-    "| --- | --- |",
-    "| Environment | Test / staging (`00`) |",
-    "| DTE | FE (`01`) |",
-    `| Status | ${documentStatus.estado} |`,
-    `| Control number | ${result.emission.numeroControl} |`,
-    `| Generation code | ${result.emission.codigoGeneracion} |`,
-    `| Issued at | ${result.emission.fecEmi} ${result.emission.horEmi} |`,
-    `| Total | $${Number(result.emission.totales.totalPagar).toFixed(2)} |`,
-    "| Files | Exact signed JSON and PDF from the issue response; ticket generated by the API |",
-    "",
-    "The exact JSON and PDF responses are attached to this workflow run as the `staging-invoice` artifact (7-day retention).",
-    "",
-    "> This is a real test-environment FE emission; it is not a production invoice.",
-    "",
-  ].join("\n");
-  await writeFile(join(reportDir, "report.md"), report, { mode: 0o600 });
-  if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, `${report}\n`);
+  await saveReport(result.emission, "All integration checks passed; inline JSON/PDF byte equality and no repeated download confirmed.");
 } finally {
   await rm(scratch, { recursive: true, force: true });
 }
@@ -182,4 +180,30 @@ function safeCode(error) {
   return typeof error === "object" && error !== null && "code" in error
     ? String(error.code)
     : "unavailable";
+}
+
+async function saveReport(emission, validation) {
+  const report = [
+    "## Staging live invoice",
+    "",
+    "| Field | Result |",
+    "| --- | --- |",
+    "| Environment | Test / staging (`00`) |",
+    `| API base URL | ${apiBaseUrl} |`,
+    "| DTE | FE (`01`) |",
+    `| Status | ${emission.estado} |`,
+    `| Control number | ${emission.numeroControl} |`,
+    `| Generation code | ${emission.codigoGeneracion} |`,
+    `| Issued at | ${emission.fecEmi} ${emission.horEmi} |`,
+    `| Total | $${Number(emission.totales.totalPagar).toFixed(2)} |`,
+    "",
+    validation,
+    "",
+    "Invoice files are retained as workflow artifacts for 7 days. Download links are added to the pull request comment after upload.",
+    "",
+    "> This is a real test-environment FE emission; it is not a production invoice.",
+    "",
+  ].join("\n");
+  await writeFile(join(reportDir, "report.md"), report, { mode: 0o600 });
+  if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, `${report}\n`);
 }
