@@ -4,7 +4,7 @@ For exact public method signatures, scopes, defaults, side effects, and
 recovery behavior, see the [SDK method reference](reference.md). Read the
 [Spanish guide](node.es.md) for the Spanish version.
 
-**Status:** implementation is in the development branch. `@facta/api` has not
+**Status:** implementation is in the development branch. `@facta-dte/api` has not
 been published to npm. Do not point a production integration at a package or
 contract that has not been published after staging verification.
 
@@ -33,7 +33,7 @@ Inject secrets from the process secret manager. Do not put them in source code
 or print `FactaOptions` to logs.
 
 ```ts
-import { Facta } from "@facta/api";
+import { Facta } from "@facta-dte/api";
 
 const facta = new Facta({
   apiKey: process.env.FACTA_API_KEY!,
@@ -56,12 +56,12 @@ company, revisions, and quotas. It counts as a status request but needs no
 `issue`, `query`, or `download` scope.
 
 For non-secret values, Node can load an explicit JSON file with
-`createFactaFromConfigFile()` from `@facta/api/node`. The file object uses
+`createFactaFromConfigFile()` from `@facta-dte/api/node`. The file object uses
 `FactaConfigV1` (`version: 1`); unknown keys are rejected, and values passed in
 `config` take precedence. Keep keys, local files, and adapters out of this file:
 
 ```ts
-import { createFactaFromConfigFile } from "@facta/api/node";
+import { createFactaFromConfigFile } from "@facta-dte/api/node";
 
 const facta = await createFactaFromConfigFile({
   configFile: "/etc/facta/client.json",
@@ -115,7 +115,7 @@ generation code and control number so you can correct the operation under the
 API contract:
 
 ```ts
-import { FactaError } from "@facta/api";
+import { FactaError } from "@facta-dte/api";
 
 try {
   await facta.issue(request, { idempotencyKey: "erp-order-1042" });
@@ -154,8 +154,8 @@ Import the Node adapter from its subpath and store its passphrase as a separate
 secret from `FACTA_UNLOCK_KEY`:
 
 ```ts
-import { Facta } from "@facta/api";
-import { FileInvoiceArchive } from "@facta/api/node";
+import { Facta } from "@facta-dte/api";
+import { FileInvoiceArchive } from "@facta-dte/api/node";
 
 const facta = new Facta({
   apiKey: process.env.FACTA_API_KEY!,

@@ -26,7 +26,7 @@ pnpm pack:check
 ```
 
 En el proyecto consumidor usa una versión publicada explícita, por ejemplo
-`npm:@facta/api@0.1.0-beta.1`, cuando ese paquete ya exista en el registry;
+`npm:@facta-dte/api@0.1.0-beta.1`, cuando ese paquete ya exista en el registry;
 fija la versión en `deno.json` y revisa el lockfile en control de versiones.
 
 ## Permisos mínimos
@@ -49,7 +49,7 @@ comando o config. No pases `-A` a una integración desplegada.
 ## Cliente y una factura de prueba
 
 ```ts
-import { Facta } from "npm:@facta/api@0.1.0-beta.1";
+import { Facta } from "npm:@facta-dte/api@0.1.0-beta.1";
 
 const facta = new Facta({
   apiKey: Deno.env.get("FACTA_API_KEY")!,
@@ -134,7 +134,7 @@ deno run \
 
 Para conservar cifrados los artefactos JSON, PDF, JWS y ticket, y recuperarlos
 tras reinicios, importa `FileInvoiceArchive` desde
-`npm:@facta/api/file-archive` cuando el paquete se publique. Este adaptador usa
+`npm:@facta-dte/api/file-archive` cuando el paquete se publique. Este adaptador usa
 compatibilidad con `node:fs/promises`; concede `--allow-read` y `--allow-write`
 solo al directorio del archivo. La frase de cifrado debe ser aleatoria, guardarse
 en un gestor de secretos separado y ser distinta de `FACTA_UNLOCK_KEY`. Los
@@ -156,7 +156,7 @@ Crea el archivo una vez por proceso y úsalo antes de emitir en producción para
 comprobar que está listo y escribir el journal antes de reservar el correlativo:
 
 ```ts
-import { FileInvoiceArchive } from "npm:@facta/api/file-archive";
+import { FileInvoiceArchive } from "npm:@facta-dte/api/file-archive";
 
 const archive = await FileInvoiceArchive.open({
   directory: Deno.env.get("FACTA_ARCHIVE_DIRECTORY")!,

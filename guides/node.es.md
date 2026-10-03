@@ -3,7 +3,7 @@
 Para conocer las firmas públicas, alcances, valores predeterminados, efectos
 y mecanismos de recuperación, consulta la [referencia de métodos del SDK](reference.es.md).
 
-**Estado:** contrato implementado en la rama de desarrollo. `@facta/api` aún
+**Estado:** contrato implementado en la rama de desarrollo. `@facta-dte/api` aún
 no está publicado en npm. No apuntes una integración de producción a un
 paquete o contrato que no se haya publicado después de verificar staging.
 
@@ -33,7 +33,7 @@ Inyecta secretos desde el gestor de secretos del proceso. No los pongas en el
 código fuente ni imprimas `FactaOptions` en los logs.
 
 ```ts
-import { Facta } from "@facta/api";
+import { Facta } from "@facta-dte/api";
 
 const facta = new Facta({
   apiKey: process.env.FACTA_API_KEY!,
@@ -56,13 +56,13 @@ llave, empresa, revisiones y cuotas. También consume una llamada de estado,
 pero no necesita `issue`, `query` ni `download`.
 
 Para valores no secretos, Node puede cargar un archivo JSON explícito con
-`createFactaFromConfigFile()` desde `@facta/api/node`. El objeto del archivo
+`createFactaFromConfigFile()` desde `@facta-dte/api/node`. El objeto del archivo
 usa `FactaConfigV1` (`version: 1`); se rechazan claves desconocidas y los valores
 pasados en `config` prevalecen. Mantén llaves, archivos locales y adaptadores
 fuera del archivo:
 
 ```ts
-import { createFactaFromConfigFile } from "@facta/api/node";
+import { createFactaFromConfigFile } from "@facta-dte/api/node";
 
 const facta = await createFactaFromConfigFile({
   configFile: "/etc/facta/client.json",
@@ -115,7 +115,7 @@ Hacienda ya consumió el número y `error.spent` devuelve su generación y contr
 para poder corregir la operación según el contrato de la API:
 
 ```ts
-import { FactaError } from "@facta/api";
+import { FactaError } from "@facta-dte/api";
 
 try {
   await facta.issue(request, { idempotencyKey: "erp-order-1042" });
@@ -154,8 +154,8 @@ Importa el adaptador Node desde la subruta, y guarda su contraseña en un
 secreto diferente a `FACTA_UNLOCK_KEY`:
 
 ```ts
-import { Facta } from "@facta/api";
-import { FileInvoiceArchive } from "@facta/api/node";
+import { Facta } from "@facta-dte/api";
+import { FileInvoiceArchive } from "@facta-dte/api/node";
 
 const facta = new Facta({
   apiKey: process.env.FACTA_API_KEY!,

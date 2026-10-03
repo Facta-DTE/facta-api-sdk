@@ -11,7 +11,7 @@ or the simpler `ArtifactStore` port.
 ## Bridge an existing `put/get` client
 
 ```ts
-import { createStorageArtifactDestination } from "@facta/api";
+import { createStorageArtifactDestination } from "@facta-dte/api";
 
 const destination = createStorageArtifactDestination({
   id: "private-invoices",
@@ -56,7 +56,7 @@ allowed only for an explicitly enabled localhost endpoint used by a local
 storage lab.
 
 ```ts
-import { createS3ArtifactDestination } from "@facta/api";
+import { createS3ArtifactDestination } from "@facta-dte/api";
 
 const { destinos } = await facta.syncDestinations();
 const destinationConfig = JSON.parse(destinos.find((item) => item.id === "s3-id")!.secret);
@@ -83,7 +83,7 @@ API. Uploads send `x-upsert: false`; an existing object is read and compared,
 and a conflicting create is followed by a read instead of an overwrite.
 
 ```ts
-import { createSupabaseArtifactDestination } from "@facta/api";
+import { createSupabaseArtifactDestination } from "@facta-dte/api";
 
 const { destinos } = await facta.syncDestinations();
 const row = destinos.find((destination) => destination.id === "supabase-backup");
@@ -111,7 +111,7 @@ under Google's `drive.file` scope. Access-token refresh or user reauthorization
 is supplied by the host runtime:
 
 ```ts
-import { createGoogleDriveArtifactDestination } from "@facta/api";
+import { createGoogleDriveArtifactDestination } from "@facta-dte/api";
 
 const destination = createGoogleDriveArtifactDestination({
   id: "accounting-drive",
@@ -149,7 +149,7 @@ the port from the local bridge pairing/configuration, then combine it with the
 decrypted secret:
 
 ```ts
-import { createBridgeArtifactDestination } from "@facta/api";
+import { createBridgeArtifactDestination } from "@facta-dte/api";
 
 const destination = createBridgeArtifactDestination({
   id: row.id,
@@ -264,7 +264,7 @@ built-in providers. The package also includes `createOneDriveArtifactDestination
 for the private application folder:
 
 ```ts
-import { createOneDriveArtifactDestination } from "@facta/api";
+import { createOneDriveArtifactDestination } from "@facta-dte/api";
 
 const destination = createOneDriveArtifactDestination({
   id: "accounting-onedrive",

@@ -1,23 +1,23 @@
-# `@facta/api` — TypeScript SDK
+# `@facta-dte/api` — TypeScript SDK
 
 The official TypeScript and JavaScript client for Facta's electronic tax document API. It uses the server as the fiscal authority: the SDK sends DTE data, handles credentials and retries, resolves encrypted local catalog snapshots, and can archive exact issued bytes for restart-safe recovery.
 
 Read the [Spanish README](README.es.md). The full [method reference](guides/reference.md) documents each public method's arguments, return value, required scope, side effects, errors, retries, and recovery behavior. The [published API contract](https://hcnvknpsbadplnfcflxx.supabase.co/functions/v1/api-v1/v1/openapi.json) remains authoritative for HTTP fields and responses.
 
-> **Publication status:** `@facta/api` has not been published to npm. This repository contains the standalone SDK source; do not infer a registry release from the GitHub repository or README.
+> **Publication status:** `@facta-dte/api` has not been published to npm. This repository contains the standalone SDK source; do not infer a registry release from the GitHub repository or README.
 
 > **License:** MIT. See [LICENSE](LICENSE).
 
 ## Runtime support
 
-The SDK root entry works in Node.js 22+, Deno, and Bun and does not eagerly import filesystem modules. The `@facta/api/node` entry adds Node-only encrypted file archives and config-file loading. The dedicated `@facta/api/file-archive` entry is also Node-only.
+The SDK root entry works in Node.js 22+, Deno, and Bun and does not eagerly import filesystem modules. The `@facta-dte/api/node` entry adds Node-only encrypted file archives and config-file loading. The dedicated `@facta-dte/api/file-archive` entry is also Node-only.
 
 The portable client relies on standard `fetch`, Web Crypto, `AbortSignal`, and `crypto.randomUUID`. Every request uses the configured API endpoint; a `facta_test_` key selects Hacienda's test environment at that same endpoint. There is no separate staging API URL.
 
 ## Quick start
 
 ```ts
-import { Facta, type DteRequest } from "@facta/api";
+import { Facta, type DteRequest } from "@facta-dte/api";
 
 const facta = new Facta({
   apiKey: process.env.FACTA_API_KEY!,
@@ -70,8 +70,8 @@ Every operation that can reserve a fiscal control number needs a stable `idempot
 For applications that must survive a process restart, use `issueAndArchive` with a durable archive, `operationId`, and `idempotencyKey`:
 
 ```ts
-import { Facta, type DteRequest } from "@facta/api";
-import { FileInvoiceArchive } from "@facta/api/node";
+import { Facta, type DteRequest } from "@facta-dte/api";
+import { FileInvoiceArchive } from "@facta-dte/api/node";
 
 const archive = await FileInvoiceArchive.open({
   directory: "./private-invoices",

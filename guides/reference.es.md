@@ -2,7 +2,7 @@
 
 [English version](reference.md) · [README en español](../README.es.md)
 
-# `@facta/api`
+# `@facta-dte/api`
 
 [English version](reference.md) · [README en inglés](../README.md)
 
@@ -19,13 +19,13 @@ El único cliente oficial. Node 22 y 24, y también Deno y Bun: `fetch` y `crypt
 #
 # El paquete todavía NO está publicado en npm. Cuando lo esté, la línea
 # será esta, y nada más de esta página cambia:
-pnpm add @facta/api
+pnpm add @facta-dte/api
 ```
 
 ## Configuración
 
 ```typescript
-import { Facta } from "@facta/api";
+import { Facta } from "@facta-dte/api";
 
 const facta = new Facta({
   apiKey: process.env.FACTA_API_KEY!,
@@ -271,7 +271,7 @@ OAuth pertenecen al runtime integrador.
 Prepara, firma y transmite en una sola operación. Es el camino normal. Devuelve una unión: `estado === "sellado"` trae `selloRecibido` y `totales`; `estado === "contingencia"` no, porque todavía no hay veredicto — y el tipo lo obliga. Errores propios: `mh_rejected`, `validation_failed`, `no_storage_destination`, `amount_limit`.
 
 ```typescript
-import { Facta, FactaError } from "@facta/api";
+import { Facta, FactaError } from "@facta-dte/api";
 
 const facta = new Facta({
   apiKey: process.env.FACTA_API_KEY!,
@@ -308,14 +308,14 @@ fallar aunque Hacienda ya haya aceptado la factura: revise
 `result.archive.state` y `result.archive.detail` por separado del resultado
 fiscal.
 
-El paquete incluye `FileInvoiceArchive` en `@facta/api/file-archive` para Node
+El paquete incluye `FileInvoiceArchive` en `@facta-dte/api/file-archive` para Node
 22+ y Deno 2. Configure su frase de cifrado como un secreto independiente de
 `FACTA_UNLOCK_KEY`; deje un solo proceso escribiendo en cada directorio local.
 En otros runtimes puede implementar `InvoiceArchive` con almacenamiento
 transaccional.
 
 ```typescript
-import { FileInvoiceArchive } from "@facta/api/file-archive";
+import { FileInvoiceArchive } from "@facta-dte/api/file-archive";
 
 const archive = await FileInvoiceArchive.open({
   directory: process.env.FACTA_ARCHIVE_DIRECTORY!,
@@ -558,7 +558,7 @@ Estos códigos son propios del SDK y nunca aparecen en la tabla HTTP de la API:
 | `archive_integrity_error` | El journal cifrado no pasó la verificación de identidad o hash; conserve una copia y revise antes de repararlo. |
 
 ```typescript
-import { FactaError } from "@facta/api";
+import { FactaError } from "@facta-dte/api";
 
 try {
   await facta.issue(venta);

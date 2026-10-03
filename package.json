@@ -1,6 +1,6 @@
 {
   "//": "This SDK builds and releases independently and has no runtime dependency on the Facta application monorepo. Its HTTP contract is checked against the published OpenAPI document.",
-  "name": "@facta/api",
+  "name": "@facta-dte/api",
   "version": "0.1.0-beta.1",
   "description": "TypeScript client for the Facta electronic invoicing API (DTE) in El Salvador.",
   "repository": {

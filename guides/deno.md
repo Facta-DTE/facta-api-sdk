@@ -27,7 +27,7 @@ pnpm pack:check
 ```
 
 In a consumer project, use an explicit published version such as
-`npm:@facta/api@0.1.0-beta.1` once it is available in the registry. Pin that
+`npm:@facta-dte/api@0.1.0-beta.1` once it is available in the registry. Pin that
 version in `deno.json` and check the lockfile into version control.
 
 ## Minimum permissions
@@ -50,7 +50,7 @@ the production command or config. Do not use `-A` for a deployed integration.
 ## Client and a test invoice
 
 ```ts
-import { Facta } from "npm:@facta/api@0.1.0-beta.1";
+import { Facta } from "npm:@facta-dte/api@0.1.0-beta.1";
 
 const facta = new Facta({
   apiKey: Deno.env.get("FACTA_API_KEY")!,
@@ -136,7 +136,7 @@ deno run \
 
 For encrypted retention of JSON, PDF, JWS, and ticket artifacts, and recovery
 between restarts, import `FileInvoiceArchive` from
-`npm:@facta/api/file-archive` when the package is published. This adapter uses
+`npm:@facta-dte/api/file-archive` when the package is published. This adapter uses
 `node:fs/promises` compatibility; grant `--allow-read` and `--allow-write` only
 for the archive directory. Its passphrase should be random, stored in a
 separate secret manager, and different from `FACTA_UNLOCK_KEY`. Writers are
@@ -157,7 +157,7 @@ Create the archive once per process and use it before a production issuance so
 readiness and journal writes happen before a control number is reserved:
 
 ```ts
-import { FileInvoiceArchive } from "npm:@facta/api/file-archive";
+import { FileInvoiceArchive } from "npm:@facta-dte/api/file-archive";
 
 const archive = await FileInvoiceArchive.open({
   directory: Deno.env.get("FACTA_ARCHIVE_DIRECTORY")!,

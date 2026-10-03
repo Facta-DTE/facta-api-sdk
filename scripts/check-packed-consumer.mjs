@@ -356,7 +356,7 @@ try {
   const archiveDirectory = join(temp, "concurrent-archive");
   const archivePassphrase = "packed-consumer-concurrency-secret-8pW2cN5mR9xK4vT7";
   const seedArchive = `
-import { FileInvoiceArchive } from "@facta/api/node";
+import { FileInvoiceArchive } from "@facta-dte/api/node";
 const archive = await FileInvoiceArchive.open({ directory: ${JSON.stringify(archiveDirectory)}, passphrase: ${JSON.stringify(archivePassphrase)} });
 await archive.begin({ id: "concurrent-operation", idempotencyKey: "concurrent-operation", requestSha256: "a".repeat(64), createdAt: new Date().toISOString(), state: "issued", codigoGeneracion: "7875BC7A-9580-441D-94E4-FA455E9D8BD0" });
 `;
@@ -366,7 +366,7 @@ await archive.begin({ id: "concurrent-operation", idempotencyKey: "concurrent-op
   const concurrentWriterPath = join(temp, "concurrent-writer.mjs");
   writeFileSync(concurrentWriterPath, `
 import { existsSync } from "node:fs";
-import { FileInvoiceArchive } from "@facta/api/node";
+import { FileInvoiceArchive } from "@facta-dte/api/node";
 const [prefix, gate, directory, passphrase] = process.argv.slice(2);
 const archive = await FileInvoiceArchive.open({ directory, passphrase });
 while (!existsSync(gate)) await new Promise((resolve) => setTimeout(resolve, 5));
@@ -392,7 +392,7 @@ for (let index = 0; index < 20; index += 1) {
   await Promise.all(writers);
   const verifyArchivePath = join(temp, "verify-archive.mjs");
   writeFileSync(verifyArchivePath, `
-import { FileInvoiceArchive } from "@facta/api/node";
+import { FileInvoiceArchive } from "@facta-dte/api/node";
 const archive = await FileInvoiceArchive.open({ directory: ${JSON.stringify(archiveDirectory)}, passphrase: ${JSON.stringify(archivePassphrase)} });
 const operation = await archive.find("concurrent-operation");
 if (operation?.remoteCopies?.length !== 40) throw new Error("Cross-process archive updates were lost.");

@@ -1,6 +1,6 @@
 # TypeScript SDK method reference
 
-This reference describes the public methods exported by `@facta/api`. The
+This reference describes the public methods exported by `@facta-dte/api`. The
 installed package declarations are authoritative for exact TypeScript types;
 the [published OpenAPI contract](https://hcnvknpsbadplnfcflxx.supabase.co/functions/v1/api-v1/v1/openapi.json) is authoritative
 for request and response schemas.

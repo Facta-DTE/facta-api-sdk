@@ -7,7 +7,7 @@ El SDK gestiona la integridad de artefactos, el estado de replicación y la coor
 ## Adaptar un cliente `put/get` existente
 
 ```ts
-import { createStorageArtifactDestination } from "@facta/api";
+import { createStorageArtifactDestination } from "@facta-dte/api";
 
 const destination = createStorageArtifactDestination({
   id: "private-invoices",
@@ -41,7 +41,7 @@ La función necesita una ruta de objeto determinista para el mismo código de ge
 El SDK incluye el adaptador integrado `createS3ArtifactDestination()`. Usa WebCrypto SigV4 y escrituras condicionales `If-None-Match: *`; después vuelve a leer el objeto y compara SHA-256. Así evita la carrera en que dos procesos del SDK detectan una ruta ausente y luego reemplazan bytes distintos. El servicio del bucket debe admitir creación condicional de objetos. AWS usa HTTPS y un endpoint regional por defecto; los endpoints personalizados usan estilo de ruta por defecto. HTTP sin cifrar solo se permite para un endpoint localhost habilitado expresamente para un laboratorio local de almacenamiento.
 
 ```ts
-import { createS3ArtifactDestination } from "@facta/api";
+import { createS3ArtifactDestination } from "@facta-dte/api";
 
 const { destinos } = await facta.syncDestinations();
 const destinationConfig = JSON.parse(destinos.find((item) => item.id === "s3-id")!.secret);
@@ -59,7 +59,7 @@ La configuración usa `bucket`, `region`, `accessKeyId` y `secretAccessKey`; los
 El SDK también incluye `createSupabaseArtifactDestination()`. Usa la URL del proyecto, el bucket y la clave de servicio configurados con la API REST de Supabase Storage. Las cargas envían `x-upsert: false`; si el objeto ya existe, se lee y compara, y un conflicto de creación provoca una lectura en lugar de reemplazarlo.
 
 ```ts
-import { createSupabaseArtifactDestination } from "@facta/api";
+import { createSupabaseArtifactDestination } from "@facta-dte/api";
 
 const { destinos } = await facta.syncDestinations();
 const row = destinos.find((destination) => destination.id === "supabase-backup");
@@ -79,7 +79,7 @@ La configuración descifrada contiene `url`, `serviceKey` y `bucket`, además de
 `createGoogleDriveArtifactDestination()` escribe en la carpeta de Facta seleccionada bajo el ámbito `drive.file` de Google. El entorno anfitrión proporciona la renovación del token de acceso o la reautorización del usuario:
 
 ```ts
-import { createGoogleDriveArtifactDestination } from "@facta/api";
+import { createGoogleDriveArtifactDestination } from "@facta-dte/api";
 
 const destination = createGoogleDriveArtifactDestination({
   id: "accounting-drive",
@@ -100,7 +100,7 @@ El comando opcional `pnpm test:local-s3-storage` compila el SDK e inicia un serv
 El SDK puede escribir a través de `facta-bridge` en el mismo equipo que ejecuta Node o Deno. El vault de destinos contiene la clave de API y el ID de sesión del puente, pero el puerto pertenece al dispositivo y deliberadamente no se sincroniza. Lee el puerto de la configuración local del emparejamiento del puente y combínalo con el secreto descifrado:
 
 ```ts
-import { createBridgeArtifactDestination } from "@facta/api";
+import { createBridgeArtifactDestination } from "@facta-dte/api";
 
 const destination = createBridgeArtifactDestination({
   id: row.id,
@@ -163,7 +163,7 @@ Para inspeccionar copias existentes sin crear objetos de prueba, usa `diagnoseDe
 `createStorageArtifactDestination()` adapta un cliente `put/get` existente. `createS3ArtifactDestination()` y `createSupabaseArtifactDestination()` son proveedores integrados. El paquete también incluye `createOneDriveArtifactDestination()` para la carpeta privada de la aplicación:
 
 ```ts
-import { createOneDriveArtifactDestination } from "@facta/api";
+import { createOneDriveArtifactDestination } from "@facta-dte/api";
 
 const destination = createOneDriveArtifactDestination({
   id: "accounting-onedrive",

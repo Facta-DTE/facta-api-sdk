@@ -1,4 +1,4 @@
-# @facta/api — cliente de TypeScript
+# @facta-dte/api — cliente de TypeScript
 
 Emite un DTE sellado por el Ministerio de Hacienda desde Node 22/24. El paquete
 publicado contiene JavaScript ESM compilado y sus tipos se leen del contrato
@@ -10,7 +10,7 @@ El contrato que implementa es el [OpenAPI publicado](https://hcnvknpsbadplnfcflx
 > **Licencia:** MIT. Consulta [LICENSE](LICENSE).
 
 ```ts
-import { Facta } from "@facta/api";
+import { Facta } from "@facta-dte/api";
 
 const facta = new Facta({
   apiKey: process.env.FACTA_API_KEY!,
@@ -112,7 +112,7 @@ const readiness = await facta.diagnose();
 ### Firmas públicas y valores de argumentos
 
 Los nombres siguientes son los exports del paquete (`Facta` y los tipos se
-importan desde `@facta/api`).
+importan desde `@facta-dte/api`).
 
 | Método | Firma/argumentos | Retorno |
 |---|---|---|
@@ -334,7 +334,7 @@ filesystems are unsupported. Locks are never stolen automatically. After
 stopping every writer, recover an abandoned lock explicitly:
 
 ```ts
-import { Facta, FileInvoiceArchive } from "@facta/api/node";
+import { Facta, FileInvoiceArchive } from "@facta-dte/api/node";
 
 const archive = await FileInvoiceArchive.open({
   directory: process.env.FACTA_ARCHIVE_DIRECTORY!,
@@ -350,7 +350,7 @@ contains versioned non-secret defaults. Values passed as `config` override the
 matching file fields.
 
 ```ts
-import { createFactaFromConfigFile } from "@facta/api/node";
+import { createFactaFromConfigFile } from "@facta-dte/api/node";
 
 const facta = await createFactaFromConfigFile({
   configFile: "/etc/facta/client.json",
@@ -688,7 +688,7 @@ mismatched object, then reads back a new write before reporting `stored`. It
 does not create a provider client or manage its credentials:
 
 ```ts
-import { createStorageArtifactDestination } from "@facta/api";
+import { createStorageArtifactDestination } from "@facta-dte/api";
 
 const destination = createStorageArtifactDestination({
   id: "accounting-bucket",
@@ -713,7 +713,7 @@ provider adapter. It verifies exact bytes and uses conditional create-if-missing
 to prevent concurrent retries from overwriting a different artifact:
 
 ```ts
-import { createS3ArtifactDestination } from "@facta/api";
+import { createS3ArtifactDestination } from "@facta-dte/api";
 
 const { destinos } = await facta.syncDestinations();
 const s3 = destinos.find((destination) => destination.id === "accounting-bucket");
@@ -737,7 +737,7 @@ For a private bucket in a Supabase project, `createSupabaseArtifactDestination()
 uses the Storage REST API with `x-upsert: false` and verifies the uploaded bytes:
 
 ```ts
-import { createSupabaseArtifactDestination } from "@facta/api";
+import { createSupabaseArtifactDestination } from "@facta-dte/api";
 
 const { destinos } = await facta.syncDestinations();
 const backup = destinos.find((destination) => destination.id === "supabase-backup");
