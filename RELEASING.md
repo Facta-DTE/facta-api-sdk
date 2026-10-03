@@ -30,3 +30,9 @@ Trusted publishing requires GitHub-hosted runners, Node.js 22.14 or newer, npm 1
 Prerelease versions are staged with a dist-tag derived from the prerelease identifier (`beta`, `rc`, and so on). Stable versions use `latest`.
 
 The workflow does not publish directly. npm generates provenance attestations for trusted publishing, and staged publishing keeps the version unavailable until a maintainer approves it.
+
+## Development validation
+
+Open development pull requests against the `dev` branch. The `SDK CI` workflow runs the unit suite and packed-consumer check for pull requests to `dev` and `main`.
+
+The staging live integration also runs for pull requests to `dev` that originate in this repository. It waits for approval of the `staging-live-test` GitHub Environment before accessing the test secrets and issuing one FE in the staging test environment. Fork pull requests do not receive the live-test secrets or run the live job. The test API key must have `issue`, `query`, and `download` scopes. Live checks stop before issuance if those scopes are missing.

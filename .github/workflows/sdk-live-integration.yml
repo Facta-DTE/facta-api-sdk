@@ -1,6 +1,9 @@
 name: SDK live integration (staging API, test environment)
 
 on:
+  pull_request:
+    branches:
+      - dev
   workflow_dispatch:
     inputs:
       confirmation:
@@ -16,17 +19,21 @@ permissions:
 
 jobs:
   live-test:
-    if: inputs.confirmation == 'emit-test-fe'
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.confirmation == 'emit-test-fe') ||
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
+    environment:
+      name: staging-live-test
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v4
         with:
           version: 10
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
       - uses: denoland/setup-deno@v2
         with:
