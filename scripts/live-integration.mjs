@@ -80,11 +80,26 @@ try {
     expectedEnvironment: "00",
     requiredScopes: ["issue", "query", "download"],
   });
+  // Missing public synchronization metadata is "unknown", but can still
+  // prevent issuance. Report every non-ok check without exposing status data.
+  const readiness = {
+    overall: diagnostics.overall,
+    canIssue: diagnostics.canIssue,
+    canQuery: diagnostics.canQuery,
+    canDownload: diagnostics.canDownload,
+    canIssueAndArchive: diagnostics.canIssueAndArchive,
+    checks: diagnostics.checks.filter((check) => check.state !== "ok")
+      .map((check) => ({
+        id: check.id,
+        state: check.state,
+        reasonCode: `${check.id}:${check.state}`,
+      })),
+  };
+  console.log(`PREFLIGHT readiness: ${JSON.stringify(readiness)}`);
+  await mkdir(reportDir, { recursive: true });
+  await writeFile(join(reportDir, "diagnostics.json"), JSON.stringify(readiness, null, 2), { mode: 0o600 });
   if (!diagnostics.canIssue || !diagnostics.canQuery || !diagnostics.canDownload || !diagnostics.canIssueAndArchive) {
-    const failedChecks = diagnostics.checks
-      .filter((check) => check.state === "blocked")
-      .map((check) => check.id)
-      .join(", ");
+    const failedChecks = readiness.checks.map((check) => check.reasonCode).join(", ");
     throw new Error(`Preflight blocked the test invoice (${failedChecks || diagnostics.overall}).`);
   }
   console.log("PASS diagnose: issue, query, download, and local archive are ready");

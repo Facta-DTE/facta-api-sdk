@@ -239,3 +239,44 @@ Deno.test("configured environment and scopes are verified against live key statu
   assertEquals(mismatch.checks.find((check) => check.id === "configured-environment")?.state, "blocked");
   assertEquals(mismatch.checks.find((check) => check.id === "configured-scope-download")?.state, "blocked");
 });
+
+Deno.test("legacy status without a synchronization block retains guarded archive readiness", async () => {
+  const legacy = status({ sincronizacion: undefined });
+  const report = await diagnoseStatus(legacy, {
+    dteType: "03", archive: readyArchive, expectedEnvironment: "00",
+    requiredScopes: ["issue", "query", "download"],
+  });
+  assertEquals(report.canIssueAndArchive, true);
+  assertEquals(report.overall, "attention");
+  assertEquals(report.checks.find((check) => check.id === "sign-sync")?.state, "warning");
+  assertEquals(report.checks.find((check) => check.id === "destinations-sync")?.state, "warning");
+
+  for (const guarded of [
+    { ...legacy, firma: { ...legacy.firma!, vaultDeFirma: false, origenDeLaFirma: "sin-provisionar" as const } },
+    { ...legacy, limites: { ...legacy.limites, hora: null } },
+    { ...legacy, llave: { ...legacy.llave, alcances: ["issue", "query"] } },
+  ]) {
+    const blocked = await diagnoseStatus(guarded, {
+      archive: readyArchive, requiredScopes: ["issue", "query", "download"],
+    });
+    assertEquals(blocked.canIssueAndArchive, false);
+  }
+});
+
+Deno.test("present incomplete or failed synchronization metadata never uses legacy compatibility", async () => {
+  const ready = { desiredRevision: 1, publishedRevision: 1, status: "ready" as const };
+  for (const sincronizacion of [
+    null,
+    {},
+    { sign: ready },
+    { destinations: ready },
+    { sign: { ...ready, status: "pending" }, destinations: ready },
+    { sign: ready, destinations: { ...ready, status: "error" } },
+    { sign: { ...ready, publishedRevision: 0 }, destinations: ready },
+  ]) {
+    const fixture = { ...status(), sincronizacion } as unknown as Status;
+    const report = await diagnoseStatus(fixture, { archive: readyArchive });
+    assertEquals(report.canIssueAndArchive, false);
+    assertEquals(report.overall, "blocked");
+  }
+});

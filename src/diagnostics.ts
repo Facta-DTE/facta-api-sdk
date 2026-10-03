@@ -372,13 +372,21 @@ export async function diagnoseStatus(
   }
 
   const sync = status.sincronizacion;
-  const signingSyncOk = checkRevision(
+  // The original public status response did not expose revision metadata.
+  // Only a wholly absent block identifies that contract; null or incomplete
+  // modern metadata must still fail closed through checkRevision.
+  const legacySyncContract = sync === undefined;
+  if (legacySyncContract) {
+    add(checks, "sign-sync", "warning", "API does not publish synchronization revisions; signing provisioning is checked using the legacy status contract.");
+    add(checks, "destinations-sync", "warning", "API does not publish destination revisions; legacy status compatibility applies.");
+  }
+  const signingSyncOk = legacySyncContract || checkRevision(
     checks,
     "sign-sync",
     sync?.sign,
     "Signing vault",
   );
-  const destinationsOk = checkRevision(
+  const destinationsOk = legacySyncContract || checkRevision(
     checks,
     "destinations-sync",
     sync?.destinations,

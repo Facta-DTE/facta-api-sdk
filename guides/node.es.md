@@ -180,6 +180,13 @@ funcionando y el diagnóstico aparece como desconocido hasta que la app publique
 esos datos. La ruta de estado nunca devuelve entradas cifradas del vault ni una
 llave privada.
 
+Las versiones anteriores de la API pueden omitir todo el bloque de estado
+`sincronizacion`. En ese caso, `diagnose()` informa advertencias de compatibilidad
+y sigue verificando la firma configurada, los datos del certificado, los
+permisos, el ambiente, los límites y el archivo local. Si el bloque está presente
+pero es nulo o incompleto, hay sincronización pendiente o fallida, o las
+revisiones no coinciden, la emisión sigue bloqueada.
+
 `issueAndArchive()` registra primero la clave de idempotencia y luego cifra los
 bytes exactos de JSON, PDF, JWS y ticket. El ancho predeterminado del ticket es
 80 mm; usa `ticketPaperWidthMm` (40–120 mm) para elegir otro ancho admitido. La

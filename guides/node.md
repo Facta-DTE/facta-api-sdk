@@ -179,6 +179,12 @@ metadata row remain usable and are reported as unknown until the app publishes
 the metadata. The status route never returns encrypted vault entries or a
 private key.
 
+Older API deployments may omit the entire `sincronizacion` status block.
+`diagnose()` reports synchronization warnings for that legacy contract and
+continues checking signing provisioning, certificate facts, scopes, environment,
+quotas, and archive readiness. A present but null or incomplete block, pending
+or failed synchronization, and mismatched revisions still prevent issuance.
+
 `issueAndArchive()` records the idempotency key first, then encrypts exact JSON,
 PDF, JWS, and ticket bytes. It defaults to an 80 mm ticket; set
 `ticketPaperWidthMm` (40–120 mm) to choose another supported width. The choice
