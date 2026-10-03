@@ -1,0 +1,37 @@
+import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
+import { createValidationResults, renderLiveReport, safeFailureCode } from "../scripts/live-report.mjs";
+
+Deno.test("public live report contains validation results without invoice fields or links", () => {
+  const checks = createValidationResults();
+  checks.emission = "Passed (sealed test FE, $0.01)";
+  checks.pdf = "Passed";
+  checks["signed-json"] = "Passed";
+  checks.query = "Failed";
+  const report = renderLiveReport(checks, "service_unavailable");
+  assertStringIncludes(report, "| PDF received and validated | Passed |");
+  assertStringIncludes(report, "| Invoice consultation | Failed |");
+  assertEquals(report.includes("http"), false);
+  assertEquals(report.includes("artifact"), false);
+  assertEquals(report.includes("codigoGeneracion"), false);
+});
+
+Deno.test("public live report rejects private fields, injected states and raw errors", () => {
+  const privateValue = "PRIVATE-NIT-NAME-ADDRESS-JWS-PDF";
+  const checks = { ...createValidationResults(), pdf: privateValue, emisor: privateValue };
+  const report = renderLiveReport(checks, privateValue);
+  assertEquals(report.includes(privateValue), false);
+  assertStringIncludes(report, "| PDF received and validated | Not checked |");
+  assertStringIncludes(report, "validation_failed");
+  assertEquals(safeFailureCode({ code: privateValue, message: privateValue }), "validation_failed");
+  assertEquals(safeFailureCode({ code: "service_unavailable", message: privateValue }), "service_unavailable");
+});
+
+Deno.test("public workflow never uploads invoice artifacts and live script never persists cleartext invoice files", async () => {
+  const workflow = await Deno.readTextFile(new URL("../.github/workflows/sdk-live-integration.yml", import.meta.url));
+  const script = await Deno.readTextFile(new URL("../scripts/live-integration.mjs", import.meta.url));
+  assertEquals(workflow.includes("actions/upload-artifact"), false);
+  assertEquals(workflow.includes("ARTIFACT_URL"), false);
+  assertEquals(script.includes('join(reportDir, "invoice.'), false);
+  assertEquals(script.includes("assert.deepEqual"), false);
+  assertStringIncludes(script, "renderLiveReport(checks, failureCode)");
+});

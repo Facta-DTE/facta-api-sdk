@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { appendFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { createValidationResults, renderLiveReport, safeFailureCode } from "./live-report.mjs";
 
 const apiKey = process.env.STAGING_FACTA_API_KEY;
 const signKey = process.env.STAGING_FACTA_SIGN_KEY;
@@ -43,7 +43,9 @@ const { FileInvoiceArchive } = await import("../dist/node.js");
 const scratch = await mkdtemp(join(tmpdir(), "facta-sdk-integration-"));
 const archivePassphrase = Buffer.from(crypto.getRandomValues(new Uint8Array(48))).toString("base64url");
 
-const requestOutcomes = [];
+const checks = createValidationResults();
+let currentCheck = "status";
+let failureCode = null;
 
 try {
   const archive = await FileInvoiceArchive.open({
@@ -55,18 +57,7 @@ try {
     fetch: async (input, init) => {
       const url = new URL(input instanceof Request ? input.url : String(input));
       requestUrls.push(url);
-      const response = await globalThis.fetch(input, init);
-      let errorCode = null;
-      if (!response.ok) {
-        try {
-          const body = await response.clone().json();
-          const candidate = body?.error?.code;
-          errorCode = typeof candidate === "string" && /^[a-z][a-z0-9_]{0,63}$/.test(candidate)
-            ? candidate : "unrecognized_error";
-        } catch { errorCode = "unreadable_error"; }
-      }
-      requestOutcomes.push({ pathname: url.pathname, kind: url.searchParams.get("kind"), status: response.status, errorCode });
-      return response;
+      return globalThis.fetch(input, init);
     },
     apiKey,
     signKey,
@@ -86,6 +77,8 @@ try {
   assert.equal(health.ok, true, "API status must report healthy");
   assert.equal(health.ambiente, "00", "API status must confirm the test environment");
   assert.equal(health.emisor?.ambiente, "00", "issuer must also be in the test environment");
+  checks.status = "Passed";
+  currentCheck = "preflight";
   console.log("PASS status: healthy test environment confirmed");
 
   const diagnostics = await facta.diagnose({
@@ -110,34 +103,35 @@ try {
       })),
   };
   console.log(`PREFLIGHT readiness: ${JSON.stringify(readiness)}`);
-  await mkdir(reportDir, { recursive: true });
-  await writeFile(join(reportDir, "diagnostics.json"), JSON.stringify(readiness, null, 2), { mode: 0o600 });
+
   if (!diagnostics.canIssue || !diagnostics.canQuery || !diagnostics.canDownload || !diagnostics.canIssueAndArchive) {
     const failedChecks = readiness.checks.map((check) => check.reasonCode).join(", ");
     throw new Error(`Preflight blocked the test invoice (${failedChecks || diagnostics.overall}).`);
   }
+  checks.preflight = "Passed";
   console.log("PASS diagnose: issue, query, download, and local archive are ready");
 
   // These are read-only vault reads. Never log decrypted customer/product or destination data.
   let catalogRead = "unavailable";
   try {
     const catalog = await facta.syncCatalog();
-    catalogRead = `ready (${catalog.customers.length} customers, ${catalog.products.length} products)`;
+    catalogRead = "ready";
   } catch (error) {
-    catalogRead = `unavailable (${safeCode(error)})`;
+    catalogRead = `unavailable (${safeFailureCode(error)})`;
   }
   let destinationRead = "unavailable";
   try {
     const destinations = await facta.syncDestinations();
-    destinationRead = `ready (${destinations.destinos.length} destinations)`;
+    destinationRead = "ready";
   } catch (error) {
-    destinationRead = `unavailable (${safeCode(error)})`;
+    destinationRead = `unavailable (${safeFailureCode(error)})`;
   }
   console.log(`READ catalog: ${catalogRead}`);
   console.log(`READ destinations: ${destinationRead}`);
 
   const operationId = `sdk-live-${runId}`;
   const idempotencyKey = `sdk-live-${runId}`;
+  currentCheck = "emission";
   const result = await facta.issueAndArchive({
     tipoDte: "01",
     items: [{ descripcion: "Facta API SDK integration test", cantidad: 1, precioUni: 0.01 }],
@@ -151,91 +145,81 @@ try {
     archive.getArtifact(result.emission.codigoGeneracion, "json"),
     archive.getArtifact(result.emission.codigoGeneracion, "pdf"),
   ]);
-  await mkdir(reportDir, { recursive: true });
-  if (legalJson) await writeFile(join(reportDir, "invoice.json"), legalJson.bytes, { mode: 0o600 });
-  if (pdf) await writeFile(join(reportDir, "invoice.pdf"), pdf.bytes, { mode: 0o600 });
-  await saveReport(result.emission, "Invoice issued; subsequent integration checks are pending.");
   assert.equal(result.emission.estado, "sellado", "test invoice must be sealed by Hacienda");
   assert.equal(result.emission.totales.totalPagar, 0.01, "test invoice must total exactly $0.01");
   assert.equal(result.emission.ambiente, "00", "issued document must be in test environment");
   assert.equal(result.emission.tipoDte, "01", "issued document must be FE");
-  if (result.archive.state !== "complete") {
-    const classification = requestOutcomes.some((request) => request.kind === "ticket" && request.status >= 400)
-      ? "ticket_download_failed" : "archive_incomplete";
-    console.log(`ARCHIVE outcome: ${JSON.stringify({ state: result.archive.state, classification,
-      archivedKinds: result.archive.artifacts.map((artifact) => artifact.kind) })}`);
-    throw new Error(`Invoice was accepted, but SDK archiving is ${result.archive.state} (${classification}).`);
-  }
+  checks.emission = "Passed (sealed test FE, $0.01)";
+  currentCheck = "archive";
+  assert(result.archive.state === "complete", "Local archive must be complete");
+  checks.archive = "Passed";
   console.log(`PASS issueAndArchive: ${result.emission.estado}; archive complete`);
 
+  currentCheck = "signed-json";
   assert(legalJson && legalJson.bytes.byteLength > 0, "inline signed JSON must be archived");
-  assert(pdf && pdf.bytes.byteLength > 0, "inline PDF must be archived");
+
   assert.match(legalJson.contentType, /json/i, "signed JSON must have a JSON content type");
   const parsedJson = JSON.parse(new TextDecoder().decode(legalJson.bytes));
-  assert.equal(parsedJson.jws, result.emission.jws, "archived JSON must preserve the server-signed JWS");
+  assert(parsedJson.jws === result.emission.jws, "archived JSON must preserve the server-signed JWS");
+  checks["signed-json"] = "Passed";
+  currentCheck = "pdf";
+  assert(pdf && pdf.bytes.byteLength > 0, "inline PDF must be archived");
   assert.match(pdf.contentType, /pdf/i, "document must be a PDF");
   assert.match(new TextDecoder().decode(pdf.bytes.subarray(0, 5)), /^%PDF-/);
+  checks.pdf = "Passed";
+  currentCheck = "inline-bytes";
   assert.equal(typeof result.emission.archivoJson, "string", "API must return inline signed JSON");
   assert(result.emission.representacionGrafica, "API must return the inline PDF");
-  assert.deepEqual(Buffer.from(legalJson.bytes), Buffer.from(result.emission.archivoJson, "utf8"),
+  assert(Buffer.from(legalJson.bytes).equals(Buffer.from(result.emission.archivoJson, "utf8")),
     "archived JSON must match the exact response bytes");
-  assert.deepEqual(Buffer.from(pdf.bytes), Buffer.from(result.emission.representacionGrafica, "base64"),
+  assert(Buffer.from(pdf.bytes).equals(Buffer.from(result.emission.representacionGrafica, "base64")),
     "archived PDF must match the exact response bytes");
+  checks["inline-bytes"] = "Passed";
+  currentCheck = "no-downloads";
   const fileRequests = requestUrls.filter((url) => /\/v1\/dte\/[^/]+\/file$/.test(url.pathname));
   assert.equal(fileRequests.length, 0, "inline archival must not call any file download endpoint");
+  checks["no-downloads"] = "Passed";
   console.log("PASS inline archive: exact signed JSON and PDF saved without any file download");
+  currentCheck = "query";
   const documentStatus = await facta.getDocumentStatus(result.emission.codigoGeneracion);
-  assert.equal(documentStatus.codigoGeneracion, result.emission.codigoGeneracion);
+  assert(documentStatus.codigoGeneracion.toUpperCase() === result.emission.codigoGeneracion.toUpperCase(),
+    "queried UUID must identify the issued invoice regardless of database casing");
   assert.equal(documentStatus.ambiente, "00");
   assert.equal(documentStatus.estado, "sellado", "queried invoice must remain sealed");
+  checks.query = "Passed";
+  currentCheck = "listing";
   let listed = false;
   for (let attempt = 0; attempt < 6 && !listed; attempt++) {
     const page = await facta.listDocuments({ tipoDte: "01", limit: 20 });
-    listed = page.documentos.some((document) => document.codigoGeneracion === result.emission.codigoGeneracion);
+    listed = page.documentos.some((document) => document.codigoGeneracion.toUpperCase() === result.emission.codigoGeneracion.toUpperCase());
     if (!listed && attempt < 5) await new Promise((resolve) => setTimeout(resolve, 2_000));
   }
   assert(listed, "the new FE must appear in the document list");
+  checks.listing = "Passed";
   console.log(`PASS query: ${documentStatus.estado}; list match`);
 
+  currentCheck = "journal";
   const pending = await facta.listPendingOperations();
   assert(!pending.some((operation) => operation.id === operationId), "completed operation must leave no pending archive journal");
   console.log("PASS archive recovery: operation journal completed");
-  await saveReport(result.emission, "All integration checks passed; inline JSON/PDF byte equality and no repeated download confirmed.");
+  checks.journal = "Passed";
+} catch (error) {
+  checks[currentCheck] = "Failed";
+  failureCode = safeFailureCode(error);
+  // Never print API messages, stacks, assertion values, JWS, or invoice bytes.
+  console.error(`FAIL live integration: ${currentCheck} (${failureCode})`);
+  process.exitCode = 1;
 } finally {
+  try {
+    await saveReport();
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
+  }
+}
+
+async function saveReport() {
+  const report = renderLiveReport(checks, failureCode);
   await mkdir(reportDir, { recursive: true });
-  await writeFile(join(reportDir, "request-outcomes.json"), JSON.stringify(requestOutcomes, null, 2), { mode: 0o600 });
-  await rm(scratch, { recursive: true, force: true });
-}
-
-function safeCode(error) {
-  return typeof error === "object" && error !== null && "code" in error
-    ? String(error.code)
-    : "unavailable";
-}
-
-async function saveReport(emission, validation) {
-  const report = [
-    "## Staging live invoice",
-    "",
-    "| Field | Result |",
-    "| --- | --- |",
-    "| Environment | Test / staging (`00`) |",
-    `| API base URL | ${apiBaseUrl} |`,
-    "| DTE | FE (`01`) |",
-    "| Ticket | Not requested: the current public staging API does not support ticket PDF downloads |",
-    `| Status | ${emission.estado} |`,
-    `| Control number | ${emission.numeroControl} |`,
-    `| Generation code | ${emission.codigoGeneracion} |`,
-    `| Issued at | ${emission.fecEmi} ${emission.horEmi} |`,
-    `| Total | $${Number(emission.totales.totalPagar).toFixed(2)} |`,
-    "",
-    validation,
-    "",
-    "Invoice files are retained as workflow artifacts for 7 days. Download links are added to the pull request comment after upload.",
-    "",
-    "> This is a real test-environment FE emission; it is not a production invoice.",
-    "",
-  ].join("\n");
   await writeFile(join(reportDir, "report.md"), report, { mode: 0o600 });
-  if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, `${report}\n`);
+  if (process.env.GITHUB_STEP_SUMMARY) await writeFile(process.env.GITHUB_STEP_SUMMARY, report);
 }

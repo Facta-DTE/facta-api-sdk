@@ -50,42 +50,12 @@ jobs:
           STAGING_FACTA_UNLOCK_KEY: ${{ secrets.STAGING_FACTA_UNLOCK_KEY }}
           STAGING_FACTA_API_BASE_URL: https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1
           FACTA_LIVE_REPORT_DIR: ${{ runner.temp }}/facta-live-report
-      - name: Upload invoice report and documents
-        id: invoice_bundle
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: staging-invoice
-          path: ${{ runner.temp }}/facta-live-report/
-          if-no-files-found: ignore
-          retention-days: 7
-      - name: Upload invoice PDF
-        id: invoice_pdf
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: staging-invoice-pdf
-          path: ${{ runner.temp }}/facta-live-report/invoice.pdf
-          if-no-files-found: ignore
-          retention-days: 7
-      - name: Upload signed invoice JSON
-        id: invoice_json
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: staging-invoice-json
-          path: ${{ runner.temp }}/facta-live-report/invoice.json
-          if-no-files-found: ignore
-          retention-days: 7
       - name: Add live result to pull request
         if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         uses: actions/github-script@v8
         env:
           RESULT: ${{ job.status }}
           REPORT_PATH: ${{ runner.temp }}/facta-live-report/report.md
-          PDF_ARTIFACT_URL: ${{ steps.invoice_pdf.outputs.artifact-url }}
-          JSON_ARTIFACT_URL: ${{ steps.invoice_json.outputs.artifact-url }}
-          BUNDLE_ARTIFACT_URL: ${{ steps.invoice_bundle.outputs.artifact-url }}
         with:
           script: |
             const marker = '<!-- facta-sdk-staging-live-result -->';
@@ -93,20 +63,11 @@ jobs:
             const report = fs.existsSync(process.env.REPORT_PATH)
               ? fs.readFileSync(process.env.REPORT_PATH, 'utf8')
               : '';
-            const links = [
-              process.env.PDF_ARTIFACT_URL && `[Download invoice PDF](${process.env.PDF_ARTIFACT_URL})`,
-              process.env.JSON_ARTIFACT_URL && `[Download signed invoice JSON](${process.env.JSON_ARTIFACT_URL})`,
-              process.env.BUNDLE_ARTIFACT_URL && `[Download complete invoice report](${process.env.BUNDLE_ARTIFACT_URL})`,
-            ].filter(Boolean);
             const body = [
               marker,
               `## SDK staging live test: ${process.env.RESULT}`,
               '',
               report || 'No invoice report was produced. This run does not establish that an invoice was generated; inspect the failed step in the workflow logs.',
-              '',
-              ...links,
-              '',
-              'Artifact downloads require GitHub access and expire after 7 days.',
               '',
               `[Open workflow run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`,
             ].join('\n');

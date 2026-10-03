@@ -888,3 +888,12 @@ restricted by the local SDK snapshot.
 deno test --allow-read --allow-net .        # pruebas unitarias, sin red real
 FACTA_API_KEY=facta_test_… FACTA_SIGN_KEY=factask_… deno task hola   # emite en 00
 ```
+
+### Reportes públicos de pruebas live
+
+El workflow de staging publica solamente una tabla de validación en el PR y
+el resumen de la ejecución. Comprueba la factura de pruebas, el JSON firmado
+y el PDF en memoria y en un archivo temporal cifrado, que elimina al terminar.
+No sube los documentos ni publica identificadores del emisor o receptor,
+códigos de generación, números de control, errores crudos de la API o datos
+incluidos en errores de comparación.

@@ -149,3 +149,11 @@ pnpm pack:check
 ## Documentation language
 
 The repository keeps the Spanish documentation at [`README.es.md`](README.es.md), alongside the English guides in the [method reference](guides/reference.md) and guides. Each guide links to its Spanish counterpart.
+
+### Public live-test reports
+
+The staging live workflow publishes only a validation table in the PR and job
+summary. It verifies the issued test invoice, signed JSON and PDF in memory
+and an encrypted temporary archive, then deletes the archive. It never uploads
+invoice documents or publishes issuer/customer identifiers, generation codes,
+control numbers, raw API errors or assertion payloads.
