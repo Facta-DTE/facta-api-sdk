@@ -7,12 +7,16 @@ import { pathToFileURL } from "node:url";
 const apiKey = process.env.STAGING_FACTA_API_KEY;
 const signKey = process.env.STAGING_FACTA_SIGN_KEY;
 const unlockKey = process.env.STAGING_FACTA_UNLOCK_KEY;
+const apiBaseUrl = process.env.STAGING_FACTA_API_BASE_URL;
 const runId = process.env.GITHUB_RUN_ID;
+const EXPECTED_STAGING_API_BASE_URL =
+  "https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1";
 
 for (const [name, value] of [
   ["STAGING_FACTA_API_KEY", apiKey],
   ["STAGING_FACTA_SIGN_KEY", signKey],
   ["STAGING_FACTA_UNLOCK_KEY", unlockKey],
+  ["STAGING_FACTA_API_BASE_URL", apiBaseUrl],
   ["GITHUB_RUN_ID", runId],
 ]) {
   if (!value) throw new Error(`Required integration input is unavailable: ${name}`);
@@ -27,6 +31,9 @@ if (!signKey.startsWith("factask_")) {
 }
 if (!unlockKey.startsWith("factauk_")) {
   throw new Error("Refusing integration run: unlock credential has an unexpected type.");
+}
+if (apiBaseUrl !== EXPECTED_STAGING_API_BASE_URL) {
+  throw new Error("Refusing integration run: API base URL must exactly match the approved staging project.");
 }
 
 const { Facta } = await import("../dist/index.js");
@@ -43,6 +50,7 @@ try {
     apiKey,
     signKey,
     unlockKey,
+    baseUrl: apiBaseUrl,
     config: {
       version: 1,
       expectedEnvironment: "00",

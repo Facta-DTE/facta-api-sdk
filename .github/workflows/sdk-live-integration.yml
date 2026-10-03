@@ -1,4 +1,4 @@
-name: SDK live integration (test environment)
+name: SDK live integration (staging API, test environment)
 
 on:
   workflow_dispatch:
@@ -33,8 +33,10 @@ jobs:
           deno-version: v2.x
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
-      - run: pnpm build && node scripts/live-integration.mjs
+      - name: Build SDK and run staging API integration
+        run: pnpm build && node scripts/live-integration.mjs
         env:
           STAGING_FACTA_API_KEY: ${{ secrets.STAGING_FACTA_API_KEY }}
           STAGING_FACTA_SIGN_KEY: ${{ secrets.STAGING_FACTA_SIGN_KEY }}
           STAGING_FACTA_UNLOCK_KEY: ${{ secrets.STAGING_FACTA_UNLOCK_KEY }}
+          STAGING_FACTA_API_BASE_URL: https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1
