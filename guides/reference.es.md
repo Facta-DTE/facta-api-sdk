@@ -10,16 +10,13 @@ El único cliente oficial. Node 22 y 24, y también Deno y Bun: `fetch` y `crypt
 
 ## Instalación
 
-> **Atención:** Todavía no está publicado en npm.
-> Hoy el paquete se usa **desde el código fuente** de este repositorio, con `mod.ts` para TypeScript y Deno y `dist/index.js` para Node. Publicarlo es una puerta de liberación que aún no se ha cruzado, y esta página no va a decir lo contrario mientras tanto.
+> **Estado:** `0.1.0-beta.1` está publicada en npm. La versión estable `0.1.0` está en preparación y estará disponible tras aprobar su staging.
 
 ```sh
-# Hoy: desde el código fuente del repositorio.
-#   raíz del repositorio  →  mod.ts, src/, dist/index.js
-#
-# El paquete todavía NO está publicado en npm. Cuando lo esté, la línea
-# será esta, y nada más de esta página cambia:
-pnpm add @facta-dte/api
+# Para usar la beta publicada:
+pnpm add @facta-dte/api@0.1.0-beta.1
+# Después de aprobar el release estable:
+pnpm add @facta-dte/api@0.1.0
 ```
 
 ## Configuración

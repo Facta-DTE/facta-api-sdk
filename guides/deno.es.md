@@ -3,9 +3,10 @@
 Para conocer las firmas públicas, alcances, valores predeterminados, efectos
 y mecanismos de recuperación, consulta la [referencia de métodos del SDK](reference.es.md).
 
-**Estado:** el código fuente y el paquete tarball se verifican con Deno 2.6.6.
-El paquete aún no se publica en JSR ni npm. No copies un import de registry a
-producción hasta que haya una versión beta liberada después de staging.
+**Estado:** el código fuente y el tarball se verifican con Deno 2.6.6. La
+versión `0.1.0-beta.1` está publicada en npm, pero el paquete no está publicado
+en JSR. Se prepara la versión estable `0.1.0` de npm; estará disponible tras
+aprobar su staging.
 
 ## Requisitos e instalación
 
@@ -25,9 +26,10 @@ pnpm test
 pnpm pack:check
 ```
 
-En el proyecto consumidor usa una versión publicada explícita, por ejemplo
-`npm:@facta-dte/api@0.1.0-beta.1`, cuando ese paquete ya exista en el registry;
-fija la versión en `deno.json` y revisa el lockfile en control de versiones.
+En el proyecto consumidor usa una versión aprobada y explícita, como
+`npm:@facta-dte/api@0.1.0` cuando se apruebe el release estable. Mientras tanto,
+la beta disponible es `npm:@facta-dte/api@0.1.0-beta.1`. Fija la versión elegida
+en `deno.json` y revisa el lockfile en control de versiones.
 
 ## Permisos mínimos
 
@@ -49,7 +51,7 @@ comando o config. No pases `-A` a una integración desplegada.
 ## Cliente y una factura de prueba
 
 ```ts
-import { Facta } from "npm:@facta-dte/api@0.1.0-beta.1";
+import { Facta } from "npm:@facta-dte/api@0.1.0";
 
 const facta = new Facta({
   apiKey: Deno.env.get("FACTA_API_KEY")!,
