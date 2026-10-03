@@ -1,6 +1,8 @@
 const LABELS = Object.freeze({
   status: "Staging API and test environment",
   preflight: "Issuance permissions and readiness",
+  catalog: "Encrypted catalog snapshot opened locally",
+  destinations: "Encrypted destination snapshot opened locally",
   emission: "Invoice generated and sealed",
   archive: "Encrypted local archive",
   "signed-json": "Signed JSON received and validated",
@@ -15,6 +17,7 @@ const STATES = new Set(["Not checked", "Failed", "Passed", "Passed (sealed test 
 const ERROR_CODES = new Set([
   "not_found", "service_unavailable", "invalid_request", "unauthorized",
   "forbidden", "rate_limit_exceeded", "archive_integrity_error", "validation_failed",
+  "no_storage_destination", "sign_vault_missing",
 ]);
 
 export function createValidationResults() {

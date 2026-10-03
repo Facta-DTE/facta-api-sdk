@@ -897,3 +897,7 @@ y el PDF en memoria y en un archivo temporal cifrado, que elimina al terminar.
 No sube los documentos ni publica identificadores del emisor o receptor,
 códigos de generación, números de control, errores crudos de la API o datos
 incluidos en errores de comparación.
+
+Los datos del receptor en consultas y listados pueden ser nulos para documentos cifrados en la app Facta, importados o restaurados con una clave de empresa que la API no tiene. El SDK conserva ese valor: un cliente del catálogo actual no demuestra quién era el receptor del documento histórico. `unlockKey` abre solamente los snapshots publicados del catálogo y los destinos, no los datos cifrados del receptor de facturas históricas.
+
+El workflow completo de staging exige abrir correctamente los snapshots de catálogo y destinos publicados por el dueño antes de emitir la factura de pruebas. Si un snapshot no está disponible, la ejecución falla. La compatibilidad del SDK con respuestas de estado anteriores no elimina este requisito de integración.

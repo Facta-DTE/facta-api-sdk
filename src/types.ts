@@ -269,7 +269,8 @@ export interface ListedDte {
   horEmi?: string;
   selloRecibido?: string | null;
   totales?: { totalGravada?: number; totalIva?: number; totalPagar?: number };
-  receptor?: { nombre?: string | null; numDocumento?: string | null };
+  /** Null when this document’s receiver metadata cannot be opened by the API. */
+  receptor?: { nombre?: string | null; numDocumento?: string | null } | null;
 }
 
 export interface DtePage {

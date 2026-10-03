@@ -98,7 +98,7 @@ if (result.archive.state !== "complete") {
 }
 ```
 
-`issueAndArchive` stores the immutable resolved request and operation identity before the fiscal request. It archives the exact signed JSON and PDF returned by the server, derives the JWS from that JSON, and optionally requests a receipt ticket PDF only from APIs that support it. The current public API requires `includeTicket: false`; its ticket download route currently returns JSON. Recovery verifies endpoint, API key identity, issuer, and environment before any fiscal request. Legacy journals without that identity remain inspectable but cannot be replayed automatically.
+`issueAndArchive` stores the immutable resolved request and operation identity before the fiscal request. It archives the exact signed JSON and PDF returned by the server, derives the JWS from that JSON, and optionally requests a receipt ticket PDF only from APIs that support it. Use `includeTicket: false` to archive JSON, PDF and JWS without requesting a ticket. Ticket archival is enabled by default and requires a deployed API with `kind=ticket` PDF support. Recovery verifies endpoint, API key identity, issuer, and environment before any fiscal request. Legacy journals without that identity remain inspectable but cannot be replayed automatically.
 
 An archive is sensitive data. `FileInvoiceArchive` uses authenticated encryption and restrictive local file permissions; its passphrase must be independent from API, signing, and vault credentials. Keep backups and retention under the application's control. Read [storage adapters](guides/storage-adapters.md) for remote-copy adapters and reconciliation.
 
@@ -157,3 +157,7 @@ summary. It verifies the issued test invoice, signed JSON and PDF in memory
 and an encrypted temporary archive, then deletes the archive. It never uploads
 invoice documents or publishes issuer/customer identifiers, generation codes,
 control numbers, raw API errors or assertion payloads.
+
+Document query and listing receiver metadata can be null when a document was encrypted in the Facta app, imported or restored with a company key unavailable to the API. The SDK preserves null; a current catalog customer does not establish the historical receiver. `unlockKey` opens only the published catalog/destination snapshots, not historical invoice receiver blobs.
+
+The full staging live workflow requires owner-published catalog and destination snapshots to open successfully before issuing its test invoice. An unavailable snapshot fails the run; library issuance compatibility with legacy status responses does not waive this integration gate.

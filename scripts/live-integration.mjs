@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createValidationResults, renderLiveReport, safeFailureCode } from "./live-report.mjs";
+import { requireLiveSnapshots } from "./live-preflight.mjs";
 
 const apiKey = process.env.STAGING_FACTA_API_KEY;
 const signKey = process.env.STAGING_FACTA_SIGN_KEY;
@@ -104,30 +105,17 @@ try {
   };
   console.log(`PREFLIGHT readiness: ${JSON.stringify(readiness)}`);
 
+  // Read-only capability checks must pass before this full live run issues anything.
+  await requireLiveSnapshots(facta, checks, (check) => { currentCheck = check; });
+  console.log("PASS snapshots: catalog and destinations opened locally");
+  currentCheck = "preflight";
+
   if (!diagnostics.canIssue || !diagnostics.canQuery || !diagnostics.canDownload || !diagnostics.canIssueAndArchive) {
     const failedChecks = readiness.checks.map((check) => check.reasonCode).join(", ");
     throw new Error(`Preflight blocked the test invoice (${failedChecks || diagnostics.overall}).`);
   }
   checks.preflight = "Passed";
   console.log("PASS diagnose: issue, query, download, and local archive are ready");
-
-  // These are read-only vault reads. Never log decrypted customer/product or destination data.
-  let catalogRead = "unavailable";
-  try {
-    const catalog = await facta.syncCatalog();
-    catalogRead = "ready";
-  } catch (error) {
-    catalogRead = `unavailable (${safeFailureCode(error)})`;
-  }
-  let destinationRead = "unavailable";
-  try {
-    const destinations = await facta.syncDestinations();
-    destinationRead = "ready";
-  } catch (error) {
-    destinationRead = `unavailable (${safeFailureCode(error)})`;
-  }
-  console.log(`READ catalog: ${catalogRead}`);
-  console.log(`READ destinations: ${destinationRead}`);
 
   const operationId = `sdk-live-${runId}`;
   const idempotencyKey = `sdk-live-${runId}`;

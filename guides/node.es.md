@@ -197,12 +197,13 @@ permisos, el ambiente, los límites y el archivo local. Si el bloque está prese
 pero es nulo o incompleto, hay sincronización pendiente o fallida, o las
 revisiones no coinciden, la emisión sigue bloqueada.
 
-La API pública actual no ofrece la descarga de tickets PDF: una petición con
-`kind=ticket` devuelve JSON. Con esa versión, use `includeTicket: false` para
-archivar JSON, PDF y JWS; esos tres archivos determinan que el archivo esté
-completo. La operación guarda esa elección para recuperarla después. El ticket
-sigue activado por defecto por compatibilidad con servidores que lo admiten.
-No combine un ancho explícito con `includeTicket: false`.
+Use `includeTicket: false` para archivar JSON, PDF y JWS sin descargar un
+ticket. Esos tres archivos determinan que el archivo esté completo, y la
+operación guarda esa elección para recuperarla después. El ticket está
+activado por defecto y requiere una API desplegada que ofrezca PDF con
+`kind=ticket`. Las versiones anteriores pueden devolver JSON para esa consulta
+y no pueden completar un archivo que solicite ticket. No combine un ancho
+explícito con `includeTicket: false`.
 
 `issueAndArchive()` registra primero la clave de idempotencia y luego cifra los
 bytes exactos de JSON, PDF, JWS y ticket. Para una API que admita tickets PDF, el ancho predeterminado del ticket es

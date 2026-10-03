@@ -195,12 +195,12 @@ continues checking signing provisioning, certificate facts, scopes, environment,
 quotas, and archive readiness. A present but null or incomplete block, pending
 or failed synchronization, and mismatched revisions still prevent issuance.
 
-The current public API does not provide ticket PDF downloads: requesting
-`kind=ticket` currently returns JSON. Use `includeTicket: false` when archiving
-with that deployment; completion then requires JSON, PDF and JWS only. The
-journal retains this choice for recovery. Ticket archival remains enabled by
-default for compatibility with servers that support it. An explicit ticket
-width cannot be combined with `includeTicket: false`.
+Use `includeTicket: false` to archive JSON, PDF and JWS without requesting a
+ticket. Completion then requires those three artifacts only, and the journal
+retains this choice for recovery. Ticket archival is enabled by default and
+requires a deployed API with `kind=ticket` PDF support. Older deployments may
+return JSON for that query and cannot complete a requested ticket archive.
+An explicit ticket width cannot be combined with `includeTicket: false`.
 
 `issueAndArchive()` records the idempotency key first, then encrypts exact JSON,
 PDF, JWS, and ticket bytes. For an API that supports ticket PDF downloads, it defaults to an 80 mm ticket; set

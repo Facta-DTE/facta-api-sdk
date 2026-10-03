@@ -35,3 +35,12 @@ Deno.test("public workflow never uploads invoice artifacts and live script never
   assertEquals(script.includes("assert.deepEqual"), false);
   assertStringIncludes(script, "renderLiveReport(checks, failureCode)");
 });
+
+Deno.test("catalog and destination capabilities are positive only after snapshots open", () => {
+  const checks = createValidationResults();
+  checks.catalog = "Passed";
+  checks.destinations = "Failed";
+  const report = renderLiveReport(checks);
+  assertStringIncludes(report, "| Encrypted catalog snapshot opened locally | Passed |");
+  assertStringIncludes(report, "| Encrypted destination snapshot opened locally | Failed |");
+});

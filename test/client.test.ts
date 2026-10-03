@@ -385,3 +385,18 @@ Deno.test("flat network options use the same validation as versioned config", ()
     TypeError,
   );
 });
+
+Deno.test("query and listing preserve unavailable historical receiver metadata without catalog requests", async () => {
+  const document = { ...SEALED, receptor: { nombre: null, numDocumento: null } };
+  const { fetch, calls } = fakeFetch([
+    { status: 200, body: document },
+    { status: 200, body: { documentos: [document, { ...document, receptor: null }], siguiente: null } },
+  ]);
+  const facta = new Facta({ apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch });
+  assertEquals((await facta.getDocumentStatus(document.codigoGeneracion)).receptor, { nombre: null, numDocumento: null });
+  const listed = await facta.listDocuments();
+  assertEquals(listed.documentos[0].receptor, { nombre: null, numDocumento: null });
+  assertEquals(listed.documentos[1].receptor, null);
+  assertEquals(calls.length, 2);
+  assertEquals(calls.every((call) => call.method === "GET" && !call.url.includes("/vault/")), true);
+});
