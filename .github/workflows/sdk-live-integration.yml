@@ -16,6 +16,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 jobs:
   live-test:
@@ -47,3 +48,38 @@ jobs:
           STAGING_FACTA_SIGN_KEY: ${{ secrets.STAGING_FACTA_SIGN_KEY }}
           STAGING_FACTA_UNLOCK_KEY: ${{ secrets.STAGING_FACTA_UNLOCK_KEY }}
           STAGING_FACTA_API_BASE_URL: https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1
+          FACTA_LIVE_REPORT_DIR: ${{ runner.temp }}/facta-live-report
+      - name: Upload invoice report and documents
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-invoice
+          path: ${{ runner.temp }}/facta-live-report/
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Add live result to pull request
+        if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/github-script@v8
+        env:
+          RESULT: ${{ job.status }}
+        with:
+          script: |
+            const marker = '<!-- facta-sdk-staging-live-result -->';
+            const body = `${marker}
+            ## SDK staging live test: ${process.env.RESULT}
+
+            The live test issues one FE (`01`) for **$0.01** in the staging test environment (`00`). When issuance and downloads succeed, the run includes the exact JSON and PDF in the `staging-invoice` artifact, retained for 7 days.
+
+            [Open this run and download its artifacts](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(comment => comment.body.includes(marker));
+            const params = { owner: context.repo.owner, repo: context.repo.repo, body };
+            if (existing) {
+              await github.rest.issues.updateComment({ ...params, comment_id: existing.id });
+            } else {
+              await github.rest.issues.createComment({ ...params, issue_number: context.issue.number });
+            }

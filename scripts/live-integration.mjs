@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -9,6 +9,7 @@ const signKey = process.env.STAGING_FACTA_SIGN_KEY;
 const unlockKey = process.env.STAGING_FACTA_UNLOCK_KEY;
 const apiBaseUrl = process.env.STAGING_FACTA_API_BASE_URL;
 const runId = process.env.GITHUB_RUN_ID;
+const reportDir = process.env.FACTA_LIVE_REPORT_DIR;
 const EXPECTED_STAGING_API_BASE_URL =
   "https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1";
 
@@ -18,6 +19,7 @@ for (const [name, value] of [
   ["STAGING_FACTA_UNLOCK_KEY", unlockKey],
   ["STAGING_FACTA_API_BASE_URL", apiBaseUrl],
   ["GITHUB_RUN_ID", runId],
+  ["FACTA_LIVE_REPORT_DIR", reportDir],
 ]) {
   if (!value) throw new Error(`Required integration input is unavailable: ${name}`);
 }
@@ -127,6 +129,10 @@ try {
 
   assert.equal(documentStatus.codigoGeneracion, result.emission.codigoGeneracion);
   assert.equal(documentStatus.ambiente, "00");
+  // Preserve the exact API response bytes for the per-run invoice artifact.
+  await mkdir(reportDir, { recursive: true });
+  await writeFile(join(reportDir, "invoice.json"), legalJson.bytes, { mode: 0o600 });
+  await writeFile(join(reportDir, "invoice.pdf"), pdf.bytes, { mode: 0o600 });
   let listed = false;
   for (let attempt = 0; attempt < 6 && !listed; attempt++) {
     const page = await facta.listDocuments({ tipoDte: "01", limit: 20 });
@@ -151,6 +157,27 @@ try {
   const pending = await facta.listPendingOperations();
   assert(!pending.some((operation) => operation.id === operationId), "completed operation must leave no pending archive journal");
   console.log("PASS archive recovery: exact JSON/PDF/JWS/ticket retained; operation journal completed");
+  const report = [
+    "## Staging live invoice",
+    "",
+    "| Field | Result |",
+    "| --- | --- |",
+    "| Environment | Test / staging (`00`) |",
+    "| DTE | FE (`01`) |",
+    `| Status | ${documentStatus.estado} |`,
+    `| Control number | ${result.emission.numeroControl} |`,
+    `| Generation code | ${result.emission.codigoGeneracion} |`,
+    `| Issued at | ${result.emission.fecEmi} ${result.emission.horEmi} |`,
+    `| Total | $${Number(result.emission.totales.totalPagar).toFixed(2)} |`,
+    "| Downloads | JSON and PDF verified |",
+    "",
+    "The exact JSON and PDF responses are attached to this workflow run as the `staging-invoice` artifact (7-day retention).",
+    "",
+    "> This is a real test-environment FE emission; it is not a production invoice.",
+    "",
+  ].join("\n");
+  await writeFile(join(reportDir, "report.md"), report, { mode: 0o600 });
+  if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, `${report}\n`);
 } finally {
   await rm(scratch, { recursive: true, force: true });
 }
