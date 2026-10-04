@@ -61,3 +61,8 @@ Deno.test("managed live result labels cannot expose copy digests, locations or r
   assertEquals(report.includes(privateValue), false);
   assertStringIncludes(report, "| Exact managed copy read-back | Not checked |");
 });
+
+Deno.test("missing fixtures remain explicitly untested in public reports", () => {
+  const report = renderLiveReport({ ...createValidationResults(), "dte-03": "Not run (fixture missing)" });
+  assertStringIncludes(report, "| DTE 03 credit fiscal invoice | Not run (fixture missing) |");
+});
