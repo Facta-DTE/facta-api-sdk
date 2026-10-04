@@ -3,12 +3,22 @@
 Para conocer las firmas públicas, alcances, valores predeterminados, efectos
 y mecanismos de recuperación, consulta la [referencia de métodos del SDK](reference.es.md).
 
-**Paquete publicado:** `0.1.0` es `latest` en npm y `0.1.0-beta.1` usa la
-etiqueta `beta`. Este checkout contiene código fuente `0.1.1` sin publicar;
-los métodos de storage administrado de esta rama todavía no están en el
-paquete npm vigente.
+**Paquete y código:** [npm `@facta-dte/api`](https://www.npmjs.com/package/@facta-dte/api) · [repositorio público en GitHub](https://github.com/Facta-DTE/facta-api-sdk).
+
+**Selección de versión:** Esta documentación describe `0.1.1`. El [registro de npm](https://www.npmjs.com/package/@facta-dte/api?activeTab=versions) es la autoridad para las versiones publicadas y sus etiquetas. `latest` elige la versión estable aprobada. Confirme que la versión publicada instalada incluye un método antes de usarlo; valide las capacidades que solo estén en el código fuente con una copia empaquetada.
+
+El paquete oficial admite TypeScript y JavaScript. Los SDK de otros lenguajes están pendientes; los ejemplos HTTP directos no representan SDK publicados.
 
 ## Requisitos e instalación
+
+```sh
+# Verificar versiones y etiquetas, luego instalar la versión estable aprobada:
+npm view @facta-dte/api version dist-tags
+pnpm add @facta-dte/api
+# Opcional: fijar 0.1.1 después de verificar que está publicada:
+pnpm add @facta-dte/api@0.1.1
+```
+
 
 - Node.js 22 o 24, ESM y TypeScript 5.9+ para compilar el consumidor.
 - Cuenta de Facta y una llave `facta_test_…` habilitada para `issue`, `query`
@@ -23,9 +33,9 @@ pnpm install --frozen-lockfile
 pnpm pack:check
 ```
 
-Esto prueba el tarball en consumidores limpios. Fija una versión npm publicada
-para las capacidades actuales. El storage administrado de esta rama requiere
-validar el tarball local con `pnpm pack:check`; aún no está en npm.
+Esto prueba el tarball en consumidores limpios. Fije una versión publicada
+que incluya los métodos requeridos en el lockfile de la aplicación. Use el
+tarball local para validar capacidades ausentes de la versión instalada.
 
 ## Configurar el cliente
 

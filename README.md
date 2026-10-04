@@ -4,7 +4,12 @@ The official TypeScript and JavaScript client for Facta's electronic tax documen
 
 Read the [Spanish README](README.es.md). The full [method reference](guides/reference.md) documents each public method's arguments, return value, required scope, side effects, errors, retries, and recovery behavior. The [published API contract](https://hcnvknpsbadplnfcflxx.supabase.co/functions/v1/api-v1/v1/openapi.json) remains authoritative for HTTP fields and responses.
 
-> **Publication status:** npm `latest` is `0.1.0` (the `beta` tag is `0.1.0-beta.1`). This checkout is `0.1.1` source and is unreleased. Managed-storage methods in this branch are not available from the current npm package; use the packed branch artifact for validation after the server contract is deployed. No release is implied by this checkout.
+**Package and source:** [npm `@facta-dte/api`](https://www.npmjs.com/package/@facta-dte/api) · [public GitHub repository](https://github.com/Facta-DTE/facta-api-sdk).
+
+**Version selection:** This documentation describes `0.1.1`. The [npm registry](https://www.npmjs.com/package/@facta-dte/api?activeTab=versions) is authoritative for published versions and distribution tags. `latest` selects the approved stable release. Confirm that your installed published version includes a method before using it; validate source-only capabilities with a packed checkout.
+
+The official package supports TypeScript and JavaScript. SDKs for other languages are pending; direct HTTP examples do not represent published SDKs.
+
 
 > **License:** MIT. See [LICENSE](LICENSE).
 
@@ -15,6 +20,15 @@ The SDK root entry works in Node.js 22+, Deno, and Bun and does not eagerly impo
 The portable client relies on standard `fetch`, Web Crypto, `AbortSignal`, and `crypto.randomUUID`. Every request uses the configured API endpoint; a `facta_test_` key selects Hacienda's test environment at that same endpoint. There is no separate staging API URL.
 
 ## Quick start
+
+```sh
+# Verify published versions and tags, then install the approved stable release:
+npm view @facta-dte/api version dist-tags
+pnpm add @facta-dte/api
+# Optionally pin 0.1.1 after verifying that version is published:
+pnpm add @facta-dte/api@0.1.1
+```
+
 
 ```ts
 import { Facta, type DteRequest } from "@facta-dte/api";

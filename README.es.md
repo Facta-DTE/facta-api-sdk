@@ -4,11 +4,20 @@ Emite un DTE sellado por el Ministerio de Hacienda desde Node 22/24. El paquete
 publicado contiene JavaScript ESM compilado y sus tipos se leen del contrato
 TypeScript. El código fuente también funciona con Deno 2.6.6; el chequeo del
 tarball prueba un consumidor Node y uno Deno desde un directorio limpio.
-`0.1.0` es la etiqueta `latest` de npm y `0.1.0-beta.1` sigue en la etiqueta
-`beta`. Este checkout contiene código fuente `0.1.1` sin publicar. Los métodos
-de almacenamiento administrado de esta rama no están en el paquete npm actual;
-para validarlos, usa el artefacto empaquetado de esta rama después de desplegar
-el contrato del servidor. Este checkout no publica una versión.
+**Paquete y código:** [npm `@facta-dte/api`](https://www.npmjs.com/package/@facta-dte/api) · [repositorio público en GitHub](https://github.com/Facta-DTE/facta-api-sdk).
+
+**Selección de versión:** Esta documentación describe `0.1.1`. El [registro de npm](https://www.npmjs.com/package/@facta-dte/api?activeTab=versions) es la autoridad para las versiones publicadas y sus etiquetas. `latest` elige la versión estable aprobada. Confirme que la versión publicada instalada incluye un método antes de usarlo; valide las capacidades que solo estén en el código fuente con una copia empaquetada.
+
+El paquete oficial admite TypeScript y JavaScript. Los SDK de otros lenguajes están pendientes; los ejemplos HTTP directos no representan SDK publicados.
+
+```sh
+# Verificar versiones y etiquetas, luego instalar la versión estable aprobada:
+npm view @facta-dte/api version dist-tags
+pnpm add @facta-dte/api
+# Opcional: fijar 0.1.1 después de verificar que está publicada:
+pnpm add @facta-dte/api@0.1.1
+```
+
 
 El contrato que implementa es el [OpenAPI publicado](https://hcnvknpsbadplnfcflxx.supabase.co/functions/v1/api-v1/v1/openapi.json), autoridad para los campos y respuestas HTTP.
 

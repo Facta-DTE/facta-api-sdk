@@ -4,12 +4,22 @@ For exact public method signatures, scopes, defaults, side effects, and
 recovery behavior, see the [SDK method reference](reference.md). Read the
 [Spanish guide](node.es.md) for the Spanish version.
 
-**Published package:** npm `latest` is `0.1.0`; the `beta` tag is
-`0.1.0-beta.1`. This checkout contains unreleased `0.1.1` source. Its managed
-storage methods require the packed branch artifact and are not in the current
-npm release.
+**Package and source:** [npm `@facta-dte/api`](https://www.npmjs.com/package/@facta-dte/api) · [public GitHub repository](https://github.com/Facta-DTE/facta-api-sdk).
+
+**Version selection:** This documentation describes `0.1.1`. The [npm registry](https://www.npmjs.com/package/@facta-dte/api?activeTab=versions) is authoritative for published versions and distribution tags. `latest` selects the approved stable release. Confirm that your installed published version includes a method before using it; validate source-only capabilities with a packed checkout.
+
+The official package supports TypeScript and JavaScript. SDKs for other languages are pending; direct HTTP examples do not represent published SDKs.
 
 ## Requirements and installation
+
+```sh
+# Verify published versions and tags, then install the approved stable release:
+npm view @facta-dte/api version dist-tags
+pnpm add @facta-dte/api
+# Optionally pin 0.1.1 after verifying that version is published:
+pnpm add @facta-dte/api@0.1.1
+```
+
 
 - Node.js 22 or 24, ESM, and TypeScript 5.9+ to compile the consumer.
 - A Facta account and a `facta_test_…` key enabled for the `issue`, `query`,
@@ -33,10 +43,9 @@ pnpm install --frozen-lockfile
 pnpm pack:check
 ```
 
-This tests the tarball with clean consumers. For current releases, pin the
-approved npm version in the application lockfile. To validate unreleased
-managed-storage methods, run `pnpm pack:check` against this checkout's tarball;
-the npm release does not contain those methods yet.
+This tests the tarball with clean consumers. Pin a published version that
+includes the required methods in the application lockfile. Use the checkout
+tarball to validate capabilities absent from the installed release.
 
 ## Configure the client
 
