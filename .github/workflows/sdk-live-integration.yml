@@ -11,14 +11,16 @@ on:
   workflow_dispatch:
     inputs:
       confirmation:
-        description: Issue one FE (01) for $0.01 in the Facta test environment
+        description: Issue one FE for $0.01, or the full enabled DTE test-fixture matrix
         required: true
         type: choice
         options:
           - skip
           - emit-test-fe
+          - emit-enabled-dte-fixtures
 
 permissions:
+  actions: read
   contents: read
   issues: write
   pull-requests: write
@@ -26,7 +28,7 @@ permissions:
 jobs:
   live-test:
     if: >-
-      (github.event_name == 'workflow_dispatch' && inputs.confirmation == 'emit-test-fe') ||
+      (github.event_name == 'workflow_dispatch' && (inputs.confirmation == 'emit-test-fe' || inputs.confirmation == 'emit-enabled-dte-fixtures')) ||
       (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     environment:
@@ -34,6 +36,17 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
+      - name: Read original workflow run timestamp
+        id: run-age
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const run = await github.rest.actions.getWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId,
+            });
+            core.setOutput('created_at', run.data.created_at);
       - uses: pnpm/action-setup@v4
         with:
           version: 10
@@ -52,7 +65,10 @@ jobs:
           STAGING_FACTA_API_KEY: ${{ secrets.STAGING_FACTA_API_KEY }}
           STAGING_FACTA_SIGN_KEY: ${{ secrets.STAGING_FACTA_SIGN_KEY }}
           STAGING_FACTA_UNLOCK_KEY: ${{ secrets.STAGING_FACTA_UNLOCK_KEY }}
+          STAGING_FACTA_DTE_FIXTURES_JSON: ${{ secrets.STAGING_FACTA_DTE_FIXTURES_JSON }}
           STAGING_FACTA_API_BASE_URL: https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1
+          FACTA_LIVE_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.confirmation || 'emit-test-fe' }}
+          GITHUB_RUN_CREATED_AT: ${{ steps.run-age.outputs.created_at }}
           FACTA_LIVE_REPORT_DIR: ${{ runner.temp }}/facta-live-report
       - name: Add live result to pull request
         if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository

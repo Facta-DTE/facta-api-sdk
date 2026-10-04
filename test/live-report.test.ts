@@ -33,7 +33,17 @@ Deno.test("public workflow never uploads invoice artifacts and live script never
   assertEquals(workflow.includes("ARTIFACT_URL"), false);
   assertEquals(script.includes('join(reportDir, "invoice.'), false);
   assertEquals(script.includes("assert.deepEqual"), false);
+  assertEquals(script.includes("JSON.stringify(readiness)"), false);
   assertStringIncludes(script, "renderLiveReport(checks, failureCode)");
+});
+
+Deno.test("public live report contains a fixed safe row for each supported DTE variant", () => {
+  const report = renderLiveReport(createValidationResults());
+  for (const type of ["01", "03", "05", "06", "11", "14"]) {
+    assertStringIncludes(report, `| DTE ${type} `);
+  }
+  assertEquals(report.includes("STAGING_FACTA_DTE_FIXTURES_JSON"), false);
+  assertEquals(report.includes("PRIVATE"), false);
 });
 
 Deno.test("catalog and destination capabilities are positive only after snapshots open", () => {

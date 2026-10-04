@@ -4,7 +4,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createValidationResults, renderLiveReport, safeFailureCode } from "./live-report.mjs";
 import { validateLiveManagedStorage } from "./live-managed-storage.mjs";
-import { requireLiveSnapshots } from "./live-preflight.mjs";
+import { requireLiveSnapshots, validateLiveCatalogReads } from "./live-preflight.mjs";
+import {
+  assertRelatedTestDocuments,
+  assertLiveRunWithinIdempotencyWindow,
+  assessLiveDteFixtureMatrix,
+  LIVE_DTE_FIXTURE_TYPES,
+  parseLiveDteFixtures,
+  relatedGenerationCodes,
+  requireCompleteLiveDteFixtureMatrix,
+} from "./live-dte-fixtures.mjs";
 
 const apiKey = process.env.STAGING_FACTA_API_KEY;
 const signKey = process.env.STAGING_FACTA_SIGN_KEY;
@@ -12,6 +21,7 @@ const unlockKey = process.env.STAGING_FACTA_UNLOCK_KEY;
 const apiBaseUrl = process.env.STAGING_FACTA_API_BASE_URL;
 const runId = process.env.GITHUB_RUN_ID;
 const reportDir = process.env.FACTA_LIVE_REPORT_DIR;
+const liveMode = process.env.FACTA_LIVE_MODE ?? "emit-test-fe";
 const EXPECTED_STAGING_API_BASE_URL =
   "https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1";
 
@@ -21,6 +31,7 @@ for (const [name, value] of [
   ["STAGING_FACTA_UNLOCK_KEY", unlockKey],
   ["STAGING_FACTA_API_BASE_URL", apiBaseUrl],
   ["GITHUB_RUN_ID", runId],
+  ["GITHUB_RUN_CREATED_AT", process.env.GITHUB_RUN_CREATED_AT],
   ["FACTA_LIVE_REPORT_DIR", reportDir],
 ]) {
   if (!value) throw new Error(`Required integration input is unavailable: ${name}`);
@@ -39,6 +50,10 @@ if (!unlockKey.startsWith("factauk_")) {
 if (apiBaseUrl !== EXPECTED_STAGING_API_BASE_URL) {
   throw new Error("Refusing integration run: API base URL must exactly match the approved staging project.");
 }
+if (!["emit-test-fe", "emit-enabled-dte-fixtures"].includes(liveMode)) {
+  throw new Error("Refusing integration run: unknown live-test mode.");
+}
+assertLiveRunWithinIdempotencyWindow(process.env.GITHUB_RUN_CREATED_AT);
 
 const { Facta } = await import("../dist/index.js");
 const { FileInvoiceArchive } = await import("../dist/node.js");
@@ -54,11 +69,11 @@ try {
     directory: join(scratch, "archive"),
     passphrase: archivePassphrase,
   });
-  const requestUrls = [];
+  const requestRecords = [];
   const facta = new Facta({
     fetch: async (input, init) => {
       const url = new URL(input instanceof Request ? input.url : String(input));
-      requestUrls.push(url);
+      requestRecords.push({ url, method: init?.method ?? (input instanceof Request ? input.method : "GET") });
       return globalThis.fetch(input, init);
     },
     apiKey,
@@ -83,66 +98,65 @@ try {
   currentCheck = "preflight";
   console.log("PASS status: healthy test environment confirmed");
 
+  const fixtures = parseLiveDteFixtures(process.env.STAGING_FACTA_DTE_FIXTURES_JSON);
+  const fixtureMatrix = assessLiveDteFixtureMatrix(health, fixtures);
+  for (const [type, state] of Object.entries(fixtureMatrix)) checks[`dte-${type}`] = state;
+  if (liveMode === "emit-enabled-dte-fixtures") {
+    currentCheck = "fixture-matrix";
+    requireCompleteLiveDteFixtureMatrix(fixtureMatrix);
+    const relatedStatuses = await Promise.all(relatedGenerationCodes(fixtures).map((code) => facta.getDocumentStatus(code)));
+    assertRelatedTestDocuments(fixtures, relatedStatuses);
+  }
+
   const diagnostics = await facta.diagnose({
     archive,
     dteType: "01",
     expectedEnvironment: "00",
     requiredScopes: ["issue", "query", "download"],
   });
-  // Missing public synchronization metadata is "unknown", but can still
-  // prevent issuance. Report every non-ok check without exposing status data.
-  const readiness = {
-    overall: diagnostics.overall,
-    canIssue: diagnostics.canIssue,
-    canQuery: diagnostics.canQuery,
-    canDownload: diagnostics.canDownload,
-    canIssueAndArchive: diagnostics.canIssueAndArchive,
-    checks: diagnostics.checks.filter((check) => check.state !== "ok")
-      .map((check) => ({
-        id: check.id,
-        state: check.state,
-        reasonCode: `${check.id}:${check.state}`,
-      })),
-  };
-  console.log(`PREFLIGHT readiness: ${JSON.stringify(readiness)}`);
-
   // Read-only capability checks must pass before this full live run issues anything.
   const storageCapability = await facta.getStorageStatus();
   assert(storageCapability.managed.ready, "Full managed live validation requires ready managed storage.");
-  await requireLiveSnapshots(facta, checks, (check) => { currentCheck = check; }, storageCapability.managed.ready && !storageCapability.byos.ready);
+  const snapshots = await requireLiveSnapshots(facta, checks, (check) => { currentCheck = check; }, storageCapability.managed.ready && !storageCapability.byos.ready);
+  await validateLiveCatalogReads(facta, snapshots.catalog, checks, (check) => { currentCheck = check; });
   console.log("PASS snapshots: catalog and required BYOS destinations verified locally");
   currentCheck = "preflight";
 
   if (!diagnostics.canIssue || !diagnostics.canQuery || !diagnostics.canDownload || !diagnostics.canIssueAndArchive) {
-    const failedChecks = readiness.checks.map((check) => check.reasonCode).join(", ");
-    throw new Error(`Preflight blocked the test invoice (${failedChecks || diagnostics.overall}).`);
+    const error = new Error("Readiness checks blocked live issuance.");
+    error.code = !diagnostics.canIssue || !diagnostics.canQuery || !diagnostics.canDownload
+      ? "permission_missing"
+      : "readiness_blocked";
+    throw error;
   }
   checks.preflight = "Passed";
   console.log("PASS diagnose: issue, query, download, and local archive are ready");
 
-  const operationId = `sdk-live-${runId}`;
-  const idempotencyKey = `sdk-live-${runId}`;
+  const operationId = `sdk-live-${runId}-01`;
+  const idempotencyKey = `sdk-live-${runId}-01`;
   currentCheck = "emission";
   const request = { tipoDte: "01", items: [{ descripcion: "Facta API SDK integration test", cantidad: 1, precioUni: 0.01 }] };
   const result = await facta.issueAndArchive(request, {
     operationId,
     idempotencyKey,
-    includeTicket: false,
+    ticketPaperWidthMm: 58,
   });
 
-  const [legalJson, pdf] = await Promise.all([
+  const [legalJson, pdf, ticket] = await Promise.all([
     archive.getArtifact(result.emission.codigoGeneracion, "json"),
     archive.getArtifact(result.emission.codigoGeneracion, "pdf"),
+    archive.getArtifact(result.emission.codigoGeneracion, "ticket"),
   ]);
   assert.equal(result.emission.estado, "sellado", "test invoice must be sealed by Hacienda");
   assert.equal(result.emission.totales.totalPagar, 0.01, "test invoice must total exactly $0.01");
   assert.equal(result.emission.ambiente, "00", "issued document must be in test environment");
   assert.equal(result.emission.tipoDte, "01", "issued document must be FE");
   checks.emission = "Passed (sealed test FE, $0.01)";
+  checks["dte-01"] = "Passed (sealed test FE, $0.01)";
   currentCheck = "archive";
   assert(result.archive.state === "complete", "Local archive must be complete");
   checks.archive = "Passed";
-  console.log(`PASS issueAndArchive: ${result.emission.estado}; archive complete`);
+  console.log("PASS issueAndArchive: test FE sealed; archive complete");
 
   currentCheck = "signed-json";
   assert(legalJson && legalJson.bytes.byteLength > 0, "inline signed JSON must be archived");
@@ -156,6 +170,11 @@ try {
   assert.match(pdf.contentType, /pdf/i, "document must be a PDF");
   assert.match(new TextDecoder().decode(pdf.bytes.subarray(0, 5)), /^%PDF-/);
   checks.pdf = "Passed";
+  currentCheck = "ticket";
+  assert(ticket && ticket.bytes.byteLength > 0, "ticket PDF must be archived");
+  assert.match(ticket.contentType, /pdf/i, "ticket must have a PDF content type");
+  assert.match(new TextDecoder().decode(ticket.bytes.subarray(0, 5)), /^%PDF-/);
+  checks.ticket = "Passed";
   currentCheck = "inline-bytes";
   assert.equal(typeof result.emission.archivoJson, "string", "API must return inline signed JSON");
   assert(result.emission.representacionGrafica, "API must return the inline PDF");
@@ -165,11 +184,35 @@ try {
     "archived PDF must match the exact response bytes");
   checks["inline-bytes"] = "Passed";
   currentCheck = "no-downloads";
-  const fileRequests = requestUrls.filter((url) => /\/v1\/dte\/[^/]+\/file$/.test(url.pathname));
-  assert.equal(fileRequests.length, 0, "inline archival must not call any file download endpoint");
+  const fileRequests = requestRecords.filter(({ url }) => /\/v1\/dte\/[^/]+\/file$/.test(url.pathname));
+  assert(fileRequests.every(({ url }) => url.searchParams.get("kind") === "ticket"), "inline JSON/PDF archival must not call a document file download endpoint");
+  assert.equal(fileRequests.length, 1, "only the ticket may use the file download endpoint");
   checks["no-downloads"] = "Passed";
-  console.log("PASS inline archive: exact signed JSON and PDF saved without any file download");
+  console.log("PASS archive: exact signed JSON, PDF, and ticket retained");
   await validateLiveManagedStorage(facta, { emission: result.emission, request, idempotencyKey, artifacts: { json: legalJson, pdf }, checks, onCheck: (check) => { currentCheck = check; } });
+
+  if (liveMode === "emit-enabled-dte-fixtures") {
+    for (const type of LIVE_DTE_FIXTURE_TYPES) {
+      currentCheck = `dte-${type}`;
+      const fixtureRequest = fixtures[type];
+      const fixtureOperationId = `sdk-live-${runId}-${type}`;
+      const fixtureIdempotencyKey = `sdk-live-${runId}-${type}`;
+      const fixtureResult = await facta.issueAndArchive(fixtureRequest, {
+        operationId: fixtureOperationId,
+        idempotencyKey: fixtureIdempotencyKey,
+        ticketPaperWidthMm: 58,
+      });
+      assert.equal(fixtureResult.emission.estado, "sellado", "test DTE fixture must be sealed");
+      assert.equal(fixtureResult.emission.tipoDte, type);
+      assert.equal(fixtureResult.emission.ambiente, "00");
+      assert.equal(fixtureResult.emission.totales.totalPagar, 0.01);
+      assert.equal(fixtureResult.archive.state, "complete");
+      const fixtureStatus = await facta.getDocumentStatus(fixtureResult.emission.codigoGeneracion);
+      assert.equal(fixtureStatus.estado, "sellado");
+      assert.equal(fixtureStatus.ambiente, "00");
+      checks[`dte-${type}`] = "Passed (test fixture sealed)";
+    }
+  }
   currentCheck = "query";
   const documentStatus = await facta.getDocumentStatus(result.emission.codigoGeneracion);
   assert(documentStatus.codigoGeneracion.toUpperCase() === result.emission.codigoGeneracion.toUpperCase(),
@@ -186,13 +229,35 @@ try {
   }
   assert(listed, "the new FE must appear in the document list");
   checks.listing = "Passed";
-  console.log(`PASS query: ${documentStatus.estado}; list match`);
+  console.log("PASS query and listing: test FE found and sealed");
 
   currentCheck = "journal";
   const pending = await facta.listPendingOperations();
   assert(!pending.some((operation) => operation.id === operationId), "completed operation must leave no pending archive journal");
   console.log("PASS archive recovery: operation journal completed");
   checks.journal = "Passed";
+
+  currentCheck = "restart";
+  const restartedArchive = await FileInvoiceArchive.open({
+    directory: join(scratch, "archive"),
+    passphrase: archivePassphrase,
+  });
+  const postRestart = requestRecords.length;
+  const restartedFacta = new Facta({
+    apiKey,
+    signKey,
+    unlockKey,
+    baseUrl: apiBaseUrl,
+    config: { version: 1, expectedEnvironment: "00", timeoutMs: 90_000, maxRetries: 1 },
+    runtime: { version: 1, archive: restartedArchive },
+  });
+  const recovered = await restartedFacta.recoverOperation(operationId);
+  assert.equal(recovered.archive.state, "complete");
+  assert.equal((await restartedArchive.pending()).length, 0);
+  assert((await restartedArchive.getArtifact(result.emission.codigoGeneracion, "ticket"))?.bytes.byteLength > 0);
+  assert.equal(requestRecords.slice(postRestart).filter(({ url, method }) => url.pathname.endsWith("/v1/dte") && method === "POST").length, 0,
+    "completed restart recovery must not submit an invoice");
+  checks.restart = "Passed";
 } catch (error) {
   checks[currentCheck] = "Failed";
   failureCode = safeFailureCode(error);
