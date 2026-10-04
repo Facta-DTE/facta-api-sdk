@@ -1,5 +1,9 @@
 name: SDK live integration (staging API, test environment)
 
+concurrency:
+  group: sdk-staging-live
+  cancel-in-progress: false
+
 on:
   pull_request:
     branches:
