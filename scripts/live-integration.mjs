@@ -233,6 +233,11 @@ try {
   console.log("PASS query and listing: test FE found and sealed");
 
   currentCheck = "journal";
+  const beforeJournalRecovery = requestRecords.length;
+  const journalRecovery = await facta.recoverOperation(operationId, { request, archive });
+  assert.equal(journalRecovery.archive.state, "complete", "completed journal must recover without issuing again");
+  assert.equal(requestRecords.slice(beforeJournalRecovery).filter(({ url, method }) => url.pathname.endsWith("/v1/dte") && method === "POST").length, 0,
+    "completed journal recovery must not submit an invoice");
   const pending = await facta.listPendingOperations();
   assert(!pending.some((operation) => operation.id === operationId), "completed operation must leave no pending archive journal");
   console.log("PASS archive recovery: operation journal completed");
