@@ -4,7 +4,7 @@ The official TypeScript and JavaScript client for Facta's electronic tax documen
 
 Read the [Spanish README](README.es.md). The full [method reference](guides/reference.md) documents each public method's arguments, return value, required scope, side effects, errors, retries, and recovery behavior. The [published API contract](https://hcnvknpsbadplnfcflxx.supabase.co/functions/v1/api-v1/v1/openapi.json) remains authoritative for HTTP fields and responses.
 
-> **Publication status:** `@facta-dte/api` has not been published to npm. This repository contains the standalone SDK source; do not infer a registry release from the GitHub repository or README.
+> **Publication status:** npm `latest` is `0.1.0` (the `beta` tag is `0.1.0-beta.1`). This checkout is `0.1.1` source and is unreleased. Managed-storage methods in this branch are not available from the current npm package; use the packed branch artifact for validation after the server contract is deployed. No release is implied by this checkout.
 
 > **License:** MIT. See [LICENSE](LICENSE).
 
@@ -55,9 +55,9 @@ Configuration values do not include credentials. Flat legacy options override ma
 
 The `Facta` client exposes the following English methods:
 
-- **Status and diagnostics:** `status`, `diagnose`, `getContract`.
+- **Status and diagnostics:** `status`, `diagnose`, `getContract`, `getStorageStatus`.
 - **Synchronization and catalog:** `syncDestinations`, `syncCatalog`, `catalogState`, `listCustomers`, `getCustomer`, `searchCustomers`, `listProducts`, `getProduct`, `searchProducts`.
-- **DTE lifecycle:** `issue`, `prepare`, `sign`, `getDocumentStatus`, `listDocuments`, `invalidate`, `listHolding`, `downloadDocument`.
+- **DTE lifecycle:** `issue`, `prepare`, `sign`, `getDocumentStatus`, `listDocuments`, `invalidate`, `listHolding`, `downloadDocument`, `getDocumentCopies`, `retryDocumentStorage`.
 - **Durable archival:** `issueAndArchive`, `recoverOperation`, `listPendingOperations`, `invalidateAndArchive`, `recoverInvalidation`, `listPendingInvalidations`, `replicateArchive`, `diagnoseDestinations`.
 - **Local printing:** `print`.
 

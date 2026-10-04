@@ -70,6 +70,9 @@ import type {
   HoldingPage,
   ListDocumentsFilters,
   IssueResult,
+  ManagedDocumentCopy,
+  ManagedStorageReceipt,
+  ManagedStorageStatus,
   InvalidationRequest,
   DteRequest,
   Status,
@@ -172,6 +175,7 @@ const RETRYABLE: ReadonlySet<FactaErrorCode> = new Set([
   "mh_unreachable",
   "service_unavailable",
   "correlative_unavailable",
+  "storage_unavailable",
   "network_error",
 ]);
 
@@ -198,6 +202,49 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
 function base64Bytes(value: string): Uint8Array {
   const binary = atob(value);
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isStorageSource(value: string | null): value is "managed" | "holding" | "archive" {
+  return value === "managed" || value === "holding" || value === "archive";
+}
+
+function isManagedStorageReceipt(value: unknown): value is ManagedStorageReceipt {
+  if (!isRecord(value) || (value.destination !== "managed" && value.destination !== "none") ||
+    (value.environment !== "00" && value.environment !== "01") || typeof value.operationId !== "string") return false;
+  const validArtifact = (artifact: unknown) => isRecord(artifact) &&
+    ["stored", "pending", "failed", "not_configured", "unsupported"].includes(String(artifact.state)) &&
+    (artifact.sha256 === null || typeof artifact.sha256 === "string") &&
+    (artifact.bytes === null || Number.isSafeInteger(artifact.bytes)) &&
+    (artifact.storedAt === null || typeof artifact.storedAt === "string") &&
+    (artifact.errorCode === null || typeof artifact.errorCode === "string") && typeof artifact.retryable === "boolean";
+  return validArtifact(value.json) && validArtifact(value.pdf);
+}
+
+function isManagedStorageStatus(value: unknown): value is ManagedStorageStatus {
+  if (!isRecord(value) || value.capabilityVersion !== 1 || !isRecord(value.managed) || !isRecord(value.byos)) return false;
+  const managed = value.managed;
+  const nullableNumber = (field: unknown) => field === null || (typeof field === "number" && Number.isFinite(field));
+  const nullableString = (field: unknown) => field === null || typeof field === "string";
+  return typeof managed.configured === "boolean" && typeof managed.ready === "boolean" &&
+    typeof managed.state === "string" && (managed.integration === "ready" || managed.integration === "unavailable") &&
+    [managed.quotaBytes, managed.usedBytes, managed.reservedBytes, managed.usedBytesTotal, managed.reservedBytesTotal].every(nullableNumber) &&
+    [managed.coveredUntil, managed.accessUntil, managed.bucketState, managed.backupState].every(nullableString) &&
+    typeof value.byos.ready === "boolean" && Array.isArray(value.supportedKinds) &&
+    value.supportedKinds.every((kind) => kind === "json" || kind === "pdf") && Array.isArray(value.unsupportedKinds) &&
+    value.unsupportedKinds.every((kind) => kind === "ticket" || kind === "invalidation");
+}
+
+function isManagedDocumentCopies(value: unknown): value is { capabilityVersion: 1; copies: ManagedDocumentCopy[] } {
+  return isRecord(value) && value.capabilityVersion === 1 && Array.isArray(value.copies) && value.copies.every((copy) =>
+    isRecord(copy) && typeof copy.generationCode === "string" && (copy.kind === "json" || copy.kind === "pdf") &&
+    (copy.environment === "00" || copy.environment === "01") && ["stored", "pending", "failed"].includes(String(copy.state)) &&
+    Number.isSafeInteger(copy.bytes) && typeof copy.sha256 === "string" && typeof copy.issuedDate === "string" &&
+    (copy.storedAt === null || typeof copy.storedAt === "string")
+  );
 }
 
 const cancelled = () => new DOMException("Operation cancelled.", "AbortError");
@@ -351,12 +398,99 @@ export class Facta {
     }
     const expectedEnvironment = options.expectedEnvironment ?? this.#config.expectedEnvironment;
     const requiredScopes = options.requiredScopes ?? this.#config.requiredScopes;
-    return await diagnoseStatus(status, {
+    const report = await diagnoseStatus(status, {
       ...options,
       ...((options.archive ?? this.#runtime.archive) === undefined ? {} : { archive: options.archive ?? this.#runtime.archive }),
       ...(expectedEnvironment === undefined ? {} : { expectedEnvironment }),
       ...(requiredScopes === undefined ? {} : { requiredScopes }),
     });
+    let storageReady: boolean | null = null;
+    try {
+      const storage = await this.getStorageStatus();
+      storageReady = storage.managed.ready || storage.byos.ready;
+      report.checks.push({
+        id: "managed-storage",
+        state: storageReady ? "ok" : "blocked",
+        message: storageReady
+          ? storage.managed.ready ? "Facta-managed storage is ready." : "A verified BYOS destination is ready."
+          : "Neither Facta-managed storage nor a verified BYOS destination is ready.",
+      });
+      if (!storageReady) {
+        report.canIssue = false;
+        report.canIssueAndArchive = false;
+        report.overall = "blocked";
+      }
+    } catch (cause) {
+      const capabilityMissing = cause instanceof FactaError && (
+        cause.code === "storage_unsupported" || cause.code === "not_found" || cause.code === "forbidden_scope"
+      );
+      report.checks.push({
+        id: "managed-storage",
+        state: "unknown",
+        message: capabilityMissing
+          ? "This API key or server does not expose managed-storage readiness; the server still controls whether issuance can proceed."
+          : "Could not confirm managed-storage readiness.",
+      });
+      if (report.overall === "ready") report.overall = "attention";
+    }
+    report.storageReady = storageReady;
+    return report;
+  }
+
+  /** Check managed-storage coverage, capacity, environment and BYOS readiness. */
+  async getStorageStatus(options: CallOptions = {}): Promise<ManagedStorageStatus> {
+    let value: unknown;
+    try {
+      value = await this.#request<unknown>("GET", "/v1/storage/status", undefined, options);
+    } catch (cause) {
+      if (cause instanceof FactaError && (cause.status === 404 || cause.status === 501)) {
+        throw new FactaError("storage_unsupported", "This API server does not expose managed-storage status.", cause.status);
+      }
+      throw cause;
+    }
+    if (!isManagedStorageStatus(value)) {
+      throw new FactaError("storage_contract_invalid", "API returned an invalid storage capability response.", 502);
+    }
+    return value;
+  }
+
+  /** List stored, pending, or failed managed JSON/PDF copies for this key's issuer and environment. */
+  async getDocumentCopies(options: { generationCode?: string; signal?: AbortSignal } = {}): Promise<ManagedDocumentCopy[]> {
+    const query = options.generationCode ? `?generationCode=${encodeURIComponent(options.generationCode)}` : "";
+    let value: unknown;
+    try {
+      value = await this.#request<unknown>("GET", `/v1/storage/copies${query}`, undefined, options);
+    } catch (cause) {
+      if (cause instanceof FactaError && (cause.status === 404 || cause.status === 501)) {
+        throw new FactaError("storage_unsupported", "This API server does not expose managed document-copy status.", cause.status);
+      }
+      throw cause;
+    }
+    if (!isManagedDocumentCopies(value)) {
+      throw new FactaError("storage_contract_invalid", "API returned an invalid managed document-copy response.", 502);
+    }
+    return value.copies;
+  }
+
+  /** Repair only managed copies for an already sealed DTE; this method never submits a DTE. */
+  async retryDocumentStorage(generationCode: string, options: CallOptions = {}): Promise<ManagedStorageReceipt> {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(generationCode)) {
+      throw new TypeError("generationCode must be a UUID.");
+    }
+    let value: unknown;
+    try {
+      value = await this.#request<unknown>("POST", `/v1/storage/copies/${encodeURIComponent(generationCode)}/repair`, undefined, options);
+    } catch (cause) {
+      if (cause instanceof FactaError && (cause.status === 404 || cause.status === 501)) {
+        throw new FactaError("storage_unsupported", "This API server does not expose managed document-copy repair.", cause.status);
+      }
+      throw cause;
+    }
+    const receipt = isRecord(value) ? value.storage : undefined;
+    if (!isManagedStorageReceipt(receipt) || receipt.operationId.toLowerCase() !== generationCode.toLowerCase()) {
+      throw new FactaError("storage_contract_invalid", "API returned an invalid managed-storage repair receipt.", 502);
+    }
+    return receipt;
   }
 
   /** Download and open the destination snapshot in this process only. */
@@ -733,6 +867,25 @@ export class Facta {
     const identity = await this.#archiveIdentity(signal);
     this.#assertArchiveIdentity(operation.identity, identity, operationId);
     throwIfAborted(signal);
+    let managedStorage = operation.managedStorage;
+    if (operation.codigoGeneracion && managedStorage && [managedStorage.json, managedStorage.pdf].some((artifact) =>
+      artifact.state === "pending" || artifact.state === "failed"
+    )) {
+      try {
+        managedStorage = await this.retryDocumentStorage(operation.codigoGeneracion, signal ? { signal } : {});
+        await archive.recordManagedStorage?.(operation.id, managedStorage);
+      } catch (cause) {
+        const unsupported = cause instanceof FactaError && cause.code === "storage_unsupported";
+        if (!unsupported) {
+          const detail = cause instanceof Error ? cause.message : String(cause);
+          await archive.markNeedsAttention(operation.id, detail.slice(0, 500)).catch(() => undefined);
+          return {
+            ...(managedStorage === undefined ? {} : { managedStorage }),
+            archive: { state: "needs_attention", operationId, artifacts: [], detail },
+          };
+        }
+      }
+    }
     if (operation.state === "complete") {
       if (!operation.codigoGeneracion) throw new Error("Completed journal has no generation code.");
       const storedArtifacts = await this.#storedArtifactDigests(operation.codigoGeneracion, archive);
@@ -746,6 +899,7 @@ export class Facta {
         ? (await this.replicateArchive(operationId, archive, remoteDestinations, signal ? { signal } : {})).outcomes
         : operation.remoteCopies;
       return {
+        ...(managedStorage === undefined ? {} : { managedStorage }),
         archive: {
           state: "complete",
           operationId,
@@ -769,7 +923,7 @@ export class Facta {
       const codigoGeneracion = operation.codigoGeneracion!;
       await this.getDocumentStatus(codigoGeneracion);
       const archived = await this.#archiveArtifacts(operation.id, codigoGeneracion, archive, signal, operation.ticketPaperWidthMm, remoteDestinations);
-      return { archive: archived };
+      return { ...(managedStorage === undefined ? {} : { managedStorage }), archive: archived };
     }
 
     {
@@ -794,11 +948,12 @@ export class Facta {
     const archive = archiveOption ?? this.#runtime.archive;
     if (!archive) throw new TypeError("listPendingOperations requires archive or runtime.archive.");
     await archive.assertReady();
-    return (await archive.pending()).map(({ id, createdAt, state, codigoGeneracion, remoteCopies }) => ({
+    return (await archive.pending()).map(({ id, createdAt, state, codigoGeneracion, remoteCopies, managedStorage }) => ({
       id,
       createdAt,
       state,
       ...(codigoGeneracion === undefined ? {} : { codigoGeneracion }),
+      ...(managedStorage === undefined ? {} : { managedStorage }),
       ...(remoteCopies === undefined ? {} : {
         remoteCopies: remoteCopies.map(({ destinationId, kind, state: copyState, sha256, updatedAt }) => ({
           destinationId,
@@ -1066,11 +1221,11 @@ export class Facta {
         remoteDestinations,
         emission,
       );
-      return { emission, archive: archived };
+      return { emission, ...(emission.storage === undefined ? {} : { managedStorage: emission.storage }), archive: archived };
     } catch (cause) {
       const detail = cause instanceof Error ? cause.message : String(cause);
       try { await archive.markNeedsAttention(operation.id, detail.slice(0, 500)); } catch { /* Preserve the successful fiscal result. */ }
-      return { emission, archive: { state: "needs_attention", operationId: operation.id, artifacts, detail } };
+      return { emission, ...(emission.storage === undefined ? {} : { managedStorage: emission.storage }), archive: { state: "needs_attention", operationId: operation.id, artifacts, detail } };
     }
   }
 
@@ -1444,6 +1599,7 @@ export class Facta {
       ...downloaded,
       codigoGeneracion: generationCode,
       kind,
+      ...(downloaded.storageSource === undefined ? {} : { storageSource: downloaded.storageSource }),
       ...(kind === "ticket" ? { paperWidthMm: paperWidthMm ?? 80 } : {}),
     };
   }
@@ -1541,10 +1697,12 @@ export class Facta {
     if (binary) {
       try {
         if (!response.ok) return await this.#parseError(response);
+        const storageSource = response.headers.get("x-facta-storage-source");
         return {
           bytes: new Uint8Array(await response.arrayBuffer()),
           contentType: response.headers.get("content-type") ?? "application/octet-stream",
           filename: response.headers.get("content-disposition")?.match(/filename="?([^";]+)\"?/)?.[1] ?? null,
+          ...(isStorageSource(storageSource) ? { storageSource } : {}),
         } as T;
       } finally {
         clearTimeout(timer); signal?.removeEventListener("abort", abort);

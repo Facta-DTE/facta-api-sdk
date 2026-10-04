@@ -21,6 +21,8 @@ export interface DiagnosticsReport {
   canQuery: boolean;
   canDownload: boolean;
   canIssueAndArchive: boolean;
+  /** Null when the server predates the managed-storage capability or cannot be checked. */
+  storageReady?: boolean | null;
   /** Null when no archive was supplied or its journal could not be read. */
   pendingArchiveOperations: number | null;
   /** Public revision numbers only; no encrypted vault data. */

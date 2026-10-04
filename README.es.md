@@ -3,9 +3,12 @@
 Emite un DTE sellado por el Ministerio de Hacienda desde Node 22/24. El paquete
 publicado contiene JavaScript ESM compilado y sus tipos se leen del contrato
 TypeScript. El código fuente también funciona con Deno 2.6.6; el chequeo del
-tarball prueba un consumidor Node y uno Deno desde un directorio limpio. La
-versión beta `0.1.0-beta.1` está publicada en npm; la versión estable `0.1.0`
-está en preparación.
+tarball prueba un consumidor Node y uno Deno desde un directorio limpio.
+`0.1.0` es la etiqueta `latest` de npm y `0.1.0-beta.1` sigue en la etiqueta
+`beta`. Este checkout contiene código fuente `0.1.1` sin publicar. Los métodos
+de almacenamiento administrado de esta rama no están en el paquete npm actual;
+para validarlos, usa el artefacto empaquetado de esta rama después de desplegar
+el contrato del servidor. Este checkout no publica una versión.
 
 El contrato que implementa es el [OpenAPI publicado](https://hcnvknpsbadplnfcflxx.supabase.co/functions/v1/api-v1/v1/openapi.json), autoridad para los campos y respuestas HTTP.
 
@@ -90,7 +93,10 @@ const readiness = await facta.diagnose();
 | Método | Uso | Envía `FACTA_SIGN_KEY` |
 |---|---|---|
 | `status()` | Estado de la llave, revisiones de sincronización, datos públicos de vigencia/identidad del certificado cuando están registrados, ambiente y límites restantes. | No |
-| `diagnose(options?)` | Revisa scopes, emisor, firma, vigencia/identidad pública del certificado y de la llave, sincronización y archivo sin abrir vault ni reservar correlativo. | No |
+| `diagnose(options?)` | Revisa scopes, emisor, firma, vigencia/identidad pública del certificado, sincronización, archivo local y capacidad administrada. Un servidor anterior deja esa capacidad como desconocida. | No |
+| `getStorageStatus()` | Capacidad administrada (cobertura, cupo e integración) y BYOS verificado para el ambiente de la llave. Requiere `download`. | No |
+| `getDocumentCopies()` | Recibos JSON/PDF administrados de la empresa/ambiente de la llave; no devuelve rutas ni enlaces. Requiere `download`. | No |
+| `retryDocumentStorage(codigoGeneracion)` | Repara copias de un DTE sellado sin volver a emitir; requiere scopes `download` e `issue`. | No |
 | `syncDestinations()` | Descarga el snapshot cifrado y abre destinos localmente. | No |
 | `syncCatalog()` | Descarga el snapshot cifrado y abre clientes/productos localmente. | No |
 | `listCustomers()`, `getCustomer(id)`, `searchCustomers(query)` | Lee o busca clientes ya autorizados para esta llave desde el snapshot descifrado localmente. | No |
@@ -103,12 +109,15 @@ const readiness = await facta.diagnose();
 | `invalidate(codigoGeneracion, request, options?)` | Anula un DTE sellado. | Sí |
 | `invalidateAndArchive(codigoGeneracion, request, options)` | Anula y guarda de forma cifrada el evento y su JWS para recuperación. | Sí |
 | `recoverInvalidation(operationId, archive?)`, `listPendingInvalidations(archive?)` | Reanuda o lista anulaciones locales pendientes; reusa la misma clave de idempotencia. | Si reanuda |
-| `downloadDocument(codigoGeneracion, kind?)` | Descarga los bytes exactos de JSON o PDF. | No |
+| `downloadDocument(codigoGeneracion, kind?)` | Descarga los bytes exactos de JSON/PDF/ticket e informa origen cuando el servidor lo conoce. | No |
 | `issueAndArchive(request, options)` | Verifica el archivo antes de reservar un número, emite y conserva los bytes exactos del JSON firmado y PDF que devuelve el servidor; deriva el JWS y descarga solo el ticket opcional. | `issue` y `download` (ticket y recuperación) |
 | `listPendingOperations(archive?)` | Lista operaciones locales que aún requieren recuperación o conciliación. | No |
 | `replicateArchive(operationId, archive, destinations)` | Reproduce los bytes archivados exactos mediante los adaptadores remotos de la aplicación y registra el resultado por artefacto en el journal cifrado. |
 | `diagnoseDestinations(operationId, archive, destinations)` | Inspección de solo lectura de copias remotas existentes; confirma los bytes exactos cuando el adaptador lo permite, sin escribir archivos de prueba. | None |
 | `listHolding(limit?)` | Consulta documentos retenidos para sincronización. | No |
+| `getStorageStatus()` | Revisa capacidad administrada, cobertura, cupo e integración, además de BYOS verificado. Requiere `download`. | No |
+| `getDocumentCopies()` | Lista recibos JSON/PDF de esta empresa y ambiente; no devuelve rutas ni enlaces. Requiere `download`. | No |
+| `retryDocumentStorage(codigoGeneracion)` | Repara copias de un DTE sellado sin emitir de nuevo; requiere `download` e `issue`. | No |
 | `getContract()` | Obtiene el contrato OpenAPI publicado por la API. | No |
 
 ### Firmas públicas y valores de argumentos
@@ -121,6 +130,9 @@ importan desde `@facta-dte/api`).
 | `new Facta` | `FactaOptions`: `apiKey` requerido; `signKey`, `unlockKey`, `baseUrl`, `timeoutMs`, `maxRetries` opcionales | `Facta` |
 | `status` | `status()` | `Promise<Status>` |
 | `diagnose` | `diagnose(options?: { archive?: InvoiceArchive; tipoDte?: DteType })` | `Promise<DiagnosticsReport>`; revisiones, conteos de archivo y diagnósticos legibles |
+| `getStorageStatus` | `getStorageStatus(options?: { signal?: AbortSignal })`; requiere `download` | `Promise<ManagedStorageStatus>`; capability v1, cobertura/cupo administrado y BYOS verificado |
+| `getDocumentCopies` | `getDocumentCopies(options?: { generationCode?: string; signal?: AbortSignal })`; requiere `download` | `Promise<ManagedDocumentCopy[]>`; recibos JSON/PDF del ambiente autenticado |
+| `retryDocumentStorage` | `retryDocumentStorage(codigoGeneracion, options?: { signal?: AbortSignal })`; requiere `download` e `issue` | `Promise<ManagedStorageReceipt>`; reparación sin reemisión |
 | `syncDestinations` | `syncDestinations()`; requiere `unlockKey` | `Promise<DestinationSnapshot>`; descifra destino solo en memoria |
 | `syncCatalog` | `syncCatalog()`; requiere `unlockKey` | `Promise<CatalogSnapshot>`; reemplaza la copia de catálogo de este proceso |
 | `catalogState` | `catalogState()` | `Promise<CatalogState>`; revisiones pública/local y frescura, sin devolver contenido |
@@ -826,19 +838,18 @@ refresh. Drive can retain duplicate files when independent processes race;
 use one writer process per destination. The SDK reads each indexed match and
 returns `unknown` if copies disagree. FTP/SFTP still require the user's local
 bridge, for which this package provides a content-addressed adapter.
-Facta-managed storage remains app-only. Its Worker accepts an authenticated
-Supabase user-session bearer token; an API key does not authenticate that
-service, and integrations must not forward an app user's session token. A
-first-class SDK destination requires a separate API-key-scoped storage
-capability contract. The SDK records each configured destination/artifact as
-`stored`, `unknown`, `failed`, or `unavailable` in the
-encrypted archive journal. A thrown write is `unknown` because the remote side
-may have committed before the connection failed. Implement `check` to settle
-that ambiguity; otherwise the next explicit replay repeats the same bytes and
-must be safe for an identical hash. Local archive completion remains successful
-even if a remote copy needs attention. `archive.pending()` includes unresolved
-remote copies, and `recoverOperation()` can reconcile them without issuing a
-second DTE.
+La nueva capacidad `getStorageStatus()`, `getDocumentCopies()` y
+`retryDocumentStorage()` usa un contrato API-key-scoped del servidor; el SDK no
+recibe credenciales R2 ni tokens de sesión de la aplicación. Hasta que el
+servidor despliegue la versión 1, una respuesta 404/501 se informa como
+`storage_unsupported`. Las copias BYOS siguen registrando cada destino y
+artefacto como `stored`, `unknown`, `failed` o `unavailable` en el journal
+cifrado. Una escritura que lanza error queda `unknown`, porque el proveedor
+pudo confirmar antes de perderse la conexión. Implemente `check` para resolver
+esa ambigüedad; si no, el siguiente replay explícito repite los mismos bytes y
+debe ser seguro para el mismo hash. El archivo local puede completarse aunque
+una copia remota requiera atención. `archive.pending()` incluye las copias sin
+resolver y `recoverOperation()` las reconcilia sin emitir un segundo DTE.
 
 The Facta app remains the writer. If the API reports a stale or pending
 destination revision, synchronize the key from **Configuración → API de Facta**

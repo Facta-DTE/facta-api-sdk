@@ -54,6 +54,12 @@ const request: DteRequest = {
   items: [{ descripcion: "Product", cantidad: 1, precioUni: 2 }],
 };
 const invalidationOptions: FactaInvalidationArchiveOptions = { operationId: 'typed-invalidation', idempotencyKey: 'typed-invalidation' };
+type ManagedStatus = Awaited<ReturnType<Facta['getStorageStatus']>>;
+type ManagedCopies = Awaited<ReturnType<Facta['getDocumentCopies']>>;
+type ManagedRepair = Awaited<ReturnType<Facta['retryDocumentStorage']>>;
+declare const managedStatus: ManagedStatus;
+declare const managedCopies: ManagedCopies;
+declare const managedRepair: ManagedRepair;
 const completeInvalidation: InvalidationResult = { estado: 'invalidado', codigoGeneracion: '7875BC7A-9580-441D-94E4-FA455E9D8BD0', numeroControl: 'DTE-03-M001P001-000000000000175', tipoDte: '03', ambiente: '00', evento: { codigoGeneracion: 'BEB08A1C-1722-4E35-AEA6-52AB1234CDEF', selloRecibido: 'event-seal', tipoAnulacion: 1 }, documento: {}, jws: 'signed-event-jws', anotadoEnElIndice: true };
 const sparseInvalidation: InvalidationResult = { estado: 'invalidado', codigoGeneracion: '7875BC7A-9580-441D-94E4-FA455E9D8BD0', numeroControl: 'DTE-03-M001P001-000000000000175', yaEstabaInvalidado: true };
 declare const typedFacta: Facta;
@@ -62,9 +68,9 @@ declare const typedInvalidationOptions: FactaInvalidationArchiveOptions;
 void typedFacta.invalidateAndArchive('7875BC7A-9580-441D-94E4-FA455E9D8BD0', invalidationRequest, typedInvalidationOptions);
 void typedFacta.recoverInvalidation('typed-invalidation');
 void typedFacta.listPendingInvalidations();
-void [completeInvalidation, sparseInvalidation];
+void [completeInvalidation, sparseInvalidation, managedStatus, managedCopies, managedRepair];
 void invalidationOptions;
-if (typeof Facta !== "function" || typeof NodeFacta !== "function" || typeof NodeFacta.prototype.recoverOperation !== "function" || typeof NodeFacta.prototype.listPendingOperations !== "function" || typeof NodeFileInvoiceArchive.open !== "function" || typeof createFactaFromConfigFile !== "function" || typeof createBridgeArtifactDestination !== "function" || typeof createGoogleDriveArtifactDestination !== "function" || typeof createOneDriveArtifactDestination !== "function" || typeof createS3ArtifactDestination !== "function" || typeof createSupabaseArtifactDestination !== "function" || request.tipoDte !== "11") throw new Error("SDK import failed");
+if (typeof Facta !== "function" || typeof Facta.prototype.getStorageStatus !== "function" || typeof Facta.prototype.getDocumentCopies !== "function" || typeof Facta.prototype.retryDocumentStorage !== "function" || typeof NodeFacta !== "function" || typeof NodeFacta.prototype.getStorageStatus !== "function" || typeof NodeFacta.prototype.getDocumentCopies !== "function" || typeof NodeFacta.prototype.retryDocumentStorage !== "function" || typeof NodeFacta.prototype.recoverOperation !== "function" || typeof NodeFacta.prototype.listPendingOperations !== "function" || typeof NodeFileInvoiceArchive.open !== "function" || typeof createFactaFromConfigFile !== "function" || typeof createBridgeArtifactDestination !== "function" || typeof createGoogleDriveArtifactDestination !== "function" || typeof createOneDriveArtifactDestination !== "function" || typeof createS3ArtifactDestination !== "function" || typeof createSupabaseArtifactDestination !== "function" || request.tipoDte !== "11") throw new Error("SDK import failed");
 const typedS3 = createS3ArtifactDestination({ id: 'typed-s3', label: 'Typed S3', config: { bucket: 'bucket', region: 'auto', accessKeyId: 'test-key', secretAccessKey: 'test-secret-key-123456', endpoint: 'http://127.0.0.1:9100', allowInsecureEndpoint: true } });
 if (typeof typedS3.write !== 'function') throw new Error('S3 adapter type contract failed');
 const typedOneDrive = createOneDriveArtifactDestination({ id: 'typed-onedrive', label: 'Typed OneDrive', accessToken: 'token', refreshAccessToken: async () => 'new-token' });

@@ -3,9 +3,10 @@
 Para conocer las firmas públicas, alcances, valores predeterminados, efectos
 y mecanismos de recuperación, consulta la [referencia de métodos del SDK](reference.es.md).
 
-**Estado:** `0.1.0-beta.1` está publicado en npm. Se está preparando la versión
-estable `0.1.0`; no estará disponible hasta aprobar su revisión de staging en
-npm.
+**Paquete publicado:** `0.1.0` es `latest` en npm y `0.1.0-beta.1` usa la
+etiqueta `beta`. Este checkout contiene código fuente `0.1.1` sin publicar;
+los métodos de storage administrado de esta rama todavía no están en el
+paquete npm vigente.
 
 ## Requisitos e instalación
 
@@ -22,10 +23,9 @@ pnpm install --frozen-lockfile
 pnpm pack:check
 ```
 
-Esto prueba el tarball en consumidores limpios. Instala una versión aprobada y
-explícita, y fija el número en el lockfile de la aplicación. Cuando se apruebe
-`0.1.0`, usa esa versión estable; hasta entonces, usa la beta de forma
-intencional.
+Esto prueba el tarball en consumidores limpios. Fija una versión npm publicada
+para las capacidades actuales. El storage administrado de esta rama requiere
+validar el tarball local con `pnpm pack:check`; aún no está en npm.
 
 ## Configurar el cliente
 
@@ -78,6 +78,16 @@ Para una FE anónima (`01`) se puede omitir `receptor`. Para una FE nominada o
 CCF, envía el receptor exigido por ese DTE:
 
 ```ts
+// El módulo no emite al importarse. Llama main() solo si deseas emitir una prueba.
+import { main } from "../examples/hola-factura.ts";
+await main();
+```
+
+Para validar en staging usa la URL indicada y únicamente llaves `facta_test_`.
+Esta llamada explícita consume una secuencia de prueba y requiere un
+`ERP_ORDER_ID` estable.
+
+```ts
 const result = await facta.issue({
   tipoDte: "03",
   receptor: {
@@ -127,6 +137,32 @@ try {
   }
 }
 ```
+
+## Almacenamiento administrado y recuperación
+
+Cuando el servidor publique la capacidad versión 1, revisa cobertura y cupo
+para el ambiente de la llave antes de prometer retención:
+
+```ts
+const storage = await facta.getStorageStatus();
+if (!storage.managed.ready && !storage.byos.ready) {
+  throw new Error("No hay un destino durable del servidor disponible");
+}
+
+const copies = await facta.getDocumentCopies({ generationCode });
+if (copies.some((copy) => copy.state !== "stored")) {
+  const receipt = await facta.retryDocumentStorage(generationCode);
+  // Repara JSON/PDF del DTE ya sellado; nunca lo vuelve a emitir.
+  console.log(receipt.json.state, receipt.pdf.state);
+}
+```
+
+Una empresa administrada no necesita credenciales del bucket en el SDK. La
+API obtiene empresa y ambiente de la llave y llama al Worker mediante el
+contrato interno autenticado. El almacenamiento administrado, el archivo
+cifrado local y BYOS reportan resultados separados. Un servidor anterior
+responde `storage_unsupported`; `diagnose()` lo informa como desconocido. La
+capacidad administrada cubre JSON/PDF, no tickets ni eventos de anulación.
 
 ## Listar y guardar JSON/PDF
 

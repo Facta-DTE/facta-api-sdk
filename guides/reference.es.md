@@ -62,6 +62,7 @@ Los tipos públicos viven en `src/types.ts` y se exportan desde `mod.ts`. Para e
 | `RelatedDocument`, `ExportDetails` | Documentos corregidos en notas 05/06 y datos de exportación 11. |
 | `LineItem` | Una línea de la venta. `cantidad` siempre se envía; `productId` permite resolver descripción, precio, tipo de artículo y unidad del catálogo cifrado. |
 | `IssueResult` | Unión discriminada por `estado`: `SealedDte` o `DteInContingency`. |
+| `ManagedStorageStatus`, `ManagedStorageReceipt`, `ManagedDocumentCopy` | Capacidad v1 y estados/digests de copias JSON/PDF administradas. No contienen rutas de objetos ni enlaces. |
 | `PreparedDte`, `DocumentStatus`, `InvalidationResult`, `DtePage`, `HoldingPage` | Resultados de prepare, getDocumentStatus, anular, listar y recuperar documentos. |
 | `Status`, `RateLimitWindow`, `Totals`, `FactaError` | Estado de llave, límites, importes calculados por el servidor y errores tipados. |
 
@@ -186,7 +187,10 @@ Revisa la disponibilidad de la API, el emisor, el alcance para el tipo de DTE,
 las revisiones de firma/destinos/catálogo y los datos públicos del certificado
 cuando están registrados. Puede recibir `{ dteType, archive }` para comprobar
 el tipo de DTE y el archivo local. No abre vaults ni reserva un correlativo.
-Devuelve `canIssue`, `canQuery`, `canDownload`, `canIssueAndArchive`, las
+También consulta la capacidad de almacenamiento administrado. Si el servidor
+es anterior o falta el alcance, esa capacidad queda desconocida y no se reporta
+como copia durable. Devuelve `storageReady` (`true`, `false` o `null`),
+`canIssue`, `canQuery`, `canDownload`, `canIssueAndArchive`, las
 comprobaciones y el conteo de operaciones pendientes del archivo; ese conteo
 es `null` si no se pasó archivo o no se pudo leer su journal. Si falla la
 consulta de estado, devuelve un informe bloqueado con el código seguro del
@@ -478,7 +482,7 @@ fiscal antes de volver a actuar.
 
 **No manda la llave de firma.** Devuelve `DownloadedDocument`.
 
-Devuelve los bytes exactos de `json`, `pdf` o `ticket`, sin parsearlos ni volver a serializarlos. El tipo predeterminado es `json`; exige el alcance `download`. El ticket se genera desde un DTE ya sellado y admite `paperWidthMm` entero de 40 a 120 (80 por defecto), sin issue de nuevo. Esta regeneración está disponible para DTE emitidos por la API, no para los que se emitieron desde la app web. El área de retención dura una hora desde la firma, pero **pasada esa hora la ruta sigue contestando**: el documento se rearma desde la reserva, que guarda el JWS sellado.
+Devuelve los bytes exactos de `json`, `pdf` o `ticket`, sin parsearlos ni volver a serializarlos. El tipo predeterminado es `json`; exige el alcance `download`. `storageSource` informa `managed`, `holding` o `archive` si el servidor identifica el origen. El ticket se genera desde un DTE ya sellado y admite `paperWidthMm` entero de 40 a 120 (80 por defecto), sin issue de nuevo. Esta regeneración está disponible para DTE emitidos por la API, no para los que se emitieron desde la app web. El área de retención dura una hora desde la firma, pero **pasada esa hora la ruta sigue contestando**: el documento se rearma desde la reserva, que guarda el JWS sellado.
 
 ```typescript
 const archivo = await facta.downloadDocument(dte.codigoGeneracion, "json");
@@ -599,6 +603,7 @@ Los tipos se leen del contrato TypeScript (`mod.ts`), no de un `.d.ts` generado.
 - `DteRequest`, `LineItem`, `Recipient` — lo que se manda.
 - `IssueResult = SealedDte | DteInContingency` — la unión que obliga a mirar el `estado` antes de leer `totales`.
 - `PreparedDte`, `DocumentStatus`, `InvalidationResult`, `DtePage`, `HoldingPage`.
+- `ManagedStorageStatus`, `ManagedStorageReceipt`, `ManagedDocumentCopy` — capacidad y copias administradas JSON/PDF, sin rutas ni enlaces.
 - `Status`, `RateLimitWindow` — lo que devuelve `status()`.
 - `FactaError`, `FactaErrorCode`, `SpentCorrelative`.
 
@@ -606,6 +611,6 @@ Los tipos se leen del contrato TypeScript (`mod.ts`), no de un `.d.ts` generado.
 
 1. **No calcula dinero.** Ni IVA, ni retenciones, ni totales, ni el número de control, ni fechas fiscales. Todo eso lo produce el servidor y el cliente lo transporta. Un SDK que calcule dinero es un segundo motor fiscal, y dos motores se desincronizan el primer martes.
 2. **No firma.** El certificado no pasa por aquí en ningún momento. Lo que sí pasa, en las rutas que firman, es `X-Facta-Sign-Key`: la contraseña que abre el vault *en el servidor*. El cliente la reenvía y no hace nada con ella.
-3. **No elige su almacenamiento por usted.** `FileInvoiceArchive` guarda copias cifradas recuperables en el proceso integrador y los adaptadores de destinos replican archivos a proveedores compatibles. Sin llamar a `issueAndArchive()` o `replicateArchive()`, `downloadDocument()` solo le entrega los bytes. La impresora y el envío por WhatsApp requieren transportes separados; el SDK no afirma que un archivo quedó impreso o entregado.
+3. **No abre las credenciales de su almacenamiento administrado.** Facta guarda JSON/PDF de forma administrada en el servidor cuando el contrato API-key-scoped está disponible. `FileInvoiceArchive` conserva una copia cifrada local y los adaptadores BYOS replican bytes a proveedores del integrador. Sus estados son independientes; el SDK no recibe secretos R2. La impresora y el envío por WhatsApp requieren transportes separados.
 
 Una prueba de arquitectura del propio paquete falla si alguna de las dos primeras deja de ser cierta.

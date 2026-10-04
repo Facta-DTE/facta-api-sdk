@@ -288,10 +288,10 @@ preauthenticated and is never persisted or logged. The provider adapter has
 mocked Node and Deno consumer coverage, but still needs a live OneDrive test.
 
 S3, Supabase Storage, Google Drive, OneDrive, and the local bridge have
-built-in adapters. Facta-managed storage remains app-only: its Worker requires
-an authenticated Supabase user-session token, and a Facta API key does not
-authenticate that service. Do not forward a user's app session into an
-integrator process. Supporting managed storage in the SDK requires a separate
-API-key-scoped capability contract. Credential renewal, private access
-policies, and live provider validation remain responsibilities of the runtime
-integrations.
+built-in BYOS adapters. Facta-managed JSON/PDF storage is server-owned and is
+accessed through `getStorageStatus()`, `getDocumentCopies()`, and
+`retryDocumentStorage()` when the deployed API supports capability version 1.
+The SDK receives no R2 credentials, object paths, signed URLs, or web session
+tokens. An older server reports `storage_unsupported`; do not wrap the app's
+user-session Worker routes in an API-key client. Managed storage, local
+encrypted archives, and BYOS copies have independent receipts and recovery.

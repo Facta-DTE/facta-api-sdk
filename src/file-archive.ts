@@ -635,7 +635,9 @@ export class FileInvoiceArchive implements InvoiceArchive, InvalidationArchive {
         if ((await hashText(value.id)) + ".enc" !== name) {
           throw new FactaError("archive_integrity_error", "Invoice journal ID does not match its archive path.", 0);
         }
-        if (value.state !== "complete" || value.remoteCopies?.some((copy) => copy.state !== "stored")) {
+        if (value.state !== "complete" || value.remoteCopies?.some((copy) => copy.state !== "stored") ||
+          value.managedStorage?.json.state === "pending" || value.managedStorage?.json.state === "failed" ||
+          value.managedStorage?.pdf.state === "pending" || value.managedStorage?.pdf.state === "failed") {
           rows.push(value);
         }
       } catch (error) {
@@ -663,6 +665,7 @@ export class FileInvoiceArchive implements InvoiceArchive, InvalidationArchive {
         ...operation,
         state: "issued",
         codigoGeneracion: result.codigoGeneracion,
+        ...(result.storage === undefined ? {} : { managedStorage: result.storage }),
       });
     });
   }
@@ -870,6 +873,16 @@ export class FileInvoiceArchive implements InvoiceArchive, InvalidationArchive {
         ? [...rows, record]
         : rows.map((row, i) => i === index ? record : row);
       await this.#writeOperation({ ...operation, remoteCopies });
+    });
+  }
+
+  async recordManagedStorage(id: string, receipt: import("./types.ts").ManagedStorageReceipt): Promise<void> {
+    await this.#exclusive(async () => {
+      const operation = await this.#requireOperation(id);
+      if (!operation.codigoGeneracion || receipt.operationId !== operation.codigoGeneracion) {
+        throw new Error("Managed storage receipt does not match the journal generation code.");
+      }
+      await this.#writeOperation({ ...operation, managedStorage: receipt });
     });
   }
 

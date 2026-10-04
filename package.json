@@ -37,6 +37,7 @@
     "src",
     "dist",
     "examples",
+    ".env.example",
     "guides",
     "README.md"
   ],

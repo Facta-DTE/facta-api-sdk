@@ -345,6 +345,53 @@ Deno.test("ticket width validation happens before any request", async () => {
   assertEquals(calls.length, 0);
 });
 
+Deno.test("storage capability, copy status, and repair use additive API routes", async () => {
+  const generationCode = "33333333-3333-4333-8333-333333333333";
+  const receipt = {
+    destination: "managed",
+    environment: "00",
+    operationId: generationCode,
+    json: { state: "stored", sha256: "a".repeat(64), bytes: 82, storedAt: "2026-10-03T12:00:00Z", errorCode: null, retryable: false },
+    pdf: { state: "pending", sha256: "b".repeat(64), bytes: 512, storedAt: null, errorCode: "worker_unavailable", retryable: true },
+  } as const;
+  const status = {
+    capabilityVersion: 1,
+    managed: {
+      configured: true, ready: true, state: "ready", integration: "ready",
+      quotaBytes: 1000, usedBytes: 82, reservedBytes: 512, usedBytesTotal: 82,
+      reservedBytesTotal: 512, coveredUntil: null, accessUntil: null,
+      bucketState: "ready", backupState: "not_required",
+    },
+    byos: { ready: false }, supportedKinds: ["json", "pdf"], unsupportedKinds: ["ticket", "invalidation"],
+  };
+  const copies: import("../src/types.ts").ManagedDocumentCopy[] = [{ generationCode, kind: "pdf", environment: "00", state: "pending", bytes: 512, sha256: "b".repeat(64), issuedDate: "2026-10-03", storedAt: null }];
+  const { fetch, calls } = fakeFetch([
+    { status: 200, body: status },
+    { status: 200, body: { capabilityVersion: 1, copies } },
+    { status: 200, body: { codigoGeneracion: generationCode, storage: receipt } },
+  ]);
+  const facta = new Facta({ apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch });
+  assertEquals((await facta.getStorageStatus()).managed.ready, true);
+  assertEquals(await facta.getDocumentCopies({ generationCode }), copies);
+  assertEquals(await facta.retryDocumentStorage(generationCode), receipt);
+  assertEquals(calls.map((call) => `${call.method} ${new URL(call.url).pathname.replace("/functions/v1/api-v1", "")}`), [
+    "GET /v1/storage/status",
+    "GET /v1/storage/copies",
+    "POST /v1/storage/copies/33333333-3333-4333-8333-333333333333/repair",
+  ]);
+  assertEquals(calls[1].url.endsWith(`?generationCode=${generationCode}`), true);
+});
+
+Deno.test("older storage routes report unsupported instead of malformed success", async () => {
+  const { fetch } = fakeFetch([{
+    status: 404,
+    body: { error: { code: "not_found", message: "route not found" } },
+  }]);
+  const facta = new Facta({ apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch });
+  const error = await assertRejects(() => facta.getStorageStatus(), FactaError);
+  assertEquals(error.code, "storage_unsupported");
+});
+
 function factaBase(_client: Facta): string {
   return "https://hcnvknpsbadplnfcflxx.supabase.co/functions/v1/api-v1";
 }
