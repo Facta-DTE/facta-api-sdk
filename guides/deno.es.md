@@ -5,14 +5,15 @@ y mecanismos de recuperación, consulta la [referencia de métodos del SDK](refe
 
 **Paquete y código:** [npm `@facta-dte/api`](https://www.npmjs.com/package/@facta-dte/api) · [repositorio público en GitHub](https://github.com/Facta-DTE/facta-api-sdk).
 
-**Estado de publicación:** `latest` de npm es `0.1.0`. La versión `0.1.1` está preparada para la próxima publicación estable y sigue pendiente de aprobación y publicación en npm. Esta guía incluye capacidades del código fuente `0.1.1`; valídelas con el artefacto empaquetado hasta verificar su publicación. Una copia del código fuente no publica una versión.
+**Selección de versión:** Esta documentación describe `0.1.1`. El [registro de npm](https://www.npmjs.com/package/@facta-dte/api?activeTab=versions) es la autoridad para las versiones publicadas y sus etiquetas. `latest` elige la versión estable aprobada. Confirme que la versión publicada instalada incluye un método antes de usarlo; valide las capacidades que solo estén en el código fuente con una copia empaquetada.
 
 El paquete oficial admite TypeScript y JavaScript. Los SDK de otros lenguajes están pendientes; los ejemplos HTTP directos no representan SDK publicados.
 
 ## Requisitos e instalación
 
-Use `npm:@facta-dte/api@0.1.0` para la versión estable publicada actualmente.
-Después de aprobar y verificar la publicación de `0.1.1`, fíjela en `deno.json`:
+Consulte `npm view @facta-dte/api version dist-tags` y elija una versión publicada
+que incluya las capacidades requeridas. Cuando `0.1.1` esté disponible, fíjela
+en `deno.json`:
 
 ```json
 { "imports": { "@facta-dte/api": "npm:@facta-dte/api@0.1.1" } }
@@ -37,10 +38,9 @@ pnpm test
 pnpm pack:check
 ```
 
-En el proyecto consumidor fija `npm:@facta-dte/api@0.1.0` para la versión
-estable actual, y fije `0.1.1` solo después de verificar su publicación, en `deno.json`; revisa el
-lockfile en control de versiones. Para probar los métodos de almacenamiento
-todavía no publicados, valida el tarball local con `pnpm pack:check`.
+Fije la versión publicada elegida en `deno.json` y guarde su lockfile.
+Valide capacidades ausentes de esa versión con `pnpm pack:check`; no use en la
+aplicación métodos que el paquete instalado no proporciona.
 
 ## Permisos mínimos
 
@@ -72,7 +72,7 @@ llamada explícita consume una secuencia fiscal de prueba y requiere un
 `ERP_ORDER_ID` estable.
 
 ```ts
-import { Facta } from "npm:@facta-dte/api@0.1.0";
+import { Facta } from "npm:@facta-dte/api@0.1.1";
 
 const facta = new Facta({
   apiKey: Deno.env.get("FACTA_API_KEY")!,

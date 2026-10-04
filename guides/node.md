@@ -6,16 +6,17 @@ recovery behavior, see the [SDK method reference](reference.md). Read the
 
 **Package and source:** [npm `@facta-dte/api`](https://www.npmjs.com/package/@facta-dte/api) · [public GitHub repository](https://github.com/Facta-DTE/facta-api-sdk).
 
-**Release status:** npm `latest` is `0.1.0`. Version `0.1.1` is prepared for the next stable release and remains pending release approval and npm publication. This guide includes `0.1.1` source capabilities; validate them with the packed source artifact until publication is verified. A source checkout does not publish a release.
+**Version selection:** This documentation describes `0.1.1`. The [npm registry](https://www.npmjs.com/package/@facta-dte/api?activeTab=versions) is authoritative for published versions and distribution tags. `latest` selects the approved stable release. Confirm that your installed published version includes a method before using it; validate source-only capabilities with a packed checkout.
 
 The official package supports TypeScript and JavaScript. SDKs for other languages are pending; direct HTTP examples do not represent published SDKs.
 
 ## Requirements and installation
 
 ```sh
-# Install the currently published stable release:
+# Verify published versions and tags, then install the approved stable release:
+npm view @facta-dte/api version dist-tags
 pnpm add @facta-dte/api
-# Pin the planned release only after its npm publication is approved and verified:
+# Optionally pin 0.1.1 after verifying that version is published:
 pnpm add @facta-dte/api@0.1.1
 ```
 
@@ -42,10 +43,9 @@ pnpm install --frozen-lockfile
 pnpm pack:check
 ```
 
-This tests the tarball with clean consumers. For current releases, pin the
-approved npm version in the application lockfile. To validate unreleased
-managed-storage methods, run `pnpm pack:check` against this checkout's tarball;
-the npm release does not contain those methods yet.
+This tests the tarball with clean consumers. Pin a published version that
+includes the required methods in the application lockfile. Use the checkout
+tarball to validate capabilities absent from the installed release.
 
 ## Configure the client
 

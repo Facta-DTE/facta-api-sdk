@@ -6,14 +6,15 @@ recovery behavior, see the [SDK method reference](reference.md). Read the
 
 **Package and source:** [npm `@facta-dte/api`](https://www.npmjs.com/package/@facta-dte/api) · [public GitHub repository](https://github.com/Facta-DTE/facta-api-sdk).
 
-**Release status:** npm `latest` is `0.1.0`. Version `0.1.1` is prepared for the next stable release and remains pending release approval and npm publication. This guide includes `0.1.1` source capabilities; validate them with the packed source artifact until publication is verified. A source checkout does not publish a release.
+**Version selection:** This documentation describes `0.1.1`. The [npm registry](https://www.npmjs.com/package/@facta-dte/api?activeTab=versions) is authoritative for published versions and distribution tags. `latest` selects the approved stable release. Confirm that your installed published version includes a method before using it; validate source-only capabilities with a packed checkout.
 
 The official package supports TypeScript and JavaScript. SDKs for other languages are pending; direct HTTP examples do not represent published SDKs.
 
 ## Requirements and installation
 
-Use `npm:@facta-dte/api@0.1.0` for the currently published stable version. After
-`0.1.1` publication is approved and verified, pin it in `deno.json`:
+Check `npm view @facta-dte/api version dist-tags` and choose a published version
+that matches the required capabilities. Once `0.1.1` is available, pin it in
+`deno.json`:
 
 ```json
 { "imports": { "@facta-dte/api": "npm:@facta-dte/api@0.1.1" } }
@@ -41,12 +42,9 @@ pnpm test
 pnpm pack:check
 ```
 
-In consumer projects, pin `npm:@facta-dte/api@0.1.0` for the current stable
-release, and use the planned `0.1.1` pin only after verified publication. That published version does not
-contain this branch's managed-storage methods. Validate those against the
-unreleased branch tarball with `pnpm pack:check`; do not point a live consumer
-at unpublished methods. Pin the selected npm version in `deno.json` and check
-the lockfile into version control.
+Pin the selected published version in `deno.json` and commit its lockfile.
+Validate capabilities absent from that release with `pnpm pack:check`; do not
+point an application at methods its installed package does not provide.
 
 ## Minimum permissions
 
@@ -83,7 +81,7 @@ this explicit call consumes a test fiscal sequence and needs a stable
 `ERP_ORDER_ID`.
 
 ```ts
-import { Facta } from "npm:@facta-dte/api@0.1.0";
+import { Facta } from "npm:@facta-dte/api@0.1.1";
 
 const facta = new Facta({
   apiKey: Deno.env.get("FACTA_API_KEY")!,
