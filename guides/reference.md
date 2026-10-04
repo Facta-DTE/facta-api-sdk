@@ -1,5 +1,20 @@
 # TypeScript SDK method reference
 
+**Package and source:** [npm `@facta-dte/api`](https://www.npmjs.com/package/@facta-dte/api) · [public GitHub repository](https://github.com/Facta-DTE/facta-api-sdk).
+
+**Version selection:** This documentation describes `0.1.1`. The [npm registry](https://www.npmjs.com/package/@facta-dte/api?activeTab=versions) is authoritative for published versions and distribution tags. `latest` selects the approved stable release. Confirm that your installed published version includes a method before using it; validate source-only capabilities with a packed checkout.
+
+The official package supports TypeScript and JavaScript. SDKs for other languages are pending; direct HTTP examples do not represent published SDKs.
+
+```sh
+# Verify published versions and tags, then install the approved stable release:
+npm view @facta-dte/api version dist-tags
+pnpm add @facta-dte/api
+# Optionally pin 0.1.1 after verifying that version is published:
+pnpm add @facta-dte/api@0.1.1
+```
+
+
 This reference describes the public methods exported by `@facta-dte/api`. The
 installed package declarations are authoritative for exact TypeScript types;
 the [published OpenAPI contract](https://hcnvknpsbadplnfcflxx.supabase.co/functions/v1/api-v1/v1/openapi.json) is authoritative
@@ -43,7 +58,7 @@ generic message and never include runtime exception text.
 |---|---|---|---|
 | `new Facta(options)` | `apiKey` required; `signKey`, `unlockKey`, `baseUrl`, `timeoutMs=60000`, `maxRetries=3`, `fetch`, `config: FactaConfigV1`, and `runtime: FactaRuntimeConfigV1` optional | No request | Creates a client. Requires `apiKey`; checks credential prefixes and rejects a `factauk_` value passed as `signKey`. `fetch` is intended for an owning runtime or tests. |
 | `status(options?)` | Optional `{ signal? }` → `Status` | No additional scope | `GET /v1/status`; returns environment, issuer, remaining limits, synchronization revisions, and public signing-certificate facts where registered. Does not decrypt vault contents. Abort/network/API failures follow the common error rules below; safe to repeat. |
-| `diagnose(options?)` | Optional `DiagnoseOptions` → `DiagnosticsReport` | Same as status; archive is local | Calls status and evaluates issue/query/download readiness, configured environment/scopes, revisions, certificate facts, and optionally archive readiness and pending operation count. Does not decrypt vaults or reserve a number. API failure returns a blocked report rather than throwing the status failure. |
+| `diagnose(options?)` | Optional `DiagnoseOptions` → `DiagnosticsReport` | `download` for managed capability; archive is local | Calls status and evaluates issue/query/download readiness, configured environment/scopes, revisions, certificate facts, and optionally archive readiness and pending operation count. Also checks managed-storage readiness; an older API or missing permission is reported as unknown and never mistaken for a durable copy. Does not decrypt vaults or reserve a number. API failure returns a blocked report rather than throwing the status failure. |
 | `getContract()` | None | No additional scope | `GET /v1/openapi.json`; returns the published JSON contract as `unknown`. |
 
 ## Vault synchronization and local catalog
@@ -106,8 +121,11 @@ Spanish field names and enum values from the wire contract.
 
 | Method | Inputs / return | Scope / secrets | Behavior and important outcomes |
 |---|---|---|---|
-| `downloadDocument(generationCode, kind="json", options?)` | `kind`: `json`, `pdf`, or `ticket`; optional `{ paperWidthMm?, signal? }` → `DownloadedDocument` | `download` | Returns exact server bytes, content type, and suggested filename. Ticket is regenerated from an already sealed API-issued document without another DTE; documents issued in the web app are not available through this regeneration route. `paperWidthMm` applies only to ticket and must be an integer from 40 to 120; default is 80. |
-| `issueAndArchive(request, options)` | Requires stable `operationId` and `idempotencyKey`; archive and remote destinations may come from `runtime`, with per-call overrides; optional signal and `ticketPaperWidthMm=80` → `ArchiveEmissionResult` | `issue` + `download`; `signKey` for issuance; `unlockKey` only when resolving catalog references | Verifies local archive readiness before reserving a number, records a restart-safe journal, issues once, then downloads and stores exact JSON/PDF/JWS/ticket bytes. Inspect `result.archive.state` separately from fiscal success; archive failure does not undo an issued DTE. Remote copy outcomes are separate. |
+| `getStorageStatus(options?)` | Optional `{ signal? }` → `ManagedStorageStatus` | `download` | Checks capability v1, managed coverage/quota/integration, and verified BYOS readiness for the key's issuer/environment. Old servers (404/501) become `storage_unsupported`; malformed present responses fail as `storage_contract_invalid`. |
+| `getDocumentCopies(options?)` | Optional `{ generationCode?, signal? }` → `ManagedDocumentCopy[]` | `download` | Lists only managed JSON/PDF receipts for the authenticated issuer/environment. Includes pending/failed states; never returns object paths or signed URLs. |
+| `retryDocumentStorage(generationCode, options?)` | UUID and optional `{ signal? }` → `ManagedStorageReceipt` | `download` + `issue` | Repairs stored bytes for an already sealed DTE. It never calls `issue`, reserves a fiscal number, or accepts replacement content; errors when the API cannot recover originals. |
+| `downloadDocument(generationCode, kind="json", options?)` | `kind`: `json`, `pdf`, or `ticket`; optional `{ paperWidthMm?, signal? }` → `DownloadedDocument` | `download` | Returns exact server bytes, content type, and suggested filename. `storageSource` identifies managed, holding, or archive retrieval when the server reports it. Ticket is regenerated from an already sealed API-issued document without another DTE; documents issued in the web app are not available through this regeneration route. `paperWidthMm` applies only to ticket and must be an integer from 40 to 120; default is 80. |
+| `issueAndArchive(request, options)` | Requires stable `operationId` and `idempotencyKey`; archive and remote destinations may come from `runtime`, with per-call overrides; optional signal and `ticketPaperWidthMm=80` → `ArchiveEmissionResult` | `issue` + `download` (ticket and recovery); `signKey` for issuance; `unlockKey` only when resolving catalog references | Verifies local archive readiness before reserving a number, records a restart-safe journal, and stores the exact server-returned signed JSON and PDF bytes without fetching them again. It derives the JWS from that JSON and downloads only the optional receipt ticket. Older API responses fall back to artifact downloads. Inspect `result.archive.state` separately from fiscal success; archive failure does not undo an issued DTE. Remote copy outcomes are separate. |
 | `recoverOperation(operationId, options?)` | Journal ID and optional `{ request?, archive?, signal?, remoteDestinations? }` → `ArchiveEmissionResult` | `issue` and possibly `download`; signing key needed only if the saved operation was never confirmed | Uses the encrypted request snapshot when available and verifies its fingerprint; accepts `request` for legacy journals without a saved snapshot. Reuses the saved idempotency key. Verifies API endpoint, key identity, issuer, and environment before any fiscal request. Expired or mismatched operations stop for manual reconciliation. |
 | `listPendingOperations(archive?)` | Optional archive override → `PendingArchiveOperation[]` | No Facta scope; requires a ready local archive | Lists local operations that still need archive completion or remote-copy reconciliation. Returns an allow-listed summary without the stored fiscal request. Journal contents are encrypted by the archive adapter. |
 | `replicateArchive(operationId, archive, destinations, options?)` | Completed local operation, archive, runtime-owned destination adapters, optional signal → `RemoteReplicationReport` | No Facta scope; provider credentials belong to each adapter | Reads and hash-verifies local artifact bytes, then writes/checks copies sequentially and persists one result per destination/artifact. A previously stored matching copy is skipped; ambiguous copies are reconciled where supported. Cancellation or journal-write failure is reported as unknown and requires reconciliation. |
@@ -136,3 +154,11 @@ WhatsApp messages; no WhatsApp endpoint or delivery contract is published.
 - Error codes and rejection flags: [`../src/errors.ts`](../src/errors.ts)
 - Diagnostic checks: [`../src/diagnostics.ts`](../src/diagnostics.ts)
 - Server request/response schemas: [published OpenAPI contract](https://hcnvknpsbadplnfcflxx.supabase.co/functions/v1/api-v1/v1/openapi.json)
+
+A successful fiscal response can carry `storageErrorCode: "storage_contract_invalid"`
+when its storage receipt is malformed or differs from exact inline bytes. The
+invalid receipt is omitted; the sealed invoice remains successful. File archive
+journals keep this condition pending until copy repair returns a valid receipt.
+Managed-only readiness satisfies durable destination checks without a BYOS vault;
+signing and catalog reference checks remain independent. Malformed present
+capabilities block `diagnose()`; absent older routes are explicitly unknown.

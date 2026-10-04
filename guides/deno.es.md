@@ -3,12 +3,24 @@
 Para conocer las firmas públicas, alcances, valores predeterminados, efectos
 y mecanismos de recuperación, consulta la [referencia de métodos del SDK](reference.es.md).
 
-**Estado:** el código fuente y el tarball se verifican con Deno 2.6.6. La
-versión `0.1.0-beta.1` está publicada en npm, pero el paquete no está publicado
-en JSR. Se prepara la versión estable `0.1.0` de npm; estará disponible tras
-aprobar su staging.
+**Paquete y código:** [npm `@facta-dte/api`](https://www.npmjs.com/package/@facta-dte/api) · [repositorio público en GitHub](https://github.com/Facta-DTE/facta-api-sdk).
+
+**Selección de versión:** Esta documentación describe `0.1.1`. El [registro de npm](https://www.npmjs.com/package/@facta-dte/api?activeTab=versions) es la autoridad para las versiones publicadas y sus etiquetas. `latest` elige la versión estable aprobada. Confirme que la versión publicada instalada incluye un método antes de usarlo; valide las capacidades que solo estén en el código fuente con una copia empaquetada.
+
+El paquete oficial admite TypeScript y JavaScript. Los SDK de otros lenguajes están pendientes; los ejemplos HTTP directos no representan SDK publicados.
 
 ## Requisitos e instalación
+
+Consulte `npm view @facta-dte/api version dist-tags` y elija una versión publicada
+que incluya las capacidades requeridas. Cuando `0.1.1` esté disponible, fíjela
+en `deno.json`:
+
+```json
+{ "imports": { "@facta-dte/api": "npm:@facta-dte/api@0.1.1" } }
+```
+
+No hay paquete JSR. Guarde la versión elegida y el lockfile en el repositorio.
+
 
 - Deno 2.6.6.
 - Una llave de pruebas `facta_test_…` con scopes `issue`, `query` o `download`
@@ -26,10 +38,9 @@ pnpm test
 pnpm pack:check
 ```
 
-En el proyecto consumidor usa una versión aprobada y explícita, como
-`npm:@facta-dte/api@0.1.0` cuando se apruebe el release estable. Mientras tanto,
-la beta disponible es `npm:@facta-dte/api@0.1.0-beta.1`. Fija la versión elegida
-en `deno.json` y revisa el lockfile en control de versiones.
+Fije la versión publicada elegida en `deno.json` y guarde su lockfile.
+Valide capacidades ausentes de esa versión con `pnpm pack:check`; no use en la
+aplicación métodos que el paquete instalado no proporciona.
 
 ## Permisos mínimos
 
@@ -51,7 +62,17 @@ comando o config. No pases `-A` a una integración desplegada.
 ## Cliente y una factura de prueba
 
 ```ts
-import { Facta } from "npm:@facta-dte/api@0.1.0";
+// Importar el módulo no emite. Llama main() solo cuando quieras emitir una prueba.
+import { main } from "../examples/hola-factura.ts";
+await main();
+```
+
+Configura la base URL de staging y usa únicamente llaves `facta_test_`; esta
+llamada explícita consume una secuencia fiscal de prueba y requiere un
+`ERP_ORDER_ID` estable.
+
+```ts
+import { Facta } from "npm:@facta-dte/api@0.1.1";
 
 const facta = new Facta({
   apiKey: Deno.env.get("FACTA_API_KEY")!,
@@ -109,6 +130,32 @@ en el ambiente registrado solo advierte, porque el registro conserva el slot de
 carga como contexto. Las llaves antiguas sin metadatos de certificado siguen
 funcionando y muestran el chequeo como desconocido.
 
+## Almacenamiento administrado y recuperación
+
+Cuando el servidor publique la capacidad versión 1, revisa cobertura y cupo
+para el ambiente de la llave:
+
+```ts
+const storage = await facta.getStorageStatus();
+if (!storage.managed.ready && !storage.byos.ready) {
+  throw new Error("No hay un destino durable del servidor disponible");
+}
+
+const copies = await facta.getDocumentCopies({ generationCode });
+if (copies.some((copy) => copy.state !== "stored")) {
+  const receipt = await facta.retryDocumentStorage(generationCode);
+  // Repara el DTE sellado; nunca vuelve a emitirlo.
+  console.log(receipt.json.state, receipt.pdf.state);
+}
+```
+
+Las empresas administradas no configuran claves de bucket en el SDK. La API
+obtiene empresa y ambiente de la llave y llama al Worker con autenticación
+interna. Los resultados del storage administrado, del archivo cifrado local y
+de BYOS son independientes. En servidores anteriores, `storage_unsupported`
+indica que falta el contrato; el diagnóstico lo deja como desconocido. Solo se
+guardan JSON/PDF, no tickets ni anulaciones.
+
 ## Descargar y archivar artefactos
 
 JSON y PDF son bytes separados; el SDK no reconstruye ni imprime el PDF:
@@ -136,7 +183,7 @@ deno run \
 
 Para conservar cifrados los artefactos JSON, PDF, JWS y ticket, y recuperarlos
 tras reinicios, importa `FileInvoiceArchive` desde
-`npm:@facta-dte/api/file-archive` cuando el paquete se publique. Este adaptador usa
+`npm:@facta-dte/api/file-archive` del paquete publicado; fije la versión elegida. Este adaptador usa
 compatibilidad con `node:fs/promises`; concede `--allow-read` y `--allow-write`
 solo al directorio del archivo. La frase de cifrado debe ser aleatoria, guardarse
 en un gestor de secretos separado y ser distinta de `FACTA_UNLOCK_KEY`. Los
@@ -166,6 +213,7 @@ const archive = await FileInvoiceArchive.open({
 });
 
 const issued = await facta.issueAndArchive(request, {
+  includeTicket: false,
   archive,
   operationId: erpOrderId,
   idempotencyKey: erpOrderId,
@@ -176,7 +224,6 @@ Anulación también se journaliza antes de enviarse. Tras reiniciar el proceso,
 reutiliza el journal y recupera cada operación pendiente con su clave original:
 
 ```ts
-const generationCode = result.codigoGeneracion;
 const generationCode = result.codigoGeneracion;
 const invalidation = await facta.invalidateAndArchive(generationCode, request, {
   archive,

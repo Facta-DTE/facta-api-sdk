@@ -194,6 +194,14 @@ export interface SealedDte {
   /** Archive THIS. Re-serializing `documento` does not reproduce the bytes
    * whose signature Hacienda validated. */
   jws: string;
+  /** Exact server-generated JSON archive contents; persist this verbatim. */
+  archivoJson?: string;
+  /** Server-rendered PDF as base64, present after a successful seal. */
+  representacionGrafica?: string | null;
+  /** Facta-managed durable copies; absent on older API servers. */
+  storage?: ManagedStorageReceipt;
+  /** Fiscal success is preserved when an attached storage receipt is malformed. */
+  storageErrorCode?: "storage_contract_invalid";
 }
 
 export interface DteInContingency {
@@ -207,9 +215,72 @@ export interface DteInContingency {
   detalle: string;
   documento: Record<string, unknown>;
   jws: string;
+  /** Exact server-generated JSON archive contents; persist this verbatim. */
+  archivoJson?: string;
+  /** Storage is not committed until Hacienda returns a seal. */
+  storage?: ManagedStorageReceipt;
+  /** Fiscal success is preserved when an attached storage receipt is malformed. */
+  storageErrorCode?: "storage_contract_invalid";
 }
 
 export type IssueResult = SealedDte | DteInContingency;
+
+export type ManagedStorageArtifactState = "stored" | "pending" | "failed" | "not_configured" | "unsupported";
+
+export interface ManagedStorageArtifactReceipt {
+  state: ManagedStorageArtifactState;
+  sha256: string | null;
+  bytes: number | null;
+  storedAt: string | null;
+  errorCode: string | null;
+  retryable: boolean;
+}
+
+export interface ManagedStorageReceipt {
+  destination: "managed" | "none";
+  environment: "00" | "01";
+  json: ManagedStorageArtifactReceipt;
+  pdf: ManagedStorageArtifactReceipt;
+  operationId: string;
+}
+
+export interface ManagedStorageStatus {
+  capabilityVersion: 1;
+  managed: {
+    configured: boolean;
+    ready: boolean;
+    state: string;
+    integration: "ready" | "unavailable";
+    quotaBytes: number | null;
+    usedBytes: number | null;
+    reservedBytes: number | null;
+    usedBytesTotal: number | null;
+    reservedBytesTotal: number | null;
+    coveredUntil: string | null;
+    accessUntil: string | null;
+    bucketState: string | null;
+    backupState: string | null;
+  };
+  byos: { ready: boolean };
+  supportedKinds: Array<"json" | "pdf">;
+  unsupportedKinds: Array<"ticket" | "invalidation">;
+}
+
+export interface ManagedDocumentCopy {
+  generationCode: string;
+  kind: "json" | "pdf";
+  environment: "00" | "01";
+  state: "stored" | "pending" | "failed";
+  bytes: number;
+  sha256: string;
+  issuedDate: string;
+  storedAt: string | null;
+}
+
+export interface ManagedDocumentCopies {
+  capabilityVersion: 1;
+  copies: ManagedDocumentCopy[];
+}
 
 export interface PreparedDte {
   estado: "preparado";
@@ -263,7 +334,8 @@ export interface ListedDte {
   horEmi?: string;
   selloRecibido?: string | null;
   totales?: { totalGravada?: number; totalIva?: number; totalPagar?: number };
-  receptor?: { nombre?: string | null; numDocumento?: string | null };
+  /** Null when this document’s receiver metadata cannot be opened by the API. */
+  receptor?: { nombre?: string | null; numDocumento?: string | null } | null;
 }
 
 export interface DtePage {
@@ -329,6 +401,8 @@ export interface DownloadedDocument {
   bytes: Uint8Array;
   contentType: string;
   filename: string | null;
+  /** Source selected by the API. Missing on servers predating source reporting. */
+  storageSource?: "managed" | "holding" | "archive";
   /** Present for tickets; defaults to 80 mm when not requested. */
   paperWidthMm?: number;
 }
@@ -384,6 +458,8 @@ export interface Status {
   };
   /** Published/current revisions for signing, storage destinations, and the encrypted catalog. */
   sincronizacion?: ApiSyncStatus | null;
+  /** Absent on older servers; use getStorageStatus() to negotiate the contract. */
+  storage?: ManagedStorageStatus;
   limites: {
     hora: RateLimitWindow | null;
     dia: RateLimitWindow | null;

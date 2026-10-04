@@ -35,6 +35,9 @@ export type FactaErrorCode =
   | "correlative_unavailable"
   | "service_unavailable"
   | "no_storage_destination"
+  | "storage_unsupported"
+  | "storage_unavailable"
+  | "storage_contract_invalid"
   | "internal_error"
   /** A fiscal invalidation may have completed, but its signed event was not recoverable. */
   | "operation_outcome_unknown"

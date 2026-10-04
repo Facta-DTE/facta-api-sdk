@@ -345,6 +345,53 @@ Deno.test("ticket width validation happens before any request", async () => {
   assertEquals(calls.length, 0);
 });
 
+Deno.test("storage capability, copy status, and repair use additive API routes", async () => {
+  const generationCode = "33333333-3333-4333-8333-333333333333";
+  const receipt = {
+    destination: "managed",
+    environment: "00",
+    operationId: generationCode,
+    json: { state: "stored", sha256: "a".repeat(64), bytes: 82, storedAt: "2026-10-03T12:00:00Z", errorCode: null, retryable: false },
+    pdf: { state: "pending", sha256: "b".repeat(64), bytes: 512, storedAt: null, errorCode: "worker_unavailable", retryable: true },
+  } as const;
+  const status = {
+    capabilityVersion: 1,
+    managed: {
+      configured: true, ready: true, state: "ready", integration: "ready",
+      quotaBytes: 1000, usedBytes: 82, reservedBytes: 512, usedBytesTotal: 82,
+      reservedBytesTotal: 512, coveredUntil: null, accessUntil: null,
+      bucketState: "ready", backupState: "not_required",
+    },
+    byos: { ready: false }, supportedKinds: ["json", "pdf"], unsupportedKinds: ["ticket", "invalidation"],
+  };
+  const copies: import("../src/types.ts").ManagedDocumentCopy[] = [{ generationCode, kind: "pdf", environment: "00", state: "pending", bytes: 512, sha256: "b".repeat(64), issuedDate: "2026-10-03", storedAt: null }];
+  const { fetch, calls } = fakeFetch([
+    { status: 200, body: status },
+    { status: 200, body: { capabilityVersion: 1, copies } },
+    { status: 200, body: { codigoGeneracion: generationCode, storage: receipt } },
+  ]);
+  const facta = new Facta({ apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch });
+  assertEquals((await facta.getStorageStatus()).managed.ready, true);
+  assertEquals(await facta.getDocumentCopies({ generationCode }), copies);
+  assertEquals(await facta.retryDocumentStorage(generationCode), receipt);
+  assertEquals(calls.map((call) => `${call.method} ${new URL(call.url).pathname.replace("/functions/v1/api-v1", "")}`), [
+    "GET /v1/storage/status",
+    "GET /v1/storage/copies",
+    "POST /v1/storage/copies/33333333-3333-4333-8333-333333333333/repair",
+  ]);
+  assertEquals(calls[1].url.endsWith(`?generationCode=${generationCode}`), true);
+});
+
+Deno.test("older storage routes report unsupported instead of malformed success", async () => {
+  const { fetch } = fakeFetch([{
+    status: 404,
+    body: { error: { code: "not_found", message: "route not found" } },
+  }]);
+  const facta = new Facta({ apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch });
+  const error = await assertRejects(() => facta.getStorageStatus(), FactaError);
+  assertEquals(error.code, "storage_unsupported");
+});
+
 function factaBase(_client: Facta): string {
   return "https://hcnvknpsbadplnfcflxx.supabase.co/functions/v1/api-v1";
 }
@@ -384,4 +431,71 @@ Deno.test("flat network options use the same validation as versioned config", ()
     () => new Facta({ apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", timeoutMs: 0 }),
     TypeError,
   );
+});
+
+Deno.test("query and listing preserve unavailable historical receiver metadata without catalog requests", async () => {
+  const document = { ...SEALED, receptor: { nombre: null, numDocumento: null } };
+  const { fetch, calls } = fakeFetch([
+    { status: 200, body: document },
+    { status: 200, body: { documentos: [document, { ...document, receptor: null }], siguiente: null } },
+  ]);
+  const facta = new Facta({ apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch });
+  assertEquals((await facta.getDocumentStatus(document.codigoGeneracion)).receptor, { nombre: null, numDocumento: null });
+  const listed = await facta.listDocuments();
+  assertEquals(listed.documentos[0].receptor, { nombre: null, numDocumento: null });
+  assertEquals(listed.documentos[1].receptor, null);
+  assertEquals(calls.length, 2);
+  assertEquals(calls.every((call) => call.method === "GET" && !call.url.includes("/vault/")), true);
+});
+
+Deno.test("malformed attached receipt preserves fiscal success with a typed storage error and no retry", async () => {
+  const { fetch, calls } = fakeFetch([{ status: 200, body: { ...SEALED, storage: { destination: "managed" } } }]);
+  const result = await new Facta({ apiKey: "facta_test_a.secret", fetch }).issue(VENTA, { idempotencyKey: "stable-order" });
+  assertEquals(result.estado, "sellado");
+  assertEquals(result.storage, undefined);
+  assertEquals(result.storageErrorCode, "storage_contract_invalid");
+  assertEquals(calls.length, 1);
+});
+
+Deno.test("copies reject malformed hashes, negative bytes, wrong environment and wrong document", async () => {
+  const generationCode = "33333333-3333-4333-8333-333333333333";
+  const copy = { generationCode, kind: "json", environment: "00", state: "stored", bytes: 12, sha256: "a".repeat(64), issuedDate: "2026-10-03", storedAt: "2026-10-03T12:00:00Z" };
+  for (const override of [{ sha256: "bad" }, { bytes: -1 }, { environment: "01" }, { generationCode: "44444444-4444-4444-8444-444444444444" }, { storedAt: null }]) {
+    const { fetch } = fakeFetch([{ status: 200, body: { capabilityVersion: 1, copies: [{ ...copy, ...override }] } }]);
+    const error = await assertRejects(() => new Facta({ apiKey: "facta_test_a.secret", fetch }).getDocumentCopies({ generationCode }), FactaError);
+    assertEquals(error.code, "storage_contract_invalid");
+  }
+});
+
+Deno.test("repair rejects contradictory receipts and mismatched environments without issuance", async () => {
+  const generationCode = "33333333-3333-4333-8333-333333333333";
+  const artifact = { state: "stored", sha256: "a".repeat(64), bytes: 12, storedAt: "2026-10-03T12:00:00Z", errorCode: null, retryable: false };
+  const receipt = { operationId: generationCode, environment: "00", destination: "managed", json: artifact, pdf: artifact };
+  for (const invalid of [{ ...receipt, destination: "none" }, { ...receipt, environment: "01" }, { ...receipt, json: { ...artifact, sha256: null } }, { ...receipt, pdf: { ...artifact, bytes: -1 } }]) {
+    const { fetch, calls } = fakeFetch([{ status: 200, body: { storage: invalid } }]);
+    const error = await assertRejects(() => new Facta({ apiKey: "facta_test_a.secret", fetch }).retryDocumentStorage(generationCode), FactaError);
+    assertEquals(error.code, "storage_contract_invalid");
+    assertEquals(calls.every((call) => call.url.endsWith('/repair')), true);
+  }
+});
+
+Deno.test("explicit managed downloads demand source proof and never accept holding fallback", async () => {
+  for (const source of ["managed", "holding", undefined]) {
+    const calls: string[] = [];
+    const fetch = (async (url: RequestInfo | URL) => {
+      calls.push(String(url));
+      return new Response("%PDF-exact", { headers: { "content-type": "application/pdf", ...(source ? { "x-facta-storage-source": source } : {}) } });
+    }) as typeof globalThis.fetch;
+    const facta = new Facta({ apiKey: "facta_test_a.secret", fetch });
+    if (source === "managed") {
+      assertEquals((await facta.downloadDocument("existing", "pdf", { source: "managed" })).storageSource, "managed");
+    } else {
+      const error = await assertRejects(() => facta.downloadDocument("existing", "pdf", { source: "managed" }), FactaError);
+      assertEquals(error.code, source ? "storage_contract_invalid" : "storage_unsupported");
+    }
+    assertEquals(calls[0].endsWith('?kind=pdf&source=managed'), true);
+    const count = calls.length;
+    await assertRejects(() => facta.downloadDocument("existing", "ticket", { source: "managed" }), TypeError);
+    assertEquals(calls.length, count);
+  }
 });

@@ -10,13 +10,18 @@ El único cliente oficial. Node 22 y 24, y también Deno y Bun: `fetch` y `crypt
 
 ## Instalación
 
-> **Estado:** `0.1.0-beta.1` está publicada en npm. La versión estable `0.1.0` está en preparación y estará disponible tras aprobar su staging.
+**Paquete y código:** [npm `@facta-dte/api`](https://www.npmjs.com/package/@facta-dte/api) · [repositorio público en GitHub](https://github.com/Facta-DTE/facta-api-sdk).
+
+**Selección de versión:** Esta documentación describe `0.1.1`. El [registro de npm](https://www.npmjs.com/package/@facta-dte/api?activeTab=versions) es la autoridad para las versiones publicadas y sus etiquetas. `latest` elige la versión estable aprobada. Confirme que la versión publicada instalada incluye un método antes de usarlo; valide las capacidades que solo estén en el código fuente con una copia empaquetada.
+
+El paquete oficial admite TypeScript y JavaScript. Los SDK de otros lenguajes están pendientes; los ejemplos HTTP directos no representan SDK publicados.
 
 ```sh
-# Para usar la beta publicada:
-pnpm add @facta-dte/api@0.1.0-beta.1
-# Después de aprobar el release estable:
-pnpm add @facta-dte/api@0.1.0
+# Verificar versiones y etiquetas, luego instalar la versión estable aprobada:
+npm view @facta-dte/api version dist-tags
+pnpm add @facta-dte/api
+# Opcional: fijar 0.1.1 después de verificar que está publicada:
+pnpm add @facta-dte/api@0.1.1
 ```
 
 ## Configuración
@@ -62,6 +67,7 @@ Los tipos públicos viven en `src/types.ts` y se exportan desde `mod.ts`. Para e
 | `RelatedDocument`, `ExportDetails` | Documentos corregidos en notas 05/06 y datos de exportación 11. |
 | `LineItem` | Una línea de la venta. `cantidad` siempre se envía; `productId` permite resolver descripción, precio, tipo de artículo y unidad del catálogo cifrado. |
 | `IssueResult` | Unión discriminada por `estado`: `SealedDte` o `DteInContingency`. |
+| `ManagedStorageStatus`, `ManagedStorageReceipt`, `ManagedDocumentCopy` | Capacidad v1 y estados/digests de copias JSON/PDF administradas. No contienen rutas de objetos ni enlaces. |
 | `PreparedDte`, `DocumentStatus`, `InvalidationResult`, `DtePage`, `HoldingPage` | Resultados de prepare, getDocumentStatus, anular, listar y recuperar documentos. |
 | `Status`, `RateLimitWindow`, `Totals`, `FactaError` | Estado de llave, límites, importes calculados por el servidor y errores tipados. |
 
@@ -186,7 +192,10 @@ Revisa la disponibilidad de la API, el emisor, el alcance para el tipo de DTE,
 las revisiones de firma/destinos/catálogo y los datos públicos del certificado
 cuando están registrados. Puede recibir `{ dteType, archive }` para comprobar
 el tipo de DTE y el archivo local. No abre vaults ni reserva un correlativo.
-Devuelve `canIssue`, `canQuery`, `canDownload`, `canIssueAndArchive`, las
+También consulta la capacidad de almacenamiento administrado. Si el servidor
+es anterior o falta el alcance, esa capacidad queda desconocida y no se reporta
+como copia durable. Devuelve `storageReady` (`true`, `false` o `null`),
+`canIssue`, `canQuery`, `canDownload`, `canIssueAndArchive`, las
 comprobaciones y el conteo de operaciones pendientes del archivo; ese conteo
 es `null` si no se pasó archivo o no se pudo leer su journal. Si falla la
 consulta de estado, devuelve un informe bloqueado con el código seguro del
@@ -300,8 +309,10 @@ try {
 Emite y conserva una copia cifrada recuperable. Requiere un `InvoiceArchive`,
 un `operationId` estable y un `idempotencyKey` estable. El SDK comprueba que el
 archivo pueda escribir antes de pedir un correlativo y conserva los bytes
-exactos del JSON, PDF, JWS y ticket. La descarga o el guardado posterior pueden
-fallar aunque Hacienda ya haya aceptado la factura: revise
+exactos del JSON firmado y del PDF devueltos por el servidor, sin volver a
+solicitarlos. Deriva el JWS del JSON y solo descarga el ticket opcional. Las
+respuestas antiguas de la API que no incluyan esos archivos usan la descarga
+como compatibilidad. El guardado posterior puede fallar aunque Hacienda ya haya aceptado la factura: revise
 `result.archive.state` y `result.archive.detail` por separado del resultado
 fiscal.
 
@@ -476,7 +487,7 @@ fiscal antes de volver a actuar.
 
 **No manda la llave de firma.** Devuelve `DownloadedDocument`.
 
-Devuelve los bytes exactos de `json`, `pdf` o `ticket`, sin parsearlos ni volver a serializarlos. El tipo predeterminado es `json`; exige el alcance `download`. El ticket se genera desde un DTE ya sellado y admite `paperWidthMm` entero de 40 a 120 (80 por defecto), sin issue de nuevo. Esta regeneración está disponible para DTE emitidos por la API, no para los que se emitieron desde la app web. El área de retención dura una hora desde la firma, pero **pasada esa hora la ruta sigue contestando**: el documento se rearma desde la reserva, que guarda el JWS sellado.
+Devuelve los bytes exactos de `json`, `pdf` o `ticket`, sin parsearlos ni volver a serializarlos. El tipo predeterminado es `json`; exige el alcance `download`. `storageSource` informa `managed`, `holding` o `archive` si el servidor identifica el origen. El ticket se genera desde un DTE ya sellado y admite `paperWidthMm` entero de 40 a 120 (80 por defecto), sin issue de nuevo. Esta regeneración está disponible para DTE emitidos por la API, no para los que se emitieron desde la app web. El área de retención dura una hora desde la firma, pero **pasada esa hora la ruta sigue contestando**: el documento se rearma desde la reserva, que guarda el JWS sellado.
 
 ```typescript
 const archivo = await facta.downloadDocument(dte.codigoGeneracion, "json");
@@ -597,6 +608,7 @@ Los tipos se leen del contrato TypeScript (`mod.ts`), no de un `.d.ts` generado.
 - `DteRequest`, `LineItem`, `Recipient` — lo que se manda.
 - `IssueResult = SealedDte | DteInContingency` — la unión que obliga a mirar el `estado` antes de leer `totales`.
 - `PreparedDte`, `DocumentStatus`, `InvalidationResult`, `DtePage`, `HoldingPage`.
+- `ManagedStorageStatus`, `ManagedStorageReceipt`, `ManagedDocumentCopy` — capacidad y copias administradas JSON/PDF, sin rutas ni enlaces.
 - `Status`, `RateLimitWindow` — lo que devuelve `status()`.
 - `FactaError`, `FactaErrorCode`, `SpentCorrelative`.
 
@@ -604,6 +616,14 @@ Los tipos se leen del contrato TypeScript (`mod.ts`), no de un `.d.ts` generado.
 
 1. **No calcula dinero.** Ni IVA, ni retenciones, ni totales, ni el número de control, ni fechas fiscales. Todo eso lo produce el servidor y el cliente lo transporta. Un SDK que calcule dinero es un segundo motor fiscal, y dos motores se desincronizan el primer martes.
 2. **No firma.** El certificado no pasa por aquí en ningún momento. Lo que sí pasa, en las rutas que firman, es `X-Facta-Sign-Key`: la contraseña que abre el vault *en el servidor*. El cliente la reenvía y no hace nada con ella.
-3. **No elige su almacenamiento por usted.** `FileInvoiceArchive` guarda copias cifradas recuperables en el proceso integrador y los adaptadores de destinos replican archivos a proveedores compatibles. Sin llamar a `issueAndArchive()` o `replicateArchive()`, `downloadDocument()` solo le entrega los bytes. La impresora y el envío por WhatsApp requieren transportes separados; el SDK no afirma que un archivo quedó impreso o entregado.
+3. **No abre las credenciales de su almacenamiento administrado.** Facta guarda JSON/PDF de forma administrada en el servidor cuando el contrato API-key-scoped está disponible. `FileInvoiceArchive` conserva una copia cifrada local y los adaptadores BYOS replican bytes a proveedores del integrador. Sus estados son independientes; el SDK no recibe secretos R2. La impresora y el envío por WhatsApp requieren transportes separados.
 
 Una prueba de arquitectura del propio paquete falla si alguna de las dos primeras deja de ser cierta.
+
+Una respuesta fiscal exitosa puede incluir `storageErrorCode: "storage_contract_invalid"`
+si el recibo de almacenamiento es inválido o no coincide con los bytes exactos
+recibidos. Se omite ese recibo y se conserva el éxito fiscal. El archivo cifrado
+mantiene la condición pendiente hasta obtener un recibo válido por reparación.
+Facta listo satisface el destino duradero sin una bóveda BYOS; la firma y las
+referencias del catálogo conservan sus comprobaciones. Una capacidad presente
+pero inválida bloquea `diagnose()`; las rutas anteriores ausentes quedan como desconocidas.

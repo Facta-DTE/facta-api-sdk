@@ -21,6 +21,8 @@ export interface DiagnosticsReport {
   canQuery: boolean;
   canDownload: boolean;
   canIssueAndArchive: boolean;
+  /** Null when the server predates the managed-storage capability or cannot be checked. */
+  storageReady?: boolean | null;
   /** Null when no archive was supplied or its journal could not be read. */
   pendingArchiveOperations: number | null;
   /** Public revision numbers only; no encrypted vault data. */
@@ -207,6 +209,7 @@ function checkSigningCertificate(status: Status, checks: DiagnosticCheck[]): boo
 export async function diagnoseStatus(
   status: Status,
   options: DiagnoseOptions = {},
+  managedStorageReady = false,
 ): Promise<DiagnosticsReport> {
   const checks: DiagnosticCheck[] = [];
   const apiOk = status.ok === true;
@@ -372,13 +375,22 @@ export async function diagnoseStatus(
   }
 
   const sync = status.sincronizacion;
-  const signingSyncOk = checkRevision(
+  // The original public status response did not expose revision metadata.
+  // Only a wholly absent block identifies that contract; null or incomplete
+  // modern metadata must still fail closed through checkRevision.
+  const legacySyncContract = sync === undefined;
+  if (legacySyncContract) {
+    add(checks, "sign-sync", "warning", "API does not publish synchronization revisions; signing provisioning is checked using the legacy status contract.");
+    add(checks, "destinations-sync", "warning", "API does not publish destination revisions; legacy status compatibility applies.");
+  }
+  const signingSyncOk = legacySyncContract || checkRevision(
     checks,
     "sign-sync",
     sync?.sign,
     "Signing vault",
   );
-  const destinationsOk = checkRevision(
+  if (managedStorageReady) add(checks, "destinations-sync", "ok", "Facta-managed storage is ready; BYOS vault synchronization is optional.");
+  const destinationsOk = managedStorageReady || legacySyncContract || checkRevision(
     checks,
     "destinations-sync",
     sync?.destinations,
