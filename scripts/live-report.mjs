@@ -34,13 +34,21 @@ const STATES = new Set([
   "Passed (test fixture sealed)",
 ]);
 const ERROR_CODES = new Set([
-  "not_found", "service_unavailable", "invalid_request", "unauthorized",
-  "forbidden", "rate_limit_exceeded", "archive_integrity_error", "validation_failed",
-  "no_storage_destination", "sign_vault_missing",
+  // Stable public API codes from the server error taxonomy.
+  "unauthorized", "invalid_api_key", "key_revoked", "key_expired", "key_inactive",
+  "forbidden_scope", "dte_type_not_allowed", "ip_not_allowed", "environment_not_allowed",
+  "sign_key_required", "sign_key_invalid", "sign_vault_locked", "sign_vault_missing",
+  "invalid_request", "validation_failed", "not_found", "method_not_allowed",
+  "idempotency_key_required", "idempotency_key_reuse", "idempotency_in_flight",
+  "prepare_token_invalid", "rate_limited", "amount_limit", "mh_rejected",
+  "mh_unreachable", "correlative_unavailable", "no_storage_destination",
+  "service_unavailable", "internal_error",
+  // Stable SDK-local codes.
+  "archive_integrity_error", "network_error", "operation_outcome_unknown",
   "readiness_blocked", "catalog_read_failed",
   "storage_unsupported", "storage_unavailable", "storage_contract_invalid",
   "fixture_required", "fixture_invalid", "permission_missing", "related_document_invalid",
-  "idempotency_window_expired",
+  "idempotency_window_expired", "assertion_failed",
 ]);
 
 export function createValidationResults() {
@@ -48,6 +56,11 @@ export function createValidationResults() {
 }
 
 export function safeFailureCode(error) {
+  // Node's assert module uses ERR_ASSERTION. Publish only a fixed category;
+  // its message and actual/expected values may contain fiscal data.
+  if (error?.code === "ERR_ASSERTION" || error?.name === "AssertionError") {
+    return "assertion_failed";
+  }
   return ERROR_CODES.has(error?.code) ? error.code : "validation_failed";
 }
 
