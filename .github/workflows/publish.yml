@@ -1,4 +1,4 @@
-name: Stage npm release
+name: Publish npm release
 
 on:
   push:
@@ -10,8 +10,8 @@ permissions:
   id-token: write
 
 jobs:
-  stage-release:
-    name: Validate and stage package
+  publish-release:
+    name: Validate and publish package
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -72,5 +72,5 @@ jobs:
       - name: Use npm CLI with trusted publishing support
         run: npm install --global npm@11.21.0
 
-      - name: Stage package for manual npm approval
-        run: npm stage publish --access public --tag "${{ steps.release.outputs.dist_tag }}"
+      - name: Publish package with trusted publishing
+        run: npm publish --access public --tag "${{ steps.release.outputs.dist_tag }}"

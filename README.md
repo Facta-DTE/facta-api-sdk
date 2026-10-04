@@ -215,3 +215,16 @@ Ticket/invalidation and six fiscal variants still need explicitly designated
 fixtures and their fiscal prerequisites before a live support claim.
 
 Use `downloadDocument(generationCode, "pdf", { source: "managed" })` to require a managed JSON/PDF copy without holding fallback. Ticket requests reject this option locally; an older server without source proof returns `storage_unsupported`. The default download order is unchanged.
+
+## Release automation
+
+Maintainers publish from the `publish.yml` GitHub Actions workflow in
+`Facta-DTE/facta-api-sdk` using npm Trusted Publishing (OIDC), without a saved
+npm publishing token. The trusted publisher must permit direct `npm publish`.
+A `v<package-version>` tag triggers tests, packed-consumer verification and
+publication. The tagged commit must belong to `main` and match `package.json`.
+Stable versions use `latest`; prereleases use their prerelease tag.
+
+Merge and validate a release on `main`, then push a new version tag. Never move
+an existing release tag or try to republish a published version. The workflow
+publishes directly; there is no separate npm staged-package approval step.

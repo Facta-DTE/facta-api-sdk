@@ -962,3 +962,17 @@ los seis tipos fiscales requieren documentos designados y condiciones fiscales
 válidas para afirmar que se probaron en vivo.
 
 Use `downloadDocument(generationCode, "pdf", { source: "managed" })` para exigir la copia JSON/PDF de Facta sin recurrir a retención. Esta opción no admite tickets; un servidor anterior sin prueba de origen devuelve `storage_unsupported`. Se conserva el orden de descarga predeterminado.
+
+## Publicación automatizada
+
+La publicación se realiza desde el workflow `publish.yml` de GitHub Actions
+en `Facta-DTE/facta-api-sdk`, con Trusted Publishing de npm (OIDC), sin guardar
+un token de publicación. El editor de confianza debe permitir `npm publish`.
+Un tag `v<versión-del-paquete>` ejecuta las pruebas, valida el paquete en
+consumidores independientes y lo publica. El commit debe pertenecer a `main`
+y su versión debe coincidir con `package.json`. Las versiones estables usan
+`latest`; las preliminares usan su propio tag.
+
+Integre y valide la versión en `main` antes de enviar un tag nuevo. No mueva
+un tag existente ni intente volver a publicar una versión ya publicada. El
+workflow publica directamente, sin una aprobación separada en npm.
