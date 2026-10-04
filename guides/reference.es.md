@@ -10,13 +10,17 @@ El único cliente oficial. Node 22 y 24, y también Deno y Bun: `fetch` y `crypt
 
 ## Instalación
 
-> **Estado:** `0.1.0-beta.1` está publicada en npm. La versión estable `0.1.0` está en preparación y estará disponible tras aprobar su staging.
+**Paquete y código:** [npm `@facta-dte/api`](https://www.npmjs.com/package/@facta-dte/api) · [repositorio público en GitHub](https://github.com/Facta-DTE/facta-api-sdk).
+
+**Estado de publicación:** `latest` de npm es `0.1.0`. La versión `0.1.1` está preparada para la próxima publicación estable y sigue pendiente de aprobación y publicación en npm. Esta guía incluye capacidades del código fuente `0.1.1`; valídelas con el artefacto empaquetado hasta verificar su publicación. Una copia del código fuente no publica una versión.
+
+El paquete oficial admite TypeScript y JavaScript. Los SDK de otros lenguajes están pendientes; los ejemplos HTTP directos no representan SDK publicados.
 
 ```sh
-# Para usar la beta publicada:
-pnpm add @facta-dte/api@0.1.0-beta.1
-# Después de aprobar el release estable:
-pnpm add @facta-dte/api@0.1.0
+# Instalar la versión estable publicada actualmente:
+pnpm add @facta-dte/api
+# Fijar la próxima versión solo después de aprobar y verificar su publicación:
+pnpm add @facta-dte/api@0.1.1
 ```
 
 ## Configuración

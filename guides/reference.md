@@ -1,5 +1,19 @@
 # TypeScript SDK method reference
 
+**Package and source:** [npm `@facta-dte/api`](https://www.npmjs.com/package/@facta-dte/api) · [public GitHub repository](https://github.com/Facta-DTE/facta-api-sdk).
+
+**Release status:** npm `latest` is `0.1.0`. Version `0.1.1` is prepared for the next stable release and remains pending release approval and npm publication. This guide includes `0.1.1` source capabilities; validate them with the packed source artifact until publication is verified. A source checkout does not publish a release.
+
+The official package supports TypeScript and JavaScript. SDKs for other languages are pending; direct HTTP examples do not represent published SDKs.
+
+```sh
+# Install the currently published stable release:
+pnpm add @facta-dte/api
+# Pin the planned release only after its npm publication is approved and verified:
+pnpm add @facta-dte/api@0.1.1
+```
+
+
 This reference describes the public methods exported by `@facta-dte/api`. The
 installed package declarations are authoritative for exact TypeScript types;
 the [published OpenAPI contract](https://hcnvknpsbadplnfcflxx.supabase.co/functions/v1/api-v1/v1/openapi.json) is authoritative

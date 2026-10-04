@@ -4,7 +4,12 @@ The official TypeScript and JavaScript client for Facta's electronic tax documen
 
 Read the [Spanish README](README.es.md). The full [method reference](guides/reference.md) documents each public method's arguments, return value, required scope, side effects, errors, retries, and recovery behavior. The [published API contract](https://hcnvknpsbadplnfcflxx.supabase.co/functions/v1/api-v1/v1/openapi.json) remains authoritative for HTTP fields and responses.
 
-> **Publication status:** npm `latest` is `0.1.0` (the `beta` tag is `0.1.0-beta.1`). This checkout is `0.1.1` source and is unreleased. Managed-storage methods in this branch are not available from the current npm package; use the packed branch artifact for validation after the server contract is deployed. No release is implied by this checkout.
+**Package and source:** [npm `@facta-dte/api`](https://www.npmjs.com/package/@facta-dte/api) · [public GitHub repository](https://github.com/Facta-DTE/facta-api-sdk).
+
+**Release status:** npm `latest` is `0.1.0`. Version `0.1.1` is prepared for the next stable release and remains pending release approval and npm publication. This guide includes `0.1.1` source capabilities; validate them with the packed source artifact until publication is verified. A source checkout does not publish a release.
+
+The official package supports TypeScript and JavaScript. SDKs for other languages are pending; direct HTTP examples do not represent published SDKs.
+
 
 > **License:** MIT. See [LICENSE](LICENSE).
 
@@ -15,6 +20,14 @@ The SDK root entry works in Node.js 22+, Deno, and Bun and does not eagerly impo
 The portable client relies on standard `fetch`, Web Crypto, `AbortSignal`, and `crypto.randomUUID`. Every request uses the configured API endpoint; a `facta_test_` key selects Hacienda's test environment at that same endpoint. There is no separate staging API URL.
 
 ## Quick start
+
+```sh
+# Install the currently published stable release:
+pnpm add @facta-dte/api
+# Pin the planned release only after its npm publication is approved and verified:
+pnpm add @facta-dte/api@0.1.1
+```
+
 
 ```ts
 import { Facta, type DteRequest } from "@facta-dte/api";

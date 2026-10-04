@@ -4,12 +4,23 @@ For exact public method signatures, scopes, defaults, side effects, and
 recovery behavior, see the [SDK method reference](reference.md). Read the
 [Spanish guide](deno.es.md) for the Spanish version.
 
-**Published package:** npm `latest` is `0.1.0`, and `0.1.0-beta.1` has the
-`beta` tag; there is no JSR package. This checkout contains unreleased `0.1.1`
-source. Its managed-storage methods require the packed branch artifact and are
-not in the current npm release.
+**Package and source:** [npm `@facta-dte/api`](https://www.npmjs.com/package/@facta-dte/api) · [public GitHub repository](https://github.com/Facta-DTE/facta-api-sdk).
+
+**Release status:** npm `latest` is `0.1.0`. Version `0.1.1` is prepared for the next stable release and remains pending release approval and npm publication. This guide includes `0.1.1` source capabilities; validate them with the packed source artifact until publication is verified. A source checkout does not publish a release.
+
+The official package supports TypeScript and JavaScript. SDKs for other languages are pending; direct HTTP examples do not represent published SDKs.
 
 ## Requirements and installation
+
+Use `npm:@facta-dte/api@0.1.0` for the currently published stable version. After
+`0.1.1` publication is approved and verified, pin it in `deno.json`:
+
+```json
+{ "imports": { "@facta-dte/api": "npm:@facta-dte/api@0.1.1" } }
+```
+
+There is no JSR package. Commit the selected version and lockfile.
+
 
 - Deno 2.6.6.
 - A test key `facta_test_…` with `issue`, `query`, or `download` scopes,
@@ -31,7 +42,7 @@ pnpm pack:check
 ```
 
 In consumer projects, pin `npm:@facta-dte/api@0.1.0` for the current stable
-release, or the beta tag intentionally. That published version does not
+release, and use the planned `0.1.1` pin only after verified publication. That published version does not
 contain this branch's managed-storage methods. Validate those against the
 unreleased branch tarball with `pnpm pack:check`; do not point a live consumer
 at unpublished methods. Pin the selected npm version in `deno.json` and check
@@ -187,7 +198,7 @@ deno run \
 
 For encrypted retention of JSON, PDF, JWS, and ticket artifacts, and recovery
 between restarts, import `FileInvoiceArchive` from
-`npm:@facta-dte/api/file-archive` when the package is published. This adapter uses
+`npm:@facta-dte/api/file-archive` from the published package; pin the selected package version. This adapter uses
 `node:fs/promises` compatibility; grant `--allow-read` and `--allow-write` only
 for the archive directory. Its passphrase should be random, stored in a
 separate secret manager, and different from `FACTA_UNLOCK_KEY`. Writers are
