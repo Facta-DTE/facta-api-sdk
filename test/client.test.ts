@@ -447,3 +447,34 @@ Deno.test("query and listing preserve unavailable historical receiver metadata w
   assertEquals(calls.length, 2);
   assertEquals(calls.every((call) => call.method === "GET" && !call.url.includes("/vault/")), true);
 });
+
+Deno.test("malformed attached receipt preserves fiscal success with a typed storage error and no retry", async () => {
+  const { fetch, calls } = fakeFetch([{ status: 200, body: { ...SEALED, storage: { destination: "managed" } } }]);
+  const result = await new Facta({ apiKey: "facta_test_a.secret", fetch }).issue(VENTA, { idempotencyKey: "stable-order" });
+  assertEquals(result.estado, "sellado");
+  assertEquals(result.storage, undefined);
+  assertEquals(result.storageErrorCode, "storage_contract_invalid");
+  assertEquals(calls.length, 1);
+});
+
+Deno.test("copies reject malformed hashes, negative bytes, wrong environment and wrong document", async () => {
+  const generationCode = "33333333-3333-4333-8333-333333333333";
+  const copy = { generationCode, kind: "json", environment: "00", state: "stored", bytes: 12, sha256: "a".repeat(64), issuedDate: "2026-10-03", storedAt: "2026-10-03T12:00:00Z" };
+  for (const override of [{ sha256: "bad" }, { bytes: -1 }, { environment: "01" }, { generationCode: "44444444-4444-4444-8444-444444444444" }, { storedAt: null }]) {
+    const { fetch } = fakeFetch([{ status: 200, body: { capabilityVersion: 1, copies: [{ ...copy, ...override }] } }]);
+    const error = await assertRejects(() => new Facta({ apiKey: "facta_test_a.secret", fetch }).getDocumentCopies({ generationCode }), FactaError);
+    assertEquals(error.code, "storage_contract_invalid");
+  }
+});
+
+Deno.test("repair rejects contradictory receipts and mismatched environments without issuance", async () => {
+  const generationCode = "33333333-3333-4333-8333-333333333333";
+  const artifact = { state: "stored", sha256: "a".repeat(64), bytes: 12, storedAt: "2026-10-03T12:00:00Z", errorCode: null, retryable: false };
+  const receipt = { operationId: generationCode, environment: "00", destination: "managed", json: artifact, pdf: artifact };
+  for (const invalid of [{ ...receipt, destination: "none" }, { ...receipt, environment: "01" }, { ...receipt, json: { ...artifact, sha256: null } }, { ...receipt, pdf: { ...artifact, bytes: -1 } }]) {
+    const { fetch, calls } = fakeFetch([{ status: 200, body: { storage: invalid } }]);
+    const error = await assertRejects(() => new Facta({ apiKey: "facta_test_a.secret", fetch }).retryDocumentStorage(generationCode), FactaError);
+    assertEquals(error.code, "storage_contract_invalid");
+    assertEquals(calls.every((call) => call.url.endsWith('/repair')), true);
+  }
+});

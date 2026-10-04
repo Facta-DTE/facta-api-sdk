@@ -39,3 +39,12 @@ for (const failingCheck of ["catalog", "destinations"]) {
     assertEquals((error as Error & { code: string }).code, "no_storage_destination");
   });
 }
+
+Deno.test("positive managed-only capability makes BYOS snapshot optional while retaining catalog verification", async () => {
+  const checks = createValidationResults();
+  let destinations = 0;
+  await requireLiveSnapshots({ syncCatalog: () => Promise.resolve({}), syncDestinations: () => { destinations++; throw new Error("not configured"); } }, checks, () => {}, true);
+  assertEquals(destinations, 0);
+  assertEquals(checks.catalog, "Passed");
+  assertEquals(checks.destinations, "Not applicable (managed only)");
+});

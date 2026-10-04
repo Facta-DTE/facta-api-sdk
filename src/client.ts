@@ -212,38 +212,51 @@ function isStorageSource(value: string | null): value is "managed" | "holding" |
   return value === "managed" || value === "holding" || value === "archive";
 }
 
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const digestPattern = /^[0-9a-f]{64}$/i;
+const validBytes = (value: unknown) => typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+const validTimestamp = (value: unknown) => typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value) && Number.isFinite(Date.parse(value));
+
 function isManagedStorageReceipt(value: unknown): value is ManagedStorageReceipt {
   if (!isRecord(value) || (value.destination !== "managed" && value.destination !== "none") ||
-    (value.environment !== "00" && value.environment !== "01") || typeof value.operationId !== "string") return false;
-  const validArtifact = (artifact: unknown) => isRecord(artifact) &&
-    ["stored", "pending", "failed", "not_configured", "unsupported"].includes(String(artifact.state)) &&
-    (artifact.sha256 === null || typeof artifact.sha256 === "string") &&
-    (artifact.bytes === null || Number.isSafeInteger(artifact.bytes)) &&
-    (artifact.storedAt === null || typeof artifact.storedAt === "string") &&
-    (artifact.errorCode === null || typeof artifact.errorCode === "string") && typeof artifact.retryable === "boolean";
+    (value.environment !== "00" && value.environment !== "01") || typeof value.operationId !== "string" || !uuidPattern.test(value.operationId)) return false;
+  const validArtifact = (artifact: unknown) => {
+    if (!isRecord(artifact) || !["stored", "pending", "failed", "not_configured", "unsupported"].includes(String(artifact.state)) ||
+      !(artifact.sha256 === null || typeof artifact.sha256 === "string" && digestPattern.test(artifact.sha256)) ||
+      !(artifact.bytes === null || validBytes(artifact.bytes)) || !(artifact.storedAt === null || validTimestamp(artifact.storedAt)) ||
+      !(artifact.errorCode === null || typeof artifact.errorCode === "string" && /^[a-z][a-z0-9_]*$/.test(artifact.errorCode)) || typeof artifact.retryable !== "boolean") return false;
+    if (value.destination === "none" && artifact.state === "stored") return false;
+    return artifact.state !== "stored" || (typeof artifact.sha256 === "string" && validBytes(artifact.bytes) && validTimestamp(artifact.storedAt) && artifact.errorCode === null && !artifact.retryable);
+  };
   return validArtifact(value.json) && validArtifact(value.pdf);
 }
 
 function isManagedStorageStatus(value: unknown): value is ManagedStorageStatus {
   if (!isRecord(value) || value.capabilityVersion !== 1 || !isRecord(value.managed) || !isRecord(value.byos)) return false;
   const managed = value.managed;
-  const nullableNumber = (field: unknown) => field === null || (typeof field === "number" && Number.isFinite(field));
+  const nullableBytes = (field: unknown) => field === null || validBytes(field);
   const nullableString = (field: unknown) => field === null || typeof field === "string";
   return typeof managed.configured === "boolean" && typeof managed.ready === "boolean" &&
     typeof managed.state === "string" && (managed.integration === "ready" || managed.integration === "unavailable") &&
-    [managed.quotaBytes, managed.usedBytes, managed.reservedBytes, managed.usedBytesTotal, managed.reservedBytesTotal].every(nullableNumber) &&
-    [managed.coveredUntil, managed.accessUntil, managed.bucketState, managed.backupState].every(nullableString) &&
-    typeof value.byos.ready === "boolean" && Array.isArray(value.supportedKinds) &&
+    (!managed.ready || managed.configured && managed.integration === "ready" && managed.state === "ready" && managed.bucketState === "ready" &&
+      validBytes(managed.quotaBytes) && validBytes(managed.usedBytesTotal) && validBytes(managed.reservedBytesTotal) &&
+      (managed.usedBytesTotal as number) + (managed.reservedBytesTotal as number) < (managed.quotaBytes as number) &&
+      (managed.coveredUntil === null || validTimestamp(managed.coveredUntil) && Date.parse(managed.coveredUntil as string) > Date.now())) &&
+    [managed.quotaBytes, managed.usedBytes, managed.reservedBytes, managed.usedBytesTotal, managed.reservedBytesTotal].every(nullableBytes) &&
+    [managed.coveredUntil, managed.accessUntil].every((field) => field === null || validTimestamp(field)) &&
+    [managed.bucketState, managed.backupState].every(nullableString) && typeof value.byos.ready === "boolean" &&
+    Array.isArray(value.supportedKinds) && value.supportedKinds.length === 2 && new Set(value.supportedKinds).size === 2 &&
     value.supportedKinds.every((kind) => kind === "json" || kind === "pdf") && Array.isArray(value.unsupportedKinds) &&
     value.unsupportedKinds.every((kind) => kind === "ticket" || kind === "invalidation");
 }
 
 function isManagedDocumentCopies(value: unknown): value is { capabilityVersion: 1; copies: ManagedDocumentCopy[] } {
-  return isRecord(value) && value.capabilityVersion === 1 && Array.isArray(value.copies) && value.copies.every((copy) =>
-    isRecord(copy) && typeof copy.generationCode === "string" && (copy.kind === "json" || copy.kind === "pdf") &&
+  return isRecord(value) && value.capabilityVersion === 1 && Array.isArray(value.copies) &&
+    new Set(value.copies.map((copy) => isRecord(copy) ? `${String(copy.generationCode).toUpperCase()}:${String(copy.kind)}` : "invalid")).size === value.copies.length && value.copies.every((copy) =>
+    isRecord(copy) && typeof copy.generationCode === "string" && uuidPattern.test(copy.generationCode) && (copy.kind === "json" || copy.kind === "pdf") &&
     (copy.environment === "00" || copy.environment === "01") && ["stored", "pending", "failed"].includes(String(copy.state)) &&
-    Number.isSafeInteger(copy.bytes) && typeof copy.sha256 === "string" && typeof copy.issuedDate === "string" &&
-    (copy.storedAt === null || typeof copy.storedAt === "string")
+    validBytes(copy.bytes) && typeof copy.sha256 === "string" && digestPattern.test(copy.sha256) && typeof copy.issuedDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(copy.issuedDate) && Number.isFinite(Date.parse(copy.issuedDate)) && new Date(copy.issuedDate).toISOString().slice(0, 10) === copy.issuedDate &&
+    (copy.storedAt === null || validTimestamp(copy.storedAt)) && (copy.state !== "stored" || validTimestamp(copy.storedAt))
   );
 }
 
@@ -398,15 +411,19 @@ export class Facta {
     }
     const expectedEnvironment = options.expectedEnvironment ?? this.#config.expectedEnvironment;
     const requiredScopes = options.requiredScopes ?? this.#config.requiredScopes;
+    let storageCapability: ManagedStorageStatus | null = null;
+    let storageFailure: unknown;
+    try { storageCapability = await this.getStorageStatus(); } catch (cause) { storageFailure = cause; }
     const report = await diagnoseStatus(status, {
       ...options,
       ...((options.archive ?? this.#runtime.archive) === undefined ? {} : { archive: options.archive ?? this.#runtime.archive }),
       ...(expectedEnvironment === undefined ? {} : { expectedEnvironment }),
       ...(requiredScopes === undefined ? {} : { requiredScopes }),
-    });
+    }, storageCapability?.managed.ready === true);
     let storageReady: boolean | null = null;
     try {
-      const storage = await this.getStorageStatus();
+      if (!storageCapability) throw storageFailure;
+      const storage = storageCapability;
       storageReady = storage.managed.ready || storage.byos.ready;
       report.checks.push({
         id: "managed-storage",
@@ -431,11 +448,16 @@ export class Facta {
           ? "This API key or server does not expose managed-storage readiness; the server still controls whether issuance can proceed."
           : "Could not confirm managed-storage readiness.",
       });
-      if (report.overall === "ready") report.overall = "attention";
+      if (!capabilityMissing) {
+        report.canIssue = false; report.canIssueAndArchive = false; report.overall = "blocked";
+        report.checks[report.checks.length - 1].state = "blocked";
+      } else if (report.overall === "ready") report.overall = "attention";
     }
     report.storageReady = storageReady;
     return report;
   }
+
+  #environment(): "00" | "01" { return this.#apiKey.startsWith("facta_test_") ? "00" : "01"; }
 
   /** Check managed-storage coverage, capacity, environment and BYOS readiness. */
   async getStorageStatus(options: CallOptions = {}): Promise<ManagedStorageStatus> {
@@ -466,7 +488,8 @@ export class Facta {
       }
       throw cause;
     }
-    if (!isManagedDocumentCopies(value)) {
+    if (!isManagedDocumentCopies(value) || value.copies.some((copy) => copy.environment !== this.#environment() ||
+      options.generationCode !== undefined && copy.generationCode.toUpperCase() !== options.generationCode.toUpperCase())) {
       throw new FactaError("storage_contract_invalid", "API returned an invalid managed document-copy response.", 502);
     }
     return value.copies;
@@ -487,7 +510,7 @@ export class Facta {
       throw cause;
     }
     const receipt = isRecord(value) ? value.storage : undefined;
-    if (!isManagedStorageReceipt(receipt) || receipt.operationId.toLowerCase() !== generationCode.toLowerCase()) {
+    if (!isManagedStorageReceipt(receipt) || receipt.environment !== this.#environment() || receipt.operationId.toLowerCase() !== generationCode.toLowerCase()) {
       throw new FactaError("storage_contract_invalid", "API returned an invalid managed-storage repair receipt.", 502);
     }
     return receipt;
@@ -868,12 +891,22 @@ export class Facta {
     this.#assertArchiveIdentity(operation.identity, identity, operationId);
     throwIfAborted(signal);
     let managedStorage = operation.managedStorage;
-    if (operation.codigoGeneracion && managedStorage && [managedStorage.json, managedStorage.pdf].some((artifact) =>
+    let storageErrorCode = operation.storageErrorCode;
+    if (operation.codigoGeneracion && (operation.storageErrorCode || managedStorage && [managedStorage.json, managedStorage.pdf].some((artifact) =>
       artifact.state === "pending" || artifact.state === "failed"
-    )) {
+    ))) {
       try {
-        managedStorage = await this.retryDocumentStorage(operation.codigoGeneracion, signal ? { signal } : {});
+        const repairedStorage = await this.retryDocumentStorage(operation.codigoGeneracion, signal ? { signal } : {});
+        for (const kind of ["json", "pdf"] as const) {
+          const local = await this.#getVerifiedArtifact(archive, operation.codigoGeneracion, kind);
+          const copy = repairedStorage[kind];
+          if (local && copy.state === "stored" && (copy.sha256 !== local.sha256 || copy.bytes !== local.bytes.byteLength)) {
+            throw new FactaError("archive_integrity_error", "Managed repair receipt differs from the exact local artifact.", 0);
+          }
+        }
+        managedStorage = repairedStorage;
         await archive.recordManagedStorage?.(operation.id, managedStorage);
+        storageErrorCode = undefined;
       } catch (cause) {
         const unsupported = cause instanceof FactaError && cause.code === "storage_unsupported";
         if (!unsupported) {
@@ -881,6 +914,7 @@ export class Facta {
           await archive.markNeedsAttention(operation.id, detail.slice(0, 500)).catch(() => undefined);
           return {
             ...(managedStorage === undefined ? {} : { managedStorage }),
+            ...(storageErrorCode === undefined ? {} : { storageErrorCode }),
             archive: { state: "needs_attention", operationId, artifacts: [], detail },
           };
         }
@@ -900,6 +934,7 @@ export class Facta {
         : operation.remoteCopies;
       return {
         ...(managedStorage === undefined ? {} : { managedStorage }),
+        ...(storageErrorCode === undefined ? {} : { storageErrorCode }),
         archive: {
           state: "complete",
           operationId,
@@ -923,7 +958,7 @@ export class Facta {
       const codigoGeneracion = operation.codigoGeneracion!;
       await this.getDocumentStatus(codigoGeneracion);
       const archived = await this.#archiveArtifacts(operation.id, codigoGeneracion, archive, signal, operation.ticketPaperWidthMm, remoteDestinations);
-      return { ...(managedStorage === undefined ? {} : { managedStorage }), archive: archived };
+      return { ...(managedStorage === undefined ? {} : { managedStorage }), ...(storageErrorCode === undefined ? {} : { storageErrorCode }), archive: archived };
     }
 
     {
@@ -948,12 +983,13 @@ export class Facta {
     const archive = archiveOption ?? this.#runtime.archive;
     if (!archive) throw new TypeError("listPendingOperations requires archive or runtime.archive.");
     await archive.assertReady();
-    return (await archive.pending()).map(({ id, createdAt, state, codigoGeneracion, remoteCopies, managedStorage }) => ({
+    return (await archive.pending()).map(({ id, createdAt, state, codigoGeneracion, remoteCopies, managedStorage, storageErrorCode }) => ({
       id,
       createdAt,
       state,
       ...(codigoGeneracion === undefined ? {} : { codigoGeneracion }),
       ...(managedStorage === undefined ? {} : { managedStorage }),
+      ...(storageErrorCode === undefined ? {} : { storageErrorCode }),
       ...(remoteCopies === undefined ? {} : {
         remoteCopies: remoteCopies.map(({ destinationId, kind, state: copyState, sha256, updatedAt }) => ({
           destinationId,
@@ -1221,11 +1257,11 @@ export class Facta {
         remoteDestinations,
         emission,
       );
-      return { emission, ...(emission.storage === undefined ? {} : { managedStorage: emission.storage }), archive: archived };
+      return { emission, ...(emission.storage === undefined ? {} : { managedStorage: emission.storage }), ...(emission.storageErrorCode === undefined ? {} : { storageErrorCode: emission.storageErrorCode }), archive: archived };
     } catch (cause) {
       const detail = cause instanceof Error ? cause.message : String(cause);
       try { await archive.markNeedsAttention(operation.id, detail.slice(0, 500)); } catch { /* Preserve the successful fiscal result. */ }
-      return { emission, ...(emission.storage === undefined ? {} : { managedStorage: emission.storage }), archive: { state: "needs_attention", operationId: operation.id, artifacts, detail } };
+      return { emission, ...(emission.storage === undefined ? {} : { managedStorage: emission.storage }), ...(emission.storageErrorCode === undefined ? {} : { storageErrorCode: emission.storageErrorCode }), archive: { state: "needs_attention", operationId: operation.id, artifacts, detail } };
     }
   }
 
@@ -1722,7 +1758,27 @@ export class Facta {
       );
     }
 
-    if (response.ok || response.status === 202) return payload as T;
+    if (response.ok || response.status === 202) {
+      if (isRecord(payload) && (payload.estado === "sellado" || payload.estado === "contingencia") && "storage" in payload &&
+        (!isManagedStorageReceipt(payload.storage) || payload.storage.environment !== this.#environment() ||
+          typeof payload.codigoGeneracion !== "string" || payload.storage.operationId.toUpperCase() !== payload.codigoGeneracion.toUpperCase())) {
+        delete payload.storage;
+        payload.storageErrorCode = "storage_contract_invalid";
+      }
+      if (isRecord(payload) && isManagedStorageReceipt(payload.storage)) {
+        const receipt = payload.storage;
+        for (const kind of ["json", "pdf"] as const) {
+          const bytes = kind === "json" && typeof payload.archivoJson === "string" ? new TextEncoder().encode(payload.archivoJson)
+            : kind === "pdf" && typeof payload.representacionGrafica === "string" ? (() => { try { return base64Bytes(payload.representacionGrafica as string); } catch { return null; } })() : null;
+          if (bytes && receipt[kind].state === "stored" && (receipt[kind].bytes !== bytes.byteLength || receipt[kind].sha256 !== await sha256Hex(bytes))) {
+            delete payload.storage;
+            payload.storageErrorCode = "storage_contract_invalid";
+            break;
+          }
+        }
+      }
+      return payload as T;
+    }
 
     return await this.#parseError(response, payload);
   }

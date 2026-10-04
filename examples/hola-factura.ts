@@ -16,8 +16,13 @@ const g = globalThis as any;
 const env = (name: string): string => g.Deno?.env.get(name) ?? g.process?.env?.[name];
 
 export async function main() {
-  const facta = new Facta({ apiKey: env("FACTA_API_KEY"), signKey: env("FACTA_SIGN_KEY"), baseUrl: env("FACTA_API_BASE_URL") });
-  const result = await facta.issue({ tipoDte: "01", items: [{ descripcion: "Sample item", cantidad: 1, precioUni: 1 }] }, { idempotencyKey: env("ERP_ORDER_ID") });
+  const orderId = env("ERP_ORDER_ID");
+  const apiKey = env("FACTA_API_KEY");
+  const baseUrl = env("FACTA_API_BASE_URL");
+  if (!orderId?.trim() || !apiKey?.startsWith("facta_test_") || !baseUrl) throw new Error("Configure a test key, explicit API URL and stable ERP_ORDER_ID.");
+  const facta = new Facta({ apiKey, signKey: env("FACTA_SIGN_KEY"), baseUrl });
+  if (!(await facta.diagnose({ expectedEnvironment: "00" })).canIssue) throw new Error("Resolve readiness checks before issuance.");
+  const result = await facta.issue({ tipoDte: "01", items: [{ descripcion: "Sample item", cantidad: 1, precioUni: 1 }] }, { idempotencyKey: orderId });
   if (result.estado === "sellado") console.log("Sealed; managed JSON/PDF:", result.storage?.json.state, result.storage?.pdf.state);
   else console.log("Fiscal status:", result.estado);
 }

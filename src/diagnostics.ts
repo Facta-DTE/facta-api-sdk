@@ -209,6 +209,7 @@ function checkSigningCertificate(status: Status, checks: DiagnosticCheck[]): boo
 export async function diagnoseStatus(
   status: Status,
   options: DiagnoseOptions = {},
+  managedStorageReady = false,
 ): Promise<DiagnosticsReport> {
   const checks: DiagnosticCheck[] = [];
   const apiOk = status.ok === true;
@@ -388,7 +389,8 @@ export async function diagnoseStatus(
     sync?.sign,
     "Signing vault",
   );
-  const destinationsOk = legacySyncContract || checkRevision(
+  if (managedStorageReady) add(checks, "destinations-sync", "ok", "Facta-managed storage is ready; BYOS vault synchronization is optional.");
+  const destinationsOk = managedStorageReady || legacySyncContract || checkRevision(
     checks,
     "destinations-sync",
     sync?.destinations,

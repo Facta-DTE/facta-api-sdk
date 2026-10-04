@@ -25,6 +25,7 @@ export interface ArchiveOperation {
   remoteCopies?: RemoteCopyRecord[];
   /** Latest Facta-managed JSON/PDF receipt; absent on older API responses. */
   managedStorage?: ManagedStorageReceipt;
+  storageErrorCode?: "storage_contract_invalid";
 }
 
 export interface ArchiveOperationIdentity {
@@ -42,6 +43,7 @@ export type PendingArchiveOperation = Pick<
 > & {
   remoteCopies?: Array<Pick<RemoteCopyRecord, "destinationId" | "kind" | "state" | "sha256" | "updatedAt">>;
   managedStorage?: ManagedStorageReceipt;
+  storageErrorCode?: "storage_contract_invalid";
 };
 
 export interface ArchiveArtifact {
@@ -147,6 +149,7 @@ export interface ArchiveEmissionResult {
   /** Omitted when restart recovery finds the existing DTE by generation code. */
   emission?: IssueResult;
   managedStorage?: ManagedStorageReceipt;
+  storageErrorCode?: "storage_contract_invalid";
   archive: {
     state: "complete" | "needs_attention";
     operationId: string;

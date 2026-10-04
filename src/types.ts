@@ -200,6 +200,8 @@ export interface SealedDte {
   representacionGrafica?: string | null;
   /** Facta-managed durable copies; absent on older API servers. */
   storage?: ManagedStorageReceipt;
+  /** Fiscal success is preserved when an attached storage receipt is malformed. */
+  storageErrorCode?: "storage_contract_invalid";
 }
 
 export interface DteInContingency {
@@ -217,6 +219,8 @@ export interface DteInContingency {
   archivoJson?: string;
   /** Storage is not committed until Hacienda returns a seal. */
   storage?: ManagedStorageReceipt;
+  /** Fiscal success is preserved when an attached storage receipt is malformed. */
+  storageErrorCode?: "storage_contract_invalid";
 }
 
 export type IssueResult = SealedDte | DteInContingency;

@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createValidationResults, renderLiveReport, safeFailureCode } from "./live-report.mjs";
+import { validateLiveManagedStorage } from "./live-managed-storage.mjs";
 import { requireLiveSnapshots } from "./live-preflight.mjs";
 
 const apiKey = process.env.STAGING_FACTA_API_KEY;
@@ -106,8 +107,10 @@ try {
   console.log(`PREFLIGHT readiness: ${JSON.stringify(readiness)}`);
 
   // Read-only capability checks must pass before this full live run issues anything.
-  await requireLiveSnapshots(facta, checks, (check) => { currentCheck = check; });
-  console.log("PASS snapshots: catalog and destinations opened locally");
+  const storageCapability = await facta.getStorageStatus();
+  assert(storageCapability.managed.ready, "Full managed live validation requires ready managed storage.");
+  await requireLiveSnapshots(facta, checks, (check) => { currentCheck = check; }, storageCapability.managed.ready && !storageCapability.byos.ready);
+  console.log("PASS snapshots: catalog and required BYOS destinations verified locally");
   currentCheck = "preflight";
 
   if (!diagnostics.canIssue || !diagnostics.canQuery || !diagnostics.canDownload || !diagnostics.canIssueAndArchive) {
@@ -120,10 +123,8 @@ try {
   const operationId = `sdk-live-${runId}`;
   const idempotencyKey = `sdk-live-${runId}`;
   currentCheck = "emission";
-  const result = await facta.issueAndArchive({
-    tipoDte: "01",
-    items: [{ descripcion: "Facta API SDK integration test", cantidad: 1, precioUni: 0.01 }],
-  }, {
+  const request = { tipoDte: "01", items: [{ descripcion: "Facta API SDK integration test", cantidad: 1, precioUni: 0.01 }] };
+  const result = await facta.issueAndArchive(request, {
     operationId,
     idempotencyKey,
     includeTicket: false,
@@ -168,6 +169,7 @@ try {
   assert.equal(fileRequests.length, 0, "inline archival must not call any file download endpoint");
   checks["no-downloads"] = "Passed";
   console.log("PASS inline archive: exact signed JSON and PDF saved without any file download");
+  await validateLiveManagedStorage(facta, { emission: result.emission, request, idempotencyKey, artifacts: { json: legalJson, pdf }, checks, onCheck: (check) => { currentCheck = check; } });
   currentCheck = "query";
   const documentStatus = await facta.getDocumentStatus(result.emission.codigoGeneracion);
   assert(documentStatus.codigoGeneracion.toUpperCase() === result.emission.codigoGeneracion.toUpperCase(),

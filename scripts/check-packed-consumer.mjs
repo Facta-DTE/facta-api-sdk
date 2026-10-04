@@ -5,6 +5,7 @@ import {
   readFileSync,
   rmSync,
   writeFileSync,
+  cpSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
@@ -339,6 +340,64 @@ try {
     stdio: "inherit",
     ...(process.platform === "win32" ? { shell: true } : {}),
   });
+  cpSync(join(temp, "node_modules", "@facta-dte", "api", "examples"), join(temp, "examples"), { recursive: true });
+  const exampleFiles = readdirSync(join(temp, "examples")).filter(name => name.endsWith(".ts")).map(name => "examples/" + name);
+  execFileSync(process.execPath, [tsc, "--noEmit", "--strict", "--target", "ES2022", "--module", "NodeNext", "--moduleResolution", "NodeNext", "--skipLibCheck", ...exampleFiles], { cwd: temp, stdio: "inherit" });
+  const exampleRunner = `
+import { main } from './examples/hola-factura.ts';
+import { inspectManagedStorage, repairManagedStorage } from './examples/managed-storage.ts';
+import * as requests from './examples/dte-types.ts';
+import * as workflows from './examples/workflows.ts';
+import type { Facta, InvoiceArchive, InvalidationArchive, InvalidationRequest } from '@facta-dte/api';
+if (typeof main !== 'function' || typeof inspectManagedStorage !== 'function' || typeof repairManagedStorage !== 'function') throw new Error('Example exports unavailable');
+const calls: string[] = [];
+const record = (name: string, value: unknown = {}) => { calls.push(name); return Promise.resolve(value); };
+const fake = {
+  diagnose: () => record('diagnose', { canIssue: true, storageReady: null }),
+  issue: (_request: unknown, options: { idempotencyKey: string }) => record('issue:' + options.idempotencyKey, { estado: 'sellado' }),
+  issueAndArchive: () => record('archive'), recoverOperation: () => record('recover'), replicateArchive: () => record('byos'),
+  syncCatalog: () => record('catalog'), getCustomer: () => record('customer', {}), getProduct: () => record('product', {}),
+  downloadDocument: () => record('ticket'), invalidateAndArchive: () => record('invalidate'),
+} as unknown as Facta;
+const archive = {} as InvoiceArchive;
+for (const request of Object.values(requests)) await workflows.issueManaged(fake, request, 'stable-fixture-order');
+await workflows.issueWithCopies(fake, requests.finalConsumerInvoice, { archive, operationId: 'fixture', idempotencyKey: 'fixture' });
+await workflows.recoverAfterRestart(fake, archive, 'fixture');
+await workflows.recoverByos(fake, archive, 'fixture', []);
+await workflows.catalogRequest(fake, 'fixture-customer', 'fixture-product');
+await workflows.readTicket(fake, 'designated-test-invoice');
+await workflows.invalidateDesignatedTest(fake, {} as InvalidationArchive, 'designated-test-invoice', {} as InvalidationRequest, 'fixture-invalidation');
+await workflows.inspectCompatibility(fake);
+if (calls.filter(call => call === 'issue:stable-fixture-order').length !== 7 || !calls.includes('recover') || !calls.includes('ticket') || !calls.includes('invalidate')) throw new Error('Example scenario execution failed');
+const runtime = globalThis as any;
+const syntheticEnv = { FACTA_API_KEY: 'facta_test_fixture.secret', FACTA_SIGN_KEY: 'factask_fixture', FACTA_API_BASE_URL: 'https://packed.example.test/api-v1', ERP_ORDER_ID: 'stable-example-order' };
+for (const [name, value] of Object.entries(syntheticEnv)) {
+  if (runtime.Deno) runtime.Deno.env.set(name, value); else runtime.process.env[name] = value;
+}
+const generationCode = '33333333-3333-4333-8333-333333333333';
+const artifact = { state: 'stored', sha256: 'a'.repeat(64), bytes: 10, storedAt: '2026-10-03T12:00:00Z', errorCode: null, retryable: false };
+const receipt = { destination: 'managed', environment: '00', operationId: generationCode, json: artifact, pdf: artifact };
+const managed = { configured: true, ready: true, state: 'ready', integration: 'ready', quotaBytes: 1000, usedBytes: 20, reservedBytes: 0, usedBytesTotal: 20, reservedBytesTotal: 0, coveredUntil: null, accessUntil: null, bucketState: 'ready', backupState: 'not_required' };
+const networkCalls: string[] = [];
+globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+  const url = String(input); networkCalls.push(url);
+  if (!url.startsWith('https://packed.example.test/')) throw new Error('Unexpected example endpoint');
+  if (url.endsWith('/storage/status')) return Response.json({ capabilityVersion: 1, managed, byos: { ready: false }, supportedKinds: ['json', 'pdf'], unsupportedKinds: ['ticket', 'invalidation'] });
+  if (url.includes('/storage/copies?')) return Response.json({ capabilityVersion: 1, copies: [] });
+  if (url.endsWith('/repair')) return Response.json({ storage: receipt });
+  if (url.endsWith('/v1/status')) return Response.json({ ok: true, version: 'v1', ambiente: '00', emisor: { nit: 'fixture', nombre: 'Fixture', ambiente: '00' }, llave: { keyId: 'facta_test_fixture', label: null, modo: 'byok', alcances: ['issue','query','download'], tiposDte: ['01'], venceEl: null }, firma: { vaultDeFirma: true, origenDeLaFirma: 'vault', cabecera: 'x-facta-sign-key' }, limites: { hora: { limit: 100, used: 0, remaining: 100 }, dia: { limit: 100, used: 0, remaining: 100 }, estado: null, montoMaximoPorDocumentoCentavos: 10000 } });
+  if (new Headers(init?.headers).get('Idempotency-Key') !== 'stable-example-order') throw new Error('Example lacks stable idempotency identity');
+  return Response.json({ estado: 'sellado', codigoGeneracion: generationCode, storage: receipt });
+}) as typeof fetch;
+await main();
+await inspectManagedStorage(generationCode);
+await repairManagedStorage(generationCode);
+if (networkCalls.filter(url => url.endsWith('/v1/dte')).length !== 1) throw new Error('Minimal example must issue only once');
+
+`;
+  writeFileSync(join(temp, "example-runner.ts"), exampleRunner);
+  execFileSync(process.execPath, ["--experimental-strip-types", "example-runner.ts"], { cwd: temp, stdio: "inherit" });
+  execFileSync("deno", ["run", "--allow-env", "example-runner.ts"], { cwd: temp, stdio: "inherit" });
   execFileSync(process.execPath, [
     tsc,
     "--noEmit",

@@ -911,4 +911,43 @@ incluidos en errores de comparación.
 
 Los datos del receptor en consultas y listados pueden ser nulos para documentos cifrados en la app Facta, importados o restaurados con una clave de empresa que la API no tiene. El SDK conserva ese valor: un cliente del catálogo actual no demuestra quién era el receptor del documento histórico. `unlockKey` abre solamente los snapshots publicados del catálogo y los destinos, no los datos cifrados del receptor de facturas históricas.
 
-El workflow completo de staging exige abrir correctamente los snapshots de catálogo y destinos publicados por el dueño antes de emitir la factura de pruebas. Si un snapshot no está disponible, la ejecución falla. La compatibilidad del SDK con respuestas de estado anteriores no elimina este requisito de integración.
+El workflow completo de staging exige abrir el catálogo publicado por el dueño y, para BYOS, su snapshot de destinos antes de emitir la factura de pruebas. Si solamente usa Facta y está listo, no requiere un snapshot BYOS. Si falta un snapshot requerido, la ejecución falla. La compatibilidad del SDK con respuestas de estado anteriores no elimina este requisito de integración.
+
+### Ejemplos ejecutables y fallas de almacenamiento
+
+Los [ejemplos de flujos](examples/workflows.ts) incluyen emisión con almacenamiento
+Facta, archivo local cifrado y BYOS, recuperación después de reiniciar,
+referencias del catálogo, tickets de 58 mm, invalidación de una factura de
+pruebas designada y diagnóstico de servidores anteriores. Los [seis tipos DTE](examples/dte-types.ts)
+son plantillas tipadas: sustituya los datos de ejemplo y proporcione documentos
+sellados de su empresa para las notas antes de usarlos en vivo. Importarlos no emite.
+
+Instale `@facta-dte/api`, copie los ejemplos a su proyecto y llame explícitamente
+las funciones exportadas. Para el ejemplo mínimo:
+
+```sh
+node --experimental-strip-types --input-type=module -e "import { main } from './examples/hola-factura.ts'; await main();"
+deno eval "import { main } from './examples/hola-factura.ts'; await main();"
+```
+
+Configure primero una llave de pruebas, la URL explícita y un `ERP_ORDER_ID`
+estable. Si falta esa configuración, el ejemplo se detiene antes de emitir.
+`pack:check` compila todos los ejemplos y ejecuta sus funciones con fixtures
+sintéticos en Node/Deno contra el paquete empacado. Las condiciones fiscales
+para probarlos en vivo se validan por separado.
+
+Un recibo de almacenamiento inválido conserva el éxito fiscal: se omite el
+recibo y se expone `storageErrorCode: storage_contract_invalid`. El archivo
+cifrado conserva esa condición como operación pendiente hasta obtener un
+recibo válido por reparación. No emita con una identidad fiscal nueva.
+Una capacidad de almacenamiento presente pero inválida bloquea el diagnóstico;
+las rutas ausentes de servidores anteriores siguen como desconocidas. Si
+Facta está listo, la sincronización BYOS es opcional; la firma y las referencias
+solicitadas del catálogo conservan sus comprobaciones.
+
+La prueba de staging exige almacenamiento Facta listo, compara los recibos
+JSON/PDF con los bytes exactos, descarga las copias de Facta, repite la clave
+original de idempotencia, repara solamente esa factura y confirma que no
+creció el consumo. Publica etiquetas fijas. Los tickets, las invalidaciones y
+los seis tipos fiscales requieren documentos designados y condiciones fiscales
+válidas para afirmar que se probaron en vivo.

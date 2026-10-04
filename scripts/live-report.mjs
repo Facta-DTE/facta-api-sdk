@@ -9,15 +9,19 @@ const LABELS = Object.freeze({
   pdf: "PDF received and validated",
   "inline-bytes": "Exact server bytes preserved",
   "no-downloads": "No repeated file downloads",
+  "managed-receipt": "Durable managed JSON/PDF receipts",
+  "managed-readback": "Exact managed copy read-back",
+  "managed-replay-repair": "Idempotent replay and copy repair accounting",
   query: "Invoice consultation",
   listing: "Invoice listing",
   journal: "Completed operation journal",
 });
-const STATES = new Set(["Not checked", "Failed", "Passed", "Passed (sealed test FE, $0.01)"]);
+const STATES = new Set(["Not checked", "Failed", "Passed", "Passed (sealed test FE, $0.01)", "Not applicable (managed only)"]);
 const ERROR_CODES = new Set([
   "not_found", "service_unavailable", "invalid_request", "unauthorized",
   "forbidden", "rate_limit_exceeded", "archive_integrity_error", "validation_failed",
   "no_storage_destination", "sign_vault_missing",
+  "storage_unsupported", "storage_unavailable", "storage_contract_invalid",
 ]);
 
 export function createValidationResults() {

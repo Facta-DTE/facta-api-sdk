@@ -139,3 +139,11 @@ WhatsApp messages; no WhatsApp endpoint or delivery contract is published.
 - Error codes and rejection flags: [`../src/errors.ts`](../src/errors.ts)
 - Diagnostic checks: [`../src/diagnostics.ts`](../src/diagnostics.ts)
 - Server request/response schemas: [published OpenAPI contract](https://hcnvknpsbadplnfcflxx.supabase.co/functions/v1/api-v1/v1/openapi.json)
+
+A successful fiscal response can carry `storageErrorCode: "storage_contract_invalid"`
+when its storage receipt is malformed or differs from exact inline bytes. The
+invalid receipt is omitted; the sealed invoice remains successful. File archive
+journals keep this condition pending until copy repair returns a valid receipt.
+Managed-only readiness satisfies durable destination checks without a BYOS vault;
+signing and catalog reference checks remain independent. Malformed present
+capabilities block `diagnose()`; absent older routes are explicitly unknown.

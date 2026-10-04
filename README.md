@@ -160,4 +160,42 @@ control numbers, raw API errors or assertion payloads.
 
 Document query and listing receiver metadata can be null when a document was encrypted in the Facta app, imported or restored with a company key unavailable to the API. The SDK preserves null; a current catalog customer does not establish the historical receiver. `unlockKey` opens only the published catalog/destination snapshots, not historical invoice receiver blobs.
 
-The full staging live workflow requires owner-published catalog and destination snapshots to open successfully before issuing its test invoice. An unavailable snapshot fails the run; library issuance compatibility with legacy status responses does not waive this integration gate.
+The full staging live workflow requires its owner-published catalog snapshot and, for BYOS setups, its destination snapshot to open before issuing its test invoice. Ready managed-only setups do not require a BYOS snapshot. An unavailable required snapshot fails the run; library issuance compatibility with legacy status responses does not waive this integration gate.
+
+### Executable workflow examples and storage failures
+
+The shipped [workflow examples](examples/workflows.ts) cover managed emission,
+managed plus encrypted local/BYOS copies, restart recovery, catalog references,
+58 mm tickets, designated test invalidations and older-server diagnostics.
+The [six DTE request examples](examples/dte-types.ts) are typed fixture templates:
+replace recipient placeholders and supply appropriate issuer-owned sealed
+references for notes before live use. Imports perform no fiscal work.
+
+Install `@facta-dte/api`, copy the examples into your project and call the
+exported functions explicitly. For the minimal example:
+
+```sh
+node --experimental-strip-types --input-type=module -e "import { main } from './examples/hola-factura.ts'; await main();"
+deno eval "import { main } from './examples/hola-factura.ts'; await main();"
+```
+
+Set a test API key, explicit API URL and stable `ERP_ORDER_ID` first. Missing
+configuration stops the minimal example before issuance. `pack:check` compiles
+all shipped examples and executes their functions against synthetic fixtures
+in Node/Deno using the packed package. This proves example compatibility;
+live fiscal prerequisites remain separate validation gates.
+
+A malformed storage receipt does not undo fiscal success: `storageErrorCode`
+is `storage_contract_invalid`, and the invalid receipt is omitted. The file
+archive persists that condition and includes it in pending operations until
+repair supplies a valid receipt. Never retry with a new fiscal identity.
+Present malformed storage capability blocks diagnostics; absent older routes
+remain explicitly unknown. Managed-only readiness makes BYOS synchronization
+optional while signing and requested catalog references retain their checks.
+
+The staging live suite requires managed readiness, verifies durable JSON/PDF
+receipts against exact inline bytes, reads them back from managed storage,
+replays the original idempotency key, repairs only that invoice and checks that
+storage accounting stays unchanged. It publishes fixed result labels only.
+Ticket/invalidation and six fiscal variants still need explicitly designated
+fixtures and their fiscal prerequisites before a live support claim.

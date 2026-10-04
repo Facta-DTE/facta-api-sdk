@@ -1,4 +1,4 @@
-// Opt-in example: this file makes no network calls until main() is invoked.
+// Opt-in example: this file makes no network calls until an exported function is invoked.
 // Configure FACTA_API_BASE_URL for the target environment and use test keys
 // during staging validation. Test issuance consumes a test fiscal sequence.
 import { Facta } from "@facta-dte/api";

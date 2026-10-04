@@ -1221,3 +1221,54 @@ Deno.test("ticket opt-out rejects an explicit width before any request", async (
   }), TypeError, "ticketPaperWidthMm cannot be supplied");
   assertEquals(calls.length, 0);
 });
+
+Deno.test("managed pending receipts survive encrypted restart and repair without another fiscal request", async () => {
+  const directory = await Deno.makeTempDir();
+  const artifact = { state: "pending" as const, sha256: null, bytes: null, storedAt: null, errorCode: "worker_unavailable", retryable: true };
+  const receipt = { destination: "managed" as const, environment: "00" as const, operationId: issuance.codigoGeneracion, json: artifact, pdf: artifact };
+  const base = transport(200, 200, { ...issuance, storage: receipt });
+  let repairs = 0;
+  let corrupt = true;
+  const repairedArtifact = { state: "stored" as const, sha256: "a".repeat(64), bytes: 10, storedAt: "2026-10-03T12:00:00Z", errorCode: null, retryable: false };
+  const fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input).endsWith('/repair')) {
+      repairs++;
+      return Response.json({ storage: { ...receipt, operationId: issuance.codigoGeneracion.toLowerCase(), json: { ...repairedArtifact, sha256: corrupt ? "b".repeat(64) : await sha256Hex(new TextEncoder().encode(issuance.archivoJson!)), bytes: new TextEncoder().encode(issuance.archivoJson!).length }, pdf: { ...repairedArtifact, sha256: await sha256Hex(new TextEncoder().encode("%PDF-test")), bytes: "%PDF-test".length } } });
+    }
+    return await base.fetch(input, init);
+  }) as typeof globalThis.fetch;
+  try {
+    const archive = await FileInvoiceArchive.open({ directory, passphrase: "test-managed-storage-archive-secret" });
+    const facta = new Facta({ apiKey: "facta_test_x.secret", fetch });
+    const issued = await facta.issueAndArchive(request, { operationId: "managed", idempotencyKey: "managed", archive, includeTicket: false });
+    assertEquals(issued.archive.state, "complete");
+    assertEquals((await archive.pending()).length, 1);
+    const restarted = await FileInvoiceArchive.open({ directory, passphrase: "test-managed-storage-archive-secret" });
+    const rejectedRepair = await facta.recoverOperation("managed", { archive: restarted });
+    assertEquals(rejectedRepair.archive.state, "needs_attention");
+    assertEquals(rejectedRepair.managedStorage?.json.state, "pending");
+    assertEquals((await restarted.pending()).length, 1);
+    corrupt = false;
+    const recovered = await facta.recoverOperation("managed", { archive: restarted });
+    assertEquals(recovered.managedStorage?.json.state, "stored");
+    assertEquals((await restarted.pending()).length, 0);
+    assertEquals(repairs, 2);
+    assertEquals(base.calls.filter(call => call.url.endsWith('/v1/dte')).length, 1);
+    assertEquals(base.calls.filter(call => call.url.includes('/file')).length, 0);
+  } finally { await Deno.remove(directory, { recursive: true }); }
+});
+
+Deno.test("malformed storage receipt stays observable while exact inline archival succeeds", async () => {
+  const directory = await Deno.makeTempDir();
+  const base = transport(200, 200, { ...issuance, storage: { malformed: true } });
+  try {
+    const archive = await FileInvoiceArchive.open({ directory, passphrase: "test-managed-storage-archive-secret" });
+    const facta = new Facta({ apiKey: "facta_test_x.secret", fetch: base.fetch });
+    const result = await facta.issueAndArchive(request, { operationId: "invalid-storage", idempotencyKey: "invalid-storage", archive, includeTicket: false });
+    assertEquals(result.emission?.estado, "sellado");
+    assertEquals(result.storageErrorCode, "storage_contract_invalid");
+    assertEquals(result.archive.state, "complete");
+    assertEquals((await facta.listPendingOperations(archive))[0].storageErrorCode, "storage_contract_invalid");
+    assertEquals(base.calls.filter(call => call.url.endsWith('/v1/dte')).length, 1);
+  } finally { await Deno.remove(directory, { recursive: true }); }
+});

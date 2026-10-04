@@ -614,3 +614,11 @@ Los tipos se leen del contrato TypeScript (`mod.ts`), no de un `.d.ts` generado.
 3. **No abre las credenciales de su almacenamiento administrado.** Facta guarda JSON/PDF de forma administrada en el servidor cuando el contrato API-key-scoped está disponible. `FileInvoiceArchive` conserva una copia cifrada local y los adaptadores BYOS replican bytes a proveedores del integrador. Sus estados son independientes; el SDK no recibe secretos R2. La impresora y el envío por WhatsApp requieren transportes separados.
 
 Una prueba de arquitectura del propio paquete falla si alguna de las dos primeras deja de ser cierta.
+
+Una respuesta fiscal exitosa puede incluir `storageErrorCode: "storage_contract_invalid"`
+si el recibo de almacenamiento es inválido o no coincide con los bytes exactos
+recibidos. Se omite ese recibo y se conserva el éxito fiscal. El archivo cifrado
+mantiene la condición pendiente hasta obtener un recibo válido por reparación.
+Facta listo satisface el destino duradero sin una bóveda BYOS; la firma y las
+referencias del catálogo conservan sus comprobaciones. Una capacidad presente
+pero inválida bloquea `diagnose()`; las rutas anteriores ausentes quedan como desconocidas.

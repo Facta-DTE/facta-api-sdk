@@ -44,3 +44,10 @@ Deno.test("catalog and destination capabilities are positive only after snapshot
   assertStringIncludes(report, "| Encrypted catalog snapshot opened locally | Passed |");
   assertStringIncludes(report, "| Encrypted destination snapshot opened locally | Failed |");
 });
+
+Deno.test("managed live result labels cannot expose copy digests, locations or raw failures", () => {
+  const privateValue = "PRIVATE-HASH-LOCATION-INVOICE";
+  const report = renderLiveReport({ ...createValidationResults(), "managed-readback": privateValue, storageErrorCode: privateValue }, privateValue);
+  assertEquals(report.includes(privateValue), false);
+  assertStringIncludes(report, "| Exact managed copy read-back | Not checked |");
+});
