@@ -4,8 +4,10 @@ For exact public method signatures, scopes, defaults, side effects, and
 recovery behavior, see the [SDK method reference](reference.md). Read the
 [Spanish guide](node.es.md) for the Spanish version.
 
-**Status:** `0.1.0-beta.1` is published to npm. The stable `0.1.0` release is
-being prepared and is not available until its npm staging review is approved.
+**Published package:** npm `latest` is `0.1.0`; the `beta` tag is
+`0.1.0-beta.1`. This checkout contains unreleased `0.1.1` source. Its managed
+storage methods require the packed branch artifact and are not in the current
+npm release.
 
 ## Requirements and installation
 
@@ -15,6 +17,15 @@ being prepared and is not available until its npm staging review is approved.
 - `FACTA_UNLOCK_KEY` is also needed to open local snapshots. `FACTA_SIGN_KEY`
   is required to issue.
 
+Copy the tracked placeholder file `.env.example` into an ignored local file
+and replace each placeholder through your secret manager. It contains no live
+credentials and is never loaded automatically by the SDK.
+
+Staging validation pins `FACTA_API_BASE_URL` to
+`https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1` and uses only
+`facta_test_` API/signing keys. Production keys and issuance are outside this
+validation flow.
+
 Validate a repository checkout with:
 
 ```sh
@@ -22,9 +33,10 @@ pnpm install --frozen-lockfile
 pnpm pack:check
 ```
 
-This tests the tarball with clean consumers. Install an approved version
-explicitly and pin it in the application lockfile. After `0.1.0` is approved,
-use that stable version; until then, use the beta version intentionally.
+This tests the tarball with clean consumers. For current releases, pin the
+approved npm version in the application lockfile. To validate unreleased
+managed-storage methods, run `pnpm pack:check` against this checkout's tarball;
+the npm release does not contain those methods yet.
 
 ## Configure the client
 
@@ -50,8 +62,10 @@ if (!health.ok || health.ambiente !== "00") {
 
 If omitted, `baseUrl` uses Facta’s public URL. The key prefix selects the test
 environment (`facta_test_`, environment `00`) or production (`facta_live_`,
-environment `01`); there is no separate staging URL. `status()` checks the key,
-company, revisions, and quotas. It counts as a status request but needs no
+environment `01`); the API host is configured separately. For staging
+validation, configure the staging API URL explicitly and use a test key.
+Never use a production key in staging validation. Test issuance consumes a
+test-environment fiscal sequence.
 `issue`, `query`, or `download` scope.
 
 For non-secret values, Node can load an explicit JSON file with
@@ -74,6 +88,16 @@ const facta = await createFactaFromConfigFile({
 Inline data applies only to this invoice and never creates or edits a customer
 record. You can omit `receptor` for an anonymous FE (`01`). For a named FE or
 CCF, provide the recipient required for that DTE:
+
+```ts
+// Invoke main() explicitly after reviewing the test issuance side effect.
+import { main } from "../examples/hola-factura.ts";
+await main();
+```
+
+For staging validation, use the pinned staging URL and `facta_test_` keys. No
+example issues a DTE when imported; this explicit call does consume a test
+sequence and requires a stable `ERP_ORDER_ID`.
 
 ```ts
 const result = await facta.issue({
@@ -169,6 +193,17 @@ const diagnostic = await facta.diagnose({ dteType: "03", archive });
 if (!diagnostic.canIssueAndArchive) {
   throw new Error(diagnostic.checks.map((item) => item.message).join("; "));
 }
+
+const issued = await facta.issueAndArchive({
+  tipoDte: "01",
+  items: [{ descripcion: "Sample item", cantidad: 1, precioUni: 10 }],
+}, {
+  archive,
+  operationId: "order-1042",
+  idempotencyKey: "order-1042",
+  includeTicket: false,
+});
+console.log(issued.managedStorage?.json.state, issued.archive.state);
 ```
 
 Certificate diagnostics use only the public fingerprint, validity dates, NIT,
@@ -179,8 +214,47 @@ metadata row remain usable and are reported as unknown until the app publishes
 the metadata. The status route never returns encrypted vault entries or a
 private key.
 
+## Managed storage readiness and repair
+
+After the server deploys capability version 1, check readiness before
+promising managed retention:
+
+```ts
+const storage = await facta.getStorageStatus();
+if (!storage.managed.ready && !storage.byos.ready) {
+  throw new Error("No durable server-side destination is ready");
+}
+
+const copies = await facta.getDocumentCopies({ generationCode });
+if (copies.some((copy) => copy.state !== "stored")) {
+  const receipt = await facta.retryDocumentStorage(generationCode);
+  // Repairs JSON/PDF for the already sealed DTE; it never reissues.
+  console.log(receipt.json.state, receipt.pdf.state);
+}
+```
+
+Managed-only companies need no bucket credentials in the SDK. The API derives
+tenant and environment from the key, then uses its authenticated internal
+Worker contract. Facta-managed storage is separate from the integrator's local
+encrypted archive and optional BYOS replication. Servers without the contract
+return `storage_unsupported`; diagnostics report this capability as unknown.
+Managed copies cover JSON/PDF, not tickets or invalidation events.
+
+Older API deployments may omit the entire `sincronizacion` status block.
+`diagnose()` reports synchronization warnings for that legacy contract and
+continues checking signing provisioning, certificate facts, scopes, environment,
+quotas, and archive readiness. A present but null or incomplete block, pending
+or failed synchronization, and mismatched revisions still prevent issuance.
+
+Use `includeTicket: false` to archive JSON, PDF and JWS without requesting a
+ticket. Completion then requires those three artifacts only, and the journal
+retains this choice for recovery. Ticket archival is enabled by default and
+requires a deployed API with `kind=ticket` PDF support. Older deployments may
+return JSON for that query and cannot complete a requested ticket archive.
+An explicit ticket width cannot be combined with `includeTicket: false`.
+
 `issueAndArchive()` records the idempotency key first, then encrypts exact JSON,
-PDF, JWS, and ticket bytes. It defaults to an 80 mm ticket; set
+PDF, JWS, and ticket bytes. For an API that supports ticket PDF downloads, it defaults to an 80 mm ticket; set
 `ticketPaperWidthMm` (40–120 mm) to choose another supported width. The choice
 is stored in the journal and reused during recovery. After a restart, list
 `facta.listPendingOperations(archive)` and call

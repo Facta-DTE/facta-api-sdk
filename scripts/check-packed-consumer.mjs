@@ -5,6 +5,7 @@ import {
   readFileSync,
   rmSync,
   writeFileSync,
+  cpSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
@@ -54,6 +55,12 @@ const request: DteRequest = {
   items: [{ descripcion: "Product", cantidad: 1, precioUni: 2 }],
 };
 const invalidationOptions: FactaInvalidationArchiveOptions = { operationId: 'typed-invalidation', idempotencyKey: 'typed-invalidation' };
+type ManagedStatus = Awaited<ReturnType<Facta['getStorageStatus']>>;
+type ManagedCopies = Awaited<ReturnType<Facta['getDocumentCopies']>>;
+type ManagedRepair = Awaited<ReturnType<Facta['retryDocumentStorage']>>;
+declare const managedStatus: ManagedStatus;
+declare const managedCopies: ManagedCopies;
+declare const managedRepair: ManagedRepair;
 const completeInvalidation: InvalidationResult = { estado: 'invalidado', codigoGeneracion: '7875BC7A-9580-441D-94E4-FA455E9D8BD0', numeroControl: 'DTE-03-M001P001-000000000000175', tipoDte: '03', ambiente: '00', evento: { codigoGeneracion: 'BEB08A1C-1722-4E35-AEA6-52AB1234CDEF', selloRecibido: 'event-seal', tipoAnulacion: 1 }, documento: {}, jws: 'signed-event-jws', anotadoEnElIndice: true };
 const sparseInvalidation: InvalidationResult = { estado: 'invalidado', codigoGeneracion: '7875BC7A-9580-441D-94E4-FA455E9D8BD0', numeroControl: 'DTE-03-M001P001-000000000000175', yaEstabaInvalidado: true };
 declare const typedFacta: Facta;
@@ -62,9 +69,9 @@ declare const typedInvalidationOptions: FactaInvalidationArchiveOptions;
 void typedFacta.invalidateAndArchive('7875BC7A-9580-441D-94E4-FA455E9D8BD0', invalidationRequest, typedInvalidationOptions);
 void typedFacta.recoverInvalidation('typed-invalidation');
 void typedFacta.listPendingInvalidations();
-void [completeInvalidation, sparseInvalidation];
+void [completeInvalidation, sparseInvalidation, managedStatus, managedCopies, managedRepair];
 void invalidationOptions;
-if (typeof Facta !== "function" || typeof NodeFacta !== "function" || typeof NodeFacta.prototype.recoverOperation !== "function" || typeof NodeFacta.prototype.listPendingOperations !== "function" || typeof NodeFileInvoiceArchive.open !== "function" || typeof createFactaFromConfigFile !== "function" || typeof createBridgeArtifactDestination !== "function" || typeof createGoogleDriveArtifactDestination !== "function" || typeof createOneDriveArtifactDestination !== "function" || typeof createS3ArtifactDestination !== "function" || typeof createSupabaseArtifactDestination !== "function" || request.tipoDte !== "11") throw new Error("SDK import failed");
+if (typeof Facta !== "function" || typeof Facta.prototype.getStorageStatus !== "function" || typeof Facta.prototype.getDocumentCopies !== "function" || typeof Facta.prototype.retryDocumentStorage !== "function" || typeof NodeFacta !== "function" || typeof NodeFacta.prototype.getStorageStatus !== "function" || typeof NodeFacta.prototype.getDocumentCopies !== "function" || typeof NodeFacta.prototype.retryDocumentStorage !== "function" || typeof NodeFacta.prototype.recoverOperation !== "function" || typeof NodeFacta.prototype.listPendingOperations !== "function" || typeof NodeFileInvoiceArchive.open !== "function" || typeof createFactaFromConfigFile !== "function" || typeof createBridgeArtifactDestination !== "function" || typeof createGoogleDriveArtifactDestination !== "function" || typeof createOneDriveArtifactDestination !== "function" || typeof createS3ArtifactDestination !== "function" || typeof createSupabaseArtifactDestination !== "function" || request.tipoDte !== "11") throw new Error("SDK import failed");
 const typedS3 = createS3ArtifactDestination({ id: 'typed-s3', label: 'Typed S3', config: { bucket: 'bucket', region: 'auto', accessKeyId: 'test-key', secretAccessKey: 'test-secret-key-123456', endpoint: 'http://127.0.0.1:9100', allowInsecureEndpoint: true } });
 if (typeof typedS3.write !== 'function') throw new Error('S3 adapter type contract failed');
 const typedOneDrive = createOneDriveArtifactDestination({ id: 'typed-onedrive', label: 'Typed OneDrive', accessToken: 'token', refreshAccessToken: async () => 'new-token' });
@@ -333,6 +340,64 @@ try {
     stdio: "inherit",
     ...(process.platform === "win32" ? { shell: true } : {}),
   });
+  cpSync(join(temp, "node_modules", "@facta-dte", "api", "examples"), join(temp, "examples"), { recursive: true });
+  const exampleFiles = readdirSync(join(temp, "examples")).filter(name => name.endsWith(".ts")).map(name => "examples/" + name);
+  execFileSync(process.execPath, [tsc, "--noEmit", "--strict", "--target", "ES2022", "--module", "NodeNext", "--moduleResolution", "NodeNext", "--skipLibCheck", ...exampleFiles], { cwd: temp, stdio: "inherit" });
+  const exampleRunner = `
+import { main } from './examples/hola-factura.ts';
+import { inspectManagedStorage, repairManagedStorage } from './examples/managed-storage.ts';
+import * as requests from './examples/dte-types.ts';
+import * as workflows from './examples/workflows.ts';
+import type { Facta, InvoiceArchive, InvalidationArchive, InvalidationRequest } from '@facta-dte/api';
+if (typeof main !== 'function' || typeof inspectManagedStorage !== 'function' || typeof repairManagedStorage !== 'function') throw new Error('Example exports unavailable');
+const calls: string[] = [];
+const record = (name: string, value: unknown = {}) => { calls.push(name); return Promise.resolve(value); };
+const fake = {
+  diagnose: () => record('diagnose', { canIssue: true, storageReady: null }),
+  issue: (_request: unknown, options: { idempotencyKey: string }) => record('issue:' + options.idempotencyKey, { estado: 'sellado' }),
+  issueAndArchive: () => record('archive'), recoverOperation: () => record('recover'), replicateArchive: () => record('byos'),
+  syncCatalog: () => record('catalog'), getCustomer: () => record('customer', {}), getProduct: () => record('product', {}),
+  downloadDocument: () => record('ticket'), invalidateAndArchive: () => record('invalidate'),
+} as unknown as Facta;
+const archive = {} as InvoiceArchive;
+for (const request of Object.values(requests)) await workflows.issueManaged(fake, request, 'stable-fixture-order');
+await workflows.issueWithCopies(fake, requests.finalConsumerInvoice, { archive, operationId: 'fixture', idempotencyKey: 'fixture' });
+await workflows.recoverAfterRestart(fake, archive, 'fixture');
+await workflows.recoverByos(fake, archive, 'fixture', []);
+await workflows.catalogRequest(fake, 'fixture-customer', 'fixture-product');
+await workflows.readTicket(fake, 'designated-test-invoice');
+await workflows.invalidateDesignatedTest(fake, {} as InvalidationArchive, 'designated-test-invoice', {} as InvalidationRequest, 'fixture-invalidation');
+await workflows.inspectCompatibility(fake);
+if (calls.filter(call => call === 'issue:stable-fixture-order').length !== 7 || !calls.includes('recover') || !calls.includes('ticket') || !calls.includes('invalidate')) throw new Error('Example scenario execution failed');
+const runtime = globalThis as any;
+const syntheticEnv = { FACTA_API_KEY: 'facta_test_fixture.secret', FACTA_SIGN_KEY: 'factask_fixture', FACTA_API_BASE_URL: 'https://packed.example.test/api-v1', ERP_ORDER_ID: 'stable-example-order' };
+for (const [name, value] of Object.entries(syntheticEnv)) {
+  if (runtime.Deno) runtime.Deno.env.set(name, value); else runtime.process.env[name] = value;
+}
+const generationCode = '33333333-3333-4333-8333-333333333333';
+const artifact = { state: 'stored', sha256: 'a'.repeat(64), bytes: 10, storedAt: '2026-10-03T12:00:00Z', errorCode: null, retryable: false };
+const receipt = { destination: 'managed', environment: '00', operationId: generationCode, json: artifact, pdf: artifact };
+const managed = { configured: true, ready: true, state: 'ready', integration: 'ready', quotaBytes: 1000, usedBytes: 20, reservedBytes: 0, usedBytesTotal: 20, reservedBytesTotal: 0, coveredUntil: null, accessUntil: null, bucketState: 'ready', backupState: 'not_required' };
+const networkCalls: string[] = [];
+globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+  const url = String(input); networkCalls.push(url);
+  if (!url.startsWith('https://packed.example.test/')) throw new Error('Unexpected example endpoint');
+  if (url.endsWith('/storage/status')) return Response.json({ capabilityVersion: 1, managed, byos: { ready: false }, supportedKinds: ['json', 'pdf'], unsupportedKinds: ['ticket', 'invalidation'] });
+  if (url.includes('/storage/copies?')) return Response.json({ capabilityVersion: 1, copies: [] });
+  if (url.endsWith('/repair')) return Response.json({ storage: receipt });
+  if (url.endsWith('/v1/status')) return Response.json({ ok: true, version: 'v1', ambiente: '00', emisor: { nit: 'fixture', nombre: 'Fixture', ambiente: '00' }, llave: { keyId: 'facta_test_fixture', label: null, modo: 'byok', alcances: ['issue','query','download'], tiposDte: ['01'], venceEl: null }, firma: { vaultDeFirma: true, origenDeLaFirma: 'vault', cabecera: 'x-facta-sign-key' }, limites: { hora: { limit: 100, used: 0, remaining: 100 }, dia: { limit: 100, used: 0, remaining: 100 }, estado: null, montoMaximoPorDocumentoCentavos: 10000 } });
+  if (new Headers(init?.headers).get('Idempotency-Key') !== 'stable-example-order') throw new Error('Example lacks stable idempotency identity');
+  return Response.json({ estado: 'sellado', codigoGeneracion: generationCode, storage: receipt });
+}) as typeof fetch;
+await main();
+await inspectManagedStorage(generationCode);
+await repairManagedStorage(generationCode);
+if (networkCalls.filter(url => url.endsWith('/v1/dte')).length !== 1) throw new Error('Minimal example must issue only once');
+
+`;
+  writeFileSync(join(temp, "example-runner.ts"), exampleRunner);
+  execFileSync(process.execPath, ["--experimental-strip-types", "example-runner.ts"], { cwd: temp, stdio: "inherit" });
+  execFileSync("deno", ["run", "--allow-env", "example-runner.ts"], { cwd: temp, stdio: "inherit" });
   execFileSync(process.execPath, [
     tsc,
     "--noEmit",

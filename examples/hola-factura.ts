@@ -3,12 +3,10 @@
 // Keep the integration small and readable: credentials come from the process
 // environment, and an uncertain result must never trigger a duplicate issue.
 //
-//   Node:  FACTA_API_KEY=facta_test_… FACTA_SIGN_KEY=factask_… \
-//            node --experimental-strip-types examples/hola-factura.ts
-//   Deno:  FACTA_API_KEY=facta_test_… FACTA_SIGN_KEY=factask_… \
-//            deno run --allow-net --allow-env examples/hola-factura.ts
+// Import the exported main() and invoke it explicitly after configuring a
+// test API/signing key and a stable ERP_ORDER_ID. Module import never issues.
 
-import { Facta, FactaError } from "../mod.ts";
+import { Facta } from "@facta-dte/api";
 
 // Inject these values from a process secret manager, never from source control.
 // Keep API and signing credentials separate where possible. FACTA_UNLOCK_KEY
@@ -17,22 +15,14 @@ import { Facta, FactaError } from "../mod.ts";
 const g = globalThis as any;
 const env = (name: string): string => g.Deno?.env.get(name) ?? g.process?.env?.[name];
 
-const facta = new Facta({ apiKey: env("FACTA_API_KEY"), signKey: env("FACTA_SIGN_KEY") });
-
-try {
-  const dte = await facta.issue({
-    tipoDte: "03",
-    receptor: { customerId: "374114b6-e957-4c7a-8911-dd6381b1e0ea" },
-    items: [{ descripcion: "Integración de la API", cantidad: 1, precioUni: 25 }],
-  });
-  // Totals are available only after Hacienda seals the document. A 202
-  // contingency response has no final verdict, which the result type enforces.
-  console.log(dte.estado, dte.numeroControl);
-  if (dte.estado === "sellado") console.log("Seal:", dte.selloRecibido, dte.totales.totalPagar);
-} catch (error) {
-  if (error instanceof FactaError && error.isRejection) {
-    // Hacienda rejected the document after reserving its number. Use the same
-    // number when correcting the rejected operation.
-    console.error("Rejected:", error.message, "· number spent:", error.spent?.numeroControl);
-  } else throw error;
+export async function main() {
+  const orderId = env("ERP_ORDER_ID");
+  const apiKey = env("FACTA_API_KEY");
+  const baseUrl = env("FACTA_API_BASE_URL");
+  if (!orderId?.trim() || !apiKey?.startsWith("facta_test_") || !baseUrl) throw new Error("Configure a test key, explicit API URL and stable ERP_ORDER_ID.");
+  const facta = new Facta({ apiKey, signKey: env("FACTA_SIGN_KEY"), baseUrl });
+  if (!(await facta.diagnose({ expectedEnvironment: "00" })).canIssue) throw new Error("Resolve readiness checks before issuance.");
+  const result = await facta.issue({ tipoDte: "01", items: [{ descripcion: "Sample item", cantidad: 1, precioUni: 1 }] }, { idempotencyKey: orderId });
+  if (result.estado === "sellado") console.log("Sealed; managed JSON/PDF:", result.storage?.json.state, result.storage?.pdf.state);
+  else console.log("Fiscal status:", result.estado);
 }

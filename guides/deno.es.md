@@ -3,10 +3,10 @@
 Para conocer las firmas públicas, alcances, valores predeterminados, efectos
 y mecanismos de recuperación, consulta la [referencia de métodos del SDK](reference.es.md).
 
-**Estado:** el código fuente y el tarball se verifican con Deno 2.6.6. La
-versión `0.1.0-beta.1` está publicada en npm, pero el paquete no está publicado
-en JSR. Se prepara la versión estable `0.1.0` de npm; estará disponible tras
-aprobar su staging.
+**Paquete publicado:** `0.1.0` es `latest` en npm y `0.1.0-beta.1` está en la
+etiqueta `beta`; no hay paquete JSR. Este checkout contiene código fuente
+`0.1.1` sin publicar. Sus métodos de almacenamiento administrado no están en
+el paquete npm vigente.
 
 ## Requisitos e instalación
 
@@ -26,10 +26,10 @@ pnpm test
 pnpm pack:check
 ```
 
-En el proyecto consumidor usa una versión aprobada y explícita, como
-`npm:@facta-dte/api@0.1.0` cuando se apruebe el release estable. Mientras tanto,
-la beta disponible es `npm:@facta-dte/api@0.1.0-beta.1`. Fija la versión elegida
-en `deno.json` y revisa el lockfile en control de versiones.
+En el proyecto consumidor fija `npm:@facta-dte/api@0.1.0` para la versión
+estable actual, o la beta de forma intencional, en `deno.json`; revisa el
+lockfile en control de versiones. Para probar los métodos de almacenamiento
+todavía no publicados, valida el tarball local con `pnpm pack:check`.
 
 ## Permisos mínimos
 
@@ -49,6 +49,16 @@ antes de permisos no concedidos; en producción declara los mínimos en el
 comando o config. No pases `-A` a una integración desplegada.
 
 ## Cliente y una factura de prueba
+
+```ts
+// Importar el módulo no emite. Llama main() solo cuando quieras emitir una prueba.
+import { main } from "../examples/hola-factura.ts";
+await main();
+```
+
+Configura la base URL de staging y usa únicamente llaves `facta_test_`; esta
+llamada explícita consume una secuencia fiscal de prueba y requiere un
+`ERP_ORDER_ID` estable.
 
 ```ts
 import { Facta } from "npm:@facta-dte/api@0.1.0";
@@ -109,6 +119,32 @@ en el ambiente registrado solo advierte, porque el registro conserva el slot de
 carga como contexto. Las llaves antiguas sin metadatos de certificado siguen
 funcionando y muestran el chequeo como desconocido.
 
+## Almacenamiento administrado y recuperación
+
+Cuando el servidor publique la capacidad versión 1, revisa cobertura y cupo
+para el ambiente de la llave:
+
+```ts
+const storage = await facta.getStorageStatus();
+if (!storage.managed.ready && !storage.byos.ready) {
+  throw new Error("No hay un destino durable del servidor disponible");
+}
+
+const copies = await facta.getDocumentCopies({ generationCode });
+if (copies.some((copy) => copy.state !== "stored")) {
+  const receipt = await facta.retryDocumentStorage(generationCode);
+  // Repara el DTE sellado; nunca vuelve a emitirlo.
+  console.log(receipt.json.state, receipt.pdf.state);
+}
+```
+
+Las empresas administradas no configuran claves de bucket en el SDK. La API
+obtiene empresa y ambiente de la llave y llama al Worker con autenticación
+interna. Los resultados del storage administrado, del archivo cifrado local y
+de BYOS son independientes. En servidores anteriores, `storage_unsupported`
+indica que falta el contrato; el diagnóstico lo deja como desconocido. Solo se
+guardan JSON/PDF, no tickets ni anulaciones.
+
 ## Descargar y archivar artefactos
 
 JSON y PDF son bytes separados; el SDK no reconstruye ni imprime el PDF:
@@ -166,6 +202,7 @@ const archive = await FileInvoiceArchive.open({
 });
 
 const issued = await facta.issueAndArchive(request, {
+  includeTicket: false,
   archive,
   operationId: erpOrderId,
   idempotencyKey: erpOrderId,
@@ -176,7 +213,6 @@ Anulación también se journaliza antes de enviarse. Tras reiniciar el proceso,
 reutiliza el journal y recupera cada operación pendiente con su clave original:
 
 ```ts
-const generationCode = result.codigoGeneracion;
 const generationCode = result.codigoGeneracion;
 const invalidation = await facta.invalidateAndArchive(generationCode, request, {
   archive,

@@ -77,6 +77,7 @@ const fullRelatedDocument: RelatedDocument = {
 const supported: DteType[] = ["01", "03", "05", "06", "11", "14"];
 const listFilters: ListDocumentsFilters[] = [{ estado: "sellado" }, { estado: "invalidado" }];
 const listedDocumentState: ListedDte["estado"] = "contingencia";
+const unavailableListedReceiver: ListedDte["receptor"] = null;
 const documentedExamples: DteRequest[] = [
   finalConsumerInvoice,
   namedFinalConsumerInvoice,
@@ -111,6 +112,7 @@ void [
   incompleteRelatedDocument,
   listFilters,
   listedDocumentState,
+  unavailableListedReceiver,
   rejectedListFilter,
   rejectedListedDocument,
 ];

@@ -239,3 +239,74 @@ Deno.test("configured environment and scopes are verified against live key statu
   assertEquals(mismatch.checks.find((check) => check.id === "configured-environment")?.state, "blocked");
   assertEquals(mismatch.checks.find((check) => check.id === "configured-scope-download")?.state, "blocked");
 });
+
+Deno.test("legacy status without a synchronization block retains guarded archive readiness", async () => {
+  const legacy = status({ sincronizacion: undefined });
+  const report = await diagnoseStatus(legacy, {
+    dteType: "03", archive: readyArchive, expectedEnvironment: "00",
+    requiredScopes: ["issue", "query", "download"],
+  });
+  assertEquals(report.canIssueAndArchive, true);
+  assertEquals(report.overall, "attention");
+  assertEquals(report.checks.find((check) => check.id === "sign-sync")?.state, "warning");
+  assertEquals(report.checks.find((check) => check.id === "destinations-sync")?.state, "warning");
+
+  for (const guarded of [
+    { ...legacy, firma: { ...legacy.firma!, vaultDeFirma: false, origenDeLaFirma: "sin-provisionar" as const } },
+    { ...legacy, limites: { ...legacy.limites, hora: null } },
+    { ...legacy, llave: { ...legacy.llave, alcances: ["issue", "query"] } },
+  ]) {
+    const blocked = await diagnoseStatus(guarded, {
+      archive: readyArchive, requiredScopes: ["issue", "query", "download"],
+    });
+    assertEquals(blocked.canIssueAndArchive, false);
+  }
+});
+
+Deno.test("present incomplete or failed synchronization metadata never uses legacy compatibility", async () => {
+  const ready = { desiredRevision: 1, publishedRevision: 1, status: "ready" as const };
+  for (const sincronizacion of [
+    null,
+    {},
+    { sign: ready },
+    { destinations: ready },
+    { sign: { ...ready, status: "pending" }, destinations: ready },
+    { sign: ready, destinations: { ...ready, status: "error" } },
+    { sign: { ...ready, publishedRevision: 0 }, destinations: ready },
+  ]) {
+    const fixture = { ...status(), sincronizacion } as unknown as Status;
+    const report = await diagnoseStatus(fixture, { archive: readyArchive });
+    assertEquals(report.canIssueAndArchive, false);
+    assertEquals(report.overall, "blocked");
+  }
+});
+
+const managedCapability = {
+  capabilityVersion: 1,
+  managed: { configured: true, ready: true, state: "ready", integration: "ready", quotaBytes: 1000, usedBytes: 0, reservedBytes: 0,
+    usedBytesTotal: 0, reservedBytesTotal: 0, coveredUntil: null, accessUntil: null, bucketState: "ready", backupState: "not_required" },
+  byos: { ready: false }, supportedKinds: ["json", "pdf"], unsupportedKinds: ["ticket", "invalidation"],
+};
+
+Deno.test("managed-only readiness replaces optional BYOS synchronization without bypassing signing", async () => {
+  const health = status({ sincronizacion: { sign: { status: "ready", desiredRevision: 1, publishedRevision: 1 } } });
+  const facta = new Facta({ apiKey: "facta_test_key.secret", fetch: ((url: string) => Promise.resolve(Response.json(url.endsWith('/storage/status') ? managedCapability : health))) as typeof fetch });
+  assertEquals((await facta.diagnose({ archive: readyArchive })).canIssueAndArchive, true);
+  health.sincronizacion!.sign = { status: "pending", desiredRevision: 2, publishedRevision: 1 };
+  assertEquals((await facta.diagnose({ archive: readyArchive })).canIssue, false);
+});
+
+for (const capability of [null, { ...managedCapability, capabilityVersion: 2 },
+  { ...managedCapability, managed: { ...managedCapability.managed, configured: false } },
+  { ...managedCapability, managed: { ...managedCapability.managed, integration: "unavailable" } },
+  { ...managedCapability, managed: { ...managedCapability.managed, usedBytes: -1 } },
+  { ...managedCapability, supportedKinds: [] },
+]) {
+  Deno.test(`present invalid storage capability blocks issuance: ${JSON.stringify(capability)?.length}`, async () => {
+    const facta = new Facta({ apiKey: "facta_test_key.secret", fetch: ((url: string) => Promise.resolve(Response.json(url.endsWith('/storage/status') ? capability : status()))) as typeof fetch });
+    const report = await facta.diagnose({ archive: readyArchive });
+    assertEquals(report.canIssue, false);
+    assertEquals(report.canIssueAndArchive, false);
+    assertEquals(report.overall, "blocked");
+  });
+}

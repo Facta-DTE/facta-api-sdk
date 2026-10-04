@@ -30,6 +30,8 @@ const issuance: IssueResult = {
   totales: {} as Totals,
   documento: {},
   jws: "signed-jws",
+  archivoJson: '{"codigoGeneracion":"7875BC7A-9580-441D-94E4-FA455E9D8BD0","ambiente":"00","jws":"signed-jws"}',
+  representacionGrafica: btoa("%PDF-test"),
 };
 const request = {
   tipoDte: "03" as const,
@@ -180,7 +182,7 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
   return Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function transport(pdfStatus = 200, ticketStatus = 200) {
+function transport(pdfStatus = 200, ticketStatus = 200, issueResponse: unknown = issuance) {
   const calls: Array<{ url: string; key?: string }> = [];
   const fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -192,7 +194,7 @@ function transport(pdfStatus = 200, ticketStatus = 200) {
       emisor: { nit: "0614-010101-101-1", nombre: "Issuer", ambiente: "00" },
       llave: { keyId: "facta_test_x", label: null, modo: "byok", alcances: [], tiposDte: [], venceEl: null },
     });
-    if (url.endsWith("/v1/dte")) return Response.json(issuance);
+    if (url.endsWith("/v1/dte")) return Response.json(issueResponse);
     if (url.endsWith("/v1/dte/" + issuance.codigoGeneracion)) {
       return Response.json({
         estado: "sellado",
@@ -266,14 +268,58 @@ Deno.test("runtime archive defaults store exact JSON/PDF/JWS/ticket bytes after 
   assertEquals(archive.artifacts.map((row) => row.kind), ["json", "jws", "pdf", "ticket"]);
   assertEquals(
     new TextDecoder().decode(archive.artifacts[0].bytes),
-    '{"exact":"json","jws":"signed-jws"}',
+    issuance.archivoJson,
   );
   assertEquals(new TextDecoder().decode(archive.artifacts[1].bytes), "signed-jws");
-  assertEquals([...archive.artifacts[2].bytes], [37, 80, 68, 70]);
+  assertEquals([...archive.artifacts[2].bytes], [37, 80, 68, 70, 45, 116, 101, 115, 116]);
   assertEquals([...archive.artifacts[3].bytes], [37, 80, 68, 70, 45, 84]);
   assertEquals(calls.find((call) => call.key)?.key, "sale-2");
-  assertEquals(calls.length, 5);
-  assertEquals(calls[4].url.endsWith("kind=ticket&paperWidthMm=80"), true);
+  assertEquals(calls.filter((call) => call.url.includes("/file?")).length, 1);
+  assertEquals(calls.some((call) => call.url.includes("kind=json") || call.url.includes("kind=pdf")), false);
+  assertEquals(calls.find((call) => call.url.includes("kind=ticket"))?.url.endsWith("kind=ticket&paperWidthMm=80"), true);
+});
+
+Deno.test("old API responses fall back to JSON/PDF downloads when inline files are unavailable", async () => {
+  const archive = new MemoryArchive();
+  const oldResponse = { ...issuance, archivoJson: undefined, representacionGrafica: undefined };
+  const { fetch, calls } = transport(200, 200, oldResponse);
+  const facta = new Facta({ apiKey: "facta_test_x.secret", fetch, runtime: { version: 1, archive } });
+  const result = await facta.issueAndArchive(request, {
+    operationId: "sale-old-server",
+    idempotencyKey: "sale-old-server",
+  });
+  assertEquals(result.archive.state, "complete");
+  assertEquals(calls.filter((call) => call.url.includes("/file?")).length, 3);
+  assertEquals(calls.some((call) => call.url.includes("kind=json")), true);
+  assertEquals(calls.some((call) => call.url.includes("kind=pdf")), true);
+});
+
+Deno.test("contingency archives the server-signed JSON without requesting a PDF or ticket", async () => {
+  const archive = new MemoryArchive();
+  const contingency = {
+    estado: "contingencia",
+    codigoGeneracion: issuance.codigoGeneracion,
+    numeroControl: issuance.numeroControl,
+    tipoDte: issuance.tipoDte,
+    ambiente: issuance.ambiente,
+    fecEmi: issuance.fecEmi,
+    horEmi: issuance.horEmi,
+    detalle: "Hacienda is unreachable",
+    documento: issuance.documento,
+    jws: issuance.jws,
+    archivoJson: issuance.archivoJson,
+  } as const;
+  const { fetch, calls } = transport(404, 404, contingency);
+  const facta = new Facta({ apiKey: "facta_test_x.secret", fetch });
+  const result = await facta.issueAndArchive(request, {
+    archive,
+    operationId: "sale-contingency",
+    idempotencyKey: "sale-contingency",
+  });
+  assertEquals(result.emission?.estado, "contingencia");
+  assertEquals(result.archive.state, "complete");
+  assertEquals(archive.artifacts.map((row) => row.kind), ["json", "jws"]);
+  assertEquals(calls.some((call) => call.url.includes("/file?")), false);
 });
 
 Deno.test("remote writes are idempotent, persisted per artifact, and reconciled without reissuing", async () => {
@@ -393,7 +439,7 @@ Deno.test("remote destination diagnostics read existing artifacts without writin
   assertEquals(checks, 2);
   assertEquals(writes, 0);
   assertEquals(archive.operation, before);
-  assertEquals(new TextDecoder().decode((await archive.getArtifact(issuance.codigoGeneracion, "json"))?.bytes), '{"exact":"json","jws":"signed-jws"}');
+  assertEquals(new TextDecoder().decode((await archive.getArtifact(issuance.codigoGeneracion, "json"))?.bytes), issuance.archivoJson);
 
   archive.artifacts = archive.artifacts.filter((artifact) => artifact.kind !== "ticket");
   await assertRejects(
@@ -406,7 +452,7 @@ Deno.test("remote destination diagnostics read existing artifacts without writin
 
 Deno.test("PDF failure is reported as issued with archive attention, not as an issuance failure", async () => {
   const archive = new MemoryArchive();
-  const { fetch } = transport(404);
+  const { fetch } = transport(404, 200, { ...issuance, representacionGrafica: null });
   const facta = new Facta({ apiKey: "facta_test_x.secret", fetch });
   const result = await facta.issueAndArchive(request, {
     archive,
@@ -1150,4 +1196,79 @@ Deno.test("invalidation archive refuses a response for a different target docume
   );
   assertEquals(error.code, "internal_error");
   assertEquals((await archive.findInvalidation("mismatched-invalidation"))?.state, "needs_attention");
+});
+
+Deno.test("inline archival can explicitly omit the unsupported optional ticket and recover that choice", async () => {
+  const archive = new MemoryArchive();
+  const { fetch, calls } = transport();
+  const facta = new Facta({ apiKey: "facta_test_x.secret", fetch, runtime: { version: 1, archive }, config: { version: 1, ticketPaperWidthMm: 58 } });
+  const result = await facta.issueAndArchive(request, { operationId: "no-ticket", idempotencyKey: "no-ticket", includeTicket: false });
+  assertEquals(result.archive.state, "complete");
+  assertEquals(archive.operation?.ticketPaperWidthMm, undefined);
+  assertEquals(archive.artifacts.map((row) => row.kind), ["json", "jws", "pdf"]);
+  assertEquals(calls.some((call) => call.url.includes("/file?")), false);
+  const recovered = await facta.recoverOperation("no-ticket");
+  assertEquals(recovered.archive.state, "complete");
+  assertEquals(calls.some((call) => call.url.includes("/file?")), false);
+});
+
+Deno.test("ticket opt-out rejects an explicit width before any request", async () => {
+  const archive = new MemoryArchive();
+  const { fetch, calls } = transport();
+  const facta = new Facta({ apiKey: "facta_test_x.secret", fetch });
+  await assertRejects(() => facta.issueAndArchive(request, {
+    archive, operationId: "conflict", idempotencyKey: "conflict", includeTicket: false, ticketPaperWidthMm: 58,
+  }), TypeError, "ticketPaperWidthMm cannot be supplied");
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("managed pending receipts survive encrypted restart and repair without another fiscal request", async () => {
+  const directory = await Deno.makeTempDir();
+  const artifact = { state: "pending" as const, sha256: null, bytes: null, storedAt: null, errorCode: "worker_unavailable", retryable: true };
+  const receipt = { destination: "managed" as const, environment: "00" as const, operationId: issuance.codigoGeneracion, json: artifact, pdf: artifact };
+  const base = transport(200, 200, { ...issuance, storage: receipt });
+  let repairs = 0;
+  let corrupt = true;
+  const repairedArtifact = { state: "stored" as const, sha256: "a".repeat(64), bytes: 10, storedAt: "2026-10-03T12:00:00Z", errorCode: null, retryable: false };
+  const fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input).endsWith('/repair')) {
+      repairs++;
+      return Response.json({ storage: { ...receipt, operationId: issuance.codigoGeneracion.toLowerCase(), json: { ...repairedArtifact, sha256: corrupt ? "b".repeat(64) : await sha256Hex(new TextEncoder().encode(issuance.archivoJson!)), bytes: new TextEncoder().encode(issuance.archivoJson!).length }, pdf: { ...repairedArtifact, sha256: await sha256Hex(new TextEncoder().encode("%PDF-test")), bytes: "%PDF-test".length } } });
+    }
+    return await base.fetch(input, init);
+  }) as typeof globalThis.fetch;
+  try {
+    const archive = await FileInvoiceArchive.open({ directory, passphrase: "test-managed-storage-archive-secret" });
+    const facta = new Facta({ apiKey: "facta_test_x.secret", fetch });
+    const issued = await facta.issueAndArchive(request, { operationId: "managed", idempotencyKey: "managed", archive, includeTicket: false });
+    assertEquals(issued.archive.state, "complete");
+    assertEquals((await archive.pending()).length, 1);
+    const restarted = await FileInvoiceArchive.open({ directory, passphrase: "test-managed-storage-archive-secret" });
+    const rejectedRepair = await facta.recoverOperation("managed", { archive: restarted });
+    assertEquals(rejectedRepair.archive.state, "needs_attention");
+    assertEquals(rejectedRepair.managedStorage?.json.state, "pending");
+    assertEquals((await restarted.pending()).length, 1);
+    corrupt = false;
+    const recovered = await facta.recoverOperation("managed", { archive: restarted });
+    assertEquals(recovered.managedStorage?.json.state, "stored");
+    assertEquals((await restarted.pending()).length, 0);
+    assertEquals(repairs, 2);
+    assertEquals(base.calls.filter(call => call.url.endsWith('/v1/dte')).length, 1);
+    assertEquals(base.calls.filter(call => call.url.includes('/file')).length, 0);
+  } finally { await Deno.remove(directory, { recursive: true }); }
+});
+
+Deno.test("malformed storage receipt stays observable while exact inline archival succeeds", async () => {
+  const directory = await Deno.makeTempDir();
+  const base = transport(200, 200, { ...issuance, storage: { malformed: true } });
+  try {
+    const archive = await FileInvoiceArchive.open({ directory, passphrase: "test-managed-storage-archive-secret" });
+    const facta = new Facta({ apiKey: "facta_test_x.secret", fetch: base.fetch });
+    const result = await facta.issueAndArchive(request, { operationId: "invalid-storage", idempotencyKey: "invalid-storage", archive, includeTicket: false });
+    assertEquals(result.emission?.estado, "sellado");
+    assertEquals(result.storageErrorCode, "storage_contract_invalid");
+    assertEquals(result.archive.state, "complete");
+    assertEquals((await facta.listPendingOperations(archive))[0].storageErrorCode, "storage_contract_invalid");
+    assertEquals(base.calls.filter(call => call.url.endsWith('/v1/dte')).length, 1);
+  } finally { await Deno.remove(directory, { recursive: true }); }
 });

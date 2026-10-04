@@ -1,5 +1,9 @@
 name: SDK live integration (staging API, test environment)
 
+concurrency:
+  group: sdk-staging-live
+  cancel-in-progress: false
+
 on:
   pull_request:
     branches:
@@ -7,21 +11,24 @@ on:
   workflow_dispatch:
     inputs:
       confirmation:
-        description: Issue one FE (01) for $0.01 in the Facta test environment
+        description: Issue one FE for $0.01, or the full enabled DTE test-fixture matrix
         required: true
         type: choice
         options:
           - skip
           - emit-test-fe
+          - emit-enabled-dte-fixtures
 
 permissions:
+  actions: read
   contents: read
   issues: write
+  pull-requests: write
 
 jobs:
   live-test:
     if: >-
-      (github.event_name == 'workflow_dispatch' && inputs.confirmation == 'emit-test-fe') ||
+      (github.event_name == 'workflow_dispatch' && (inputs.confirmation == 'emit-test-fe' || inputs.confirmation == 'emit-enabled-dte-fixtures')) ||
       (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     environment:
@@ -29,6 +36,17 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
+      - name: Read original workflow run timestamp
+        id: run-age
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const run = await github.rest.actions.getWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId,
+            });
+            core.setOutput('created_at', run.data.created_at);
       - uses: pnpm/action-setup@v4
         with:
           version: 10
@@ -47,30 +65,32 @@ jobs:
           STAGING_FACTA_API_KEY: ${{ secrets.STAGING_FACTA_API_KEY }}
           STAGING_FACTA_SIGN_KEY: ${{ secrets.STAGING_FACTA_SIGN_KEY }}
           STAGING_FACTA_UNLOCK_KEY: ${{ secrets.STAGING_FACTA_UNLOCK_KEY }}
+          STAGING_FACTA_DTE_FIXTURES_JSON: ${{ secrets.STAGING_FACTA_DTE_FIXTURES_JSON }}
           STAGING_FACTA_API_BASE_URL: https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1
+          FACTA_LIVE_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.confirmation || 'emit-test-fe' }}
+          GITHUB_RUN_CREATED_AT: ${{ steps.run-age.outputs.created_at }}
           FACTA_LIVE_REPORT_DIR: ${{ runner.temp }}/facta-live-report
-      - name: Upload invoice report and documents
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: staging-invoice
-          path: ${{ runner.temp }}/facta-live-report/
-          if-no-files-found: ignore
-          retention-days: 7
       - name: Add live result to pull request
         if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         uses: actions/github-script@v8
         env:
           RESULT: ${{ job.status }}
+          REPORT_PATH: ${{ runner.temp }}/facta-live-report/report.md
         with:
           script: |
             const marker = '<!-- facta-sdk-staging-live-result -->';
-            const body = `${marker}
-            ## SDK staging live test: ${process.env.RESULT}
-
-            The live test issues one FE (`01`) for **$0.01** in the staging test environment (`00`). When issuance and downloads succeed, the run includes the exact JSON and PDF in the `staging-invoice` artifact, retained for 7 days.
-
-            [Open this run and download its artifacts](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`;
+            const fs = require('node:fs');
+            const report = fs.existsSync(process.env.REPORT_PATH)
+              ? fs.readFileSync(process.env.REPORT_PATH, 'utf8')
+              : '';
+            const body = [
+              marker,
+              `## SDK staging live test: ${process.env.RESULT}`,
+              '',
+              report || 'No invoice report was produced. This run does not establish that an invoice was generated; inspect the failed step in the workflow logs.',
+              '',
+              `[Open workflow run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`,
+            ].join('\n');
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,

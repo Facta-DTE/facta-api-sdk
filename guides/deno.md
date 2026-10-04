@@ -4,10 +4,10 @@ For exact public method signatures, scopes, defaults, side effects, and
 recovery behavior, see the [SDK method reference](reference.md). Read the
 [Spanish guide](deno.es.md) for the Spanish version.
 
-**Status:** source and tarball are verified with Deno 2.6.6. Version
-`0.1.0-beta.1` is published to npm, but the package is not published to JSR.
-The stable `0.1.0` npm release is being prepared and will be available after
-staging approval.
+**Published package:** npm `latest` is `0.1.0`, and `0.1.0-beta.1` has the
+`beta` tag; there is no JSR package. This checkout contains unreleased `0.1.1`
+source. Its managed-storage methods require the packed branch artifact and are
+not in the current npm release.
 
 ## Requirements and installation
 
@@ -16,6 +16,9 @@ staging approval.
   depending on the operation.
 - `FACTA_SIGN_KEY` for signing. `FACTA_UNLOCK_KEY` is only for opening
   destination/catalog snapshots locally.
+
+Use `.env.example` as a names-only checklist for an external secret manager;
+the SDK and Deno do not load that file automatically.
 
 During checkout development, import from `../mod.ts`. The compiled package
 keeps the same API and is the artifact intended for installation after release.
@@ -27,10 +30,12 @@ pnpm test
 pnpm pack:check
 ```
 
-In a consumer project, use an explicit approved version such as
-`npm:@facta-dte/api@0.1.0` after the stable release is approved. Until then,
-the available beta is `npm:@facta-dte/api@0.1.0-beta.1`. Pin the selected
-version in `deno.json` and check the lockfile into version control.
+In consumer projects, pin `npm:@facta-dte/api@0.1.0` for the current stable
+release, or the beta tag intentionally. That published version does not
+contain this branch's managed-storage methods. Validate those against the
+unreleased branch tarball with `pnpm pack:check`; do not point a live consumer
+at unpublished methods. Pin the selected npm version in `deno.json` and check
+the lockfile into version control.
 
 ## Minimum permissions
 
@@ -48,8 +53,23 @@ For controlled environments, set `FACTA_API_BASE_URL` to change the base URL.
 If you do, restrict `--allow-net` to the selected hostname. Deno prompts for
 permissions that were not granted; declare only the required permissions in
 the production command or config. Do not use `-A` for a deployed integration.
+Staging checks configure the staging API URL explicitly and use only a
+`facta_test_` key. Examples do not issue during import; a test issue consumes
+a test-environment fiscal sequence. The staging base URL is
+`https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1`; add its host to
+`--allow-net` when using Deno.
 
 ## Client and a test invoice
+
+```ts
+// Importing the module is inert. Call main() only when you intend a test issue.
+import { main } from "../examples/hola-factura.ts";
+await main();
+```
+
+Set the API base URL to the staging endpoint and use only `facta_test_` keys;
+this explicit call consumes a test fiscal sequence and needs a stable
+`ERP_ORDER_ID`.
 
 ```ts
 import { Facta } from "npm:@facta-dte/api@0.1.0";
@@ -67,6 +87,9 @@ const result = await facta.issue({
 }, { idempotencyKey: Deno.env.get("ERP_ORDER_ID")! });
 
 console.log(result.estado, result.codigoGeneracion, result.numeroControl);
+if (result.estado === "sellado") {
+  console.log(result.storage?.json.state, result.storage?.pdf.state);
+}
 ```
 
 The `01` example is a final-consumer invoice without a customer record. For a
@@ -109,6 +132,32 @@ vault. An expired certificate or NIT mismatch blocks `canIssue`. An environment
 mismatch is advisory because the registry records the upload slot as context.
 Older keys without certificate metadata remain usable and show this check as
 unknown.
+
+## Managed storage readiness and repair
+
+After the server deploys capability version 1, check readiness and copy
+receipts for the key's issuer and environment:
+
+```ts
+const storage = await facta.getStorageStatus();
+if (!storage.managed.ready && !storage.byos.ready) {
+  throw new Error("No durable server-side destination is ready");
+}
+
+const copies = await facta.getDocumentCopies({ generationCode });
+if (copies.some((copy) => copy.state !== "stored")) {
+  const receipt = await facta.retryDocumentStorage(generationCode);
+  // Repairs the already sealed DTE. This call cannot issue another DTE.
+  console.log(receipt.json.state, receipt.pdf.state);
+}
+```
+
+Managed-only companies need no bucket credentials in the SDK. Facta's API
+derives tenant and environment from the key and uses its authenticated internal
+Worker contract. Managed storage, a local encrypted archive, and BYOS copies
+have separate outcomes. An older server returns `storage_unsupported`;
+diagnostics report it as unknown. Managed storage covers JSON/PDF, not tickets
+or invalidation events.
 
 ## Download and archive artifacts
 
@@ -167,6 +216,7 @@ const archive = await FileInvoiceArchive.open({
 });
 
 const issued = await facta.issueAndArchive(request, {
+  includeTicket: false,
   archive,
   operationId: erpOrderId,
   idempotencyKey: erpOrderId,

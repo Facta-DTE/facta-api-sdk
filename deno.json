@@ -5,7 +5,7 @@
   "tasks": {
     "test": "deno test --allow-read --allow-write --allow-net .",
     "consumer-check": "node scripts/build.mjs && node scripts/check-packed-consumer.mjs",
-    "hola": "deno run --allow-net --allow-env examples/hola-factura.ts"
+    "hola": "deno eval \"import { main } from './examples/hola-factura.ts'; await main();\""
   },
   "lock": false
 }

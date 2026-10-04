@@ -3,6 +3,7 @@ import type {
   IssueResult,
   InvalidationRequest,
   DteRequest,
+  ManagedStorageReceipt,
 } from "./types.ts";
 
 /** Durable journal record. It intentionally contains no API or vault secret. */
@@ -22,6 +23,9 @@ export interface ArchiveOperation {
   detail?: string;
   /** Latest outcome for every remote destination/artifact pair. */
   remoteCopies?: RemoteCopyRecord[];
+  /** Latest Facta-managed JSON/PDF receipt; absent on older API responses. */
+  managedStorage?: ManagedStorageReceipt;
+  storageErrorCode?: "storage_contract_invalid";
 }
 
 export interface ArchiveOperationIdentity {
@@ -38,6 +42,8 @@ export type PendingArchiveOperation = Pick<
   "id" | "createdAt" | "state" | "codigoGeneracion"
 > & {
   remoteCopies?: Array<Pick<RemoteCopyRecord, "destinationId" | "kind" | "state" | "sha256" | "updatedAt">>;
+  managedStorage?: ManagedStorageReceipt;
+  storageErrorCode?: "storage_contract_invalid";
 };
 
 export interface ArchiveArtifact {
@@ -95,6 +101,8 @@ export interface InvoiceArchive {
   markNeedsAttention(operationId: string, detail: string): Promise<void>;
   /** Persist one remote-copy result atomically with the encrypted operation journal. */
   recordRemoteCopy(operationId: string, record: RemoteCopyRecord): Promise<void>;
+  /** Persist managed storage repair outcomes when the archive supports the additive contract. */
+  recordManagedStorage?(operationId: string, receipt: ManagedStorageReceipt): Promise<void>;
 }
 
 /** Durable record for one irreversible invalidation event. */
@@ -140,6 +148,8 @@ export interface InvalidationArchiveResult {
 export interface ArchiveEmissionResult {
   /** Omitted when restart recovery finds the existing DTE by generation code. */
   emission?: IssueResult;
+  managedStorage?: ManagedStorageReceipt;
+  storageErrorCode?: "storage_contract_invalid";
   archive: {
     state: "complete" | "needs_attention";
     operationId: string;
@@ -155,6 +165,8 @@ export interface ArchiveEmissionOptions {
   operationId: string;
   /** Stable across process restarts; the API keeps idempotency claims for 24 h. */
   idempotencyKey: string;
+  /** Include a regenerated ticket in the archive; defaults to true. */
+  includeTicket?: boolean;
   /** Ticket width to archive with each new issue; defaults to 80 mm. Valid range: 40–120 mm. */
   ticketPaperWidthMm?: number;
   signal?: AbortSignal;

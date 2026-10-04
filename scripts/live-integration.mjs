@@ -1,8 +1,19 @@
 import assert from "node:assert/strict";
-import { appendFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { createValidationResults, renderLiveReport, safeFailureCode } from "./live-report.mjs";
+import { validateLiveManagedStorage } from "./live-managed-storage.mjs";
+import { requireLiveSnapshots, validateLiveCatalogReads } from "./live-preflight.mjs";
+import {
+  assertRelatedTestDocuments,
+  assertLiveRunWithinIdempotencyWindow,
+  assessLiveDteFixtureMatrix,
+  LIVE_DTE_FIXTURE_TYPES,
+  parseLiveDteFixtures,
+  relatedGenerationCodes,
+  requireCompleteLiveDteFixtureMatrix,
+} from "./live-dte-fixtures.mjs";
 
 const apiKey = process.env.STAGING_FACTA_API_KEY;
 const signKey = process.env.STAGING_FACTA_SIGN_KEY;
@@ -10,6 +21,7 @@ const unlockKey = process.env.STAGING_FACTA_UNLOCK_KEY;
 const apiBaseUrl = process.env.STAGING_FACTA_API_BASE_URL;
 const runId = process.env.GITHUB_RUN_ID;
 const reportDir = process.env.FACTA_LIVE_REPORT_DIR;
+const liveMode = process.env.FACTA_LIVE_MODE ?? "emit-test-fe";
 const EXPECTED_STAGING_API_BASE_URL =
   "https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1";
 
@@ -19,6 +31,7 @@ for (const [name, value] of [
   ["STAGING_FACTA_UNLOCK_KEY", unlockKey],
   ["STAGING_FACTA_API_BASE_URL", apiBaseUrl],
   ["GITHUB_RUN_ID", runId],
+  ["GITHUB_RUN_CREATED_AT", process.env.GITHUB_RUN_CREATED_AT],
   ["FACTA_LIVE_REPORT_DIR", reportDir],
 ]) {
   if (!value) throw new Error(`Required integration input is unavailable: ${name}`);
@@ -37,18 +50,33 @@ if (!unlockKey.startsWith("factauk_")) {
 if (apiBaseUrl !== EXPECTED_STAGING_API_BASE_URL) {
   throw new Error("Refusing integration run: API base URL must exactly match the approved staging project.");
 }
+if (!["emit-test-fe", "emit-enabled-dte-fixtures"].includes(liveMode)) {
+  throw new Error("Refusing integration run: unknown live-test mode.");
+}
+assertLiveRunWithinIdempotencyWindow(process.env.GITHUB_RUN_CREATED_AT);
 
 const { Facta } = await import("../dist/index.js");
 const { FileInvoiceArchive } = await import("../dist/node.js");
 const scratch = await mkdtemp(join(tmpdir(), "facta-sdk-integration-"));
 const archivePassphrase = Buffer.from(crypto.getRandomValues(new Uint8Array(48))).toString("base64url");
 
+const checks = createValidationResults();
+let currentCheck = "status";
+let failureCode = null;
+
 try {
   const archive = await FileInvoiceArchive.open({
     directory: join(scratch, "archive"),
     passphrase: archivePassphrase,
   });
+  const requestRecords = [];
+  const trackedFetch = async (input, init) => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    requestRecords.push({ url, method: init?.method ?? (input instanceof Request ? input.method : "GET") });
+    return globalThis.fetch(input, init);
+  };
   const facta = new Facta({
+    fetch: trackedFetch,
     apiKey,
     signKey,
     unlockKey,
@@ -67,7 +95,19 @@ try {
   assert.equal(health.ok, true, "API status must report healthy");
   assert.equal(health.ambiente, "00", "API status must confirm the test environment");
   assert.equal(health.emisor?.ambiente, "00", "issuer must also be in the test environment");
+  checks.status = "Passed";
+  currentCheck = "preflight";
   console.log("PASS status: healthy test environment confirmed");
+
+  const fixtures = parseLiveDteFixtures(process.env.STAGING_FACTA_DTE_FIXTURES_JSON);
+  const fixtureMatrix = assessLiveDteFixtureMatrix(health, fixtures);
+  for (const [type, state] of Object.entries(fixtureMatrix)) checks[`dte-${type}`] = state;
+  if (liveMode === "emit-enabled-dte-fixtures") {
+    currentCheck = "fixture-matrix";
+    requireCompleteLiveDteFixtureMatrix(fixtureMatrix);
+    const relatedStatuses = await Promise.all(relatedGenerationCodes(fixtures).map((code) => facta.getDocumentStatus(code)));
+    assertRelatedTestDocuments(fixtures, relatedStatuses);
+  }
 
   const diagnostics = await facta.diagnose({
     archive,
@@ -75,115 +115,173 @@ try {
     expectedEnvironment: "00",
     requiredScopes: ["issue", "query", "download"],
   });
+  // Read-only capability checks must pass before this full live run issues anything.
+  const storageCapability = await facta.getStorageStatus();
+  assert(storageCapability.managed.ready, "Full managed live validation requires ready managed storage.");
+  const snapshots = await requireLiveSnapshots(facta, checks, (check) => { currentCheck = check; }, storageCapability.managed.ready && !storageCapability.byos.ready);
+  await validateLiveCatalogReads(facta, snapshots.catalog, checks, (check) => { currentCheck = check; });
+  console.log("PASS snapshots: catalog and required BYOS destinations verified locally");
+  currentCheck = "preflight";
+
   if (!diagnostics.canIssue || !diagnostics.canQuery || !diagnostics.canDownload || !diagnostics.canIssueAndArchive) {
-    const failedChecks = diagnostics.checks
-      .filter((check) => check.state === "blocked")
-      .map((check) => check.id)
-      .join(", ");
-    throw new Error(`Preflight blocked the test invoice (${failedChecks || diagnostics.overall}).`);
+    const error = new Error("Readiness checks blocked live issuance.");
+    error.code = !diagnostics.canIssue || !diagnostics.canQuery || !diagnostics.canDownload
+      ? "permission_missing"
+      : "readiness_blocked";
+    throw error;
   }
+  checks.preflight = "Passed";
   console.log("PASS diagnose: issue, query, download, and local archive are ready");
 
-  // These are read-only vault reads. Never log decrypted customer/product or destination data.
-  let catalogRead = "unavailable";
-  try {
-    const catalog = await facta.syncCatalog();
-    catalogRead = `ready (${catalog.customers.length} customers, ${catalog.products.length} products)`;
-  } catch (error) {
-    catalogRead = `unavailable (${safeCode(error)})`;
-  }
-  let destinationRead = "unavailable";
-  try {
-    const destinations = await facta.syncDestinations();
-    destinationRead = `ready (${destinations.destinos.length} destinations)`;
-  } catch (error) {
-    destinationRead = `unavailable (${safeCode(error)})`;
-  }
-  console.log(`READ catalog: ${catalogRead}`);
-  console.log(`READ destinations: ${destinationRead}`);
-
-  const operationId = `sdk-live-${runId}`;
-  const idempotencyKey = `sdk-live-${runId}`;
-  const result = await facta.issueAndArchive({
-    tipoDte: "01",
-    items: [{ descripcion: "Facta API SDK integration test", cantidad: 1, precioUni: 0.01 }],
-  }, {
+  const operationId = `sdk-live-${runId}-01`;
+  const idempotencyKey = `sdk-live-${runId}-01`;
+  currentCheck = "emission";
+  const request = { tipoDte: "01", items: [{ descripcion: "Facta API SDK integration test", cantidad: 1, precioUni: 0.01 }] };
+  const result = await facta.issueAndArchive(request, {
     operationId,
     idempotencyKey,
     ticketPaperWidthMm: 58,
   });
 
+  const [legalJson, pdf, ticket] = await Promise.all([
+    archive.getArtifact(result.emission.codigoGeneracion, "json"),
+    archive.getArtifact(result.emission.codigoGeneracion, "pdf"),
+    archive.getArtifact(result.emission.codigoGeneracion, "ticket"),
+  ]);
+  assert.equal(result.emission.estado, "sellado", "test invoice must be sealed by Hacienda");
+  assert.equal(result.emission.totales.totalPagar, 0.01, "test invoice must total exactly $0.01");
   assert.equal(result.emission.ambiente, "00", "issued document must be in test environment");
   assert.equal(result.emission.tipoDte, "01", "issued document must be FE");
-  if (result.archive.state !== "complete") {
-    throw new Error(`Invoice was accepted, but SDK archiving is ${result.archive.state}.`);
+  checks.emission = "Passed (sealed test FE, $0.01)";
+  checks["dte-01"] = "Passed (sealed test FE, $0.01)";
+  currentCheck = "archive";
+  assert(result.archive.state === "complete", "Local archive must be complete");
+  checks.archive = "Passed";
+  console.log("PASS issueAndArchive: test FE sealed; archive complete");
+
+  currentCheck = "signed-json";
+  assert(legalJson && legalJson.bytes.byteLength > 0, "inline signed JSON must be archived");
+
+  assert.match(legalJson.contentType, /json/i, "signed JSON must have a JSON content type");
+  const parsedJson = JSON.parse(new TextDecoder().decode(legalJson.bytes));
+  assert(parsedJson.jws === result.emission.jws, "archived JSON must preserve the server-signed JWS");
+  checks["signed-json"] = "Passed";
+  currentCheck = "pdf";
+  assert(pdf && pdf.bytes.byteLength > 0, "inline PDF must be archived");
+  assert.match(pdf.contentType, /pdf/i, "document must be a PDF");
+  assert.match(new TextDecoder().decode(pdf.bytes.subarray(0, 5)), /^%PDF-/);
+  checks.pdf = "Passed";
+  currentCheck = "ticket";
+  assert(ticket && ticket.bytes.byteLength > 0, "ticket PDF must be archived");
+  assert.match(ticket.contentType, /pdf/i, "ticket must have a PDF content type");
+  assert.match(new TextDecoder().decode(ticket.bytes.subarray(0, 5)), /^%PDF-/);
+  checks.ticket = "Passed";
+  currentCheck = "inline-bytes";
+  assert.equal(typeof result.emission.archivoJson, "string", "API must return inline signed JSON");
+  assert(result.emission.representacionGrafica, "API must return the inline PDF");
+  assert(Buffer.from(legalJson.bytes).equals(Buffer.from(result.emission.archivoJson, "utf8")),
+    "archived JSON must match the exact response bytes");
+  assert(Buffer.from(pdf.bytes).equals(Buffer.from(result.emission.representacionGrafica, "base64")),
+    "archived PDF must match the exact response bytes");
+  checks["inline-bytes"] = "Passed";
+  currentCheck = "no-downloads";
+  const fileRequests = requestRecords.filter(({ url }) => /\/v1\/dte\/[^/]+\/file$/.test(url.pathname));
+  assert(fileRequests.every(({ url }) => url.searchParams.get("kind") === "ticket"), "inline JSON/PDF archival must not call a document file download endpoint");
+  assert.equal(fileRequests.length, 1, "only the ticket may use the file download endpoint");
+  checks["no-downloads"] = "Passed";
+  console.log("PASS archive: exact signed JSON, PDF, and ticket retained");
+  await validateLiveManagedStorage(facta, { emission: result.emission, request, idempotencyKey, artifacts: { json: legalJson, pdf }, checks, onCheck: (check) => { currentCheck = check; } });
+
+  if (liveMode === "emit-enabled-dte-fixtures") {
+    for (const type of LIVE_DTE_FIXTURE_TYPES) {
+      currentCheck = `dte-${type}`;
+      const fixtureRequest = fixtures[type];
+      const fixtureOperationId = `sdk-live-${runId}-${type}`;
+      const fixtureIdempotencyKey = `sdk-live-${runId}-${type}`;
+      const fixtureResult = await facta.issueAndArchive(fixtureRequest, {
+        operationId: fixtureOperationId,
+        idempotencyKey: fixtureIdempotencyKey,
+        ticketPaperWidthMm: 58,
+      });
+      assert.equal(fixtureResult.emission.estado, "sellado", "test DTE fixture must be sealed");
+      assert.equal(fixtureResult.emission.tipoDte, type);
+      assert.equal(fixtureResult.emission.ambiente, "00");
+      assert.equal(fixtureResult.emission.totales.totalPagar, 0.01);
+      assert.equal(fixtureResult.archive.state, "complete");
+      const fixtureStatus = await facta.getDocumentStatus(fixtureResult.emission.codigoGeneracion);
+      assert.equal(fixtureStatus.estado, "sellado");
+      assert.equal(fixtureStatus.ambiente, "00");
+      checks[`dte-${type}`] = "Passed (test fixture sealed)";
+    }
   }
-  console.log(`PASS issueAndArchive: ${result.emission.estado}; archive complete`);
-
-  const [documentStatus, legalJson, pdf, ticket] = await Promise.all([
-    facta.getDocumentStatus(result.emission.codigoGeneracion),
-    facta.downloadDocument(result.emission.codigoGeneracion, "json"),
-    facta.downloadDocument(result.emission.codigoGeneracion, "pdf"),
-    facta.downloadDocument(result.emission.codigoGeneracion, "ticket", { paperWidthMm: 58 }),
-  ]);
-
-  assert.equal(documentStatus.codigoGeneracion, result.emission.codigoGeneracion);
+  currentCheck = "query";
+  const documentStatus = await facta.getDocumentStatus(result.emission.codigoGeneracion);
+  assert(documentStatus.codigoGeneracion.toUpperCase() === result.emission.codigoGeneracion.toUpperCase(),
+    "queried UUID must identify the issued invoice regardless of database casing");
   assert.equal(documentStatus.ambiente, "00");
-  // Preserve the exact API response bytes for the per-run invoice artifact.
-  await mkdir(reportDir, { recursive: true });
-  await writeFile(join(reportDir, "invoice.json"), legalJson.bytes, { mode: 0o600 });
-  await writeFile(join(reportDir, "invoice.pdf"), pdf.bytes, { mode: 0o600 });
+  assert.equal(documentStatus.estado, "sellado", "queried invoice must remain sealed");
+  checks.query = "Passed";
+  currentCheck = "listing";
   let listed = false;
   for (let attempt = 0; attempt < 6 && !listed; attempt++) {
     const page = await facta.listDocuments({ tipoDte: "01", limit: 20 });
-    listed = page.documentos.some((document) => document.codigoGeneracion === result.emission.codigoGeneracion);
+    listed = page.documentos.some((document) => document.codigoGeneracion.toUpperCase() === result.emission.codigoGeneracion.toUpperCase());
     if (!listed && attempt < 5) await new Promise((resolve) => setTimeout(resolve, 2_000));
   }
   assert(listed, "the new FE must appear in the document list");
-  assert(legalJson.bytes.byteLength > 0, "legal JSON download must be non-empty");
-  assert.match(legalJson.contentType, /json/i, "legal JSON must have a JSON content type");
-  const parsedJson = JSON.parse(new TextDecoder().decode(legalJson.bytes));
-  assert.equal(typeof parsedJson.jws, "string", "legal JSON must contain the signed JWS");
-  assert(pdf.bytes.byteLength > 0, "PDF download must be non-empty");
-  assert.match(pdf.contentType, /pdf/i, "document download must have a PDF content type");
-  assert(ticket.bytes.byteLength > 0, "ticket PDF download must be non-empty");
-  assert.match(ticket.contentType, /pdf/i, "ticket download must have a PDF content type");
-  console.log(`PASS query/download: ${documentStatus.estado}; list match; JSON, PDF, and ticket retrieved`);
+  checks.listing = "Passed";
+  console.log("PASS query and listing: test FE found and sealed");
 
-  for (const kind of ["json", "pdf", "jws", "ticket"]) {
-    const archived = await archive.getArtifact(result.emission.codigoGeneracion, kind);
-    assert(archived && archived.bytes.byteLength > 0, `SDK archive must retain ${kind}`);
-  }
+  currentCheck = "journal";
+  const beforeJournalRecovery = requestRecords.length;
+  const journalRecovery = await facta.recoverOperation(operationId, { request, archive });
+  assert.equal(journalRecovery.archive.state, "complete", "completed journal must recover without issuing again");
+  assert.equal(requestRecords.slice(beforeJournalRecovery).filter(({ url, method }) => url.pathname.endsWith("/v1/dte") && method === "POST").length, 0,
+    "completed journal recovery must not submit an invoice");
   const pending = await facta.listPendingOperations();
   assert(!pending.some((operation) => operation.id === operationId), "completed operation must leave no pending archive journal");
-  console.log("PASS archive recovery: exact JSON/PDF/JWS/ticket retained; operation journal completed");
-  const report = [
-    "## Staging live invoice",
-    "",
-    "| Field | Result |",
-    "| --- | --- |",
-    "| Environment | Test / staging (`00`) |",
-    "| DTE | FE (`01`) |",
-    `| Status | ${documentStatus.estado} |`,
-    `| Control number | ${result.emission.numeroControl} |`,
-    `| Generation code | ${result.emission.codigoGeneracion} |`,
-    `| Issued at | ${result.emission.fecEmi} ${result.emission.horEmi} |`,
-    `| Total | $${Number(result.emission.totales.totalPagar).toFixed(2)} |`,
-    "| Downloads | JSON and PDF verified |",
-    "",
-    "The exact JSON and PDF responses are attached to this workflow run as the `staging-invoice` artifact (7-day retention).",
-    "",
-    "> This is a real test-environment FE emission; it is not a production invoice.",
-    "",
-  ].join("\n");
-  await writeFile(join(reportDir, "report.md"), report, { mode: 0o600 });
-  if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, `${report}\n`);
+  console.log("PASS archive recovery: operation journal completed");
+  checks.journal = "Passed";
+
+  currentCheck = "restart";
+  const restartedArchive = await FileInvoiceArchive.open({
+    directory: join(scratch, "archive"),
+    passphrase: archivePassphrase,
+  });
+  const postRestart = requestRecords.length;
+  const restartedFacta = new Facta({
+    fetch: trackedFetch,
+    apiKey,
+    signKey,
+    unlockKey,
+    baseUrl: apiBaseUrl,
+    config: { version: 1, expectedEnvironment: "00", timeoutMs: 90_000, maxRetries: 1 },
+    runtime: { version: 1, archive: restartedArchive },
+  });
+  const recovered = await restartedFacta.recoverOperation(operationId);
+  assert.equal(recovered.archive.state, "complete");
+  assert.equal((await restartedArchive.pending()).length, 0);
+  assert((await restartedArchive.getArtifact(result.emission.codigoGeneracion, "ticket"))?.bytes.byteLength > 0);
+  assert.equal(requestRecords.slice(postRestart).filter(({ url, method }) => url.pathname.endsWith("/v1/dte") && method === "POST").length, 0,
+    "completed restart recovery must not submit an invoice");
+  checks.restart = "Passed";
+} catch (error) {
+  checks[currentCheck] = "Failed";
+  failureCode = safeFailureCode(error);
+  // Never print API messages, stacks, assertion values, JWS, or invoice bytes.
+  console.error(`FAIL live integration: ${currentCheck} (${failureCode})`);
+  process.exitCode = 1;
 } finally {
-  await rm(scratch, { recursive: true, force: true });
+  try {
+    await saveReport();
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
+  }
 }
 
-function safeCode(error) {
-  return typeof error === "object" && error !== null && "code" in error
-    ? String(error.code)
-    : "unavailable";
+async function saveReport() {
+  const report = renderLiveReport(checks, failureCode);
+  await mkdir(reportDir, { recursive: true });
+  await writeFile(join(reportDir, "report.md"), report, { mode: 0o600 });
+  if (process.env.GITHUB_STEP_SUMMARY) await writeFile(process.env.GITHUB_STEP_SUMMARY, report);
 }
