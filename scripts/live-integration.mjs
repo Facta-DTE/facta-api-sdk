@@ -70,12 +70,13 @@ try {
     passphrase: archivePassphrase,
   });
   const requestRecords = [];
+  const trackedFetch = async (input, init) => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    requestRecords.push({ url, method: init?.method ?? (input instanceof Request ? input.method : "GET") });
+    return globalThis.fetch(input, init);
+  };
   const facta = new Facta({
-    fetch: async (input, init) => {
-      const url = new URL(input instanceof Request ? input.url : String(input));
-      requestRecords.push({ url, method: init?.method ?? (input instanceof Request ? input.method : "GET") });
-      return globalThis.fetch(input, init);
-    },
+    fetch: trackedFetch,
     apiKey,
     signKey,
     unlockKey,
@@ -244,6 +245,7 @@ try {
   });
   const postRestart = requestRecords.length;
   const restartedFacta = new Facta({
+    fetch: trackedFetch,
     apiKey,
     signKey,
     unlockKey,
