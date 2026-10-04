@@ -29,7 +29,7 @@ const LABELS = Object.freeze({
 const STATES = new Set([
   "Not checked", "Failed", "Passed", "Passed (sealed test FE, $0.01)",
   "Not applicable (managed only)", "Not applicable (empty authorized catalog)",
-  "Not applicable (fixture missing)", "Blocked (permission unavailable)",
+  "Not run (fixture missing)", "Blocked (permission unavailable)",
   "Ready (baseline test only)", "Ready (fixture configured)",
   "Passed (test fixture sealed)",
 ]);
