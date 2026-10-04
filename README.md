@@ -199,3 +199,5 @@ replays the original idempotency key, repairs only that invoice and checks that
 storage accounting stays unchanged. It publishes fixed result labels only.
 Ticket/invalidation and six fiscal variants still need explicitly designated
 fixtures and their fiscal prerequisites before a live support claim.
+
+Use `downloadDocument(generationCode, "pdf", { source: "managed" })` to require a managed JSON/PDF copy without holding fallback. Ticket requests reject this option locally; an older server without source proof returns `storage_unsupported`. The default download order is unchanged.

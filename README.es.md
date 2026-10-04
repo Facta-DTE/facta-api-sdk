@@ -951,3 +951,5 @@ original de idempotencia, repara solamente esa factura y confirma que no
 creció el consumo. Publica etiquetas fijas. Los tickets, las invalidaciones y
 los seis tipos fiscales requieren documentos designados y condiciones fiscales
 válidas para afirmar que se probaron en vivo.
+
+Use `downloadDocument(generationCode, "pdf", { source: "managed" })` para exigir la copia JSON/PDF de Facta sin recurrir a retención. Esta opción no admite tickets; un servidor anterior sin prueba de origen devuelve `storage_unsupported`. Se conserva el orden de descarga predeterminado.

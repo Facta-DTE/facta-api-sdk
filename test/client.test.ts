@@ -478,3 +478,24 @@ Deno.test("repair rejects contradictory receipts and mismatched environments wit
     assertEquals(calls.every((call) => call.url.endsWith('/repair')), true);
   }
 });
+
+Deno.test("explicit managed downloads demand source proof and never accept holding fallback", async () => {
+  for (const source of ["managed", "holding", undefined]) {
+    const calls: string[] = [];
+    const fetch = (async (url: RequestInfo | URL) => {
+      calls.push(String(url));
+      return new Response("%PDF-exact", { headers: { "content-type": "application/pdf", ...(source ? { "x-facta-storage-source": source } : {}) } });
+    }) as typeof globalThis.fetch;
+    const facta = new Facta({ apiKey: "facta_test_a.secret", fetch });
+    if (source === "managed") {
+      assertEquals((await facta.downloadDocument("existing", "pdf", { source: "managed" })).storageSource, "managed");
+    } else {
+      const error = await assertRejects(() => facta.downloadDocument("existing", "pdf", { source: "managed" }), FactaError);
+      assertEquals(error.code, source ? "storage_contract_invalid" : "storage_unsupported");
+    }
+    assertEquals(calls[0].endsWith('?kind=pdf&source=managed'), true);
+    const count = calls.length;
+    await assertRejects(() => facta.downloadDocument("existing", "ticket", { source: "managed" }), TypeError);
+    assertEquals(calls.length, count);
+  }
+});

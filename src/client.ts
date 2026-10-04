@@ -159,6 +159,8 @@ export interface CallOptions {
 }
 
 export interface DownloadOptions {
+  /** Require the managed copy without temporary holding fallback (JSON/PDF only). */
+  source?: "managed";
   signal?: AbortSignal;
   /** Ticket roll width in millimeters. The renderer supports integer widths from 40 through 120; default 80. */
   paperWidthMm?: number;
@@ -1613,6 +1615,9 @@ export class Facta {
     kind: "json" | "pdf" | "ticket" = "json",
     options: CallOptions & DownloadOptions = {},
   ): Promise<DownloadedDocument> {
+    if (options.source !== undefined && (options.source !== "managed" || kind === "ticket")) {
+      throw new TypeError("source=managed is only valid for JSON/PDF downloads.");
+    }
     const paperWidthMm = options.paperWidthMm ?? this.#config.ticketPaperWidthMm;
     if (options.paperWidthMm !== undefined && kind !== "ticket") {
       throw new TypeError("paperWidthMm is only valid when downloading kind=ticket.");
@@ -1623,6 +1628,7 @@ export class Facta {
       }
     }
     const query = new URLSearchParams({ kind });
+    if (options.source === "managed") query.set("source", "managed");
     if (kind === "ticket" && paperWidthMm !== undefined) query.set("paperWidthMm", String(paperWidthMm));
     const downloaded = await this.#request<DownloadedDocument>(
       "GET",
@@ -1631,6 +1637,9 @@ export class Facta {
       options,
       true,
     );
+    if (options.source === "managed" && downloaded.storageSource !== "managed") {
+      throw new FactaError(downloaded.storageSource === undefined ? "storage_unsupported" : "storage_contract_invalid", "API did not return the explicitly requested managed copy.", 502);
+    }
     return {
       ...downloaded,
       codigoGeneracion: generationCode,

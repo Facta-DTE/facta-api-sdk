@@ -16,7 +16,7 @@ export async function validateLiveManagedStorage(facta, { emission, request, ide
     const copy = copies.find(copy => copy.kind === kind);
     require(copy?.state === "stored" && copy.sha256 === expectedDigest && copy.bytes === local.bytes.byteLength, "Managed copy metadata must match exact local bytes.");
     require(receipt[kind].sha256 === expectedDigest && receipt[kind].bytes === local.bytes.byteLength, "Receipt must match exact local bytes.");
-    const downloaded = await facta.downloadDocument(emission.codigoGeneracion, kind);
+    const downloaded = await facta.downloadDocument(emission.codigoGeneracion, kind, { source: "managed" });
     require(downloaded.storageSource === "managed" && await digest(downloaded.bytes) === expectedDigest, "Managed read-back must preserve exact bytes.");
   }
   checks["managed-readback"] = "Passed";
