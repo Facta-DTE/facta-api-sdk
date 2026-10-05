@@ -68,6 +68,15 @@ never a path, bucket name, destination id or credential.
 **A storage problem is never an error.** A sealed or contingency document is
 always returned to the browser, even when `archive` is `failed`.
 
+## Environment and status lookups
+
+`session.describe` returns `environment` (`"00"` for a `facta_test_` key, `"01"`
+for `facta_live_`, `null` otherwise), read from the key prefix; the key is never
+exposed. `issue` answers a `statusToken` next to `result` (and a rejection with
+a spent correlative carries `error.statusToken`). `status` requires
+`{ codigoGeneracion, statusToken }`; a token from another session or document
+is refused with 403 `action_not_allowed`.
+
 ## Persisting in your own database
 
 `onIssued(result, { session, archive, storage })` is awaited after a fiscal

@@ -391,6 +391,17 @@ export class Facta {
    */
   get archiveConfigured(): boolean { return this.#runtime.archive !== undefined; }
 
+  /**
+   * The environment the API key selects: `facta_test_` is "00", `facta_live_`
+   * is "01", anything else null. Read-only and derived from the prefix; the key
+   * itself is never exposed.
+   */
+  get environment(): "00" | "01" | null {
+    if (this.#apiKey.startsWith("facta_test_")) return "00";
+    if (this.#apiKey.startsWith("facta_live_")) return "01";
+    return null;
+  }
+
   /** Health, environment and the ceilings left on this key. */
   status(options: CallOptions = {}): Promise<Status> {
     return this.#request<Status>("GET", "/v1/status", undefined, options);

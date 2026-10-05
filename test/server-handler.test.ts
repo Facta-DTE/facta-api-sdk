@@ -8,6 +8,8 @@ import {
   createFactaSession,
   type CreateFactaSessionInput,
   extractFieldIssues,
+  statusTokenFor,
+  verifyFactaSession,
   type FactaHandlerEvent,
   type FactaLike,
   toNodeHandler,
@@ -99,6 +101,11 @@ function post(
     headers,
     body: init.method === "GET" ? undefined : (init.raw ?? JSON.stringify(body)),
   }));
+}
+
+async function tokenFor(sessionToken: string, code: string): Promise<string> {
+  const s = await verifyFactaSession(sessionToken, SECRET);
+  return await statusTokenFor(SECRET, s.nonce, code);
 }
 
 function make(options: Partial<Parameters<typeof createFactaHandler>[0]> = {}, answers = {}) {
@@ -202,14 +209,16 @@ Deno.test("prepare and sign no longer exist", async () => {
 
 Deno.test("status returns only the summary", async () => {
   const { handler, calls } = make();
-  const res = await post(handler, { action: "status", session: await session(), codigoGeneracion: CG });
+  const token = await session();
+  const res = await post(handler, { action: "status", session: token, codigoGeneracion: CG, statusToken: await tokenFor(token, CG) });
   const { status } = await res.json();
   assertEquals(calls[0].code, CG);
   assertEquals(status.estado, "sellado");
   assertEquals("receptor" in status, false);
   assertEquals("motivo" in status, false);
-  const bad = await post(handler, { action: "status", session: await session(), codigoGeneracion: "../x" });
+  const bad = await post(handler, { action: "status", session: token, codigoGeneracion: "../x", statusToken: "x" });
   assertEquals(bad.status, 400);
+  assertEquals((await post(handler, { action: "status", session: token, codigoGeneracion: CG })).status, 400);
 });
 
 Deno.test("CSRF guards: method, content type, header, size, JSON", async () => {
@@ -350,7 +359,7 @@ Deno.test("no response or error ever contains apiKey, signKey, unlockKey or the 
     for (const body of [
       { action: "issue", session: token },
       { action: "session.describe", session: token },
-      { action: "status", session: token, codigoGeneracion: CG },
+      { action: "status", session: token, codigoGeneracion: CG, statusToken: "x" },
       { action: "issue", session: "garbage" },
     ]) {
       const res = await post(handler, body);
@@ -640,4 +649,53 @@ Deno.test("no destination name, id, key or detail reaches the browser", async ()
     assertEquals(text.includes(needle), false, needle);
   }
   assertEquals(JSON.parse(text).storage, { managed: null, archive: "partial", copies: { complete: 0, pending: 0, failed: 1 } });
+});
+
+Deno.test("status is bound to the session that produced the document", async () => {
+  const { handler, calls } = make();
+  const a = await session({ idempotencyKey: "order-a" });
+  const b = await session({ idempotencyKey: "order-b" });
+  const issued = await (await post(handler, { action: "issue", session: a })).json();
+  assertEquals(issued.statusToken, await tokenFor(a, CG));
+  const ok = await post(handler, { action: "status", session: a, codigoGeneracion: CG, statusToken: issued.statusToken });
+  assertEquals(ok.status, 200);
+  const before = calls.length;
+  // Another session cannot use it, nor can a different code with the same token.
+  for (const [sess, code, tok] of [[b, CG, issued.statusToken], [a, CG.replace("7", "8"), issued.statusToken], [a, CG, "AAAA"]] as const) {
+    const res = await post(handler, { action: "status", session: sess, codigoGeneracion: code, statusToken: tok });
+    assertEquals(res.status, 403);
+    assertEquals((await res.json()).error.code, "action_not_allowed");
+  }
+  assertEquals(calls.length, before);
+});
+
+Deno.test("a rejection with a spent correlative carries a statusToken", async () => {
+  const facta: FactaLike = {
+    ...fakeFacta().facta,
+    issue: () => Promise.reject(new FactaError("mh_rejected", "no", 422, { observaciones: ["x"], codigoGeneracion: CG, numeroControl: "N" })),
+  };
+  const handler = createFactaHandler({ facta, sessionSecret: SECRET, authorize: "session-only" });
+  const token = await session();
+  const { error } = await (await post(handler, { action: "issue", session: token })).json();
+  assertEquals(error.statusToken, await tokenFor(token, CG));
+  const noSpent = createFactaHandler({ facta: { ...fakeFacta().facta, issue: () => Promise.reject(new FactaError("mh_unreachable", "d", 503)) }, sessionSecret: SECRET, authorize: "session-only" });
+  assertEquals("statusToken" in (await (await post(noSpent, { action: "issue", session: token })).json()).error, false);
+});
+
+Deno.test("the client derives the environment from the key prefix without exposing the key", () => {
+  const env = (apiKey: string) => new Facta({ apiKey }).environment;
+  assertEquals(env("facta_test_a.bbbbbbbbbbbbbbbb"), "00");
+  assertEquals(env("facta_live_a.bbbbbbbbbbbbbbbb"), "01");
+  assertEquals(env("other"), null);
+});
+
+Deno.test("session.describe returns the environment for the Pruebas chip", async () => {
+  const test = createFactaHandler({ facta: realFacta("network"), sessionSecret: SECRET, authorize: "session-only" });
+  assertEquals((await (await post(test, { action: "session.describe", session: await session() })).json()).environment, "00");
+  const live = new Facta({ apiKey: "facta_live_a.bbbbbbbbbbbbbbbb" });
+  const liveHandler = createFactaHandler({ facta: live, sessionSecret: SECRET, authorize: "session-only" });
+  const body = await (await post(liveHandler, { action: "session.describe", session: await session() })).text();
+  assertEquals(JSON.parse(body).environment, "01");
+  assertEquals(body.includes("bbbbbbbb"), false);
+  assertEquals((await (await post(make().handler, { action: "session.describe", session: await session() })).json()).environment, null);
 });

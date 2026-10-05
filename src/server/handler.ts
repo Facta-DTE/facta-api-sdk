@@ -9,12 +9,21 @@ import { FactaError } from "../errors.ts";
 import type { Facta } from "../client.ts";
 import type { ArchiveEmissionResult } from "../archive.ts";
 import type { DocumentStatus, IssueResult, ManagedStorageArtifactState, ManagedStorageReceipt } from "../types.ts";
-import { FactaSessionError, type FactaSession, secretBytes, verifyFactaSession } from "./session.ts";
+import {
+  base64urlDecode,
+  base64urlEncode,
+  FactaSessionError,
+  type FactaSession,
+  hmac,
+  secretBytes,
+  timingSafeEqual,
+  verifyFactaSession,
+} from "./session.ts";
 
 /** The slice of `Facta` the handler uses; a fake can stand in for tests. */
 export type FactaLike =
   & Pick<Facta, "issue" | "getDocumentStatus">
-  & Partial<Pick<Facta, "issueAndArchive" | "archiveConfigured">>;
+  & Partial<Pick<Facta, "issueAndArchive" | "archiveConfigured" | "environment">>;
 
 /** What the browser learns about storage. No paths, bucket names, destination ids or credentials. */
 export interface FactaStorageSummary {
@@ -97,6 +106,8 @@ export interface FactaHandlerErrorBody {
     retryable: boolean;
     spent?: { codigoGeneracion: string; numeroControl: string };
     observaciones?: string[];
+    /** Present with `spent`: lets the window ask `status` about that document. */
+    statusToken?: string;
     /** Present only when a JSON path could be read out of Hacienda's text or the details. */
     fields?: FactaFieldIssue[];
   };
@@ -112,6 +123,13 @@ const RETRYABLE = new Set([
   "operation_outcome_unknown",
 ]);
 const ACTIONS = ["session.describe", "issue", "status"];
+
+const STATUS_DOMAIN = "facta-status-v1.";
+
+/** `HMAC(sessionSecret, nonce + ":" + codigoGeneracion)`: ties a `status` lookup to the session that produced the document. */
+export async function statusTokenFor(secret: string | Uint8Array, nonce: string, codigoGeneracion: string): Promise<string> {
+  return base64urlEncode(await hmac(secret, `${STATUS_DOMAIN}${nonce}:${codigoGeneracion}`));
+}
 
 class HandlerError extends Error {
   constructor(readonly code: string, message: string, readonly status: number) {
@@ -403,6 +421,7 @@ export function createFactaHandler(options: FactaHandlerOptions): (req: Request)
       case "session.describe":
         return json(200, {
           draft: session.request,
+          environment: facta.environment ?? null,
           download,
           expiresAt: new Date(session.exp * 1000).toISOString(),
           ...(session.display ? { display: session.display } : {}),
@@ -440,12 +459,21 @@ export function createFactaHandler(options: FactaHandlerOptions): (req: Request)
             emit({ type: "error", idempotencyKey: key, code: ON_ISSUED_FAILED, status: 200, retryable: false });
           }
         }
-        return json(200, { result: summarizeIssue(result, download, exposeDocument), storage });
+        return json(200, {
+          result: summarizeIssue(result, download, exposeDocument),
+          storage,
+          statusToken: await statusTokenFor(sessionSecret, session.nonce, result.codigoGeneracion),
+        });
       }
       default: {
         const code = body.codigoGeneracion;
-        if (typeof code !== "string" || !/^[0-9A-Fa-f-]{36}$/.test(code)) {
-          throw new HandlerError("bad_request", "codigoGeneracion is required.", 400);
+        if (typeof code !== "string" || !/^[0-9A-Fa-f-]{36}$/.test(code) || typeof body.statusToken !== "string") {
+          throw new HandlerError("bad_request", "codigoGeneracion and statusToken are required.", 400);
+        }
+        const given = base64urlDecode(body.statusToken);
+        const expected = base64urlDecode(await statusTokenFor(sessionSecret, session.nonce, code));
+        if (given === null || expected === null || !timingSafeEqual(given, expected)) {
+          throw new HandlerError("action_not_allowed", "This document does not belong to this session.", 403);
         }
         return json(200, { status: summarizeStatus(await facta.getDocumentStatus(code)) });
       }
@@ -459,6 +487,9 @@ export function createFactaHandler(options: FactaHandlerOptions): (req: Request)
     } catch (error) {
       const { status, body } = errorBody(error, secretText);
       const idempotencyKey = ctx.session?.idempotencyKey;
+      if (ctx.session && body.error.spent) {
+        body.error.statusToken = await statusTokenFor(sessionSecret, ctx.session.nonce, body.error.spent.codigoGeneracion);
+      }
       if (error instanceof FactaError && error.isRejection && idempotencyKey !== undefined) {
         emit({
           type: "rejected",
