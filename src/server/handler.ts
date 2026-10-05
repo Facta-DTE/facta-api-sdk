@@ -3,7 +3,9 @@
 //
 // It owns the `Facta` instance, so the apiKey and signKey never leave the
 // implementer's server. Every response is built from an allow-list of fields.
-// Actions: `session.describe`, `issue`, `status`, `delivery.status`.
+// Actions: `session.describe`, `issue`, `status`, `delivery.status`, plus the
+// data actions declared in `capabilities` (documents, downloads, catalog,
+// service and storage status, session-bound invalidation).
 
 import { FactaError } from "../errors.ts";
 import type { Facta } from "../client.ts";
@@ -20,20 +22,47 @@ import type {
 } from "../types.ts";
 import { openDeliveryHandle, sealDeliveryHandle } from "./delivery-handle.ts";
 import {
+  allows,
+  type FactaAction,
+  type FactaCapabilities,
+  type FactaInvalidationAction,
+  type FactaReadAction,
+  INVALIDATION_ACTIONS,
+  READ_ACTIONS,
+  validateCapabilities,
+} from "./capabilities.ts";
+import { createDataActions, DataActionError, type FactaDataLike } from "./data-actions.ts";
+import {
   base64urlDecode,
   base64urlEncode,
   FactaSessionError,
+  type FactaInvalidationSession,
   type FactaSession,
   hmac,
   secretBytes,
   timingSafeEqual,
+  verifyFactaInvalidationSession,
   verifyFactaSession,
 } from "./session.ts";
 
 /** The slice of `Facta` the handler uses; a fake can stand in for tests. */
 export type FactaLike =
   & Pick<Facta, "issue" | "getDocumentStatus">
-  & Partial<Pick<Facta, "issueAndArchive" | "archiveConfigured" | "environment" | "deliverEmail" | "deliverWhatsApp" | "getDelivery">>;
+  & Partial<Pick<Facta, "issueAndArchive" | "archiveConfigured" | "environment" | "deliverEmail" | "deliverWhatsApp" | "getDelivery">>
+  & FactaDataLike;
+
+/**
+ * What `authorize` receives. `action` is always present. For the issuing and
+ * invalidation actions the session's own fields are spread in (so code written
+ * for the earlier `(req, session)` shape keeps working) and `session` holds it
+ * whole; read actions carry no session.
+ */
+export type FactaAuthorizeContext =
+  & Partial<Omit<FactaSession, "v">>
+  & { action: FactaAction; session?: FactaSession | FactaInvalidationSession };
+
+/** Filters the host forces onto `documents.list`; the browser cannot widen them. */
+export type FactaListScope = Partial<Pick<import("../types.ts").ListDocumentsFilters, "desde" | "hasta" | "estado" | "tipoDte">>;
 
 /** What the browser learns about storage. No paths, bucket names, destination ids or credentials. */
 export interface FactaStorageSummary {
@@ -75,6 +104,7 @@ export type FactaHandlerEvent =
     spent?: { codigoGeneracion: string; numeroControl: string };
   }
   | { type: "error"; idempotencyKey?: string; code: string; status: number; retryable: boolean }
+  | { type: "invalidated"; idempotencyKey: string; codigoGeneracion: string; alreadyInvalidated: boolean }
   /** A channel POST failed (token expired, network, …). Never carries the delivery token or the recipient. */
   | { type: "delivery_error"; idempotencyKey?: string; codigoGeneracion: string; channel: DeliveryChannel; code: string; status: number };
 
@@ -90,7 +120,22 @@ export interface FactaHandlerOptions {
    * continue; `false` answers 403 and a throw answers 401. The literal
    * `"session-only"` accepts any valid session token (anonymous checkout pages).
    */
-  authorize: "session-only" | ((req: Request, session: FactaSession) => boolean | Promise<boolean>);
+  authorize: "session-only" | ((req: Request, ctx: FactaAuthorizeContext) => boolean | Promise<boolean>);
+  /**
+   * What the browser may read or do beyond issuing. Default `{}`: nothing.
+   * Anything not declared answers 403 `action_not_allowed`.
+   */
+  capabilities?: FactaCapabilities;
+  /** Filters forced onto `documents.list` (e.g. only this branch). Runs after `authorize`. */
+  scope?: (req: Request, ctx: FactaAuthorizeContext) => FactaListScope | Promise<FactaListScope>;
+  /**
+   * Send the receiver's name (and the document number masked) to the browser in
+   * lists and details, and customers' document numbers in full. Default false:
+   * personal data stays on the server (D-6).
+   */
+  exposeRecipient?: boolean;
+  /** Largest file `documents.download` returns, in bytes. Default 8 MiB. */
+  maxDownloadBytes?: number;
   /** Return `jws` and the full `documento` in sealed results. Default false. */
   exposeDocument?: boolean;
   /** Default 32 768. */
@@ -142,6 +187,7 @@ const RETRYABLE = new Set([
   "operation_outcome_unknown",
 ]);
 const ACTIONS = ["session.describe", "issue", "status", "delivery.status"];
+const DEFAULT_MAX_DOWNLOAD = 8 * 1024 * 1024;
 const DEFAULT_DELIVERY_START_TIMEOUT_MS = 1_500;
 const DELIVERY_FIELDS = ["estado", "destino", "motivo", "actualizado"] as const;
 
@@ -336,6 +382,9 @@ export function extractFieldIssues(error: FactaError): FactaFieldIssue[] {
 
 function errorBody(error: unknown, secretText: string | null): { status: number; body: FactaHandlerErrorBody } {
   const redact = (text: string) => (secretText !== null ? text.replaceAll(secretText, "[REDACTED]") : text);
+  if (error instanceof DataActionError) {
+    return { status: error.status, body: { error: { code: error.code, message: error.message, retryable: false } } };
+  }
   if (error instanceof HandlerError) {
     return { status: error.status, body: { error: { code: error.code, message: error.message, retryable: false } } };
   }
@@ -421,6 +470,31 @@ export function createFactaHandler(options: FactaHandlerOptions): (req: Request)
   const maxBody = options.maxBodyBytes ?? DEFAULT_MAX_BODY;
   const secretText = typeof sessionSecret === "string" ? sessionSecret : null;
   const deliveryTimeout = options.deliveryStartTimeoutMs ?? DEFAULT_DELIVERY_START_TIMEOUT_MS;
+  const capabilities = validateCapabilities(options.capabilities);
+  const data = createDataActions({
+    facta,
+    capabilities,
+    exposeRecipient: options.exposeRecipient === true,
+    maxDownloadBytes: options.maxDownloadBytes ?? DEFAULT_MAX_DOWNLOAD,
+    statusTtlMs: 15_000,
+  });
+
+  async function check(req: Request, context: FactaAuthorizeContext): Promise<void> {
+    if (authorize === "session-only") return;
+    let allowed: boolean;
+    try {
+      allowed = (await (authorize as (r: Request, c: FactaAuthorizeContext) => boolean | Promise<boolean>)(req, context)) === true;
+    } catch {
+      throw new HandlerError("unauthorized", "Not authorized.", 401);
+    }
+    if (!allowed) throw new HandlerError("unauthorized", "Not authorized.", 403);
+  }
+
+  function declared(action: FactaReadAction | FactaInvalidationAction): void {
+    if (!allows(capabilities, action)) {
+      throw new HandlerError("action_not_allowed", "This action is not enabled on this handler.", 403);
+    }
+  }
 
   /** After a sealed issue: start the marked channels and mint the handle. Empty when nothing was marked. */
   async function startDelivery(session: FactaSession, result: IssueResult): Promise<Record<string, unknown>> {
@@ -496,7 +570,7 @@ export function createFactaHandler(options: FactaHandlerOptions): (req: Request)
     return { ...finished };
   }
 
-  async function handle(req: Request, ctx: { session?: FactaSession }): Promise<Response> {
+  async function handle(req: Request, ctx: { session?: FactaSession; invalidation?: FactaInvalidationSession }): Promise<Response> {
     if (req.method !== "POST") throw new HandlerError("method_not_allowed", "Only POST is accepted.", 405);
     const contentType = req.headers.get("content-type") ?? "";
     if (!/^application\/json\s*(;|$)/i.test(contentType)) {
@@ -515,19 +589,38 @@ export function createFactaHandler(options: FactaHandlerOptions): (req: Request)
     if (!isObject(body) || typeof body.action !== "string") {
       throw new HandlerError("bad_request", "The body must be an object with an action.", 400);
     }
-    if (!ACTIONS.includes(body.action)) throw new HandlerError("bad_request", "Unknown action.", 400);
+    const action = body.action;
+    if ((READ_ACTIONS as readonly string[]).includes(action)) {
+      // Reads carry no session: the capability list and `authorize` are the gate.
+      const readAction = action as FactaReadAction;
+      declared(readAction);
+      const context: FactaAuthorizeContext = { action: readAction };
+      await check(req, context);
+      const forced = readAction === "documents.list" && options.scope ? await options.scope(req, context) : {};
+      return json(200, await data.read(readAction, body, forced));
+    }
+    if ((INVALIDATION_ACTIONS as readonly string[]).includes(action)) {
+      const invAction = action as FactaInvalidationAction;
+      declared(invAction);
+      const inv = await verifyFactaInvalidationSession(body.session, sessionSecret);
+      ctx.invalidation = inv;
+      await check(req, { action: invAction, session: inv, idempotencyKey: inv.idempotencyKey, nonce: inv.nonce, iat: inv.iat, exp: inv.exp });
+      if (invAction === "invalidate.describe") {
+        return json(200, await data.describeInvalidation(inv, facta.environment ?? null));
+      }
+      const done = await data.invalidate(inv);
+      emit({
+        type: "invalidated",
+        idempotencyKey: inv.idempotencyKey,
+        codigoGeneracion: inv.generationCode,
+        alreadyInvalidated: "yaEstabaInvalidado" in done.result && done.result.yaEstabaInvalidado === true,
+      });
+      return json(200, done.body);
+    }
+    if (!ACTIONS.includes(action)) throw new HandlerError("bad_request", "Unknown action.", 400);
     const session = await verifyFactaSession(body.session, sessionSecret);
     ctx.session = session;
-
-    if (authorize !== "session-only") {
-      let allowed: boolean;
-      try {
-        allowed = (await (authorize as (r: Request, s: FactaSession) => boolean | Promise<boolean>)(req, session)) === true;
-      } catch {
-        throw new HandlerError("unauthorized", "Not authorized.", 401);
-      }
-      if (!allowed) throw new HandlerError("unauthorized", "Not authorized.", 403);
-    }
+    await check(req, { ...session, action: action as FactaAction, session });
     const download = session.download !== false;
 
     switch (body.action) {
@@ -616,12 +709,12 @@ export function createFactaHandler(options: FactaHandlerOptions): (req: Request)
   }
 
   return async (req: Request): Promise<Response> => {
-    const ctx: { session?: FactaSession } = {};
+    const ctx: { session?: FactaSession; invalidation?: FactaInvalidationSession } = {};
     try {
       return await handle(req, ctx);
     } catch (error) {
       const { status, body } = errorBody(error, secretText);
-      const idempotencyKey = ctx.session?.idempotencyKey;
+      const idempotencyKey = ctx.session?.idempotencyKey ?? ctx.invalidation?.idempotencyKey;
       if (ctx.session && body.error.spent) {
         body.error.statusToken = await statusTokenFor(sessionSecret, ctx.session.nonce, body.error.spent.codigoGeneracion);
       }

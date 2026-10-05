@@ -8,7 +8,11 @@
  * See docs/react-signing-ui.md §3 and §5.
  */
 export {
+  createFactaInvalidationSession,
+  type CreateFactaInvalidationSessionInput,
   createFactaSession,
+  type FactaInvalidationSession,
+  verifyFactaInvalidationSession,
   type CreateFactaSessionInput,
   DEFAULT_SESSION_TTL_SECONDS,
   type FactaSession,
@@ -20,6 +24,8 @@ export {
   createFactaHandler,
   extractFieldIssues,
   type FactaArchiveMode,
+  type FactaAuthorizeContext,
+  type FactaListScope,
   type FactaFieldIssue,
   type FactaHandlerErrorBody,
   type FactaHandlerEvent,
@@ -35,3 +41,9 @@ export {
   summarizeStorage,
   toNodeHandler,
 } from "./src/server/handler.ts";
+export {
+  type FactaCapabilities,
+  type FactaDownloadKind,
+  type FactaServiceState,
+  maskDocumentNumber,
+} from "./src/server/capabilities.ts";

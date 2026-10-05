@@ -265,7 +265,7 @@ Deno.test("authorize: false is 403, a throw is 401, true passes; it sees the ses
   assertEquals((await post(make({ authorize: () => { throw new Error("db down"); } }).handler, body)).status, 401);
   assertEquals((await post(make({ authorize: () => Promise.resolve(undefined as never) }).handler, body)).status, 403);
   let seen = "";
-  const ok = make({ authorize: (_req, s) => { seen = s.idempotencyKey; return true; } });
+  const ok = make({ authorize: (_req, s) => { seen = s.idempotencyKey ?? ""; return true; } });
   assertEquals((await post(ok.handler, body)).status, 200);
   assertEquals(seen, "order-1");
   const denied = await (await post(make({ authorize: () => false }).handler, body)).json();
