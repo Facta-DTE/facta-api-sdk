@@ -90,8 +90,12 @@ export interface FactaMessages {
     failed: string;
     details: string;
     close: string;
+    /** Short footer of the result popover. */
+    attribution: string;
   };
   status: Record<string, string>;
+  /** The compact receipt card. */
+  receipt: { sealedPill: string };
   /** Labels for the fields Hacienda or the handler can point at. */
   fieldLabels: Record<string, string>;
   /** Scope suffixes: «del receptor», «de la línea {n}». */
@@ -224,7 +228,9 @@ export const esMessages: FactaMessages = {
     failed: "No se emitió",
     details: "Ver detalle",
     close: "Cerrar detalle",
+    attribution: "factadte.com",
   },
+  receipt: { sealedPill: "Sellada" },
   status: {
     sellado: "Sellado",
     contingencia: "En contingencia",

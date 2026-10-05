@@ -121,7 +121,7 @@ describe("customization hooks", () => {
 
   it("the receipt reports itself as sealed too", () => {
     render(<FactaReceipt result={sealed} appearance={NO_MOTION} />);
-    expect(document.querySelector('[data-facta-state="sealed"][data-facta-variant="inline"]')).not.toBeNull();
+    expect(document.querySelector('[data-facta-state="sealed"][data-facta-variant="receipt"]')).not.toBeNull();
   });
 
   it("explicit size variables are set inline and override the density defaults in the stylesheet", async () => {

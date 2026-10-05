@@ -134,8 +134,8 @@ describe("dialog: issuing to a result", () => {
 
     const writeText = vi.fn(() => Promise.resolve());
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
-    await user.click(within(dialog).getByRole("button", { name: "Copiar Número de control" }));
-    expect(writeText).toHaveBeenCalledWith(sealed.numeroControl);
+    await user.click(within(dialog).getByRole("button", { name: "Copiar Código de generación" }));
+    expect(writeText).toHaveBeenCalledWith(sealed.codigoGeneracion);
     await within(dialog).findAllByText("Copiado");
 
     await user.click(within(dialog).getByRole("button", { name: "Listo" }));

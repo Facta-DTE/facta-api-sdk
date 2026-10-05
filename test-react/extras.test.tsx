@@ -78,7 +78,7 @@ describe("FactaIssueButton", () => {
 describe("FactaReceipt and FactaStatusBadge", () => {
   it("renders a stored document with no provider and no network", () => {
     render(<FactaReceipt result={sealed} environment="00" appearance={NO_MOTION} />);
-    expect(screen.getByText("Factura emitida")).toBeTruthy();
+    expect(screen.getByText("Factura")).toBeTruthy();
     expect(screen.getByText("$1,234.56")).toBeTruthy();
     expect(screen.getByText("Pruebas")).toBeTruthy();
     expect(screen.getByText(sealed.numeroControl)).toBeTruthy();
