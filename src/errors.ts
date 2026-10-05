@@ -38,6 +38,12 @@ export type FactaErrorCode =
   | "storage_unsupported"
   | "storage_unavailable"
   | "storage_contract_invalid"
+  // Delivery by e-mail / WhatsApp (docs/api-delivery-tokens.md §3.3).
+  /** The five-minute delivery token expired (HTTP 410). The channel state becomes `vencido`. */
+  | "entrega_vencida"
+  | "entrega_token_invalido"
+  /** The issue request did not mark this channel. */
+  | "canal_no_marcado"
   | "internal_error"
   /** A fiscal invalidation may have completed, but its signed event was not recoverable. */
   | "operation_outcome_unknown"
