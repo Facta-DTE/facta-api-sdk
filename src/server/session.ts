@@ -7,7 +7,8 @@
 //
 // Web Crypto only, so it runs unchanged on Node 22, Deno and Bun.
 
-import type { DteRequest, InvalidationPerson, InvalidationRequest } from "../types.ts";
+import { deliveryRequestFor } from "../delivery.ts";
+import type { DeliverOptions, DteRequest, InvalidationPerson, InvalidationRequest } from "../types.ts";
 
 export interface FactaSessionDisplay {
   /** The implementer's own total, shown as «Total de su pedido». Never computed here. */
@@ -24,6 +25,12 @@ export interface CreateFactaSessionInput {
   display?: FactaSessionDisplay;
   /** Whether the PDF/JSON files travel to the browser. Default true. */
   download?: boolean;
+  /**
+   * Delivery channels to start after a sealed issue. Set by YOUR server only:
+   * the browser can neither add nor change it (it rides inside the signed
+   * token, which is authenticated but readable, like the draft itself).
+   */
+  deliver?: DeliverOptions;
   /** Lifetime in seconds. Default 900 (15 min), at most 86 400. */
   expiresIn?: number;
 }
@@ -39,6 +46,7 @@ export interface FactaSession {
   idempotencyKey: string;
   display?: FactaSessionDisplay;
   download?: boolean;
+  deliver?: DeliverOptions;
 }
 
 export class FactaSessionError extends Error {
@@ -159,6 +167,7 @@ export async function createFactaSession(
   crypto.getRandomValues(nonce);
   const iat = Math.floor(now / 1000);
   const display = normalizeDisplay(input.display);
+  if (input.deliver !== undefined) deliveryRequestFor(input.deliver); // throws on a malformed marking
   const payload: FactaSession = {
     v: 1,
     nonce: base64urlEncode(nonce),
@@ -168,6 +177,7 @@ export async function createFactaSession(
     idempotencyKey: input.idempotencyKey,
     ...(display === undefined ? {} : { display }),
     ...(input.download === undefined ? {} : { download: input.download === true }),
+    ...(input.deliver === undefined ? {} : { deliver: input.deliver }),
   };
   const body = base64urlEncode(encoder.encode(JSON.stringify(payload)));
   const mac = await hmac(secret, SESSION_DOMAIN + body);

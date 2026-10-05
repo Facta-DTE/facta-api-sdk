@@ -82,6 +82,22 @@ export interface FactaMessages {
   };
   expired: { headline: string; body: string; close: string };
   storage: { label: string; saved: string; pending: string; off: string; pendingHelp: string; offHelp: string; savedHelp: string };
+  /** Delivery rows (e-mail / WhatsApp) on finished documents. */
+  delivery: {
+    /** Row label per channel. */
+    label: { correo: string; whatsapp: string };
+    /** Channel as a noun phrase, for «Enviando {channel}…». */
+    channel: { correo: string; whatsapp: string };
+    sending: string;
+    sent: { correo: string; whatsapp: string };
+    failed: { correo: string; whatsapp: string };
+    /** Whole-row text for states with their own wording. {channel} is filled. */
+    states: Record<string, string>;
+    /** After the polling budget ran out. */
+    later: string;
+    /** Readable text per reason code; `default` when the code is unknown. */
+    reasons: Record<string, string>;
+  };
   button: {
     label: string;
     working: string;
@@ -215,6 +231,29 @@ export const esMessages: FactaMessages = {
     pendingHelp:
       "El servidor de quien le atiende completa las copias de respaldo por su cuenta. No afecta la validez de la factura.",
     offHelp: "Este servicio no guarda copias automáticas de los documentos.",
+  },
+  delivery: {
+    label: { correo: "Entrega por correo", whatsapp: "Entrega por WhatsApp" },
+    channel: { correo: "correo", whatsapp: "WhatsApp" },
+    sending: "Enviando {channel}…",
+    sent: { correo: "Correo enviado a {to}", whatsapp: "WhatsApp enviado a {to}" },
+    failed: { correo: "No se pudo enviar el correo", whatsapp: "No se pudo enviar el WhatsApp" },
+    states: {
+      sin_credito: "Sin saldo de WhatsApp",
+      sin_consentimiento: "Sin consentimiento del cliente",
+      no_permitido: "El permiso de la llave no incluye {channel}",
+      vencido: "El plazo para enviar venció",
+      esperando_sello: "Se enviará cuando Hacienda confirme el documento",
+    },
+    later: "Consultaremos el estado más tarde",
+    reasons: {
+      smtp_rejected: "El servidor de correo lo rechazó",
+      invalid_address: "Dirección rechazada",
+      wallet_empty: "Sin saldo de WhatsApp",
+      provider_unavailable: "El proveedor no respondió",
+      quota_exceeded: "Se alcanzó el límite de envíos",
+      default: "Intente reenviarlo desde su sistema",
+    },
   },
   button: {
     label: "Emitir factura",

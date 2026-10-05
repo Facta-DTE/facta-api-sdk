@@ -136,3 +136,34 @@ Deno.test("client: a timeout aborts the request and counts as uncertain", async 
   const error = await assertRejects(() => client.issue("t"), FactaClientError);
   assertEquals(error.transport, true);
 });
+
+Deno.test("client: issue merges the delivery handle and view; deliveryStatus sends the handle", async () => {
+  const log: Seen[] = [];
+  const client = createFactaClient({
+    endpoint: "/x",
+    fetch: fakeFetch((seen) =>
+      seen.body.action === "delivery.status"
+        ? json({ delivery: { canales: { correo: { estado: "enviado", destino: "m•••@e.com" } } } })
+        : json({
+          result: { estado: "sellado", codigoGeneracion: "CG" },
+          deliveryHandle: "h.mac",
+          delivery: { canales: { correo: { estado: "pendiente" } } },
+        }), log),
+  });
+  const result = await client.issue("t");
+  assertEquals(result.deliveryHandle, "h.mac");
+  assertEquals(result.delivery?.canales.correo?.estado, "pendiente");
+  const view = await client.deliveryStatus!("t", "h.mac");
+  assertEquals(view.canales.correo?.estado, "enviado");
+  assertEquals(log[1]!.body, { action: "delivery.status", session: "t", deliveryHandle: "h.mac" });
+});
+
+Deno.test("client: a result without delivery has neither handle nor view", async () => {
+  const client = createFactaClient({
+    endpoint: "/x",
+    fetch: fakeFetch(() => json({ result: { estado: "sellado", codigoGeneracion: "CG" } })),
+  });
+  const result = await client.issue("t");
+  assertEquals("deliveryHandle" in result, false);
+  assertEquals("delivery" in result, false);
+});

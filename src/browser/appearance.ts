@@ -65,6 +65,7 @@ export type FactaSlot =
   | "total"
   | "identifiers"
   | "storageRow"
+  | "deliveryRow"
   | "attribution"
   | "countdown"
   | "stepper"

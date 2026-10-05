@@ -248,7 +248,8 @@ These supersede parts of §3–§7:
 
 * The session request is final. No recipient step, no type switch, no
   `review-prepared` mode, no `prepare`/`sign` actions. Handler actions:
-  `session.describe`, `issue`, `status` (status bound to the session with a
+  `session.describe`, `issue`, `status`, `delivery.status` (delivery: see
+  `docs/api-delivery-tokens.md` §5 and `guides/react-server.md`; status bound to the session with a
   `statusToken`). Errors are read-only and carry `fields: [{ path, message }]`
   when a path is literally present, so the host fixes data in its own form.
 * `confirm={false}` issues on open (POS).

@@ -15,6 +15,7 @@ import {
   type IssueResult,
 } from "../browser/index.ts";
 import { AlertIcon, CheckIcon, ClockIcon, CloseIcon, CopyIcon, CrossIcon, DownloadIcon, HourIcon, InfoIcon, SealBig, Spinner } from "./icons.tsx";
+import { DeliveryRows } from "./delivery.tsx";
 import { useCfg } from "./look.tsx";
 
 export function CopyButton({ value, label }: { value: string; label: string }) {
@@ -208,6 +209,7 @@ export function Identifiers({ result, showStorage, dateLabel }: { result: IssueR
         <dd className="facta-kv-v">{formatDateTime(result.fecEmi, result.horEmi)}</dd>
       </div>
       {showStorage && <StorageRow result={result} />}
+      <DeliveryRows result={result} />
     </dl>
   );
 }

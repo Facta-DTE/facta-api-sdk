@@ -3,12 +3,22 @@
 //
 // It owns the `Facta` instance, so the apiKey and signKey never leave the
 // implementer's server. Every response is built from an allow-list of fields.
-// Actions: `session.describe`, `issue`, `status`.
+// Actions: `session.describe`, `issue`, `status`, `delivery.status`.
 
 import { FactaError } from "../errors.ts";
 import type { Facta } from "../client.ts";
 import type { ArchiveEmissionResult } from "../archive.ts";
-import type { DocumentStatus, IssueResult, ManagedStorageArtifactState, ManagedStorageReceipt } from "../types.ts";
+import type {
+  DeliverOptions,
+  DeliveryChannel,
+  DeliveryChannels,
+  DeliveryChannelStatus,
+  DocumentStatus,
+  IssueResult,
+  ManagedStorageArtifactState,
+  ManagedStorageReceipt,
+} from "../types.ts";
+import { openDeliveryHandle, sealDeliveryHandle } from "./delivery-handle.ts";
 import {
   base64urlDecode,
   base64urlEncode,
@@ -23,7 +33,7 @@ import {
 /** The slice of `Facta` the handler uses; a fake can stand in for tests. */
 export type FactaLike =
   & Pick<Facta, "issue" | "getDocumentStatus">
-  & Partial<Pick<Facta, "issueAndArchive" | "archiveConfigured" | "environment">>;
+  & Partial<Pick<Facta, "issueAndArchive" | "archiveConfigured" | "environment" | "deliverEmail" | "deliverWhatsApp" | "getDelivery">>;
 
 /** What the browser learns about storage. No paths, bucket names, destination ids or credentials. */
 export interface FactaStorageSummary {
@@ -64,7 +74,9 @@ export type FactaHandlerEvent =
     observaciones: string[];
     spent?: { codigoGeneracion: string; numeroControl: string };
   }
-  | { type: "error"; idempotencyKey?: string; code: string; status: number; retryable: boolean };
+  | { type: "error"; idempotencyKey?: string; code: string; status: number; retryable: boolean }
+  /** A channel POST failed (token expired, network, …). Never carries the delivery token or the recipient. */
+  | { type: "delivery_error"; idempotencyKey?: string; codigoGeneracion: string; channel: DeliveryChannel; code: string; status: number };
 
 /** `code` of the `error` event emitted when `onIssued` throws. */
 export const ON_ISSUED_FAILED = "on_issued_failed";
@@ -95,6 +107,13 @@ export interface FactaHandlerOptions {
    * browser still receives the fiscal result.
    */
   onIssued?: (result: IssueResult, context: FactaIssuedContext) => void | Promise<void>;
+  /**
+   * How long a sealed `issue` waits for the channel POSTs it just started
+   * (they never block beyond this; the final state is read through
+   * `delivery.status`). Default 1 500 ms. Needed because a serverless runtime
+   * may stop work that is still running once the response is sent.
+   */
+  deliveryStartTimeoutMs?: number;
   /** Called after each outcome. Failures inside the hook are swallowed. */
   onEvent?: (event: FactaHandlerEvent) => void | Promise<void>;
 }
@@ -122,7 +141,9 @@ const RETRYABLE = new Set([
   "idempotency_in_flight",
   "operation_outcome_unknown",
 ]);
-const ACTIONS = ["session.describe", "issue", "status"];
+const ACTIONS = ["session.describe", "issue", "status", "delivery.status"];
+const DEFAULT_DELIVERY_START_TIMEOUT_MS = 1_500;
+const DELIVERY_FIELDS = ["estado", "destino", "motivo", "actualizado"] as const;
 
 const STATUS_DOMAIN = "facta-status-v1.";
 
@@ -177,6 +198,29 @@ function summarizeIssue(result: IssueResult, download: boolean, exposeDocument: 
     out.documento = result.documento;
   }
   return out;
+}
+
+function markedChannels(deliver: DeliverOptions | undefined): DeliveryChannel[] {
+  const out: DeliveryChannel[] = [];
+  if (deliver?.email !== undefined) out.push("correo");
+  if (deliver?.whatsapp !== undefined) out.push("whatsapp");
+  return out;
+}
+
+/** Allow-list of what the browser learns per channel: state, masked destination, reason, time. */
+function summarizeDelivery(canales: DeliveryChannels | undefined, channels: DeliveryChannel[]): Record<string, unknown> {
+  const out: Record<string, DeliveryChannelStatus> = {};
+  for (const channel of channels) {
+    const source = canales?.[channel] as unknown as Record<string, unknown> | undefined;
+    if (!isObject(source) || typeof source.estado !== "string") continue;
+    const view: Record<string, unknown> = {};
+    for (const field of DELIVERY_FIELDS) {
+      const value = source[field];
+      if (typeof value === "string" || (field === "motivo" && value === null)) view[field] = value;
+    }
+    out[channel] = view as unknown as DeliveryChannelStatus;
+  }
+  return { canales: out };
 }
 
 function summarizeStatus(status: DocumentStatus): Record<string, unknown> {
@@ -376,11 +420,80 @@ export function createFactaHandler(options: FactaHandlerOptions): (req: Request)
   const exposeDocument = options.exposeDocument === true;
   const maxBody = options.maxBodyBytes ?? DEFAULT_MAX_BODY;
   const secretText = typeof sessionSecret === "string" ? sessionSecret : null;
+  const deliveryTimeout = options.deliveryStartTimeoutMs ?? DEFAULT_DELIVERY_START_TIMEOUT_MS;
+
+  /** After a sealed issue: start the marked channels and mint the handle. Empty when nothing was marked. */
+  async function startDelivery(session: FactaSession, result: IssueResult): Promise<Record<string, unknown>> {
+    const channels = markedChannels(session.deliver);
+    const offer = result.entrega;
+    if (channels.length === 0 || !isObject(offer) || !isObject(offer.canales)) return {};
+    let canales: DeliveryChannels = offer.canales;
+    const token = typeof offer.token === "string" && offer.token !== "" ? offer.token : undefined;
+    const tokenExp = typeof offer.venceEn === "string" && Number.isFinite(Date.parse(offer.venceEn))
+      ? Math.floor(Date.parse(offer.venceEn) / 1000)
+      : undefined;
+    if (result.estado === "sellado" && token !== undefined) {
+      const starting = channels.filter((c) => canales[c]?.estado === "pendiente");
+      if (starting.length > 0) {
+        canales = { ...canales, ...await startChannels(session, result.codigoGeneracion, token, starting) };
+      }
+    }
+    const deliveryHandle = await sealDeliveryHandle(sessionSecret, session.nonce, {
+      codigoGeneracion: result.codigoGeneracion,
+      ...(token === undefined ? {} : { token }),
+      ...(token === undefined || tokenExp === undefined ? {} : { tokenExp }),
+    });
+    return { deliveryHandle, delivery: summarizeDelivery(canales, channels) };
+  }
 
   function emit(event: FactaHandlerEvent): void {
     if (!onEvent) return;
     // Fire and forget: a slow or failing hook must not change the response.
     void Promise.resolve().then(() => onEvent(event)).catch(() => undefined);
+  }
+
+  /**
+   * Start the given channels with Facta's delivery token, waiting at most
+   * `deliveryTimeout` for them. Failures become `delivery_error` events;
+   * whatever finished in time is returned so the first browser view is fresher.
+   */
+  async function startChannels(
+    session: FactaSession,
+    codigoGeneracion: string,
+    token: string,
+    channels: DeliveryChannel[],
+  ): Promise<DeliveryChannels> {
+    const finished: DeliveryChannels = {};
+    const work = channels.map(async (channel) => {
+      const send = channel === "correo" ? facta.deliverEmail : facta.deliverWhatsApp;
+      if (typeof send !== "function") {
+        emit({ type: "delivery_error", idempotencyKey: session.idempotencyKey, codigoGeneracion, channel, code: "delivery_unsupported", status: 0 });
+        return;
+      }
+      try {
+        const answer = await send.call(facta, codigoGeneracion, token);
+        if (isObject(answer) && typeof answer.estado === "string") finished[channel] = answer;
+      } catch (error) {
+        const known = error instanceof FactaError;
+        emit({
+          type: "delivery_error",
+          idempotencyKey: session.idempotencyKey,
+          codigoGeneracion,
+          channel,
+          code: known ? error.code : "internal_error",
+          status: known ? error.status : 0,
+        });
+      }
+    });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([
+      Promise.allSettled(work),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, deliveryTimeout);
+      }),
+    ]);
+    clearTimeout(timer);
+    return { ...finished };
   }
 
   async function handle(req: Request, ctx: { session?: FactaSession }): Promise<Response> {
@@ -435,11 +548,12 @@ export function createFactaHandler(options: FactaHandlerOptions): (req: Request)
             operationId: key,
             idempotencyKey: key,
             includeTicket: false,
+            ...(session.deliver ? { deliver: session.deliver } : {}),
           });
           // A recovered operation may omit the emission; the same idempotency key replays it.
-          result = archived.emission ?? await facta.issue(session.request, { idempotencyKey: key });
+          result = archived.emission ?? await facta.issue(session.request, { idempotencyKey: key, ...(session.deliver ? { deliver: session.deliver } : {}) });
         } else {
-          result = await facta.issue(session.request, { idempotencyKey: key });
+          result = await facta.issue(session.request, { idempotencyKey: key, ...(session.deliver ? { deliver: session.deliver } : {}) });
         }
         const storage = summarizeStorage(result, archived);
         emit({
@@ -459,11 +573,32 @@ export function createFactaHandler(options: FactaHandlerOptions): (req: Request)
             emit({ type: "error", idempotencyKey: key, code: ON_ISSUED_FAILED, status: 200, retryable: false });
           }
         }
+        const delivery = await startDelivery(session, result);
         return json(200, {
           result: summarizeIssue(result, download, exposeDocument),
           storage,
           statusToken: await statusTokenFor(sessionSecret, session.nonce, result.codigoGeneracion),
+          ...delivery,
         });
+      }
+      case "delivery.status": {
+        const opened = await openDeliveryHandle(sessionSecret, body.deliveryHandle, session.nonce);
+        if (opened === null) {
+          throw new HandlerError("action_not_allowed", "This delivery does not belong to this session.", 403);
+        }
+        if (typeof facta.getDelivery !== "function") {
+          throw new HandlerError("bad_request", "This Facta client cannot read delivery states.", 400);
+        }
+        const channels = markedChannels(session.deliver);
+        let status = await facta.getDelivery(opened.codigoGeneracion);
+        // A POST that never got through leaves its channel `pendiente`: the route is idempotent per
+        // channel, so while the token lives, start it again.
+        const stalled = channels.filter((c) => status.canales?.[c]?.estado === "pendiente");
+        if (opened.token !== undefined && stalled.length > 0 && (opened.tokenExp ?? 0) * 1000 > Date.now()) {
+          const refreshed = await startChannels(session, opened.codigoGeneracion, opened.token, stalled);
+          status = { ...status, canales: { ...status.canales, ...refreshed } };
+        }
+        return json(200, { delivery: summarizeDelivery(status.canales, channels) });
       }
       default: {
         const code = body.codigoGeneracion;

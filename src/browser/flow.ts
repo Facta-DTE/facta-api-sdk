@@ -24,7 +24,8 @@
 import { FactaClientError, type FactaClient } from "./client.ts";
 import { describeFields, type FieldIssue } from "./fields.ts";
 import { explainError, esMessages, type FactaMessages } from "./messages.es.ts";
-import type { IssueSummary, SessionInfo, SpentInfo, StatusSummary } from "./wire.ts";
+import { isFinalDeliveryState } from "../delivery.ts";
+import type { DeliveryView, IssueSummary, SessionInfo, SpentInfo, StatusSummary } from "./wire.ts";
 
 export type FlowStep =
   | "loading"
@@ -70,6 +71,12 @@ export interface FlowState {
   maxAttempts: number;
   result: IssueSummary | null;
   error: FlowFailure | null;
+  /**
+   * Delivery by e-mail / WhatsApp after a sealed document, when the
+   * integrator's server marked channels. Mirrors `result.delivery`. It never
+   * gates `step`: «Listo» and auto-close do not wait for it.
+   */
+  delivery: DeliveryView | null;
 }
 
 export interface IssueFlowOptions {
@@ -84,6 +91,12 @@ export interface IssueFlowOptions {
   verifyDelayMs?: number;
   /** When «signing» and «sending» are highlighted while one call is pending. */
   phaseDelaysMs?: [number, number];
+  /** Called with every delivery update (first the marked channels, then each poll). */
+  onDelivery?: (delivery: DeliveryView) => void;
+  /** Pause between delivery reads. Default 2000 ms. */
+  deliveryIntervalMs?: number;
+  /** Stop reading delivery after this long. Default 60000 ms. */
+  deliveryTimeoutMs?: number;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
 }
@@ -106,7 +119,7 @@ const EXPIRED_CODES = new Set(["session_expired", "session_invalid"]);
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 export function initialFlowState(maxAttempts = 2): FlowState {
-  return { step: "loading", info: null, phase: null, attempt: 0, maxAttempts, result: null, error: null };
+  return { step: "loading", info: null, phase: null, attempt: 0, maxAttempts, result: null, error: null, delivery: null };
 }
 
 export function createIssueFlow(options: IssueFlowOptions): IssueFlow {
@@ -117,6 +130,8 @@ export function createIssueFlow(options: IssueFlowOptions): IssueFlow {
   const now = options.now ?? Date.now;
   const sleep = options.sleep ?? defaultSleep;
   const { client, session } = options;
+  const deliveryInterval = options.deliveryIntervalMs ?? 2000;
+  const deliveryTimeout = options.deliveryTimeoutMs ?? 60_000;
 
   let state = initialFlowState(maxResends);
   const listeners = new Set<(s: FlowState) => void>();
@@ -184,14 +199,68 @@ export function createIssueFlow(options: IssueFlowOptions): IssueFlow {
     set({ step: expired ? "expired" : rejected ? "rejected" : "failed", phase: null, error });
   }
 
+  function isSettled(view: DeliveryView): boolean {
+    return Object.values(view.canales).every((c) => c === undefined || isFinalDeliveryState(c.estado));
+  }
+
+  // Delivery outlives the window only for a host that listens (`onDelivery`):
+  // auto-close then still reports the final state, within the same time budget.
+  let trackingStopped = false;
+
+  function publishDelivery(view: DeliveryView) {
+    if (trackingStopped || !state.result) return;
+    set({ delivery: view, result: { ...state.result, delivery: view } });
+    try {
+      options.onDelivery?.(view);
+    } catch { /* a host callback must not break the flow */ }
+  }
+
+  /** Reads delivery in the background. Never changes `step`, never throws. */
+  async function trackDelivery(handle: string | undefined, initial: DeliveryView) {
+    let view: DeliveryView = { ...initial, settled: isSettled(initial), timedOut: false };
+    publishDelivery(view);
+    if (view.settled || !handle || typeof client.deliveryStatus !== "function") return;
+    let waited = 0;
+    while (!trackingStopped && waited < deliveryTimeout) {
+      await sleep(deliveryInterval);
+      waited += deliveryInterval;
+      if (trackingStopped) return;
+      try {
+        const next = await client.deliveryStatus(session, handle);
+        view = { ...next, settled: isSettled(next), timedOut: false };
+        publishDelivery(view);
+        if (view.settled) return;
+      } catch (error) {
+        // A definitive answer (handle expired, not allowed) will not improve by asking again.
+        if (error instanceof FactaClientError && !error.transport && !error.retryable) break;
+      }
+    }
+    if (!trackingStopped) publishDelivery({ ...view, timedOut: true });
+  }
+
   function applyResult(result: IssueSummary) {
     stopPhases();
+    let deliveryHandle: string | undefined;
     if ("statusToken" in result) {
       const { statusToken: _t, ...rest } = result;
       result = rest;
     }
-    if (result.estado === "sellado") return set({ step: "sealed", phase: null, result, error: null });
-    if (result.estado === "contingencia") return set({ step: "contingency", phase: null, result, error: null });
+    if ("deliveryHandle" in result) {
+      const { deliveryHandle: handle, ...rest } = result;
+      deliveryHandle = handle;
+      result = rest;
+    }
+    if (result.estado === "sellado" || result.estado === "contingencia") {
+      set({
+        step: result.estado === "sellado" ? "sealed" : "contingency",
+        phase: null,
+        result,
+        error: null,
+        delivery: null,
+      });
+      if (result.delivery) void trackDelivery(deliveryHandle, result.delivery);
+      return;
+    }
     applyFailure(toFailure(new FactaClientError({
       code: "internal_error", message: "unexpected result", status: 200, retryable: false, transport: false,
     })));
@@ -322,6 +391,7 @@ export function createIssueFlow(options: IssueFlowOptions): IssueFlow {
     },
     destroy() {
       destroyed = true;
+      if (!options.onDelivery) trackingStopped = true;
       stopPhases();
       listeners.clear();
     },

@@ -813,3 +813,8 @@
   :where(.facta-root[data-facta-motion="full"]) *::before,
   :where(.facta-root[data-facta-motion="full"]) *::after { animation: none !important; transition: none !important; }
 }
+
+/* Delivery rows reuse the «Copias» row (.facta-kv + .facta-storage + .facta-dot). */
+.facta-delivery-row { align-items: flex-start; }
+:where(.facta-storage--problem) .facta-dot { background: var(--facta-i-danger); }
+:where(.facta-root[data-facta-motion="full"] .facta-delivery-row .facta-storage--pending) .facta-dot { animation: facta-pulse 1.6s ease-in-out infinite; }
