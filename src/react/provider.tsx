@@ -1,5 +1,14 @@
 import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
-import { createFactaClient, type FactaClient, type FlowFailure, type IssueResult } from "../browser/index.ts";
+import {
+  createFactaCache,
+  createFactaClient,
+  type FactaClient,
+  type FactaDataClient,
+  type FlowFailure,
+  type InvalidationOutcome,
+  type IssueResult,
+} from "../browser/index.ts";
+import { FactaInvalidateDialog } from "./invalidate-dialog.tsx";
 import { ProviderLookContext, type FactaLook } from "./look.tsx";
 import {
   FactaContext,
@@ -16,7 +25,7 @@ export interface FactaProviderProps extends FactaLook {
   fetch?: typeof fetch | undefined;
   headers?: HeadersInit | (() => HeadersInit | Promise<HeadersInit>) | undefined;
   /** Bring your own client instead of `endpoint`. */
-  client?: FactaClient | undefined;
+  client?: (FactaClient & Partial<FactaDataClient>) | undefined;
   /** Every window reports here too (analytics). */
   onEvent?: ((event: FactaEvent) => void) | undefined;
   children?: ReactNode;
@@ -63,6 +72,29 @@ export function FactaProvider(props: FactaProviderProps) {
     });
   }, [given, endpoint, fetchImpl, headers]);
 
+  // One cache per client: data hooks share it, and it dies with the client.
+  const cache = useMemo(() => createFactaCache(), [client]);
+  const [invalidation, setInvalidation] = useState<{ session: string; open: boolean } | null>(null);
+  const invPending = useRef<{ resolve(o: InvalidationOutcome): void; reject(e: FactaWindowError): void; outcome: InvalidationOutcome | undefined } | null>(null);
+  const openInvalidation = useCallback((session: string) =>
+    new Promise<InvalidationOutcome>((resolve, reject) => {
+      invPending.current?.reject(new FactaWindowError("superseded"));
+      invPending.current = { resolve, reject, outcome: undefined };
+      setInvalidation({ session, open: true });
+    }), []);
+  const onInvalidated = useCallback((outcome: InvalidationOutcome) => {
+    if (invPending.current) invPending.current.outcome = outcome;
+  }, []);
+  const onInvalidationOpenChange = useCallback((open: boolean) => {
+    if (open) return;
+    setInvalidation((r) => (r ? { ...r, open: false } : r));
+    const p = invPending.current;
+    invPending.current = null;
+    if (!p) return;
+    if (p.outcome) p.resolve(p.outcome);
+    else p.reject(new FactaWindowError("closed"));
+  }, []);
+
   const [request, setRequest] = useState<WindowRequest | null>(null);
   const pending = useRef<Pending | null>(null);
 
@@ -80,7 +112,10 @@ export function FactaProvider(props: FactaProviderProps) {
       setRequest({ ...options, session, variant: options?.variant ?? "dialog", open: true });
     }), []);
 
-  const value = useMemo<FactaContextValue>(() => ({ client, onEvent, openWindow }), [client, onEvent, openWindow]);
+  const value = useMemo<FactaContextValue>(
+    () => ({ client, onEvent, openWindow, cache, openInvalidation }),
+    [client, onEvent, openWindow, cache, openInvalidation],
+  );
 
   const onIssued = useCallback((result: IssueResult) => {
     const p = pending.current;
@@ -110,6 +145,14 @@ export function FactaProvider(props: FactaProviderProps) {
     <FactaContext.Provider value={value}>
       <ProviderLookContext.Provider value={look}>
         {children}
+        {invalidation && (
+          <FactaInvalidateDialog
+            session={invalidation.session}
+            open={invalidation.open}
+            onOpenChange={onInvalidationOpenChange}
+            onInvalidated={onInvalidated}
+          />
+        )}
         {request && (
           <Layer
             session={request.session}

@@ -46,3 +46,56 @@ export type {
   IssueResult,
   RunMode,
 } from "../browser/index.ts";
+
+// Data components and hooks (docs/react-signing-ui.md §11).
+export { FactaDocumentList, periodRange } from "./document-list.tsx";
+export type { FactaDocumentListProps } from "./document-list.tsx";
+export { FactaDocumentDetail } from "./document-detail.tsx";
+export type { FactaDocumentDetailProps } from "./document-detail.tsx";
+export { FactaDownloadButton } from "./download-button.tsx";
+export type { FactaDownloadButtonProps } from "./download-button.tsx";
+export { FactaCustomerPicker, FactaProductPicker } from "./pickers.tsx";
+export type { FactaCustomerPickerProps, FactaProductPickerProps } from "./pickers.tsx";
+export { FactaServiceStatus } from "./service-status.tsx";
+export type { FactaServiceStatusProps } from "./service-status.tsx";
+export { FactaStorageMeter, formatStorageBytes } from "./storage-meter.tsx";
+export type { FactaStorageMeterProps } from "./storage-meter.tsx";
+export { FactaInvalidateDialog } from "./invalidate-dialog.tsx";
+export type { FactaInvalidateDialogProps } from "./invalidate-dialog.tsx";
+export {
+  copyText,
+  useFactaActions,
+  useFactaCustomers,
+  useFactaDocument,
+  useFactaDocumentCopies,
+  useFactaDocuments,
+  useFactaProducts,
+  useFactaServiceStatus,
+  useFactaStorage,
+} from "./data-hooks.ts";
+export type {
+  CatalogSearch,
+  QueryState,
+  UseCatalogSearchOptions,
+  UseFactaActions,
+
+  UseFactaDocumentOptions,
+  UseFactaDocuments,
+  UseFactaDocumentsOptions,
+  UseFactaServiceStatus,
+  UseFactaStorage,
+} from "./data-hooks.ts";
+export type {
+  CopyRow,
+  CustomerOption,
+  DocumentDetail,
+  DocumentFilters,
+  DocumentPage,
+  DocumentRow,
+  DownloadKind,
+  InvalidationInfo,
+  InvalidationOutcome,
+  ProductOption,
+  ServiceState,
+  StorageView,
+} from "../browser/index.ts";

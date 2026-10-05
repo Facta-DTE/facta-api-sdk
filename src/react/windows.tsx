@@ -40,7 +40,7 @@ export interface FactaLayerProps extends FactaWindowProps {
 const FOCUSABLE =
   'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
-function usePresence(open: boolean, exitMs: number) {
+export function usePresence(open: boolean, exitMs: number) {
   const [mounted, setMounted] = useState(open);
   useEffect(() => {
     if (open) {
@@ -71,7 +71,7 @@ interface LayerProps {
 }
 
 /** Portal + backdrop + focus trap + scroll lock + Esc. */
-function Layer({ kind, state, step, run, resolved, titleId, canClose, onRequestClose, children }: LayerProps) {
+export function Layer({ kind, state, step, run, resolved, titleId, canClose, onRequestClose, children }: LayerProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef({ canClose, onRequestClose });
   closeRef.current = { canClose, onRequestClose };
