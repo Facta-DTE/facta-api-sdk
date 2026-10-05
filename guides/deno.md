@@ -6,18 +6,18 @@ recovery behavior, see the [SDK method reference](reference.md). Read the
 
 **Package and source:** [npm `@facta-dte/api`](https://www.npmjs.com/package/@facta-dte/api) · [public GitHub repository](https://github.com/Facta-DTE/facta-api-sdk).
 
-**Version selection:** This documentation describes `0.2.0`. The [npm registry](https://www.npmjs.com/package/@facta-dte/api?activeTab=versions) is authoritative for published versions and distribution tags. `latest` selects the approved stable release. Confirm that your installed published version includes a method before using it; validate source-only capabilities with a packed checkout.
+**Version selection:** This documentation describes `0.2.1`. The [npm registry](https://www.npmjs.com/package/@facta-dte/api?activeTab=versions) is authoritative for published versions and distribution tags. `latest` selects the approved stable release. Confirm that your installed published version includes a method before using it; validate source-only capabilities with a packed checkout.
 
 The official package supports TypeScript and JavaScript. SDKs for other languages are pending; direct HTTP examples do not represent published SDKs.
 
 ## Requirements and installation
 
 Check `npm view @facta-dte/api version dist-tags` and choose a published version
-that matches the required capabilities. Once `0.2.0` is available, pin it in
+that matches the required capabilities. Once `0.2.1` is available, pin it in
 `deno.json`:
 
 ```json
-{ "imports": { "@facta-dte/api": "npm:@facta-dte/api@0.2.0" } }
+{ "imports": { "@facta-dte/api": "npm:@facta-dte/api@0.2.1" } }
 ```
 
 There is no JSR package. Commit the selected version and lockfile.
@@ -81,7 +81,7 @@ this explicit call consumes a test fiscal sequence and needs a stable
 `ERP_ORDER_ID`.
 
 ```ts
-import { Facta } from "npm:@facta-dte/api@0.2.0";
+import { Facta } from "npm:@facta-dte/api@0.2.1";
 
 const facta = new Facta({
   apiKey: Deno.env.get("FACTA_API_KEY")!,
