@@ -139,7 +139,7 @@ export function createIssueFlow(options: IssueFlowOptions): IssueFlow {
     timers.push(setTimeout(() => set({ phase: "sending" }), sendingAfter));
   }
 
-  type Failure = FlowFailure & { expired: boolean; rejected: boolean };
+  type Failure = FlowFailure & { expired: boolean; rejected: boolean; statusToken?: string };
 
   function toFailure(error: unknown): Failure {
     const e = error instanceof FactaClientError
@@ -168,6 +168,7 @@ export function createIssueFlow(options: IssueFlowOptions): IssueFlow {
       fields: describeFields(e.fields, messages),
       uncertain,
       canRetry: !uncertain && e.retryable && !e.wasSpent,
+      ...(e.statusToken ? { statusToken: e.statusToken } : {}),
       expired: EXPIRED_CODES.has(e.code),
       rejected: e.code === "mh_rejected",
     };
@@ -175,12 +176,16 @@ export function createIssueFlow(options: IssueFlowOptions): IssueFlow {
 
   function applyFailure(failure: Failure) {
     stopPhases();
-    const { expired, rejected, ...error } = failure;
+    const { expired, rejected, statusToken: _t, ...error } = failure;
     set({ step: expired ? "expired" : rejected ? "rejected" : "failed", phase: null, error });
   }
 
   function applyResult(result: IssueSummary) {
     stopPhases();
+    if ("statusToken" in result) {
+      const { statusToken: _t, ...rest } = result;
+      result = rest;
+    }
     if (result.estado === "sellado") return set({ step: "sealed", phase: null, result, error: null });
     if (result.estado === "contingencia") return set({ step: "contingency", phase: null, result, error: null });
     applyFailure(toFailure(new FactaClientError({
@@ -234,19 +239,22 @@ export function createIssueFlow(options: IssueFlowOptions): IssueFlow {
         if (!last.uncertain) return applyFailure(last);
       }
     }
-    const cg = state.info?.codigoGeneracion ?? last.spent?.codigoGeneracion ?? first.spent?.codigoGeneracion;
-    if (cg) {
+    // `status` needs both the document and the token the handler minted for it.
+    const withToken = [last, first].find((x) => x.spent?.codigoGeneracion && x.statusToken);
+    const cg = withToken?.spent?.codigoGeneracion;
+    const token = withToken?.statusToken;
+    if (cg && token) {
       await sleep(verifyDelay);
       if (destroyed) return;
       try {
-        if (applyStatus(await client.status(session, cg))) return;
+        if (applyStatus(await client.status(session, cg, token))) return;
       } catch (error) {
         const f = toFailure(error);
         if (!f.uncertain) return applyFailure(f);
       }
     }
     // Still unknown: say so, and do not offer to start over.
-    const { expired: _e, rejected: _r, ...error } = last;
+    const { expired: _e, rejected: _r, statusToken: _t, ...error } = last;
     set({ step: "failed", phase: null, error: { ...error, uncertain: true, canRetry: false } });
   }
 

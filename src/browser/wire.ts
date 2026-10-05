@@ -54,14 +54,13 @@ export interface SessionDisplay {
 
 export interface SessionInfo {
   draft: SessionDraft;
-  /** `download: false` withholds PDF/JSON from the browser. */
-  allow?: { download?: boolean };
-  environment: Environment;
+  /** `false` withholds PDF/JSON from the browser (default true). */
+  download?: boolean;
+  /** `"00"` for a test key, `"01"` for a live key, `null` when unknown. */
+  environment: Environment | null;
   /** ISO-8601 instant. */
   expiresAt: string;
   display?: SessionDisplay;
-  /** When the handler can tell it up front, the status fallback uses it. */
-  codigoGeneracion?: string;
 }
 
 /** Where the document's copies stand. Retried by the integrator's server. */
@@ -92,7 +91,10 @@ export interface IssueSummary {
   archivoJson?: string;
   /** Base64 PDF. */
   representacionGrafica?: string | null;
+  /** Top-level sibling of `result` on the wire; the client merges it in. */
   storage?: StorageSummary;
+  /** Lets the window ask `status` about this document. Added by the client. */
+  statusToken?: string;
 }
 
 /** Alias used by the React surface and `useFactaWindow`. */
@@ -113,9 +115,11 @@ export interface WireError {
   code: WireErrorCode | (string & {});
   message: string;
   retryable: boolean;
-  /** `false`/absent: nothing was spent. Truthy: a control number was burned. */
+  /** Absent: nothing was spent. Present: a control number was burned. */
   spent?: boolean | SpentInfo;
   observaciones?: string[];
+  /** Present with `spent`: lets the window ask `status` about that document. */
+  statusToken?: string;
   fields?: WireFieldIssue[];
 }
 

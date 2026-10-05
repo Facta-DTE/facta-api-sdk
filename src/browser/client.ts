@@ -9,6 +9,7 @@ import type {
   SessionInfo,
   SpentInfo,
   StatusSummary,
+  StorageSummary,
   WireError,
   WireFieldIssue,
 } from "./wire.ts";
@@ -38,6 +39,7 @@ export class FactaClientError extends Error {
   readonly spent: SpentInfo | boolean | undefined;
   readonly observaciones: string[];
   readonly fields: WireFieldIssue[];
+  readonly statusToken: string | undefined;
   readonly transport: boolean;
 
   constructor(init: {
@@ -48,6 +50,7 @@ export class FactaClientError extends Error {
     spent?: SpentInfo | boolean | undefined;
     observaciones?: string[] | undefined;
     fields?: WireFieldIssue[] | undefined;
+    statusToken?: string | undefined;
     transport: boolean;
   }) {
     super(init.message);
@@ -57,6 +60,7 @@ export class FactaClientError extends Error {
     this.spent = init.spent;
     this.observaciones = init.observaciones ?? [];
     this.fields = init.fields ?? [];
+    this.statusToken = init.statusToken;
     this.transport = init.transport;
   }
 
@@ -69,7 +73,7 @@ export class FactaClientError extends Error {
 export interface FactaClient {
   describe(session: string): Promise<SessionInfo>;
   issue(session: string): Promise<IssueSummary>;
-  status(session: string, codigoGeneracion: string): Promise<StatusSummary>;
+  status(session: string, codigoGeneracion: string, statusToken: string): Promise<StatusSummary>;
 }
 
 function transportError(message: string, status = 0): FactaClientError {
@@ -120,6 +124,7 @@ export function createFactaClient(options: FactaClientOptions): FactaClient {
         retryable: envelope.retryable === true,
         spent: envelope.spent,
         observaciones: Array.isArray(envelope.observaciones) ? envelope.observaciones.map(String) : [],
+        statusToken: typeof envelope.statusToken === "string" ? envelope.statusToken : undefined,
         fields: Array.isArray(envelope.fields)
           ? envelope.fields
             .filter((f) => f && typeof f.path === "string")
@@ -136,8 +141,15 @@ export function createFactaClient(options: FactaClientOptions): FactaClient {
 
   return {
     describe: (session) => call<SessionInfo>("session.describe", session),
-    issue: async (session) => (await call<{ result: IssueSummary }>("issue", session)).result,
-    status: async (session, codigoGeneracion) =>
-      (await call<{ status: StatusSummary }>("status", session, { codigoGeneracion })).status,
+    issue: async (session) => {
+      const r = await call<{ result: IssueSummary; storage?: StorageSummary; statusToken?: string }>("issue", session);
+      return {
+        ...r.result,
+        ...(r.storage ? { storage: r.storage } : {}),
+        ...(typeof r.statusToken === "string" ? { statusToken: r.statusToken } : {}),
+      };
+    },
+    status: async (session, codigoGeneracion, statusToken) =>
+      (await call<{ status: StatusSummary }>("status", session, { codigoGeneracion, statusToken })).status,
   };
 }

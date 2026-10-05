@@ -107,7 +107,7 @@ export const esMessages: FactaMessages = {
     expired: "Ventana vencida",
   },
   chipTest: "Pruebas",
-  closeLabel: "Cerrar",
+  closeLabel: "Cerrar ventana",
   footerBrand: "Emitido con Facta DTE",
   dialogLabel: "Emisión de factura",
   docTypes: {

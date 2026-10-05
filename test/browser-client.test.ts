@@ -53,21 +53,27 @@ Deno.test("client: headers can be computed per call", async () => {
   assertEquals(log.map((l) => l.headers.get("x-n")), ["1", "2"]);
 });
 
-Deno.test("client: issue and status speak the simplified bodies", async () => {
+Deno.test("client: issue merges storage and statusToken; status sends the token", async () => {
   const log: Seen[] = [];
   const client = createFactaClient({
     endpoint: "/x",
     fetch: fakeFetch((seen) =>
       seen.body.action === "status"
         ? json({ status: { estado: "sellado" } })
-        : json({ result: { estado: "sellado", codigoGeneracion: "CG" } }), log),
+        : json({
+          result: { estado: "sellado", codigoGeneracion: "CG" },
+          storage: { managed: "pending", archive: "complete" },
+          statusToken: "st",
+        }), log),
   });
   const result = await client.issue("t");
   assertEquals(result.codigoGeneracion, "CG");
-  const status = await client.status("t", "CG");
+  assertEquals(result.storage, { managed: "pending", archive: "complete" });
+  assertEquals(result.statusToken, "st");
+  const status = await client.status("t", "CG", "st");
   assertEquals(status.estado, "sellado");
   assertEquals(log[0]!.body, { action: "issue", session: "t" });
-  assertEquals(log[1]!.body, { action: "status", session: "t", codigoGeneracion: "CG" });
+  assertEquals(log[1]!.body, { action: "status", session: "t", codigoGeneracion: "CG", statusToken: "st" });
 });
 
 Deno.test("client: an error envelope becomes a FactaClientError, not a transport error", async () => {
@@ -81,6 +87,7 @@ Deno.test("client: an error envelope becomes a FactaClientError, not a transport
           retryable: false,
           spent: { codigoGeneracion: "CG", numeroControl: "NC" },
           observaciones: ["[identificacion.codigoGeneracion] YA EXISTE"],
+          statusToken: "st-err",
           fields: [{ path: "receptor.nrc", message: "no cumple el formato" }, { nope: 1 }],
         },
       }, 422)
@@ -91,6 +98,7 @@ Deno.test("client: an error envelope becomes a FactaClientError, not a transport
   assertEquals(error.status, 422);
   assertEquals(error.transport, false);
   assertEquals(error.wasSpent, true);
+  assertEquals(error.statusToken, "st-err");
   assertEquals(error.observaciones, ["[identificacion.codigoGeneracion] YA EXISTE"]);
   assertEquals(error.fields, [{ path: "receptor.nrc", message: "no cumple el formato" }]);
 });

@@ -62,6 +62,14 @@ const netError = () =>
 const envelope = (code: string, init: Partial<ConstructorParameters<typeof FactaClientError>[0]> = {}) =>
   new FactaClientError({ code, message: code, status: 422, retryable: false, transport: false, ...init });
 
+const spentOutage = () =>
+  envelope("mh_unreachable", {
+    status: 502,
+    retryable: true,
+    spent: { codigoGeneracion: "CG-1", numeroControl: "NC" },
+    statusToken: "st-1",
+  });
+
 const count = (calls: Array<{ action: string }>, action: string) => calls.filter((c) => c.action === action).length;
 
 Deno.test("flow: loading -> review -> issuing -> sealed", async () => {
@@ -120,8 +128,7 @@ Deno.test("flow: an uncertain outcome resends the SAME session, never a fresh re
 
 Deno.test("flow: after two failed resends it asks status (not a third fresh attempt)", async () => {
   const { client, calls } = fakeClient({
-    describe: info({ codigoGeneracion: "CG-1" }),
-    issue: [netError(), netError(), netError()],
+    issue: [spentOutage(), spentOutage(), spentOutage()],
     status: [{ estado: "sellado", codigoGeneracion: "CG-1", numeroControl: "NC", tipoDte: "01", ambiente: "00", fecEmi: "2026-10-05", selloRecibido: "S" }],
   });
   const flow = flowFor(client);
@@ -129,14 +136,14 @@ Deno.test("flow: after two failed resends it asks status (not a third fresh atte
   await flow.next();
   assertEquals(count(calls, "issue"), 3);
   assertEquals(count(calls, "status"), 1);
+  assertEquals(calls.find((c) => c.action === "status")!.args, ["tok", "CG-1", "st-1"]);
   assertEquals(flow.getState().step, "sealed");
   assertEquals(flow.getState().result?.selloRecibido, "S");
 });
 
 Deno.test("flow: status «rechazado» ends in the rejected screen", async () => {
   const { client } = fakeClient({
-    describe: info({ codigoGeneracion: "CG-1" }),
-    issue: [netError(), netError(), netError()],
+    issue: [spentOutage(), spentOutage(), spentOutage()],
     status: [{ estado: "rechazado", codigoGeneracion: "CG-1", numeroControl: "NC", tipoDte: "01", ambiente: "00", fecEmi: "2026-10-05", observaciones: ["[receptor.nit] FORMATO INVALIDO"] }],
   });
   const flow = flowFor(client);
@@ -144,6 +151,15 @@ Deno.test("flow: status «rechazado» ends in the rejected screen", async () => 
   await flow.next();
   assertEquals(flow.getState().step, "rejected");
   assertEquals(flow.getState().error?.observaciones, ["[receptor.nit] FORMATO INVALIDO"]);
+});
+
+Deno.test("flow: without a status token the window never guesses a status call", async () => {
+  const { client, calls } = fakeClient({ issue: [netError(), netError(), netError()] });
+  const flow = flowFor(client);
+  await flow.start();
+  await flow.next();
+  assertEquals(count(calls, "status"), 0);
+  assertEquals(flow.getState().step, "failed");
 });
 
 Deno.test("flow: unresolved uncertainty is a failure with NO retry offered", async () => {
