@@ -7,7 +7,7 @@ import { formatMoney, truncateMiddle, type FlowState, type RunMode } from "../br
 import { AlertIcon, CheckIcon, ChevronIcon, ClockIcon, CloseIcon, DocIcon, SealGlyph, Spinner } from "./icons.tsx";
 import { FactaRoot, useCfg, useResolvedLook, type FactaLook } from "./look.tsx";
 import { DeliveryRows } from "./delivery.tsx";
-import { ContingencyContent, CopyButton, Downloads, FailureContent } from "./parts.tsx";
+import { ContingencyContent, CopyButton, DownloadTile, FailureContent } from "./parts.tsx";
 import { useFactaIssue, type FactaEvent } from "./use-issue.ts";
 import type { FactaWindowProps } from "./windows.tsx";
 import type { FlowFailure } from "../browser/index.ts";
@@ -157,10 +157,11 @@ function ButtonInner({ view }: { view: IssueButtonViewProps }) {
 }
 
 function PopoverBody({ state, onRetry }: { state: FlowState; onRetry: () => void }) {
-  const { cx, messages, showStorage, sp } = useCfg();
+  const { cx, messages, showStorage, sp, attribution } = useCfg();
   if (state.step === "sealed" && state.result) {
     const r = state.result;
     const total = r.totales?.totalPagar;
+    const pdf = r.estado === "sellado" && r.representacionGrafica;
     return (
       <div className="facta-popover-body">
         <div className="facta-popover-head">
@@ -173,12 +174,21 @@ function PopoverBody({ state, onRetry }: { state: FlowState; onRetry: () => void
             <div {...sp("total", "facta-total")}>{formatMoney(total)}</div>
           </div>
         )}
-        <div className="facta-id facta-mono">
+        <div className="facta-id facta-mono facta-popover-id">
           <span title={r.codigoGeneracion}>{truncateMiddle(r.codigoGeneracion, 12, 12)}</span>
           <CopyButton value={r.codigoGeneracion} label={messages.sealed.generationCode} />
         </div>
         {r.delivery && <dl {...sp("identifiers", "facta-block facta-details")}><DeliveryRows result={r} /></dl>}
-        <Downloads result={r} />
+        {pdf && (
+          <div className="facta-downloads facta-downloads--one">
+            <DownloadTile kind="pdf" result={r} />
+          </div>
+        )}
+        {attribution && (
+          <div className="facta-popover-foot">
+            <span {...sp("attribution", "facta-attribution")}><SealGlyph size={12} />{messages.button.attribution}</span>
+          </div>
+        )}
       </div>
     );
   }

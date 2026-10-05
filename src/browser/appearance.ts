@@ -159,16 +159,143 @@ export interface InkChoice {
 /**
  * Picks the text colour for an accent fill: white when it reaches 4.5:1, else
  * the darker of white / #0b1419 that contrasts more. `null` when the accent is
- * not a hex or rgb() colour (oklch, var(), names): the stylesheet default stays.
+ * not a hex or rgb() colour (oklch, hsl, var(), names): use `resolveAccentInk`
+ * in a browser, which asks the computed colour first.
  */
 export function pickAccentInk(accent: string): InkChoice | null {
   const rgb = parseColor(accent);
-  if (!rgb) return null;
+  return rgb ? inkFor(rgb) : null;
+}
+
+type Rgb = [number, number, number];
+
+function clamp01(x: number): number {
+  return Math.min(1, Math.max(0, x));
+}
+
+function encodeSrgb(linear: number): number {
+  const c = clamp01(linear);
+  return 255 * (c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055);
+}
+
+function oklabToSrgb(L: number, a: number, b: number): Rgb {
+  const l = Math.pow(L + 0.3963377774 * a + 0.2158037573 * b, 3);
+  const m = Math.pow(L - 0.1055613458 * a - 0.0638541728 * b, 3);
+  const s = Math.pow(L - 0.0894841775 * a - 1.291485548 * b, 3);
+  return [
+    encodeSrgb(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s),
+    encodeSrgb(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s),
+    encodeSrgb(-0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s),
+  ];
+}
+
+function hslToSrgb(h: number, s: number, l: number): Rgb {
+  const k = (n: number) => (n + h / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) => 255 * (l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1))));
+  return [f(0), f(8), f(4)];
+}
+
+function channel(token: string | undefined, percentScale: number): number {
+  if (token === undefined || token === "none") return 0;
+  return token.endsWith("%") ? (parseFloat(token) / 100) * percentScale : parseFloat(token);
+}
+
+function hue(token: string | undefined): number {
+  if (token === undefined || token === "none") return 0;
+  const n = parseFloat(token);
+  if (token.endsWith("turn")) return n * 360;
+  if (token.endsWith("rad")) return (n * 180) / Math.PI;
+  if (token.endsWith("grad")) return n * 0.9;
+  return n;
+}
+
+/**
+ * Converts a computed colour string to sRGB 0-255: rgb(), hex, color(srgb),
+ * hsl(), oklab() and oklch() (browsers keep oklch as written when computing).
+ * `null` for anything else (lab(), color(display-p3)…): the caller can still
+ * ask a canvas.
+ */
+export function colorToSrgb(value: string): Rgb | null {
+  const plain = parseColor(value);
+  if (plain) return plain;
+  const v = value.trim().toLowerCase();
+  const fn = /^([a-z-]+)\(\s*(.*?)\s*\)$/.exec(v);
+  if (!fn) return null;
+  const args = fn[2]!.split("/")[0]!.trim().split(/[\s,]+/).filter(Boolean);
+  switch (fn[1]) {
+    case "rgb":
+    case "rgba":
+      return [0, 1, 2].map((i) => Math.round(Math.min(255, Math.max(0, channel(args[i], 255))))) as Rgb;
+    case "color":
+      if (args[0] !== "srgb") return null;
+      return [1, 2, 3].map((i) => Math.round(clamp01(channel(args[i], 1)) * 255)) as Rgb;
+    case "hsl":
+    case "hsla":
+      return hslToSrgb(((hue(args[0]) % 360) + 360) % 360, clamp01(channel(args[1], 1) / (args[1]?.endsWith("%") ? 1 : 100)), clamp01(channel(args[2], 1) / (args[2]?.endsWith("%") ? 1 : 100))).map(Math.round) as Rgb;
+    case "oklab": {
+      const rgb = oklabToSrgb(channel(args[0], 1), channel(args[1], 0.4), channel(args[2], 0.4));
+      return rgb.map(Math.round) as Rgb;
+    }
+    case "oklch": {
+      const C = channel(args[1], 0.4);
+      const h = (hue(args[2]) * Math.PI) / 180;
+      return oklabToSrgb(channel(args[0], 1), C * Math.cos(h), C * Math.sin(h)).map(Math.round) as Rgb;
+    }
+    default:
+      return null;
+  }
+}
+
+function inkFor(rgb: Rgb): InkChoice {
   const white = contrast(rgb, [255, 255, 255]);
   const dark = contrast(rgb, parseColor(INK_DARK)!);
   const ink = white >= 4.5 ? "#ffffff" : dark > white ? INK_DARK : "#ffffff";
   const ratio = Math.max(white, dark);
   return { ink, ratio: ink === "#ffffff" ? white : dark, ok: ratio >= 4.5 };
+}
+
+/**
+ * Ink for an accent the pure function cannot read (oklch(), hsl(), a named
+ * colour, `var(--brand)`): asks the browser what the colour is where the
+ * widget lives. A probe element inside `root` resolves `var()` and inheritance;
+ * its computed colour is converted to sRGB (or painted on a 1x1 canvas for
+ * spaces we do not convert) and then the usual WCAG pick applies.
+ * `null` outside a browser or when the value is not a valid colour.
+ */
+export function resolveAccentInk(accent: string, root: Element): InkChoice | null {
+  const doc = root.ownerDocument;
+  const view = doc?.defaultView;
+  if (!doc || !view) return null;
+  const probe = doc.createElement("span");
+  probe.setAttribute("aria-hidden", "true");
+  probe.style.cssText = "position:absolute;visibility:hidden;pointer-events:none;width:0;height:0;overflow:hidden";
+  const supports = (view as { CSS?: { supports?: (p: string, v: string) => boolean } }).CSS?.supports;
+  if (typeof supports === "function" && !supports.call((view as { CSS?: object }).CSS, "color", accent)) return null;
+  probe.style.color = accent;
+  root.appendChild(probe);
+  try {
+    const computed = view.getComputedStyle(probe).color;
+    let rgb = colorToSrgb(computed);
+    if (!rgb) {
+      const ctx = doc.createElement("canvas").getContext?.("2d");
+      if (ctx) {
+        ctx.clearRect(0, 0, 1, 1);
+        ctx.fillStyle = computed;
+        ctx.fillRect(0, 0, 1, 1);
+        const d = ctx.getImageData(0, 0, 1, 1).data;
+        rgb = [d[0]!, d[1]!, d[2]!];
+      }
+    }
+    if (!rgb) return null;
+    const choice = inkFor(rgb);
+    if (!choice.ok) warnLowContrast(accent, choice);
+    return choice;
+  } catch {
+    return null;
+  } finally {
+    probe.remove();
+  }
 }
 
 const warned = new Set<string>();

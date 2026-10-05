@@ -164,7 +164,7 @@ export function Quote({ lines, heading }: { lines: string[]; heading: string }) 
   );
 }
 
-function StorageRow({ result }: { result: IssueResult }) {
+export function StorageRow({ result }: { result: IssueResult }) {
   const { sp, messages } = useCfg();
   const tone = storageTone(result.storage);
   if (!tone) return null;
@@ -184,13 +184,13 @@ function StorageRow({ result }: { result: IssueResult }) {
   );
 }
 
-function IdRow({ label, value, shown }: { label: string; value: string; shown?: string }) {
+export function IdRow({ label, value, shown, copy = true }: { label: string; value: string; shown?: string; copy?: boolean }) {
   return (
     <div className="facta-kv facta-kv--stack">
       <dt className="facta-kv-k">{label}</dt>
       <dd className="facta-kv-v facta-id facta-mono">
         <span title={shown ? value : undefined}>{shown ?? value}</span>
-        <CopyButton value={value} label={label} />
+        {copy && <CopyButton value={value} label={label} />}
       </dd>
     </div>
   );
@@ -201,7 +201,7 @@ export function Identifiers({ result, showStorage, dateLabel }: { result: IssueR
   const m = messages.sealed;
   return (
     <dl {...sp("identifiers", "facta-block facta-details")}>
-      <IdRow label={m.controlNumber} value={result.numeroControl} />
+      <IdRow label={m.controlNumber} value={result.numeroControl} copy={false} />
       <IdRow label={m.generationCode} value={result.codigoGeneracion} />
       {result.selloRecibido && <IdRow label={m.seal} value={result.selloRecibido} shown={truncateMiddle(result.selloRecibido, 12, 6)} />}
       <div className="facta-kv">

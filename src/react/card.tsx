@@ -7,6 +7,7 @@ import { fill, type Environment, type FlowState } from "../browser/index.ts";
 import { CloseIcon, SealGlyph, Spinner } from "./icons.tsx";
 import { useCfg, type FactaLook } from "./look.tsx";
 import { useScreen, type ScreenAction } from "./screens.tsx";
+import { useSheetDrag } from "./sheet-drag.ts";
 import type { AutoCloseState } from "./use-issue.ts";
 
 export type CardVariant = "dialog" | "sheet" | "drawer" | "inline";
@@ -120,6 +121,13 @@ export function FactaWindowView(props: FactaWindowViewProps) {
     programmatic.current = false;
   }, [state.step, variant]);
 
+  const cardRef = useRef<HTMLDivElement>(null);
+  const drag = useSheetDrag({
+    target: cardRef,
+    enabled: variant === "sheet" && Boolean(onClose) && !busy,
+    follow: cfg.motion === "full",
+    onDismiss: () => onClose?.(),
+  });
   const counting = Boolean(autoClose?.active);
   const cancel = autoClose?.cancel;
   const interact = counting && cancel ? () => cancel() : undefined;
@@ -128,6 +136,7 @@ export function FactaWindowView(props: FactaWindowViewProps) {
   const hasActions = Boolean(screen.primary || screen.secondary);
   return (
     <div
+      ref={cardRef}
       {...sp("card", `facta-card facta-card--${variant}`)}
       data-step={state.step}
       data-tone={screen.tone}
@@ -135,7 +144,7 @@ export function FactaWindowView(props: FactaWindowViewProps) {
       onKeyDownCapture={interact}
       onFocusCapture={interact ? () => { if (!programmatic.current) cancel?.(); } : undefined}
     >
-      {variant === "sheet" && <span className="facta-grab" aria-hidden />}
+      {variant === "sheet" && <span className="facta-grab" data-draggable={onClose && !busy ? "" : undefined} aria-hidden {...drag} />}
       <header {...sp("header", "facta-header")}>
         <BrandMark />
         <div className="facta-header-main">

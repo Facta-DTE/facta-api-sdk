@@ -7,6 +7,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type HTMLAttributes,
@@ -16,6 +17,7 @@ import {
   appearanceToCssVariables,
   mergeAppearance,
   mergeMessages,
+  resolveAccentInk,
   resolveMotion,
   type FactaAppearance,
   type FactaDensity,
@@ -209,11 +211,32 @@ export interface FactaRootProps extends Omit<HTMLAttributes<HTMLDivElement>, "cl
 export function FactaRoot({ look, resolved, className, children, style, slot = "root", state, run, variant, ...rest }: FactaRootProps) {
   const own = useResolvedLook(look);
   const cfg = resolved ?? own;
-  const merged: CSSProperties = { ...(cfg.vars as CSSProperties), ...cfg.styles.root, ...(slot === "overlay" ? cfg.styles.overlay : undefined), ...style };
+  const ref = useRef<HTMLDivElement>(null);
+  const accent = cfg.vars["--facta-accent"];
+  const needsInk = Boolean(accent) && !cfg.vars["--facta-accent-ink"];
+  const [runtimeInk, setRuntimeInk] = useState<string | null>(null);
+  // oklch(), hsl(), named and var() accents: the pure derivation cannot read
+  // them, so ask the browser what colour they are here and pick from that.
+  useEffect(() => {
+    const el = ref.current;
+    if (!needsInk || !accent || !el) {
+      setRuntimeInk(null);
+      return;
+    }
+    setRuntimeInk(resolveAccentInk(accent, el)?.ink ?? null);
+  }, [needsInk, accent, cfg.theme]);
+  const merged: CSSProperties = {
+    ...(cfg.vars as CSSProperties),
+    ...(runtimeInk ? { "--facta-accent-ink": runtimeInk } : undefined),
+    ...cfg.styles.root,
+    ...(slot === "overlay" ? cfg.styles.overlay : undefined),
+    ...style,
+  };
   return (
     <ResolvedContext.Provider value={cfg}>
       <div
         {...rest}
+        ref={ref}
         className={cfg.cx("facta-root", "root", className)}
         style={merged}
         data-facta-slot={slot}
