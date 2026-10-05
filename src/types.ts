@@ -497,6 +497,15 @@ export type DeliveryReason =
   | "wallet_empty"
   | "provider_unavailable"
   | "quota_exceeded"
+  | "consent_not_attested"
+  | "scope_missing"
+  | "token_expired"
+  | "contingency"
+  | "document_rejected"
+  | "document_unavailable"
+  | "provider_rejected"
+  | "outcome_unknown"
+  | "delivery_unavailable"
   | (string & {});
 
 /** What the issue request sends as `entrega`. */
@@ -520,7 +529,7 @@ export interface DeliverOptions {
 export interface DeliveryChannelStatus {
   estado: DeliveryChannelState;
   /** The recipient, always masked by the server («m•••@ejemplo.com»). */
-  destino?: string;
+  destino?: string | null;
   /** Stable reason code when the state is not `enviado`. */
   motivo?: DeliveryReason | null;
   /** ISO-8601 instant of the last change. */
@@ -531,7 +540,7 @@ export type DeliveryChannels = Partial<Record<DeliveryChannel, DeliveryChannelSt
 
 /** `IssueResult.entrega`. The token is a bearer secret for five minutes: keep it on your server. */
 export interface DeliveryOffer {
-  /** Absent for a contingency document. */
+  /** Absent when nothing is deliverable: a contingency document, or no marked channel has its scope and consent. */
   token?: string;
   /** Issuance + 5 minutes. */
   venceEn?: string;
@@ -541,6 +550,9 @@ export interface DeliveryOffer {
 /** Answer of `GET /v1/dte/{code}/entrega`. Works after the token expired. */
 export interface DeliveryStatus {
   codigoGeneracion?: string;
+  ambiente?: "00" | "01";
+  /** Token expiry, while the API still reports it. */
+  venceEn?: string;
   canales: DeliveryChannels;
 }
 
