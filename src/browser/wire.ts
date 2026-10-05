@@ -153,4 +153,167 @@ export interface StatusSummary {
   totales?: Partial<Totals>;
 }
 
-export type Action = "session.describe" | "issue" | "status" | "delivery.status";
+export type Action =
+  | "session.describe"
+  | "issue"
+  | "status"
+  | "delivery.status"
+  | "documents.list"
+  | "documents.get"
+  | "documents.download"
+  | "documents.copies"
+  | "documents.retryStorage"
+  | "documents.holding"
+  | "catalog.customers.search"
+  | "catalog.customers.get"
+  | "catalog.products.search"
+  | "catalog.products.get"
+  | "service.status"
+  | "storage.status"
+  | "invalidate.describe"
+  | "invalidate";
+
+// --- Data components (docs/react-signing-ui.md §11) -----------------------------
+
+export type DocumentEstado = "sellado" | "firmado" | "contingencia" | "invalidado" | (string & {});
+export type DownloadKind = "pdf" | "json" | "ticket";
+
+/** Filters of `documents.list`. `buscar` is applied in the browser over the loaded rows. */
+export interface DocumentFilters {
+  desde?: string | undefined;
+  hasta?: string | undefined;
+  estado?: "contingencia" | "firmado" | "invalidado" | "sellado" | undefined;
+  tipoDte?: DteType | undefined;
+  /** Substring of the control number, matched against the rows already loaded. */
+  buscar?: string | undefined;
+}
+
+export interface DocumentRecipientView {
+  nombre: string | null;
+  /** Masked: `0530 ••••• 5`. */
+  numDocumento: string | null;
+}
+
+/** One row of the list. `receptor` is absent unless the handler has `exposeRecipient`. */
+export interface DocumentRow {
+  estado: DocumentEstado;
+  codigoGeneracion: string;
+  numeroControl: string;
+  tipoDte: DteType;
+  fecEmi: string;
+  horEmi?: string | null;
+  selloRecibido?: string | null;
+  totales?: Partial<Totals> | null;
+  receptor?: DocumentRecipientView | null;
+}
+
+export interface DocumentPage {
+  documentos: DocumentRow[];
+  siguiente: string | null;
+}
+
+export interface DocumentDetail extends DocumentRow {
+  ambiente: string;
+  observaciones?: string[];
+}
+
+export interface CopyRow {
+  kind: "json" | "pdf";
+  state: "stored" | "pending" | "failed";
+  bytes: number;
+  storedAt: string | null;
+  environment: Environment;
+}
+
+export interface StorageRetryResult {
+  json: string | null;
+  pdf: string | null;
+}
+
+export interface HoldingRow {
+  codigoGeneracion: string;
+  ambiente: Environment;
+  whereLanded: "holding" | "synced";
+  gaveUp: boolean;
+  attempts: number;
+  expiresAt: string;
+}
+
+export interface DownloadedFile {
+  codigoGeneracion: string;
+  kind: DownloadKind;
+  filename: string;
+  contentType: string;
+  bytes: number;
+  /** The file, base64. */
+  base64: string;
+}
+
+export interface CustomerOption {
+  id: string;
+  name: string | null;
+  docType: string | null;
+  docNumber: string | null;
+  nrc: string | null;
+}
+
+export interface ProductOption {
+  id: string;
+  code: string | null;
+  description: string | null;
+  price: number | null;
+  vatIncluded: boolean | null;
+}
+
+export type ServiceState = "online" | "contingency" | "degraded" | "offline";
+
+export interface ServiceStatusView {
+  state: ServiceState;
+  checkedAt: string;
+}
+
+export interface StorageView {
+  configured: boolean;
+  ready: boolean;
+  state: string;
+  quotaBytes: number | null;
+  usedBytes: number | null;
+  reservedBytes: number | null;
+  coveredUntil: string | null;
+  byosReady: boolean;
+}
+
+export interface InvalidationPersonView {
+  nombre: string;
+  tipoDocumento: string;
+  numDocumento: string;
+}
+
+/** What the invalidation dialog shows. Prepared by the host's server; never editable. */
+export interface InvalidationInfo {
+  invalidation: {
+    codigoGeneracion: string;
+    tipoAnulacion: 1 | 2 | 3;
+    motivo: string | null;
+    codigoGeneracionReemplazo: string | null;
+    responsable: InvalidationPersonView;
+    solicita: InvalidationPersonView;
+  };
+  /** Summary of the target, or null when it could not be read. */
+  document: DocumentDetail | null;
+  environment: Environment | null;
+  expiresAt: string;
+}
+
+export interface InvalidationOutcome {
+  estado: "invalidado";
+  codigoGeneracion: string;
+  numeroControl: string;
+  yaEstabaInvalidado: boolean;
+  evento?: {
+    codigoGeneracion: string;
+    selloRecibido: string;
+    fhProcesamiento: string | null;
+    tipoAnulacion: number;
+  };
+}

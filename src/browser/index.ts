@@ -1,5 +1,7 @@
 export { createFactaClient, FactaClientError } from "./client.ts";
-export type { FactaClient, FactaClientOptions } from "./client.ts";
+export type { FactaClient, FactaClientOptions, FactaDataClient, FactaFullClient } from "./client.ts";
+export { createFactaCache } from "./cache.ts";
+export type { CacheEntry, FactaCache } from "./cache.ts";
 export { createIssueFlow, initialFlowState } from "./flow.ts";
 export type {
   FlowFailure,
