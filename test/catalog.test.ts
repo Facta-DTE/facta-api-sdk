@@ -203,6 +203,8 @@ Deno.test("stale catalog reads require opt-in and never change issuance resoluti
     items: [{ descripcion: "Inline", cantidad: 1, precioUni: 1 }],
   }), FactaError);
   assertEquals(issuanceError.code, "no_storage_destination");
+  assertEquals(issuanceError.message, "The catalog of this key is out of date; open Facta to synchronize it.");
+  assertEquals((issuanceError.details as { reason?: string }).reason, "catalog_out_of_sync");
   assertEquals(calls.some((url) => url.endsWith("/v1/dte")), false);
 
   assertEquals((await facta.listCustomers()).length, 1);
