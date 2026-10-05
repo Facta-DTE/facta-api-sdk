@@ -35,7 +35,7 @@ const STATES = new Set([
 ]);
 const ERROR_CODES = new Set([
   "not_found", "service_unavailable", "invalid_request", "unauthorized",
-  "forbidden", "rate_limit_exceeded", "archive_integrity_error", "validation_failed",
+  "forbidden", "rate_limit_exceeded", "rate_limited", "archive_integrity_error", "validation_failed",
   "no_storage_destination", "sign_vault_missing",
   "readiness_blocked", "catalog_read_failed",
   "storage_unsupported", "storage_unavailable", "storage_contract_invalid",
