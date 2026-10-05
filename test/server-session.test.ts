@@ -10,20 +10,18 @@ const REQUEST = {
   tipoDte: "01" as const,
   items: [{ descripcion: "Plan", cantidad: 1, precioUni: 10 }],
 };
-const INPUT = { request: REQUEST, idempotencyKey: "order-1", allow: { recipient: "optional" as const } };
+const INPUT = { request: REQUEST, idempotencyKey: "order-1" };
 
 Deno.test("a session round-trips with its payload", async () => {
   const token = await createFactaSession({
     ...INPUT,
-    allow: { recipient: "optional", types: ["01", "03"], download: false },
-    mode: "review-prepared",
-    display: { total: 11.3, currency: "USD", reference: "Pedido 1" },
+    download: false,
+    display: { total: 11.3, reference: "Pedido 1", title: "Plan anual" },
   }, SECRET, 1_000_000);
   const s = await verifyFactaSession(token, SECRET, 1_000_000);
   assertEquals(s.idempotencyKey, "order-1");
-  assertEquals(s.mode, "review-prepared");
-  assertEquals(s.allow, { recipient: "optional", types: ["01", "03"], download: false });
-  assertEquals(s.display?.total, 11.3);
+  assertEquals(s.download, false);
+  assertEquals(s.display, { total: 11.3, reference: "Pedido 1", title: "Plan anual" });
   assertEquals(s.exp, 1_000 + 900);
   assertEquals(s.request, REQUEST);
 });
@@ -70,10 +68,8 @@ Deno.test("invalid session input is refused", async () => {
     { idempotencyKey: "" },
     { expiresIn: 0 },
     { expiresIn: 999_999 },
-    { mode: "nope" },
-    { allow: { recipient: "maybe" } },
-    { allow: { recipient: "none", types: [] } },
-    { allow: { recipient: "none", types: ["99"] } },
+    { display: { title: "t".repeat(200) } },
+    { request: { items: [] } },
     { display: { total: -1 } },
   ];
   for (const patch of bad) {

@@ -1,11 +1,13 @@
 import { assert, assertEquals, assertThrows } from "jsr:@std/assert@1";
 import { Facta } from "../src/client.ts";
 import { FactaError } from "../src/errors.ts";
-import type { IssueResult, PreparedDte } from "../src/types.ts";
+import type { IssueResult } from "../src/types.ts";
 import {
   createFactaHandler,
   createFactaSession,
   type CreateFactaSessionInput,
+  extractFieldIssues,
+  type FactaHandlerEvent,
   type FactaLike,
   toNodeHandler,
 } from "../server.ts";
@@ -46,17 +48,6 @@ const CONTINGENCY = {
   jws: "h.p.s",
   archivoJson: "{}",
 };
-const PREPARED = {
-  estado: "preparado",
-  codigoGeneracion: CG,
-  numeroControl: "DTE-01-M001P001-000000000000177",
-  tipoDte: "01",
-  ambiente: "00",
-  totales: { totalPagar: 11.3 },
-  documento: { a: 1, b: [1, 2] },
-  prepareToken: "tok",
-};
-
 const REQUEST = {
   tipoDte: "01" as const,
   items: [{ descripcion: "Plan", cantidad: 1, precioUni: 10 }],
@@ -64,26 +55,17 @@ const REQUEST = {
 
 interface Call {
   method: string;
-  request?: Record<string, unknown>;
-  prepared?: unknown;
+  request?: unknown;
   key?: string;
   code?: string;
 }
 
-function fakeFacta(answers: { issue?: unknown; prepare?: unknown; sign?: unknown; status?: unknown } = {}) {
+function fakeFacta(answers: { issue?: unknown; status?: unknown } = {}) {
   const calls: Call[] = [];
   const facta: FactaLike = {
     issue: (request, options) => {
-      calls.push({ method: "issue", request: request as unknown as Record<string, unknown>, key: options?.idempotencyKey });
+      calls.push({ method: "issue", request, key: options?.idempotencyKey });
       return Promise.resolve((answers.issue ?? SEALED) as IssueResult);
-    },
-    prepare: (request, options) => {
-      calls.push({ method: "prepare", request: request as unknown as Record<string, unknown>, key: options?.idempotencyKey });
-      return Promise.resolve((answers.prepare ?? PREPARED) as PreparedDte);
-    },
-    sign: (prepared, options) => {
-      calls.push({ method: "sign", prepared, key: options?.idempotencyKey });
-      return Promise.resolve((answers.sign ?? SEALED) as IssueResult);
     },
     getDocumentStatus: (code) => {
       calls.push({ method: "status", code });
@@ -97,7 +79,6 @@ function session(patch: Partial<CreateFactaSessionInput> = {}): Promise<string> 
   return createFactaSession({
     request: REQUEST,
     idempotencyKey: "order-1",
-    allow: { recipient: "optional", types: ["01", "03"] },
     ...patch,
   }, SECRET);
 }
@@ -134,15 +115,14 @@ Deno.test("authorize is required at construction", () => {
 
 Deno.test("session.describe returns the draft without calling the API", async () => {
   const { handler, calls } = make();
-  const res = await post(handler, { action: "session.describe", session: await session({ environment: "00", display: { total: 11.3 } }) });
+  const res = await post(handler, { action: "session.describe", session: await session({ display: { total: 11.3, title: "Plan" } }) });
   assertEquals(res.status, 200);
   const body = await res.json();
   assertEquals(body.draft, REQUEST);
-  assertEquals(body.allow, { recipient: "optional", types: ["01", "03"] });
-  assertEquals(body.mode, "confirm-then-issue");
-  assertEquals(body.environment, "00");
-  assertEquals(body.display, { total: 11.3 });
+  assertEquals(body.download, true);
+  assertEquals(body.display, { total: 11.3, title: "Plan" });
   assert(typeof body.expiresAt === "string");
+  assertEquals("allow" in body || "mode" in body, false);
   assertEquals(calls.length, 0);
   assertEquals(res.headers.get("access-control-allow-origin"), null);
 });
@@ -177,7 +157,7 @@ Deno.test("issue seals, uses the session idempotency key and minimises the respo
 
 Deno.test("download:false drops the files; exposeDocument adds jws and documento", async () => {
   const a = make();
-  const { result } = await (await post(a.handler, { action: "issue", session: await session({ allow: { recipient: "none", download: false } }) })).json();
+  const { result } = await (await post(a.handler, { action: "issue", session: await session({ download: false }) })).json();
   assertEquals("archivoJson" in result || "representacionGrafica" in result, false);
   const b = make({ exposeDocument: true });
   const exposed = (await (await post(b.handler, { action: "issue", session: await session() })).json()).result;
@@ -195,78 +175,28 @@ Deno.test("contingency is a success with its detail", async () => {
   assertEquals(result.archivoJson, "{}");
 });
 
-Deno.test("the recipient merges into the request and the type only when allowed", async () => {
+Deno.test("the request is final: browser-supplied recipient and tipoDte are ignored", async () => {
   const { handler, calls } = make();
   const res = await post(handler, {
     action: "issue",
     session: await session(),
     tipoDte: "03",
-    recipient: { nombre: " Acme ", tipoDocumento: "36", numDocumento: "0614-010190-101-3", nrc: "12345", codActividad: "62010", descActividad: "Software", correo: "a@b.co", isAdmin: true },
+    recipient: { nombre: "Injected" },
+    receptor: { nombre: "Injected" },
+    request: { tipoDte: "11" },
   });
   assertEquals(res.status, 200);
-  const sent = calls[0].request!;
-  assertEquals(sent.tipoDte, "03");
-  assertEquals(sent.items, REQUEST.items);
-  assertEquals(sent.receptor, {
-    nombre: "Acme", tipoDocumento: "36", numDocumento: "06140101901013", nrc: "12345",
-    codActividad: "62010", descActividad: "Software", correo: "a@b.co",
-  });
+  assertEquals(calls[0].request, REQUEST);
 });
 
-Deno.test("a disallowed document type or recipient is recipient_invalid and reaches nothing", async () => {
+Deno.test("prepare and sign no longer exist", async () => {
   const { handler, calls } = make();
-  const type = await post(handler, { action: "issue", session: await session(), tipoDte: "11" });
-  assertEquals(type.status, 422);
-  const body = await type.json();
-  assertEquals(body.error.code, "recipient_invalid");
-  assertEquals(body.error.fields, [{ field: "tipoDte", code: "not_allowed" }]);
-  const none = await post(handler, { action: "issue", session: await session({ allow: { recipient: "none" } }), recipient: { nombre: "x" } });
-  assertEquals(none.status, 422);
-  const bad = await post(handler, { action: "issue", session: await session(), recipient: { nombre: "Ana", tipoDocumento: "13", numDocumento: "12" } });
-  assertEquals((await bad.json()).error.fields, [{ field: "numDocumento", code: "invalid" }]);
-  assertEquals(calls.length, 0);
-});
-
-Deno.test("actions outside the session mode are action_not_allowed", async () => {
-  const { handler, calls } = make();
-  const confirm = await session();
   for (const action of ["prepare", "sign"]) {
-    const res = await post(handler, { action, session: confirm, prepared: PREPARED, preparedSeal: "x" });
-    assertEquals(res.status, 403);
-    assertEquals((await res.json()).error.code, "action_not_allowed");
+    const res = await post(handler, { action, session: await session() });
+    assertEquals(res.status, 400);
+    assertEquals((await res.json()).error.code, "bad_request");
   }
-  const review = await session({ mode: "review-prepared" });
-  const res = await post(handler, { action: "issue", session: review });
-  assertEquals((await res.json()).error.code, "action_not_allowed");
   assertEquals(calls.length, 0);
-});
-
-Deno.test("prepare then sign works, and a swapped document or seal is refused", async () => {
-  const { handler, calls } = make();
-  const token = await session({ mode: "review-prepared" });
-  const prep = await (await post(handler, { action: "prepare", session: token })).json();
-  assertEquals(prep.prepared.numeroControl, PREPARED.numeroControl);
-  assertEquals(calls[0].key, "order-1");
-  assert(typeof prep.preparedSeal === "string");
-
-  // The browser echoes `prepared` back, possibly with keys reordered by its JSON round trip.
-  const echoed = JSON.parse(JSON.stringify({ ...prep.prepared, documento: { b: [1, 2], a: 1 } }));
-  const ok = await post(handler, { action: "sign", session: token, prepared: echoed, preparedSeal: prep.preparedSeal });
-  assertEquals(ok.status, 200);
-  assertEquals((await ok.json()).result.estado, "sellado");
-  assertEquals(calls[1].method, "sign");
-
-  const swapped = { ...prep.prepared, documento: { a: 999 } };
-  const bad = await post(handler, { action: "sign", session: token, prepared: swapped, preparedSeal: prep.preparedSeal });
-  assertEquals(bad.status, 400);
-  assertEquals((await bad.json()).error.code, "bad_request");
-
-  const otherSession = await session({ mode: "review-prepared", idempotencyKey: "order-2" });
-  const cross = await post(handler, { action: "sign", session: otherSession, prepared: prep.prepared, preparedSeal: prep.preparedSeal });
-  assertEquals(cross.status, 400);
-  const noSeal = await post(handler, { action: "sign", session: token, prepared: prep.prepared });
-  assertEquals(noSeal.status, 400);
-  assertEquals(calls.filter((c) => c.method === "sign").length, 1);
 });
 
 Deno.test("status returns only the summary", async () => {
@@ -359,6 +289,7 @@ Deno.test("mh_rejected keeps the observaciones verbatim and the spent correlativ
   assertEquals(res.status, 422);
   const { error } = await res.json();
   assertEquals(error.code, "mh_rejected");
+  assertEquals(error.fields, [{ path: "identificacion.fecEmi", message: "[identificacion.fecEmi] fecha inválida" }]);
   assertEquals(error.retryable, false);
   assertEquals(error.observaciones, ["[identificacion.fecEmi] fecha inválida"]);
   assertEquals(error.spent, { codigoGeneracion: CG, numeroControl: "DTE-01-X" });
@@ -410,7 +341,7 @@ Deno.test("no response or error ever contains apiKey, signKey, unlockKey or the 
     status: 500,
     body: { error: { code: "internal_error", message: `bad ${API_KEY} ${SIGN_KEY} ${UNLOCK_KEY} ${SECRET}`, details: { observaciones: [`x ${SIGN_KEY}`] } } },
   });
-  const token = await session({ mode: "confirm-then-issue" });
+  const token = await session();
   const secrets = [API_KEY, SIGN_KEY, UNLOCK_KEY, SECRET];
   const texts: string[] = [];
   for (const facta of [leaky, failing, realFacta("network")]) {
@@ -447,19 +378,97 @@ Deno.test("toNodeHandler bridges node:http-style objects", async () => {
     end(chunk?: string | Uint8Array) { out.body = typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk); },
   });
   assertEquals(out.statusCode, 200);
-  assertEquals(JSON.parse(out.body).mode, "confirm-then-issue");
+  assertEquals(JSON.parse(out.body).download, true);
   assertEquals(out.headers["content-type"].startsWith("application/json"), true);
 
   // A body already parsed by express.json() is re-serialised.
   const parsed = { ...req, body: JSON.parse(payload), async *[Symbol.asyncIterator]() { /* consumed */ } };
   await node(parsed, { statusCode: 0, setHeader() {}, end(chunk?: string | Uint8Array) { out.body = new TextDecoder().decode(chunk as Uint8Array); } });
-  assertEquals(JSON.parse(out.body).mode, "confirm-then-issue");
+  assertEquals(JSON.parse(out.body).download, true);
 });
 
 Deno.test("the server code carries no fiscal arithmetic", async () => {
   const patterns = [/0\.13|1\.13|13\s*\/\s*100|\*\s*13\b/, /ventaGravada\s*=/, /total(?:Pagar|Iva|Gravada)\s*=[^=]/, /CAT-0\d\d/];
-  for (const file of ["session", "recipient", "handler"]) {
+  for (const file of ["session", "handler"]) {
     const text = await Deno.readTextFile(new URL(`../src/server/${file}.ts`, import.meta.url));
     for (const p of patterns) assertEquals(p.test(text), false, `${file}.ts matches ${p}`);
+  }
+});
+
+function errorWith(observaciones: string[], details: Record<string, unknown> = {}): FactaError {
+  return new FactaError("mh_rejected", "Rechazado", 422, { observaciones, ...details });
+}
+
+Deno.test("field paths are read from observaciones in every shape, and only those", () => {
+  const fields = extractFieldIssues(errorWith([
+    "#/receptor/nrc no cumple el formato",
+    "Campo /receptor/numDocumento no cumple",
+    "items[2].precioUni debe ser mayor que 0",
+    "[identificacion.fecEmi] fecha inválida",
+    "/cuerpoDocumento/0/cantidad inválida",
+    "El NRC no existe en el registro (e.g. revisar)",
+    "Visite https://hacienda.test/receptor/ayuda",
+  ])).map((f) => f.path);
+  assertEquals(fields, [
+    "receptor.nrc",
+    "receptor.numDocumento",
+    "items[2].precioUni",
+    "identificacion.fecEmi",
+    "cuerpoDocumento[0].cantidad",
+  ]);
+});
+
+Deno.test("field paths come from structured validation details too", () => {
+  const error = new FactaError("validation_failed", "Invalid", 422, {
+    errors: [
+      { instancePath: "/receptor/nrc", message: "must match pattern" },
+      { field: "items[1].cantidad" },
+      { field: "not a path" },
+    ],
+  });
+  assertEquals(extractFieldIssues(error), [
+    { path: "receptor.nrc", message: "must match pattern" },
+    { path: "items[1].cantidad", message: "Invalid" },
+  ]);
+  assertEquals(extractFieldIssues(new FactaError("internal_error", "boom", 500)), []);
+});
+
+Deno.test("fields are omitted when no path can be read", async () => {
+  const facta: FactaLike = { ...fakeFacta().facta, issue: () => Promise.reject(errorWith(["El documento ya existe"])) };
+  const handler = createFactaHandler({ facta, sessionSecret: SECRET, authorize: "session-only" });
+  const { error } = await (await post(handler, { action: "issue", session: await session() })).json();
+  assertEquals("fields" in error, false);
+  assertEquals(error.observaciones, ["El documento ya existe"]);
+});
+
+async function events(facta: FactaLike, body: (token: string) => unknown) {
+  const seen: FactaHandlerEvent[] = [];
+  const handler = createFactaHandler({ facta, sessionSecret: SECRET, authorize: "session-only", onEvent: (e) => { seen.push(e); } });
+  await post(handler, body(await session()));
+  await new Promise((r) => setTimeout(r, 0));
+  return seen;
+}
+
+Deno.test("onEvent reports issued, contingency, rejected and error without secrets", async () => {
+  const issue = (value: unknown): FactaLike => ({ ...fakeFacta().facta, issue: () => value instanceof Error ? Promise.reject(value) : Promise.resolve(value as IssueResult) });
+  const issued = await events(issue(SEALED), (session) => ({ action: "issue", session }));
+  assertEquals(issued, [{ type: "issued", idempotencyKey: "order-1", codigoGeneracion: CG, numeroControl: SEALED.numeroControl, tipoDte: "01", ambiente: "00" }]);
+  const cont = await events(issue(CONTINGENCY), (session) => ({ action: "issue", session }));
+  assertEquals(cont[0].type, "contingency");
+  const rejected = await events(issue(new FactaError("mh_rejected", "no", 422, { observaciones: ["x"], codigoGeneracion: CG, numeroControl: "N" })), (session) => ({ action: "issue", session }));
+  assertEquals(rejected, [{ type: "rejected", idempotencyKey: "order-1", code: "mh_rejected", status: 422, observaciones: ["x"], spent: { codigoGeneracion: CG, numeroControl: "N" } }]);
+  const failed = await events(issue(new FactaError("mh_unreachable", "down", 503)), (session) => ({ action: "issue", session }));
+  assertEquals(failed, [{ type: "error", idempotencyKey: "order-1", code: "mh_unreachable", status: 503, retryable: true }]);
+  const early = await events(fakeFacta().facta, () => ({ action: "issue", session: "bad" }));
+  assertEquals(early, [{ type: "error", code: "session_invalid", status: 401, retryable: false }]);
+  for (const e of [...issued, ...cont, ...rejected, ...failed]) {
+    for (const secret of [API_KEY, SIGN_KEY, UNLOCK_KEY, SECRET]) assertEquals(JSON.stringify(e).includes(secret), false);
+  }
+});
+
+Deno.test("a throwing or rejecting onEvent never changes the response", async () => {
+  for (const onEvent of [() => { throw new Error("hook"); }, () => Promise.reject(new Error("hook"))]) {
+    const handler = createFactaHandler({ facta: fakeFacta().facta, sessionSecret: SECRET, authorize: "session-only", onEvent });
+    assertEquals((await post(handler, { action: "issue", session: await session() })).status, 200);
   }
 });

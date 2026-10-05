@@ -1,46 +1,31 @@
 // Signed session tokens for the React signing window (docs/react-signing-ui.md §3).
 //
 // The implementer's server builds the fiscal request from ITS OWN order and
-// seals it in a token. The browser carries the token and can change only what
-// `allow` declares. Nothing here touches Facta credentials: the token is
+// seals it in a token. The browser carries the token and can change nothing:
+// the request is final. Nothing here touches Facta credentials: the token is
 // authenticated (HMAC-SHA256), not encrypted, so it must hold no secret.
 //
 // Web Crypto only, so it runs unchanged on Node 22, Deno and Bun.
 
-import type { DteRequest, DteType } from "../types.ts";
-
-export type FactaSessionMode = "confirm-then-issue" | "review-prepared";
-export type FactaRecipientPolicy = "none" | "optional" | "required";
-
-export interface FactaSessionAllow {
-  /** Whether the person in the browser may supply or must supply the receptor. */
-  recipient: FactaRecipientPolicy;
-  /** Document types the browser may choose from. Absent: the request's type only. */
-  types?: DteType[];
-  /** Whether the PDF/JSON files travel to the browser. Default true. */
-  download?: boolean;
-}
+import type { DteRequest } from "../types.ts";
 
 export interface FactaSessionDisplay {
   /** The implementer's own total, shown as «Total de su pedido». Never computed here. */
   total?: number;
-  currency?: "USD";
   reference?: string;
+  title?: string;
 }
 
 export interface CreateFactaSessionInput {
-  /** The draft, authored by the implementer's server. */
+  /** The final request, authored by the implementer's server. The window never edits it. */
   request: DteRequest;
   /** The implementer's own id for this sale (order number). Required. */
   idempotencyKey: string;
-  allow?: Partial<FactaSessionAllow>;
-  /** Default `confirm-then-issue`. */
-  mode?: FactaSessionMode;
   display?: FactaSessionDisplay;
+  /** Whether the PDF/JSON files travel to the browser. Default true. */
+  download?: boolean;
   /** Lifetime in seconds. Default 900 (15 min), at most 86 400. */
   expiresIn?: number;
-  /** Only shown in the window header chip; the API decides the real environment. */
-  environment?: "00" | "01";
 }
 
 export interface FactaSession {
@@ -52,10 +37,8 @@ export interface FactaSession {
   exp: number;
   request: DteRequest;
   idempotencyKey: string;
-  allow: FactaSessionAllow;
-  mode: FactaSessionMode;
   display?: FactaSessionDisplay;
-  environment?: "00" | "01";
+  download?: boolean;
 }
 
 export class FactaSessionError extends Error {
@@ -70,7 +53,6 @@ export class FactaSessionError extends Error {
 export const DEFAULT_SESSION_TTL_SECONDS = 900;
 const MAX_SESSION_TTL_SECONDS = 86_400;
 const MIN_SECRET_BYTES = 32;
-const DTE_TYPES: readonly string[] = ["01", "03", "05", "06", "11", "14"];
 const SESSION_DOMAIN = "facta-session-v1.";
 
 const encoder = new TextEncoder();
@@ -127,26 +109,6 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function normalizeAllow(allow: Partial<FactaSessionAllow> | undefined): FactaSessionAllow {
-  const recipient = allow?.recipient ?? "none";
-  if (recipient !== "none" && recipient !== "optional" && recipient !== "required") {
-    throw new TypeError("allow.recipient must be \"none\", \"optional\" or \"required\".");
-  }
-  const out: FactaSessionAllow = { recipient };
-  if (allow?.types !== undefined) {
-    if (
-      !Array.isArray(allow.types) || allow.types.length === 0 ||
-      allow.types.some((t) => !DTE_TYPES.includes(t)) ||
-      new Set(allow.types).size !== allow.types.length
-    ) {
-      throw new TypeError("allow.types must be a non-empty list of distinct DTE types.");
-    }
-    out.types = [...allow.types];
-  }
-  if (allow?.download !== undefined) out.download = allow.download === true;
-  return out;
-}
-
 function normalizeDisplay(display: FactaSessionDisplay | undefined): FactaSessionDisplay | undefined {
   if (display === undefined) return undefined;
   const out: FactaSessionDisplay = {};
@@ -156,15 +118,13 @@ function normalizeDisplay(display: FactaSessionDisplay | undefined): FactaSessio
     }
     out.total = display.total;
   }
-  if (display.currency !== undefined) {
-    if (display.currency !== "USD") throw new TypeError("display.currency must be \"USD\".");
-    out.currency = "USD";
-  }
-  if (display.reference !== undefined) {
-    if (typeof display.reference !== "string" || display.reference.length > 80) {
-      throw new TypeError("display.reference must be a string of at most 80 characters.");
+  for (const [key, max] of [["reference", 80], ["title", 120]] as const) {
+    const value = display[key];
+    if (value === undefined) continue;
+    if (typeof value !== "string" || value.length > max) {
+      throw new TypeError(`display.${key} must be a string of at most ${max} characters.`);
     }
-    out.reference = display.reference;
+    out[key] = value;
   }
   return out;
 }
@@ -191,16 +151,9 @@ export async function createFactaSession(
   ) {
     throw new TypeError("idempotencyKey is required (your own order id, at most 200 characters).");
   }
-  const mode = input.mode ?? "confirm-then-issue";
-  if (mode !== "confirm-then-issue" && mode !== "review-prepared") {
-    throw new TypeError("mode must be \"confirm-then-issue\" or \"review-prepared\".");
-  }
   const ttl = input.expiresIn ?? DEFAULT_SESSION_TTL_SECONDS;
   if (!Number.isFinite(ttl) || ttl <= 0 || ttl > MAX_SESSION_TTL_SECONDS) {
     throw new TypeError(`expiresIn must be between 1 and ${MAX_SESSION_TTL_SECONDS} seconds.`);
-  }
-  if (input.environment !== undefined && input.environment !== "00" && input.environment !== "01") {
-    throw new TypeError("environment must be \"00\" or \"01\".");
   }
   const nonce = new Uint8Array(16);
   crypto.getRandomValues(nonce);
@@ -213,10 +166,8 @@ export async function createFactaSession(
     exp: iat + Math.ceil(ttl),
     request: input.request,
     idempotencyKey: input.idempotencyKey,
-    allow: normalizeAllow(input.allow),
-    mode,
     ...(display === undefined ? {} : { display }),
-    ...(input.environment === undefined ? {} : { environment: input.environment }),
+    ...(input.download === undefined ? {} : { download: input.download === true }),
   };
   const body = base64urlEncode(encoder.encode(JSON.stringify(payload)));
   const mac = await hmac(secret, SESSION_DOMAIN + body);
@@ -253,8 +204,7 @@ export async function verifyFactaSession(
   if (
     !isObject(payload) || payload.v !== 1 || typeof payload.exp !== "number" ||
     typeof payload.nonce !== "string" || typeof payload.idempotencyKey !== "string" ||
-    !isObject(payload.request) || !isObject(payload.allow) ||
-    (payload.mode !== "confirm-then-issue" && payload.mode !== "review-prepared")
+    !isObject(payload.request)
   ) {
     throw invalid();
   }

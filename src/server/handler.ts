@@ -1,36 +1,42 @@
 // The request handler that sits between the browser window and `Facta`
-// (docs/react-signing-ui.md §3 and §5).
+// (docs/react-signing-ui.md §3 and §5, simplified: the window never edits data).
 //
 // It owns the `Facta` instance, so the apiKey and signKey never leave the
 // implementer's server. Every response is built from an allow-list of fields.
+// Actions: `session.describe`, `issue`, `status`.
 
 import { FactaError } from "../errors.ts";
 import type { Facta } from "../client.ts";
-import type {
-  DocumentStatus,
-  DteRequest,
-  IssueResult,
-  PreparedDte,
-  Recipient,
-} from "../types.ts";
-import {
-  base64urlDecode,
-  base64urlEncode,
-  FactaSessionError,
-  hmac,
-  type FactaSession,
-  secretBytes,
-  timingSafeEqual,
-  verifyFactaSession,
-} from "./session.ts";
-import { mergeRecipient, resolveTipoDte, type RecipientFieldError, validateRecipient } from "./recipient.ts";
+import type { DocumentStatus, IssueResult } from "../types.ts";
+import { FactaSessionError, type FactaSession, secretBytes, verifyFactaSession } from "./session.ts";
 
 /** The slice of `Facta` the handler uses; a fake can stand in for tests. */
-export type FactaLike = Pick<Facta, "issue" | "prepare" | "sign" | "getDocumentStatus">;
+export type FactaLike = Pick<Facta, "issue" | "getDocumentStatus">;
+
+/** A field Hacienda or the API pointed at, so the host can highlight it in its own form. */
+export interface FactaFieldIssue {
+  /** Dotted path with `[n]` indices, e.g. `receptor.nrc` or `items[2].precioUni`. */
+  path: string;
+  message: string;
+}
+
+/** For the integrator's logging. Never carries a credential or the session secret. */
+export type FactaHandlerEvent =
+  | { type: "issued"; idempotencyKey: string; codigoGeneracion: string; numeroControl: string; tipoDte: string; ambiente: string }
+  | { type: "contingency"; idempotencyKey: string; codigoGeneracion: string; numeroControl: string; tipoDte: string; ambiente: string }
+  | {
+    type: "rejected";
+    idempotencyKey: string;
+    code: string;
+    status: number;
+    observaciones: string[];
+    spent?: { codigoGeneracion: string; numeroControl: string };
+  }
+  | { type: "error"; idempotencyKey?: string; code: string; status: number; retryable: boolean };
 
 export interface FactaHandlerOptions {
   facta: FactaLike;
-  /** At least 32 bytes. Signs session tokens and prepared seals. */
+  /** At least 32 bytes. Signs session tokens. */
   sessionSecret: string | Uint8Array;
   /**
    * REQUIRED. Check the implementer's own login/cookie. Return `true` to
@@ -42,6 +48,8 @@ export interface FactaHandlerOptions {
   exposeDocument?: boolean;
   /** Default 32 768. */
   maxBodyBytes?: number;
+  /** Called after each outcome. Failures inside the hook are swallowed. */
+  onEvent?: (event: FactaHandlerEvent) => void | Promise<void>;
 }
 
 export interface FactaHandlerErrorBody {
@@ -51,13 +59,12 @@ export interface FactaHandlerErrorBody {
     retryable: boolean;
     spent?: { codigoGeneracion: string; numeroControl: string };
     observaciones?: string[];
-    /** Present on `recipient_invalid`: which fields failed and why. */
-    fields?: RecipientFieldError[];
+    /** Present only when a JSON path could be read out of Hacienda's text or the details. */
+    fields?: FactaFieldIssue[];
   };
 }
 
 const DEFAULT_MAX_BODY = 32 * 1024;
-const PREPARED_DOMAIN = "facta-prepared-v1.";
 const RETRYABLE = new Set([
   "network_error",
   "mh_unreachable",
@@ -66,39 +73,16 @@ const RETRYABLE = new Set([
   "idempotency_in_flight",
   "operation_outcome_unknown",
 ]);
-const MODE_ACTIONS: Record<FactaSession["mode"], readonly string[]> = {
-  "confirm-then-issue": ["session.describe", "issue", "status"],
-  "review-prepared": ["session.describe", "prepare", "sign", "status"],
-};
-const ALL_ACTIONS = ["session.describe", "issue", "prepare", "sign", "status"];
+const ACTIONS = ["session.describe", "issue", "status"];
 
 class HandlerError extends Error {
-  constructor(
-    readonly code: string,
-    message: string,
-    readonly status: number,
-    readonly fields?: RecipientFieldError[],
-  ) {
+  constructor(readonly code: string, message: string, readonly status: number) {
     super(message);
   }
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-/** Stable JSON: keys sorted, so a round trip through the browser cannot change the seal. */
-function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  if (isObject(value)) {
-    return `{${Object.keys(value).sort().filter((k) => value[k] !== undefined)
-      .map((k) => `${JSON.stringify(k)}:${canonical(value[k])}`).join(",")}}`;
-  }
-  return JSON.stringify(value) ?? "null";
-}
-
-async function seal(secret: string | Uint8Array, nonce: string, prepared: unknown): Promise<string> {
-  return base64urlEncode(await hmac(secret, `${PREPARED_DOMAIN}${nonce}.${canonical(prepared)}`));
 }
 
 function json(status: number, body: unknown, extra: Record<string, string> = {}): Response {
@@ -154,49 +138,98 @@ function summarizeStatus(status: DocumentStatus): Record<string, unknown> {
   };
 }
 
-/** `sign` needs the canonical document and the token back, so they travel in `prepared`. */
-function summarizePrepared(prepared: PreparedDte): PreparedDte {
-  return {
-    estado: "preparado",
-    codigoGeneracion: prepared.codigoGeneracion,
-    numeroControl: prepared.numeroControl,
-    tipoDte: prepared.tipoDte,
-    ambiente: prepared.ambiente,
-    totales: prepared.totales,
-    documento: prepared.documento,
-    prepareToken: prepared.prepareToken,
-  };
+// --- Best-effort JSON path extraction ----------------------------------------
+// Only paths that are literally present in the text or in the details are
+// reported. Nothing is guessed from field names or message meaning.
+
+const PATH_SHAPE = /^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*|\[\d+\])*$/;
+
+/** `#/receptor/nrc` · `/items/2/precioUni` · `receptor.nrc` → `receptor.nrc` · `items[2].precioUni`. */
+export function normalizeFieldPath(raw: string): string | null {
+  let text = raw.trim().replace(/^#/, "");
+  if (text.startsWith("/")) {
+    const segments = text.slice(1).split("/").filter((s) => s !== "");
+    if (segments.length === 0) return null;
+    text = segments.map((s, i) => (/^\d+$/.test(s) ? `[${s}]` : i === 0 ? s : `.${s}`)).join("");
+  }
+  return PATH_SHAPE.test(text) ? text : null;
 }
 
-function isPrepared(value: unknown): value is PreparedDte {
-  return isObject(value) && value.estado === "preparado" &&
-    ["codigoGeneracion", "numeroControl", "tipoDte", "ambiente", "prepareToken"].every((k) => typeof value[k] === "string") &&
-    isObject(value.totales) && isObject(value.documento);
+// A slash path, not part of a word or URL; `items[2].precioUni`; or `[a.b]` in brackets.
+const SLASH_PATH = /(?<![\w/:.])#?(\/[A-Za-z_]\w*(?:\/(?:[A-Za-z_]\w*|\d+))*)(?![\w/])/g;
+const INDEXED_PATH = /(?<![\w.])([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*\[\d+\](?:\.[A-Za-z_]\w*|\[\d+\])*)/g;
+const BRACKET_DOTTED = /\[([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+)\]/g;
+
+function pathsIn(text: string): string[] {
+  const found: string[] = [];
+  for (const re of [SLASH_PATH, INDEXED_PATH, BRACKET_DOTTED]) {
+    for (const match of text.matchAll(re)) {
+      const path = normalizeFieldPath(match[1]);
+      if (path !== null) found.push(path);
+    }
+  }
+  return found;
 }
 
-function errorResponse(error: unknown, secretText: string | null): Response {
-  let status = 500;
-  const body: FactaHandlerErrorBody = {
-    error: { code: "internal_error", message: "The request could not be completed.", retryable: false },
-  };
+function collectDetailFields(details: unknown, fallback: string, out: FactaFieldIssue[], depth = 0): void {
+  if (depth > 4) return;
+  if (Array.isArray(details)) {
+    for (const item of details.slice(0, 50)) collectDetailFields(item, fallback, out, depth + 1);
+    return;
+  }
+  if (!isObject(details)) return;
+  const message = typeof details.message === "string" ? details.message : fallback;
+  for (const key of ["field", "path", "instancePath", "pointer"]) {
+    const value = details[key];
+    if (typeof value === "string") {
+      const path = normalizeFieldPath(value);
+      if (path !== null) out.push({ path, message });
+    }
+  }
+  for (const key of ["errors", "issues", "fields", "details"]) collectDetailFields(details[key], fallback, out, depth + 1);
+}
+
+/** Exposed for tests. */
+export function extractFieldIssues(error: FactaError): FactaFieldIssue[] {
+  const out: FactaFieldIssue[] = [];
+  for (const observation of error.mhObservations) {
+    for (const path of pathsIn(observation)) out.push({ path, message: observation });
+  }
+  collectDetailFields(error.details, error.message, out);
+  const seen = new Set<string>();
+  return out.filter((f) => {
+    const id = `${f.path}\0${f.message}`;
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  }).slice(0, 50);
+}
+
+function errorBody(error: unknown, secretText: string | null): { status: number; body: FactaHandlerErrorBody } {
+  const redact = (text: string) => (secretText !== null ? text.replaceAll(secretText, "[REDACTED]") : text);
   if (error instanceof HandlerError) {
-    status = error.status;
-    body.error = { code: error.code, message: error.message, retryable: false };
-    if (error.fields) body.error.fields = error.fields;
-  } else if (error instanceof FactaSessionError) {
-    status = 401;
-    body.error = { code: error.code, message: error.message, retryable: false };
-  } else if (error instanceof FactaError) {
-    status = error.status >= 400 && error.status <= 599 ? error.status : error.code === "network_error" ? 502 : 500;
-    let message = error.message;
-    if (secretText !== null) message = message.replaceAll(secretText, "[REDACTED]");
-    body.error = { code: error.code, message, retryable: RETRYABLE.has(error.code) };
+    return { status: error.status, body: { error: { code: error.code, message: error.message, retryable: false } } };
+  }
+  if (error instanceof FactaSessionError) {
+    return { status: 401, body: { error: { code: error.code, message: error.message, retryable: false } } };
+  }
+  if (error instanceof FactaError) {
+    const status = error.status >= 400 && error.status <= 599 ? error.status : error.code === "network_error" ? 502 : 500;
+    const body: FactaHandlerErrorBody = {
+      error: { code: error.code, message: redact(error.message), retryable: RETRYABLE.has(error.code) },
+    };
     const spent = error.spent;
     if (spent !== null) body.error.spent = spent;
-    const observaciones = error.mhObservations;
+    const observaciones = error.mhObservations.map(redact);
     if (observaciones.length > 0) body.error.observaciones = observaciones;
+    const fields = extractFieldIssues(error).map((f) => ({ path: f.path, message: redact(f.message) }));
+    if (fields.length > 0) body.error.fields = fields;
+    return { status, body };
   }
-  return json(status, body, status === 405 ? { allow: "POST" } : {});
+  return {
+    status: 500,
+    body: { error: { code: "internal_error", message: "The request could not be completed.", retryable: false } },
+  };
 }
 
 async function readBody(req: Request, max: number): Promise<string> {
@@ -227,23 +260,6 @@ async function readBody(req: Request, max: number): Promise<string> {
   return new TextDecoder().decode(all);
 }
 
-/** Build the fiscal request from the session plus whatever the browser may change. */
-function buildRequest(session: FactaSession, body: Record<string, unknown>): DteRequest {
-  const tipo = resolveTipoDte(body.tipoDte, session.allow, session.request.tipoDte);
-  if (!tipo.ok) throw new HandlerError("recipient_invalid", "The document type is not allowed.", 422, tipo.errors);
-  const base = session.request.receptor as Recipient | null | undefined;
-  const checked = validateRecipient(body.recipient, {
-    tipoDte: tipo.tipoDte,
-    policy: session.allow.recipient,
-    base: isObject(base) ? base : null,
-  });
-  if (!checked.ok) throw new HandlerError("recipient_invalid", "The recipient data is not valid.", 422, checked.errors);
-  const merged = mergeRecipient(isObject(base) ? base : null, checked.recipient);
-  const request = { ...session.request, tipoDte: tipo.tipoDte } as Record<string, unknown>;
-  if (merged !== undefined && merged !== null) request.receptor = merged;
-  return request as unknown as DteRequest;
-}
-
 /**
  * Create the `Request` → `Response` handler. Mount it on a route that accepts
  * POST (Next.js route handler, Hono, Deno, Bun; Express via `toNodeHandler`).
@@ -260,12 +276,18 @@ export function createFactaHandler(options: FactaHandlerOptions): (req: Request)
       "createFactaHandler requires `authorize`: a function that checks your own login, or the literal \"session-only\".",
     );
   }
-  const { facta, sessionSecret } = options;
+  const { facta, sessionSecret, onEvent } = options;
   const exposeDocument = options.exposeDocument === true;
   const maxBody = options.maxBodyBytes ?? DEFAULT_MAX_BODY;
   const secretText = typeof sessionSecret === "string" ? sessionSecret : null;
 
-  async function handle(req: Request): Promise<Response> {
+  function emit(event: FactaHandlerEvent): void {
+    if (!onEvent) return;
+    // Fire and forget: a slow or failing hook must not change the response.
+    void Promise.resolve().then(() => onEvent(event)).catch(() => undefined);
+  }
+
+  async function handle(req: Request, ctx: { session?: FactaSession }): Promise<Response> {
     if (req.method !== "POST") throw new HandlerError("method_not_allowed", "Only POST is accepted.", 405);
     const contentType = req.headers.get("content-type") ?? "";
     if (!/^application\/json\s*(;|$)/i.test(contentType)) {
@@ -284,8 +306,9 @@ export function createFactaHandler(options: FactaHandlerOptions): (req: Request)
     if (!isObject(body) || typeof body.action !== "string") {
       throw new HandlerError("bad_request", "The body must be an object with an action.", 400);
     }
-    if (!ALL_ACTIONS.includes(body.action)) throw new HandlerError("bad_request", "Unknown action.", 400);
+    if (!ACTIONS.includes(body.action)) throw new HandlerError("bad_request", "Unknown action.", 400);
     const session = await verifyFactaSession(body.session, sessionSecret);
+    ctx.session = session;
 
     if (authorize !== "session-only") {
       let allowed: boolean;
@@ -296,40 +319,26 @@ export function createFactaHandler(options: FactaHandlerOptions): (req: Request)
       }
       if (!allowed) throw new HandlerError("unauthorized", "Not authorized.", 403);
     }
-    if (!MODE_ACTIONS[session.mode].includes(body.action)) {
-      throw new HandlerError("action_not_allowed", "This action is not allowed for this session.", 403);
-    }
-    const download = session.allow.download !== false;
-    const key = session.idempotencyKey;
+    const download = session.download !== false;
 
     switch (body.action) {
       case "session.describe":
         return json(200, {
           draft: session.request,
-          allow: session.allow,
-          mode: session.mode,
-          environment: session.environment ?? null,
+          download,
           expiresAt: new Date(session.exp * 1000).toISOString(),
           ...(session.display ? { display: session.display } : {}),
         });
       case "issue": {
-        const result = await facta.issue(buildRequest(session, body), { idempotencyKey: key });
-        return json(200, { result: summarizeIssue(result, download, exposeDocument) });
-      }
-      case "prepare": {
-        const prepared = summarizePrepared(await facta.prepare(buildRequest(session, body), { idempotencyKey: key }));
-        return json(200, { prepared, preparedSeal: await seal(sessionSecret, session.nonce, prepared) });
-      }
-      case "sign": {
-        if (!isPrepared(body.prepared) || typeof body.preparedSeal !== "string") {
-          throw new HandlerError("bad_request", "prepared and preparedSeal are required.", 400);
-        }
-        const given = base64urlDecode(body.preparedSeal);
-        const expected = base64urlDecode(await seal(sessionSecret, session.nonce, body.prepared));
-        if (given === null || expected === null || !timingSafeEqual(given, expected)) {
-          throw new HandlerError("bad_request", "The prepared document does not match its seal.", 400);
-        }
-        const result = await facta.sign(body.prepared, { idempotencyKey: `${key}:sign` });
+        const result = await facta.issue(session.request, { idempotencyKey: session.idempotencyKey });
+        emit({
+          type: result.estado === "sellado" ? "issued" : "contingency",
+          idempotencyKey: session.idempotencyKey,
+          codigoGeneracion: result.codigoGeneracion,
+          numeroControl: result.numeroControl,
+          tipoDte: result.tipoDte,
+          ambiente: result.ambiente,
+        });
         return json(200, { result: summarizeIssue(result, download, exposeDocument) });
       }
       default: {
@@ -343,10 +352,31 @@ export function createFactaHandler(options: FactaHandlerOptions): (req: Request)
   }
 
   return async (req: Request): Promise<Response> => {
+    const ctx: { session?: FactaSession } = {};
     try {
-      return await handle(req);
+      return await handle(req, ctx);
     } catch (error) {
-      return errorResponse(error, secretText);
+      const { status, body } = errorBody(error, secretText);
+      const idempotencyKey = ctx.session?.idempotencyKey;
+      if (error instanceof FactaError && error.isRejection && idempotencyKey !== undefined) {
+        emit({
+          type: "rejected",
+          idempotencyKey,
+          code: body.error.code,
+          status,
+          observaciones: body.error.observaciones ?? [],
+          ...(body.error.spent ? { spent: body.error.spent } : {}),
+        });
+      } else {
+        emit({
+          type: "error",
+          ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
+          code: body.error.code,
+          status,
+          retryable: body.error.retryable,
+        });
+      }
+      return json(status, body, status === 405 ? { allow: "POST" } : {});
     }
   };
 }
@@ -417,4 +447,3 @@ export function toNodeHandler(
     res.end(new Uint8Array(await response.arrayBuffer()));
   };
 }
-
