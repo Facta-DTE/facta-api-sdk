@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Ventana de emisión Facta DTE</title>
+    <style>
+      body { margin: 0; font-family: system-ui, sans-serif; background: #eef1f4; color: #13202b; }
+      .pv-bar { display: flex; flex-wrap: wrap; gap: 12px 18px; padding: 14px 20px; background: #fff; border-bottom: 1px solid #dce2e8; align-items: end; }
+      .pv-bar label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #566676; }
+      .pv-bar select, .pv-bar button { font: inherit; font-size: 14px; padding: 6px 8px; }
+      main { padding: 24px 20px 80px; display: grid; gap: 28px; }
+      h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .05em; color: #566676; margin: 0 0 12px; }
+      .pv-grid { display: grid; gap: 20px; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); align-items: start; }
+      .pv-dark { background: #0d1116; padding: 16px; border-radius: 12px; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./src/main.tsx"></script>
+  </body>
+</html>
