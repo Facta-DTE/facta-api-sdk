@@ -1,11 +1,14 @@
 {
   "name": "@facta-dte/api",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "exports": "./mod.ts",
   "tasks": {
     "test": "deno test --allow-read --allow-write --allow-net .",
     "consumer-check": "node scripts/build.mjs && node scripts/check-packed-consumer.mjs",
     "hola": "deno eval \"import { main } from './examples/hola-factura.ts'; await main();\""
+  },
+  "test": {
+    "exclude": ["node_modules", "dist", "test-react", "examples/react-preview", "preview"]
   },
   "lock": false
 }

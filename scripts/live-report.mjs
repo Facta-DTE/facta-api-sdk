@@ -45,6 +45,8 @@ const ERROR_CODES = new Set([
   "service_unavailable", "internal_error",
   // Stable SDK-local codes.
   "archive_integrity_error", "network_error", "operation_outcome_unknown",
+  // Legacy/local codes kept from dev.
+  "forbidden", "rate_limit_exceeded",
   "readiness_blocked", "catalog_read_failed",
   "storage_unsupported", "storage_unavailable", "storage_contract_invalid",
   "fixture_required", "fixture_invalid", "permission_missing", "related_document_invalid",

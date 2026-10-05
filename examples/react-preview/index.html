@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Ventana de emisión Facta DTE</title>
+    <style>
+      body { margin: 0; font-family: system-ui, sans-serif; background: #eef1f4; color: #13202b; }
+      .pv-bar { display: flex; flex-wrap: wrap; gap: 12px 18px; padding: 14px 20px; background: #fff; border-bottom: 1px solid #dce2e8; align-items: end; }
+      .pv-bar label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #566676; }
+      .pv-bar select, .pv-bar button { font: inherit; font-size: 14px; padding: 6px 8px; }
+      main { padding: 24px 20px 80px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; }
+      main > section > h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .05em; color: #566676; margin: 0 0 12px; }
+      .pv-grid { display: grid; gap: 20px; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); align-items: start; }
+      .pv-bar--inner { margin: 0 0 16px; border: 1px solid #dce2e8; border-radius: 10px; }
+      .pv-h3 { font-size: 13px; letter-spacing: .04em; text-transform: uppercase; color: #566676; margin: 26px 0 10px; }
+      .pv-surface { background: #fff; border: 1px solid #dce2e8; border-radius: 12px; overflow: visible; }
+      .pv-pad { padding: 18px; }
+      .pv-row { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
+      .pv-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+      .pv-host-form { display: grid; gap: 16px; max-width: 520px; }
+      .pv-host-form h3 { margin: 0; font-size: 18px; }
+      .pv-lines { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+      .pv-lines li { display: flex; justify-content: space-between; padding: 8px 12px; border: 1px solid #dce2e8; border-radius: 8px; font-size: 14px; }
+      .pv-dark { background: #0d1116; padding: 16px; border-radius: 12px; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./src/main.tsx"></script>
+  </body>
+</html>

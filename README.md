@@ -6,7 +6,7 @@ Read the [Spanish README](README.es.md). The full [method reference](guides/refe
 
 **Package and source:** [npm `@facta-dte/api`](https://www.npmjs.com/package/@facta-dte/api) · [public GitHub repository](https://github.com/Facta-DTE/facta-api-sdk).
 
-**Version selection:** This documentation describes `0.1.1`. The [npm registry](https://www.npmjs.com/package/@facta-dte/api?activeTab=versions) is authoritative for published versions and distribution tags. `latest` selects the approved stable release. Confirm that your installed published version includes a method before using it; validate source-only capabilities with a packed checkout.
+**Version selection:** This documentation describes `0.2.0`. The [npm registry](https://www.npmjs.com/package/@facta-dte/api?activeTab=versions) is authoritative for published versions and distribution tags. `latest` selects the approved stable release. Confirm that your installed published version includes a method before using it; validate source-only capabilities with a packed checkout.
 
 The official package supports TypeScript and JavaScript. SDKs for other languages are pending; direct HTTP examples do not represent published SDKs.
 
@@ -25,8 +25,8 @@ The portable client relies on standard `fetch`, Web Crypto, `AbortSignal`, and `
 # Verify published versions and tags, then install the approved stable release:
 npm view @facta-dte/api version dist-tags
 pnpm add @facta-dte/api
-# Optionally pin 0.1.1 after verifying that version is published:
-pnpm add @facta-dte/api@0.1.1
+# Optionally pin 0.2.0 after verifying that version is published:
+pnpm add @facta-dte/api@0.2.0
 ```
 
 
@@ -73,6 +73,7 @@ The `Facta` client exposes the following English methods:
 - **Synchronization and catalog:** `syncDestinations`, `syncCatalog`, `catalogState`, `listCustomers`, `getCustomer`, `searchCustomers`, `listProducts`, `getProduct`, `searchProducts`.
 - **DTE lifecycle:** `issue`, `prepare`, `sign`, `getDocumentStatus`, `listDocuments`, `invalidate`, `listHolding`, `downloadDocument`, `getDocumentCopies`, `retryDocumentStorage`.
 - **Durable archival:** `issueAndArchive`, `recoverOperation`, `listPendingOperations`, `invalidateAndArchive`, `recoverInvalidation`, `listPendingInvalidations`, `replicateArchive`, `diagnoseDestinations`.
+- **Delivery by e-mail and WhatsApp:** `issue(request, { deliver })`, `deliverEmail`, `deliverWhatsApp`, `getDelivery`, `waitForDelivery`. Issuing never waits for delivery; each channel is a separate request with a five-minute token and failures are reported as states.
 - **Local printing:** `print`.
 
 The full [method reference](guides/reference.md) describes every method's inputs, return type, credential scope, network/local effects, errors, and retry or recovery behavior.
@@ -143,7 +144,7 @@ The type system helps construct payloads but does not replace server-side tax va
 - [Node integration](guides/node.md)
 - [Deno integration](guides/deno.md)
 
-The SDK does not send WhatsApp messages. It does not sign locally, choose a signing certificate, or replace the API's fiscal contract.
+The SDK sends nothing itself: e-mail and WhatsApp delivery is performed by the API after you mark the channels. It does not sign locally, choose a signing certificate, or replace the API's fiscal contract.
 
 ## Errors
 
