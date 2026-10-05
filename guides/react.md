@@ -126,3 +126,46 @@ The stylesheet keeps every selector at one class of specificity (state, theme
 and motion switches sit inside `:where()`), so a single-class rule in your CSS
 wins when it loads later, or inside a layer ordered after ours, with no
 `!important`. A guard test enforces it.
+
+## Data components
+
+Lists, details, downloads, catalog pickers, status and storage come from the
+same package and the same look (`appearance`, `branding`, `styles`,
+`classNames`, `data-facta-slot`, «Powered by factadte.com»). Your handler must
+declare what the browser may read; see **Capabilities** in
+[react-server.md](react-server.md#capabilities).
+
+```tsx
+<FactaProvider endpoint="/api/facta">
+  <FactaDocumentList onInvalidate={(row) => fetchInvalidationToken(row.codigoGeneracion)} />
+  <FactaServiceStatus />
+  <FactaStorageMeter warnAt={85} />
+  <FactaCustomerPicker onChange={(c) => setCustomerId(c?.id ?? null)} />
+  <FactaProductPicker onSelect={(p) => addLine(p.id)} />
+</FactaProvider>
+```
+
+| Component | What it does |
+| --- | --- |
+| `FactaDocumentList` | Table above 640 px, cards below. Filters by period, type and state (the API filters one of each) and a control-number search over the rows already loaded. Row menu: PDF, JSON, ticket, copy code, detail, and «Anular» when you pass `onInvalidate`. «Cargar más» pagination, skeleton, empty and error states. |
+| `FactaDocumentDetail` | Right drawer (bottom sheet on phones) or `presentation="inline"`: identifiers with copy, totals exactly as the server returned them, receiver (only when exposed), copies with «Reintentar», timeline. Polls while the document is in contingency. |
+| `FactaDownloadButton` | Split button, PDF by default; `variant` `solid` · `outline` · `icon`, `size` `md` · `sm`. |
+| `FactaCustomerPicker`, `FactaProductPicker` | Accessible comboboxes (↑↓ Enter Esc, match highlight, 250 ms debounce, 2 characters minimum). They return the catalog `id`; your server builds the session with `customerId` / `productId`. |
+| `FactaServiceStatus` | Pill, or `variant="dot"` (44 px target) for a POS header. |
+| `FactaStorageMeter` | Normal, near (≥ `warnAt`, default 85 %), full and unconfigured. |
+| `FactaInvalidateDialog` | Read-only confirmation of a server-made invalidation session; shows the event seal or Hacienda's message verbatim. Usually opened with `useFactaActions().invalidate(token)`. |
+
+Headless hooks, all under `FactaProvider` and sharing one stale-while-revalidate
+cache: `useFactaDocuments(filters)` (`items`, `loadMore`, `hasMore`, `loading`,
+`error`, `refresh`), `useFactaDocument(code)`, `useFactaCustomers(query)`,
+`useFactaProducts(query)`, `useFactaServiceStatus()` (polls every 60 s, paused
+while the tab is hidden), `useFactaStorage()` and `useFactaActions()`
+(`download`, `retryStorage`, `invalidate(sessionToken)`, `copyCode`).
+
+`FactaClient` in `@facta-dte/api/browser` has the same reads for any framework:
+`listDocuments`, `getDocument`, `downloadDocument`, `getDocumentCopies`,
+`retryDocumentStorage`, `searchCustomers`, `searchProducts`, `getServiceStatus`,
+`getStorageStatus`, `describeInvalidation`, `invalidate`, plus `createFactaCache`.
+
+Extra slots for these components: `list`, `row`, `detail`, `menu`, `field`,
+`option`, `pill`, `meter`, `dialog`.

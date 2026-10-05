@@ -335,7 +335,32 @@ Ready components (same appearance/branding system, all optional):
 * `FactaStorageMeter` — quota bar.
 * `FactaDownloadButton` — PDF/JSON/ticket in one menu.
 
+### 11.3a Status (5-Oct-2026, `feat/react-data`)
+
+Implemented: handler `capabilities`, `authorize(req, { action })`, `scope`,
+`exposeRecipient`, the twelve read actions plus `invalidate.describe` /
+`invalidate` (session from `createFactaInvalidationSession`); browser client
+methods and a stale-while-revalidate cache; the hooks and the eight components
+above; preview «Datos» section. Deviations from the plan text: the date filter
+is a preset or a custom range (the API filters one type and one state, so the
+filters are single selects, not the board's checkboxes); on phones the filters
+open in an inline panel, not a second sheet; the control-number search runs over
+loaded rows; the detail shows Facta's managed copies only (the SDK has no
+per-destination state for the integrator's own archive); the invalidation
+dialog's progress steps are indicative (one server call). `authorize`'s second
+argument changed from the session to a context that also carries `action`; the
+session fields are spread into it, so existing code works at run time, but a
+TypeScript signature typed `FactaSession` needs `FactaAuthorizeContext`.
+
 ### 11.4 Open decisions for batch 2
+
+Defaults applied in the implementation (open for Marvin):
+
+* D-6: receiver NOT exposed unless `exposeRecipient: true` (then name + masked
+  document; customers' numbers in full, otherwise masked).
+* D-7: invalidation from the browser only through a server-made session.
+* D-8: printing stays out of the browser components.
+
 
 * D-5: may attribution be hidden on every plan in the browser window (the PDF
   stays governed by the server and the plan)?

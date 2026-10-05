@@ -150,3 +150,76 @@ for (const op of await facta.listPendingOperations()) {
 `op.id` is the order's idempotency key, because that is the `operationId` the
 handler used. Remote destinations must be idempotent, as `issueAndArchive`
 already requires.
+
+## Capabilities
+
+By default the handler only issues. Everything else the browser can read or do
+is declared once, and anything not declared answers `403 action_not_allowed`:
+
+```ts
+const handler = createFactaHandler({
+  facta,
+  sessionSecret: process.env.FACTA_SESSION_SECRET!,
+  capabilities: {
+    documents: "read",          // documents.list · .get · .copies · .holding
+    downloads: ["pdf", "json"], // true allows pdf, json and ticket
+    catalog: "read",            // customers and products (needs `unlockKey`)
+    status: true,               // service.status: online | contingency | degraded | offline
+    storage: "read",            // storage.status
+    retryStorage: true,         // documents.retryStorage (idempotent)
+    invalidate: "session",      // invalidate.describe · invalidate, with a server-made session
+  },
+  // `ctx.action` names what is being asked, so a cashier can list but not invalidate.
+  authorize: async (req, ctx) => {
+    const user = await currentUser(req);
+    if (ctx.action === "invalidate") return user?.role === "admin";
+    return user !== null;
+  },
+  // Filters forced onto documents.list; the browser cannot widen them.
+  scope: async (req) => ({ desde: "2026-10-01" }),
+  exposeRecipient: false, // default: the receiver never reaches the browser
+  maxDownloadBytes: 8 * 1024 * 1024,
+});
+```
+
+* **Reads carry no session token.** The gate is the capability list, `authorize`
+  and the same `x-facta-ui` / JSON rules as every other action. `authorize`
+  receives `{ action }`; for session actions it also receives the session's
+  fields (so `(req, session) => …` code written earlier keeps working at run
+  time) plus `session`.
+* **Projections, not passthrough.** Lists and details carry the fields named in
+  `src/server/capabilities.ts` and nothing else: no `jws`, no `documento`, no
+  storage paths, bucket names or hashes. Totals are the server's, never
+  recomputed in the browser.
+* **Personal data (D-6).** Without `exposeRecipient: true` the receiver is
+  absent from lists and details and customer document numbers come masked
+  (`0614 ••••• 4`). With it, the receiver's name and a masked document number
+  are sent, and customers' numbers in full.
+* **Downloads.** `documents.download` returns `{ file: { filename, contentType,
+  bytes, base64 } }`, capped by `maxDownloadBytes` (413 `payload_too_large`).
+  Printing stays out of the browser components (D-8).
+* **Service status** is derived from `diagnose()` (or `status()`), plus the
+  contingency queue when `documents: "read"` is also declared; it is cached for
+  15 s so polling browsers do not multiply API calls.
+
+### Invalidating from the browser (D-7)
+
+The browser never authors an invalidation. Your server seals it, the dialog
+only shows it and asks for confirmation:
+
+```ts
+import { createFactaInvalidationSession } from "@facta-dte/api/server";
+
+const session = await createFactaInvalidationSession({
+  generationCode,
+  tipoAnulacion: 2, // 1 needs codigoGeneracionReemplazo; 3 needs motivo
+  responsable: { nombre: "Laura Ortiz", tipoDocumento: "13", numDocumento: "000000035" },
+  solicita: { nombre: "María Hernández", tipoDocumento: "13", numDocumento: "000000019" },
+}, process.env.FACTA_SESSION_SECRET!);
+```
+
+The handler uses `invalidateAndArchive` when the `Facta` client has
+`runtime.invalidationArchive`, and `invalidate` otherwise. The idempotency key
+defaults to `invalidate:<generationCode>`, so replaying the same token cannot
+invalidate twice. An invalidation token does not verify as an issue session,
+and the other way round.

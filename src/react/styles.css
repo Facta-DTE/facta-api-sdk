@@ -1134,9 +1134,9 @@
 .facta-meter-hd { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 10px; font-size: 14px; }
 .facta-meter-hd b { font-weight: 600; }
 .facta-meter-bar { height: 10px; border-radius: 999px; background: var(--facta-i-surface); box-shadow: inset 0 0 0 1px var(--facta-i-border); overflow: hidden; }
-.facta-meter-bar > i { display: block; height: 100%; border-radius: 999px; background: var(--facta-i-accent); transform-origin: left; }
-:where(.facta-meter--near) :where(.facta-meter-bar) > i { background: var(--facta-i-warning); }
-:where(.facta-meter--full) :where(.facta-meter-bar) > i { background: var(--facta-i-danger); }
+.facta-meter-bar > i { display: block; height: 100%; border-radius: 999px; background: var(--facta-fill, var(--facta-i-accent)); transform-origin: left; }
+.facta-meter--near { --facta-fill: var(--facta-i-warning); }
+.facta-meter--full { --facta-fill: var(--facta-i-danger); }
 :where(.facta-meter--none) .facta-meter-bar { background: repeating-linear-gradient(135deg, var(--facta-i-surface) 0 6px, var(--facta-i-border) 6px 7px); }
 .facta-meter-ft { display: flex; justify-content: space-between; margin-top: 8px; font-size: 12.5px; color: var(--facta-i-muted); }
 :where(.facta-meter) .facta-callout { margin-top: 12px; }
@@ -1176,3 +1176,7 @@
   .facta-ro dl > div { grid-template-columns: 96px 1fr; }
   .facta-menu { min-width: 220px; }
 }
+
+/* Footers of the data layers: the actions wrap under the attribution instead of overflowing a narrow drawer. */
+:where(.facta-card--drawer) .facta-footer { flex-wrap: wrap; }
+:where(.facta-card--drawer) .facta-actions { flex-wrap: wrap; justify-content: flex-end; }

@@ -17,6 +17,7 @@ import {
 import "../../../src/react/styles.css";
 import { createMockFetch, type Outcome } from "./mock-handler.ts";
 import { Gallery } from "./gallery.tsx";
+import { DataSection } from "./data-section.tsx";
 
 function AltamiraMark() {
   return (
@@ -105,6 +106,7 @@ function App() {
           <p><FactaStatusBadge estado="sellado" /> <FactaStatusBadge estado="contingencia" /> <FactaStatusBadge estado="rechazado" /></p>
         </section>
         <Gallery />
+        <DataSection appearance={appearance} branding={branding} environment={environment} />
         <section>
           <h2>Recibo</h2>
           <div style={{ maxWidth: 520 }}>

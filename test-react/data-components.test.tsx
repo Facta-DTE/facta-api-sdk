@@ -283,8 +283,17 @@ describe("FactaDocumentDetail", () => {
     mount(<FactaDocumentDetail codigoGeneracion={CG1} open onInvalidate={() => "t"} />, c);
     const dialog = await screen.findByRole("dialog");
     expect(await within(dialog).findByText("Invalidada")).toBeTruthy();
-    expect(within(dialog).queryByRole("button", { name: "Anular documento" })).toBeNull();
+    expect(within(dialog).queryByRole("button", { name: "Anular" })).toBeNull();
     expect(dialog.querySelector("[data-void]")).not.toBeNull();
+  });
+
+  it("sealed documents offer «Anular» only when the host gives a token", async () => {
+    const onInvalidate = vi.fn(async () => "tok");
+    const c = mount(<FactaDocumentDetail codigoGeneracion={CG1} open onInvalidate={onInvalidate} />);
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.setup().click(await within(dialog).findByRole("button", { name: "Anular" }));
+    expect(onInvalidate).toHaveBeenCalledWith(expect.objectContaining({ codigoGeneracion: CG1 }));
+    await waitFor(() => expect(c.data.describeInvalidation).toHaveBeenCalledWith("tok"));
   });
 
   it("contingency shows the waiting step", async () => {

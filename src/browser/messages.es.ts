@@ -165,6 +165,7 @@ export interface FactaMessages {
       receiverHidden: string;
       receiverHiddenHelp: string;
       observations: string;
+      invalidate: string;
       copies: { heading: string; facta: string; saved: string; pending: string; failed: string; retry: string; retrying: string; none: string; json: string; pdf: string };
       timeline: {
         heading: string;
@@ -495,6 +496,7 @@ export const esMessages: FactaMessages = {
       receiverHidden: "Oculto en esta vista",
       receiverHiddenHelp: "Su sistema decide si el navegador puede ver el receptor.",
       observations: "Observaciones de Hacienda",
+      invalidate: "Anular",
       copies: {
         heading: "Copias",
         facta: "Facta",

@@ -261,7 +261,7 @@ function useDetail(props: FactaDocumentDetailProps, messages: FactaMessages) {
       <>
         {canInvalidate && (
           <button type="button" className="facta-btn facta-btn--danger-outline" disabled={busy} onClick={() => void invalidate()}>
-            <BanIcon size={16} />{messages.data.menu.invalidate}
+            <BanIcon size={16} />{messages.data.detail.invalidate}
           </button>
         )}
         <DownloadSplit codigoGeneracion={doc.codigoGeneracion} {...(props.kinds ? { kinds: props.kinds } : {})} />
