@@ -638,7 +638,10 @@ export class Facta {
     const vault = bundle['vault'] as Record<string, unknown> | null;
     const catalog = vault?.['catalog'] as Record<string, unknown> | null;
     if (catalog === null || catalog === undefined || catalog['syncStatus'] !== 'ready') {
-      throw new FactaError('no_storage_destination', 'This key’s catalog must be synced from the Facta app.', 422, {
+      // The code stays `no_storage_destination` for compatibility with callers
+      // that already branch on it; `detail.reason` is the stable machine name.
+      throw new FactaError('no_storage_destination', 'The catalog of this key is out of date; open Facta to synchronize it.', 422, {
+        reason: 'catalog_out_of_sync',
         syncStatus: catalog?.['syncStatus'] ?? 'missing',
         desiredRevision: catalog?.['desiredRevision'],
         publishedRevision: catalog?.['publishedRevision'],
