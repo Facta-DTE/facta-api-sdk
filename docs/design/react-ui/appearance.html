@@ -105,8 +105,8 @@ pre.code .s{color:#f0c674}pre.code .p{color:#9fb3be}pre.code .a{color:#9ad9a6}pr
   padding:28px 16px;display:grid;place-items:center;width:100%;min-width:0;
   -webkit-font-smoothing:antialiased;
 }
-.facta-overlay[data-facta-density="comfortable"]{--_pad:20px;--_gap:12px;--_btn:44px}
-.facta-overlay[data-facta-density="compact"]{--_pad:16px;--_gap:8px;--_btn:38px}
+.facta-overlay[data-facta-density="comfortable"]{--_pad:20px;--_gap:12px;--_btn:44px;--_dl:56px}
+.facta-overlay[data-facta-density="compact"]{--_pad:16px;--_gap:8px;--_btn:38px;--_dl:48px}
 @media (max-width:640px){.facta-overlay[data-facta-density="compact"]{--_btn:44px}}
 .facta-overlay.inline-frame{background:transparent;padding:0}
 .facta-root{width:100%;max-width:480px;background:var(--facta-bg);border:1px solid var(--facta-border);border-radius:var(--facta-radius);box-shadow:var(--facta-shadow);display:flex;flex-direction:column;overflow:hidden;font-size:14px;line-height:1.45}
@@ -132,13 +132,13 @@ pre.code .s{color:#f0c674}pre.code .p{color:#9fb3be}pre.code .a{color:#9ad9a6}pr
 .facta-lines .d small{color:var(--facta-muted);font-size:12px;font-variant-numeric:tabular-nums}
 .facta-lines .a{font-variant-numeric:tabular-nums;font-weight:550;white-space:nowrap}
 .facta-totalrow{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;padding:4px 2px 0}
-.facta-total{font-family:var(--facta-font-heading,var(--facta-font,inherit));font-size:30px;line-height:1.1;font-weight:700;letter-spacing:-.015em;font-variant-numeric:tabular-nums}
+.facta-total{font-family:var(--facta-font-heading,var(--facta-font,inherit));font-size:var(--facta-total-size,32px);line-height:1.1;font-weight:700;letter-spacing:-.015em;font-variant-numeric:tabular-nums}
 .facta-note{font-size:12px;color:var(--facta-muted);margin:0}
 .facta-status{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;padding:4px 0 2px}
 .facta-statusIcon{width:60px;height:60px;border-radius:50%;background:var(--facta-success-soft);color:var(--facta-success);display:grid;place-items:center}
 .facta-statusIcon svg{width:34px;height:34px;overflow:visible}
 .facta-statuslab{color:var(--facta-success);font-weight:600;font-size:13px;display:flex;gap:6px;align-items:center}
-.facta-status .facta-total{font-size:34px}
+
 .facta-identifiers{margin:0;display:flex;flex-direction:column;gap:10px}
 .facta-identifiers>div{display:flex;flex-direction:column;gap:2px;min-width:0}
 .facta-identifiers dt{font-size:12px;color:var(--facta-muted)}
@@ -150,17 +150,26 @@ pre.code .s{color:#f0c674}pre.code .p{color:#9fb3be}pre.code .a{color:#9ad9a6}pr
 .facta-actions{display:flex;gap:10px;margin-left:auto}
 .facta-attribution{display:inline-flex;gap:6px;align-items:center;font-size:12px;color:var(--facta-muted)}
 .facta-attribution svg{width:14px;height:14px;flex:none}
-.facta-primaryButton,.facta-secondaryButton{height:var(--_btn);padding:0 18px;border-radius:var(--facta-radius-sm);font:600 14.5px/1 var(--facta-font,inherit);cursor:pointer;white-space:nowrap}
+.facta-primaryButton,.facta-secondaryButton{height:var(--facta-button-height,var(--_btn));padding:0 18px;border-radius:var(--facta-radius-sm);font:600 14.5px/1 var(--facta-font,inherit);cursor:pointer;white-space:nowrap}
 .facta-primaryButton{background:var(--facta-accent);color:var(--facta-accent-ink);border:1px solid var(--facta-accent)}
 .facta-secondaryButton{background:transparent;color:var(--facta-text);border:1px solid var(--facta-border)}
 .facta-secondaryButton:hover{background:var(--facta-surface)}
 .facta-primaryButton:hover{filter:brightness(1.06)}
+.facta-downloads{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.facta-downloadButton{display:flex;align-items:center;gap:12px;min-width:0;height:var(--facta-download-height,var(--_dl,56px));padding:0 14px;border:1px solid var(--facta-border);border-radius:var(--facta-radius-sm);background:var(--facta-surface);color:var(--facta-text);font:inherit;text-align:left;cursor:pointer}
+.facta-downloadButton:hover{border-color:var(--facta-accent);background:var(--facta-accent-soft)}
+.facta-downloadButton svg{flex:none;color:var(--facta-accent)}
+.facta-downloadButton b{display:block;font-weight:600;font-size:15px;line-height:1.25}
+.facta-downloadButton small{display:block;font-weight:400;font-size:12px;line-height:1.2;color:var(--facta-muted)}
 .facta-overlay :focus-visible{outline:2px solid var(--facta-accent);outline-offset:2px}
 @container (max-width:430px){
   .facta-footer{flex-direction:column-reverse;align-items:stretch}
   .facta-actions{margin-left:0}.facta-actions>button{flex:1;height:44px}
   .facta-attribution{justify-content:center}
-  .facta-total{font-size:26px}
+  .facta-total{font-size:var(--facta-total-size,26px)}
+  .facta-downloadButton{padding:0 10px;gap:8px}
+  .facta-downloadButton b{white-space:nowrap}
+  .facta-downloadButton small{font-size:11.5px}
 }
 .facta-overlay.inline-frame .facta-root{max-width:none}
 
@@ -276,6 +285,19 @@ table.tk .key{color:var(--board-accent)}
 .vt .dot{display:inline-block;width:14px;height:14px;border-radius:50%;vertical-align:-2px;margin-right:6px;border:1px solid var(--board-line)}
 .vtw{overflow-x:auto}
 
+/* ============ 7 · Specific styles ============ */
+.ssp{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.ssp .pcell .hp{border-radius:12px;overflow:hidden;position:relative}
+.sst{margin-top:18px}
+.hookgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}
+.hookgrid .card{padding:16px;min-width:0}
+.hookgrid h3{margin:0 0 8px;font-size:15px;font-weight:600}
+.sizerow{display:flex;gap:6px;align-items:center}
+/* host rule used by the live hook demo (the same rule shown in the code block, scoped to the demo) */
+#hookdemo .facta-overlay{position:relative}
+#hookdemo [data-facta-state="sealed"] [data-facta-slot="total"]{color:#c2410c}
+#hookdemo [data-facta-slot="primaryButton"]{border-radius:999px}
+@media (max-width:1000px){.ssp,.hookgrid{grid-template-columns:minmax(0,1fr)}}
 /* ============ 6 · Attribution ============ */
 .at{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
 .at .card{padding:18px}
@@ -320,7 +342,7 @@ table.tk .key{color:var(--board-accent)}
 </header>
 
 <nav class="toc" aria-label="Sections">
-  <a href="#playground">1 · Playground</a><a href="#presets">2 · Presets</a><a href="#tokens">3 · Tokens</a><a href="#slots">4 · classNames &amp; unstyled</a><a href="#contrast">5 · Contrast guardrail</a><a href="#attribution">6 · Attribution</a>
+  <a href="#playground">1 · Playground</a><a href="#presets">2 · Presets</a><a href="#tokens">3 · Tokens</a><a href="#slots">4 · classNames &amp; unstyled</a><a href="#contrast">5 · Contrast guardrail</a><a href="#attribution">6 · Attribution</a><a href="#styles">7 · Estilos específicos</a>
 </nav>
 
 <!-- ============ 1 ============ -->
@@ -341,6 +363,9 @@ table.tk .key{color:var(--board-accent)}
         <h3>Shape &amp; type</h3>
         <div class="row"><label for="radius">Radius</label><div class="r"><input type="range" id="radius" min="0" max="24" step="1"><span class="cap" id="radiusv" style="width:34px;text-align:right"></span></div></div>
         <div class="row"><label for="font">Font family</label><div class="r"><select id="font"><option value="system">System (inherit)</option><option value="figtree">Figtree (Inter-like)</option><option value="serif">Serif (Source Serif 4)</option></select></div></div>
+        <div class="row"><label for="btnH">Button height</label><div class="r"><button class="auto" data-reset-size="btnH">auto</button><input type="range" id="btnH" min="32" max="64" step="2"><span class="cap" id="btnHv" style="width:34px;text-align:right"></span></div></div>
+        <div class="row"><label for="dlH">Download tile height</label><div class="r"><button class="auto" data-reset-size="dlH">auto</button><input type="range" id="dlH" min="40" max="80" step="2"><span class="cap" id="dlHv" style="width:34px;text-align:right"></span></div></div>
+        <div class="row"><label for="totalSize">Total size</label><div class="r"><button class="auto" data-reset-size="totalSize">auto</button><input type="range" id="totalSize" min="24" max="48" step="1"><span class="cap" id="totalSizev" style="width:34px;text-align:right"></span></div></div>
         <div class="row"><label>Density</label><div class="seg" data-seg="density"><button data-v="comfortable">Comfortable</button><button data-v="compact">Compact</button></div></div>
       </div>
       <div class="grp">
@@ -390,7 +415,7 @@ table.tk .key{color:var(--board-accent)}
 <!-- ============ 4 ============ -->
 <section class="b" id="slots">
   <h2><span class="n">04</span>classNames slot map &amp; unstyled</h2>
-  <p class="lede">Thirteen named slots. Each renders a stable element with <code>data-slot="…"</code> and the class <code>facta-&lt;slot&gt;</code>; <code>classNames</code> appends your classes, and <code>unstyled</code> drops ours entirely.</p>
+  <p class="lede">Eighteen named slots. Each renders a stable element with <code>data-facta-slot="…"</code> and the class <code>facta-&lt;slot&gt;</code>; <code>classNames</code> appends your classes, and <code>unstyled</code> drops ours entirely.</p>
   <div class="slots">
     <div class="card xp" aria-label="Exploded dialog with slot names">
       <div class="sl" ><span class="nm">overlay</span>
@@ -399,16 +424,21 @@ table.tk .key{color:var(--board-accent)}
             <div class="sl leaf" style="padding:18px 10px 6px"><span class="nm">title</span>Revise su factura</div>
             <span class="ph-t">+ host logo, chip, close</span>
           </div>
-          <div class="sl l1"><span class="nm">body</span>
+          <div class="sl leaf" style="margin-left:10px"><span class="nm">countdown</span>3 px bar under the header · only in run="auto-close"</div>
+        <div class="sl l1"><span class="nm">body</span>
             <div class="sl leaf"><span class="nm">statusIcon</span>circular result icon (sealed / contingency / rejected)</div>
             <div class="sl leaf"><span class="nm">total</span>$45.50 · the hero number</div>
             <div class="sl leaf"><span class="nm">identifiers</span>número de control · código de generación · sello (mono, copyable)</div>
             <div class="sl leaf"><span class="nm">storageRow</span>«Copia guardada en su archivo · 2 de 2 destinos»</div>
+            <div class="sl leaf"><span class="nm">downloadButton</span>two tiles: Descargar PDF · Descargar JSON</div>
+            <div class="sl leaf"><span class="nm">stepper</span>issuing: Preparando · Firmando · Enviando a Hacienda</div>
+            <div class="sl leaf"><span class="nm">fieldList</span>rejected: fields the host must fix</div>
+            <div class="sl leaf"><span class="nm">quote</span>rejected: observations from Hacienda, verbatim</div>
           </div>
           <div class="sl l1"><span class="nm">footer</span>
             <div class="sl leaf"><span class="nm">attribution</span>◉ Powered by factadte.com</div>
             <div class="inl">
-              <div class="sl leaf" style="flex:1;min-width:130px"><span class="nm">secondaryButton</span>Descargar PDF</div>
+              <div class="sl leaf" style="flex:1;min-width:130px"><span class="nm">secondaryButton</span>Cancelar</div>
               <div class="sl leaf" style="flex:1;min-width:130px"><span class="nm">primaryButton</span>Listo</div>
             </div>
           </div>
@@ -496,6 +526,69 @@ table.tk .key{color:var(--board-accent)}
   <div class="callout"><b>Reminder.</b> Hiding the line in the window does not alter what the recipient receives. If an integrator wants a clean PDF, that is a plan decision on the Facta side, and it is documented in the pricing page, not in the SDK.</div>
 </section>
 
+<!-- ============ 7 ============ -->
+<section class="b" id="styles">
+  <h2><span class="n">07</span>Estilos específicos</h2>
+  <p class="lede">Colour and radius travel through variables. When a single part needs its own size or shape, three tools go further than <code>classNames</code>: the <code>styles</code> prop per slot, a handful of size tokens, and data attributes that host CSS can target. All three leave the SDK's behaviour alone.</p>
+
+  <h3 class="sh" style="font:600 11px var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--board-muted);margin:0 0 10px">7.1 · The <code>styles</code> prop, one object per slot</h3>
+  <div class="ssp" id="sspCells"></div>
+  <pre class="code" style="margin-top:14px">&lt;FactaInvoiceDialog
+  session={token}
+  styles={{
+    primaryButton:  { height: 52, borderRadius: 999 },
+    downloadButton: { height: 64 },
+    total:          { fontSize: 40 },
+  }}
+/&gt;</pre>
+  <p class="cap" style="margin-top:8px">keys are the slot names of section 4 · values are React style objects (numbers mean px) merged after the SDK's own styles, before <code>classNames</code> · a slot not in the sealed screen simply has no effect</p>
+
+  <h3 class="sh" style="font:600 11px var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--board-muted);margin:26px 0 10px">7.2 · Size tokens</h3>
+  <div class="tw sst"><table class="tk" style="min-width:760px"><thead><tr><th>CSS variable</th><th>Default</th><th>What it sizes</th><th><code>appearance.variables</code> key</th></tr></thead><tbody>
+   <tr><td><code>--facta-font-size</code></td><td><code>15px</code></td><td>Base text of the window; secondary text scales from it</td><td><code class="key">fontSizeBase</code></td></tr>
+   <tr><td><code>--facta-title-size</code></td><td><code>18px</code></td><td>Step title in the header</td><td><code class="key">titleSize</code></td></tr>
+   <tr><td><code>--facta-total-size</code></td><td><code>32px</code></td><td>The hero amount (review and sealed)</td><td><code class="key">totalSize</code></td></tr>
+   <tr><td><code>--facta-button-height</code></td><td><code>44px</code></td><td>Primary and secondary buttons (38px compact; 44px on phones, never below)</td><td><code class="key">buttonHeight</code></td></tr>
+   <tr><td><code>--facta-download-height</code></td><td><code>56px</code></td><td>Download tiles (48px compact)</td><td><code class="key">downloadHeight</code></td></tr>
+   <tr><td><code>--facta-space</code></td><td><code>20px</code></td><td>Padding of header, body and footer (16px compact)</td><td><code class="key">space</code></td></tr>
+   <tr><td><code>--facta-gap</code></td><td><code>12px</code></td><td>Vertical rhythm between blocks (8px compact)</td><td><code class="key">gap</code></td></tr>
+   <tr><td><code>--facta-window-width</code></td><td><code>480px</code></td><td>Dialog width (inline ignores it)</td><td><code class="key">windowWidth</code></td></tr>
+   <tr><td><code>--facta-drawer-width</code></td><td><code>440px</code></td><td>Side panel width</td><td><code class="key">drawerWidth</code></td></tr>
+  </tbody></table></div>
+  <p class="cap" style="margin-top:10px">guardrail · touch targets never drop under 44 px on a coarse pointer, whatever the host sets: <b>buttonHeight</b> and <b>downloadHeight</b> are clamped to 44 there. The playground in section 1 has sliders for button height, download tile height and total size, and the snippet shows the effective values.</p>
+
+  <h3 class="sh" style="font:600 11px var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--board-muted);margin:26px 0 10px">7.3 · Data attributes for host CSS</h3>
+  <div class="hookgrid">
+    <div class="card">
+      <h3>What the markup carries</h3>
+      <pre class="code" style="font-size:12px">&lt;div data-facta-slot="root"
+     data-facta-state="sealed"
+     data-facta-run="auto-close"
+     data-facta-variant="dialog"&gt;
+  &lt;span data-facta-slot="total"&gt;$45.50&lt;/span&gt;
+  &lt;button data-facta-slot="downloadButton"&gt;…&lt;/button&gt;
+  &lt;button data-facta-slot="primaryButton"&gt;Listo&lt;/button&gt;
+&lt;/div&gt;</pre>
+      <ul style="margin:12px 0 0;padding-left:18px;font-size:13.5px;display:flex;flex-direction:column;gap:6px">
+        <li><code>data-facta-slot</code> on <b>every</b> slot: root, overlay, header, title, body, footer, primaryButton, secondaryButton, downloadButton, countdown, stepper, fieldList, quote, statusIcon, total, identifiers, storageRow, attribution.</li>
+        <li><code>data-facta-state</code> on the root: <code>loading · review · issuing · sealed · contingency · rejected · failed · expired</code>.</li>
+        <li><code>data-facta-run</code>: <code>manual · auto · auto-close</code>. <code>data-facta-variant</code>: <code>dialog · drawer · inline · sheet</code>.</li>
+      </ul>
+      <pre class="code" style="margin-top:12px;font-size:12px">/* host stylesheet */
+[data-facta-state="sealed"] [data-facta-slot="total"] {
+  color: #c2410c;
+}
+[data-facta-slot="primaryButton"] { border-radius: 999px; }</pre>
+      <p class="cap" style="margin-top:10px"><b>No <code>!important</code> needed.</b> The SDK's own selectors are wrapped in <code>:where()</code>, so their specificity is zero: any host rule with a class or an attribute wins, wherever it sits in the cascade.</p>
+    </div>
+    <div class="card">
+      <h3>The rule above, live</h3>
+      <p class="cap" style="display:block;margin:0 0 10px">Same dialog in two states. The host rule only matches <code>state="sealed"</code>, so the review total keeps its colour and the sealed one turns orange. The pill-shaped button comes from the second rule.</p>
+      <div id="hookdemo" style="display:flex;flex-direction:column;gap:12px"></div>
+    </div>
+  </div>
+</section>
+
 </div>
 
 <script>
@@ -526,11 +619,14 @@ const ICON={
  copy:'<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.8"/><path d="M10.5 3.5v-.2A1.3 1.3 0 0 0 9.2 2H3.8A1.8 1.8 0 0 0 2 3.8v5.4A1.3 1.3 0 0 0 3.3 10.5h.2"/></svg>',
  seal:'<svg viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="6" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="7" cy="7" r="2.4" fill="currentColor"/></svg>',
  checkBig:'<svg viewBox="0 0 34 34" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="ck" d="M8 17.5l6.2 6.2L26.5 10.5"/></svg>',
+ dl:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7.5 10.5L12 15l4.5-4.5M5 19.5h14"/></svg>',
  checkSm:'<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.4l3 3 6-6.6"/></svg>'
 };
 function monogram(text,fill){const t=(text||'FS').trim().split(/\s+/).map(w=>w[0]).join('').slice(0,2).toUpperCase()||'FS';
  return `<svg class="facta-hostlogo" viewBox="0 0 34 34" role="img" aria-label="${t}"><rect width="34" height="34" rx="9" fill="${fill||'var(--facta-text)'}"/><text x="17" y="22.4" text-anchor="middle" font-family="system-ui,sans-serif" font-weight="700" font-size="15" fill="var(--facta-bg)" letter-spacing="-.02em">${t}</text></svg>`}
 const LINES=[['Cemento gris 42.5 kg','2 × $9.75','$19.50'],['Clavos 2½″ (lb)','3 × $1.20','$3.60'],['Pintura látex blanco, galón','1 × $22.40','$22.40']];
+const PXP=new Set(['height','width','minHeight','borderRadius','fontSize','padding','gap','letterSpacing']);
+function sty(slot,o){const st=o&&o.styles&&o.styles[slot];if(!st)return '';return ' style="'+Object.keys(st).map(k=>k.replace(/[A-Z]/g,m=>'-'+m.toLowerCase())+':'+(typeof st[k]==='number'&&PXP.has(k)?st[k]+'px':st[k])).join(';')+'"'}
 function cls(slot,o){return o.unstyled?(o.classNames&&o.classNames[slot]||''):('facta-'+slot+(o.classNames&&o.classNames[slot]?' '+o.classNames[slot]:''))}
 function resolveStyle(c){
  const d=DEF[c.theme],v=c.vars||{},st=[];const bg=v.bg||d.bg,text=v.text||d.text;
@@ -539,6 +635,9 @@ function resolveStyle(c){
  if(v.surface)st.push(['surface',v.surface]);
  if(v.text){st.push(['text',v.text]);st.push(['muted',`color-mix(in srgb, ${v.text} 62%, ${bg})`])}
  if(c.radius!=null){st.push(['radius',c.radius+'px']);st.push(['radius-sm',Math.max(2,Math.round(c.radius*.64))+'px'])}
+ if(c.btnH!=null)st.push(['button-height',c.btnH+'px']);
+ if(c.totalSize!=null)st.push(['total-size',c.totalSize+'px']);
+ if(c.dlH!=null)st.push(['download-height',c.dlH+'px']);
  if(c.font&&c.font!=='system')st.push(['font',FONTS[c.font].css]);
  if(c.headingFont)st.push(['font-heading',c.headingFont]);
  return st.map(([k,v])=>`--facta-${k}:${v}`).join(';')
@@ -546,42 +645,44 @@ function resolveStyle(c){
 function dialogHTML(c,state,o={}){
  const sealed=state==='sealed';
  const logo=c.logo?monogram(c.host||'Facta',c.logoFill):'';
- const head=`<div class="${cls('header',o)}" data-slot="header">${logo}<div class="facta-headtxt">${c.host?`<span class="facta-host">${esc(c.host)}</span>`:''}<h2 class="${cls('title',o)}" data-slot="title">${sealed?'Factura emitida':'Revise su factura'}</h2></div>${sealed?'':'<span class="facta-chip">Pruebas</span>'}<button class="facta-close" aria-label="Cerrar">${ICON.close}</button></div>`;
+ const head=`<div class="${cls('header',o)}" data-facta-slot="header"${sty('header',o)}>${logo}<div class="facta-headtxt">${c.host?`<span class="facta-host">${esc(c.host)}</span>`:''}<h2 class="${cls('title',o)}" data-facta-slot="title"${sty('title',o)}>${sealed?'Factura emitida':'Revise su factura'}</h2></div>${sealed?'':'<span class="facta-chip">Pruebas</span>'}<button class="facta-close" aria-label="Cerrar">${ICON.close}</button></div>`;
  let body;
  if(!sealed){
-  body=`<div class="${cls('body',o)}" data-slot="body">
+  body=`<div class="${cls('body',o)}" data-facta-slot="body"${sty('body',o)}>
    <div class="facta-block"><div class="facta-kv"><span class="facta-lab">Documento</span><span class="facta-val">Factura</span></div><div class="facta-kv" style="margin-top:8px"><span class="facta-lab">Receptor</span><span class="facta-val" style="text-align:right">María José Hernández<div class="facta-sub" style="font-weight:400">DUI 01234567-8</div></span></div></div>
    <div class="facta-block"><ul class="facta-lines">${LINES.map(l=>`<li><div class="d"><b>${l[0]}</b><small>${l[1]}</small></div><span class="a">${l[2]}</span></li>`).join('')}</ul></div>
-   <div class="facta-totalrow"><span class="facta-lab" style="font-size:13px">Total de su pedido</span><span class="${cls('total',o)}" data-slot="total">$45.50</span></div>
+   <div class="facta-totalrow"><span class="facta-lab" style="font-size:13px">Total de su pedido</span><span class="${cls('total',o)}" data-facta-slot="total"${sty('total',o)}>$45.50</span></div>
    <p class="facta-note">Hacienda calcula los totales definitivos al sellar.</p></div>`;
  }else{
-  body=`<div class="${cls('body',o)}" data-slot="body">
-   <div class="facta-status"><span class="${cls('statusIcon',o)}" data-slot="statusIcon">${ICON.checkBig}</span><span class="facta-statuslab">Sellada por Hacienda</span><span class="${cls('total',o)}" data-slot="total">$45.50</span></div>
-   <div class="facta-block"><dl class="${cls('identifiers',o)}" data-slot="identifiers">
+  body=`<div class="${cls('body',o)}" data-facta-slot="body"${sty('body',o)}>
+   <div class="facta-status"><span class="${cls('statusIcon',o)}" data-facta-slot="statusIcon"${sty('statusIcon',o)}>${ICON.checkBig}</span><span class="facta-statuslab">Sellada por Hacienda</span><span class="${cls('total',o)}" data-facta-slot="total"${sty('total',o)}>$45.50</span></div>
+   <div class="facta-block"><dl class="${cls('identifiers',o)}" data-facta-slot="identifiers"${sty('identifiers',o)}>
     <div><dt>Número de control</dt><dd>DTE-01-M001P001-000000000000042</dd></div>
     <div><dt>Código de generación</dt><dd>9F2C41AB-7D3E-4C58-9B1A-0E6D5A83C2F7<button class="facta-copy" aria-label="Copiar código de generación">${ICON.copy}</button></dd></div>
     <div><dt>Sello de recepción</dt><dd>2026F3A9C1…B77C1E<button class="facta-copy" aria-label="Copiar sello">${ICON.copy}</button></dd></div>
     <div><dt>Fecha y hora</dt><dd>05/10/2026 14:32</dd></div></dl></div>
-   <div class="${cls('storageRow',o)}" data-slot="storageRow">${ICON.checkSm}<span>Copia guardada en su archivo · 2 de 2 destinos</span></div></div>`;
+   <div class="${cls('storageRow',o)}" data-facta-slot="storageRow"${sty('storageRow',o)}>${ICON.checkSm}<span>Copia guardada en su archivo · 2 de 2 destinos</span></div>
+   <div class="facta-downloads">${[['PDF','Representación gráfica'],['JSON','Documento firmado']].map(d=>`<button class="${cls('downloadButton',o)}" data-facta-slot="downloadButton"${sty('downloadButton',o)}>${ICON.dl}<span><b>Descargar ${d[0]}</b><small>${d[1]}</small></span></button>`).join('')}</div></div>`;
  }
- const attr=c.attr?`<span class="${cls('attribution',o)}" data-slot="attribution">${ICON.seal}Powered by factadte.com</span>`:'';
- const foot=`<div class="${cls('footer',o)}" data-slot="footer">${attr}<div class="facta-actions"><button class="${cls('secondaryButton',o)}" data-slot="secondaryButton">${sealed?'Descargar PDF':'Cancelar'}</button><button class="${cls('primaryButton',o)}" data-slot="primaryButton">${sealed?'Listo':'Emitir factura'}</button></div></div>`;
- return `<div class="${cls('overlay',o)}${o.inline?' inline-frame':''}" data-slot="overlay" data-facta-theme="${c.theme}" data-facta-density="${c.density}" data-facta-motion="${c.motion}" style="${resolveStyle(c)}"><div class="${cls('root',o)}" data-slot="root" role="dialog" aria-label="${sealed?'Factura emitida':'Revise su factura'}">${head}${body}${foot}</div></div>`;
+ const attr=c.attr?`<span class="${cls('attribution',o)}" data-facta-slot="attribution"${sty('attribution',o)}>${ICON.seal}Powered by factadte.com</span>`:'';
+ const foot=`<div class="${cls('footer',o)}" data-facta-slot="footer"${sty('footer',o)}>${attr}<div class="facta-actions">${sealed?'':`<button class="${cls('secondaryButton',o)}" data-facta-slot="secondaryButton"${sty('secondaryButton',o)}>Cancelar</button>`}<button class="${cls('primaryButton',o)}" data-facta-slot="primaryButton"${sty('primaryButton',o)}>${sealed?'Listo':'Emitir factura'}</button></div></div>`;
+ return `<div class="${cls('overlay',o)}${o.inline?' inline-frame':''}" data-facta-slot="overlay" data-facta-theme="${c.theme}" data-facta-density="${c.density}" data-facta-motion="${c.motion}" style="${resolveStyle(c)}"><div class="${cls('root',o)}" data-facta-slot="root"${sty('root',o)} data-facta-state="${state}" data-facta-run="manual" data-facta-variant="${o.inline?'inline':'dialog'}" role="dialog" aria-label="${sealed?'Factura emitida':'Revise su factura'}">${head}${body}${foot}</div></div>`;
 }
 function esc(s){return String(s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]))}
 
 /* ============ 1 · Playground ============ */
 const SW=[['Torogoz','#007faa'],['Verde','#1f7a4d'],['Morado','#6d4bd8'],['Rosa','#be185d'],['Ámbar','#f2b705'],['Naranja quemado','#cc5500']];
-const S={theme:'light',density:'comfortable',motion:'full',state:'review',radius:14,font:'system',attr:true,host:'',logo:false,vars:{}};
+const S={theme:'light',density:'comfortable',motion:'full',state:'review',radius:14,font:'system',attr:true,host:'',logo:false,btnH:null,dlH:null,totalSize:null,vars:{}};
 const $=id=>document.getElementById(id);
 function eff(k){const d=DEF[S.theme];return S.vars[k]||(k==='accent'?d.accentHex:d[k])}
-function cfg(){return{theme:S.theme,density:S.density,motion:S.motion,radius:S.radius,font:S.font,attr:S.attr,host:S.host,logo:S.logo,vars:S.vars}}
+function cfg(){return{btnH:S.btnH,dlH:S.dlH,totalSize:S.totalSize,theme:S.theme,density:S.density,motion:S.motion,radius:S.radius,font:S.font,attr:S.attr,host:S.host,logo:S.logo,vars:S.vars}}
 function renderStage(){$('mount').innerHTML=dialogHTML(cfg(),S.state)}
 function hl(s){return s}
 function snippet(){
  const v=[`accent: "${eff('accent')}"`];
  ['bg','surface','text'].forEach(k=>{if(S.vars[k])v.push(`${k}: "${S.vars[k]}"`)});
- v.push(`radius: "${S.radius}px"`);v.push(`fontFamily: "${FONTS[S.font].code}"`);
+ v.push(`radius: "${S.radius}px"`);
+ v.push(`buttonHeight: "${S.btnH!=null?S.btnH:(S.density==='compact'?38:44)}px"`);v.push(`downloadHeight: "${S.dlH!=null?S.dlH:(S.density==='compact'?48:56)}px"`);v.push(`totalSize: "${S.totalSize!=null?S.totalSize:32}px"`);v.push(`fontFamily: "${FONTS[S.font].code}"`);
  if(S.vars.accentInk)v.push(`accentInk: "${S.vars.accentInk}"`);
  const br=[];if(S.host)br.push(`name: "${esc(S.host)}"`);if(S.logo)br.push('logo: <Logo />');br.push(`attribution: ${S.attr}`);
  const K=t=>`<span class="k">${t}</span>`,Q=t=>`<span class="s">"${t}"</span>`;
@@ -593,6 +694,7 @@ function snippetText(){return $('code').textContent}
 function syncControls(){
  $('c-accent').value=eff('accent');$('t-accent').value=eff('accent');
  for(const k of ['bg','surface','text']){$('c-'+k).value=eff(k);document.querySelector(`[data-reset="${k}"]`).dataset.set=S.vars[k]?'1':'0'}
+ for(const [k,def] of [['btnH',S.density==='compact'?38:44],['dlH',S.density==='compact'?48:56],['totalSize',32]]){$(k).value=S[k]!=null?S[k]:def;$(k+'v').textContent=(S[k]!=null?S[k]:def)+'px';document.querySelector(`[data-reset-size="${k}"]`).dataset.set=S[k]!=null?'1':'0'}
  $('radius').value=S.radius;$('radiusv').textContent=S.radius+'px';$('font').value=S.font;
  $('attr').checked=S.attr;$('logo').checked=S.logo;$('host').value=S.host;
  document.querySelectorAll('[data-seg]').forEach(g=>g.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(S[g.dataset.seg]===b.dataset.v))));
@@ -613,6 +715,8 @@ $('ct-hex').addEventListener('input',e=>{let v=e.target.value.trim();if(v&&v[0]!
 $('forceInk').addEventListener('change',e=>{if(e.target.checked)S.vars.accentInk='#ffffff';else delete S.vars.accentInk;if(!S.vars.accent)S.vars.accent=eff('accent');update(true)});
 for(const k of ['bg','surface','text'])$('c-'+k).addEventListener('input',e=>{S.vars[k]=e.target.value;update(false)});
 document.querySelectorAll('[data-reset]').forEach(b=>b.addEventListener('click',()=>{delete S.vars[b.dataset.reset];update(true)}));
+for(const k of ['btnH','dlH','totalSize'])$(k).addEventListener('input',e=>{S[k]=+e.target.value;update(true)});
+document.querySelectorAll('[data-reset-size]').forEach(b=>b.addEventListener('click',()=>{S[b.dataset.resetSize]=null;update(true)}));
 $('radius').addEventListener('input',e=>{S.radius=+e.target.value;update(false)});
 $('font').addEventListener('change',e=>{S.font=e.target.value;update(false)});
 $('attr').addEventListener('change',e=>{S.attr=e.target.checked;update(false)});
@@ -620,7 +724,7 @@ $('logo').addEventListener('change',e=>{S.logo=e.target.checked;update(false)});
 $('host').addEventListener('input',e=>{S.host=e.target.value;update(false)});
 document.querySelectorAll('[data-seg] button').forEach(b=>b.addEventListener('click',()=>{const g=b.parentElement.dataset.seg;S[g]=b.dataset.v;update(true)}));
 $('replay').addEventListener('click',()=>renderStage());
-$('resetAll').addEventListener('click',()=>{Object.assign(S,{theme:'light',density:'comfortable',motion:'full',state:'review',radius:14,font:'system',attr:true,host:'',logo:false,vars:{}});update(true)});
+$('resetAll').addEventListener('click',()=>{Object.assign(S,{theme:'light',density:'comfortable',motion:'full',state:'review',radius:14,font:'system',attr:true,host:'',logo:false,btnH:null,dlH:null,totalSize:null,vars:{}});update(true)});
 $('copyCode').addEventListener('click',async e=>{try{await navigator.clipboard.writeText(snippetText());e.target.textContent='Copied'}catch(_){e.target.textContent='Select + copy'}setTimeout(()=>e.target.textContent='Copy snippet',1400)});
 
 /* ============ 5 · Contrast panel ============ */
@@ -711,11 +815,18 @@ const TOK=[
  tb.innerHTML=h})();
 
 /* ============ 4 · Slot table + bare + skin ============ */
-const SLOTS=[['root','The card itself','radius, shadow, width cap'],['overlay','Scrim + positioning wrapper; carries data-facta-theme and tokens','z-index, backdrop blur'],['header','Logo, title, environment chip, close','sticky tint, bottom border'],['title','Step title (h2)','heading font, tracking'],['body','Scrolling content area','padding, gap'],['footer','Attribution + actions','border, background'],['primaryButton','The single primary action','shape, shadow, brand colours'],['secondaryButton','Cancel / download','outline style'],['statusIcon','Seal / warning / rejected disc','size, animation'],['total','The hero amount','size, weight, colour'],['identifiers','dl of control no., generation code, seal','mono size, wrapping'],['storageRow','Archive summary line','tone, density'],['attribution','«Powered by factadte.com» + glyph','hide with branding.attribution']];
+const SLOTS=[['root','The card itself','radius, shadow, width cap'],['overlay','Scrim + positioning wrapper; carries data-facta-theme and tokens','z-index, backdrop blur'],['header','Logo, title, environment chip, close','sticky tint, bottom border'],['title','Step title (h2)','heading font, tracking'],['body','Scrolling content area','padding, gap'],['footer','Attribution + actions','border, background'],['primaryButton','The single primary action','shape, shadow, brand colours'],['secondaryButton','Cancel / download','outline style'],['statusIcon','Seal / warning / rejected disc','size, animation'],['total','The hero amount','size, weight, colour'],['identifiers','dl of control no., generation code, seal','mono size, wrapping'],['storageRow','Archive summary line','tone, density'],['attribution','«Powered by factadte.com» + glyph','hide with branding.attribution'],['downloadButton','Download tile (PDF / JSON): icon, title, one-line hint','height, radius, hover wash'],['countdown','3 px auto-close bar under the header (run="auto-close")','colour, height'],['stepper','Issuing steps: connector, nodes, labels','node size, connector colour'],['fieldList','Rejected: the fields to fix in the host system','row spacing, icon colour'],['quote','Rejected: the Ministry\'s own observations, verbatim','mono size, accent bar']];
 document.querySelector('#slotTbl tbody').innerHTML=SLOTS.map(s=>`<tr><td><code class="sn">${s[0]}</code></td><td><code>facta-${s[0]}</code><div class="cap" style="margin-top:2px">${s[1]}</div></td><td>${s[2]}</td></tr>`).join('');
 function bareHTML(){return `<div class="bare" role="dialog" aria-label="Factura emitida"><div><h2 style="margin:0 0 4px;font-size:20px">Factura emitida</h2><span>Sellada por Hacienda</span></div><p style="font-size:28px;font-weight:700;margin:10px 0">$45.50</p><dl><dt>Número de control</dt><dd>DTE-01-M001P001-000000000000042</dd><dt>Código de generación</dt><dd>9F2C41AB-7D3E-4C58-9B1A-0E6D5A83C2F7 <button>Copiar</button></dd></dl><p style="margin:6px 0">✓ Copia guardada en su archivo · 2 de 2 destinos</p><footer style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><small>Powered by factadte.com</small><span style="margin-left:auto"><button>Descargar PDF</button> <button>Listo</button></span></footer></div>`}
 function skinHTML(){return `<div class="tw-root" role="dialog" aria-label="Factura emitida"><div class="tw-header"><h2 class="tw-title">Factura emitida</h2><span style="font-size:12px;opacity:.7">Grupo Altamira</span></div><div class="tw-body"><div style="display:flex;gap:12px;align-items:center"><span class="tw-icon"><svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.4l3 3 6-6.6"/></svg></span><p class="tw-total">$45.50</p></div><dl class="tw-ids"><dt>Número de control</dt><dd>DTE-01-M001P001-000000000000042</dd><dt>Código de generación</dt><dd>9F2C41AB-7D3E-4C58-9B1A-0E6D5A83C2F7</dd></dl><p class="tw-store">✓ Copia guardada · 2 de 2 destinos</p></div><div class="tw-footer"><span class="tw-attr">Powered by factadte.com</span><span style="display:flex;gap:8px"><button class="tw-btn2">Descargar PDF</button><button class="tw-btn1">Listo</button></span></div></div>`}
 $('bare').innerHTML=bareHTML();$('skin').innerHTML=skinHTML();
+
+/* ============ 7 · Specific styles ============ */
+(function(){const c=Object.assign({},PRESETS[0].c,{theme:'light',motion:'none'});
+ const styles={primaryButton:{height:52,borderRadius:999},downloadButton:{height:64},total:{fontSize:40}};
+ const cell=(t,html)=>`<div class="pcell"><span class="cap"><b>${t}</b></span><div class="hp"><div class="hpbg l"></div>${html}</div></div>`;
+ $('sspCells').innerHTML=cell('before · defaults',dialogHTML(c,'sealed'))+cell('after · styles={{ … }}',dialogHTML(c,'sealed',{styles}));
+ $('hookdemo').innerHTML=['review','sealed'].map(st=>`<div class="hp" style="border-radius:12px;overflow:hidden;position:relative"><div class="hpbg l"></div>${dialogHTML(c,st)}</div>`).join('')})();
 
 /* ============ 6 · Mini attribution ============ */
 (function(){const mk=(a)=>{const c={theme:'light',density:'comfortable',motion:'none',radius:14,font:'system',attr:a,host:'',logo:false,vars:{}};
