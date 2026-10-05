@@ -270,6 +270,12 @@ try {
   failureCode = safeFailureCode(error);
   // Never print API messages, stacks, assertion values, JWS, or invoice bytes.
   console.error(`FAIL live integration: ${currentCheck} (${failureCode})`);
+  // The category above folds every unlisted cause into `validation_failed`. Name
+  // the cause without data: a raw API/SDK error code (a stable identifier), or
+  // the message of an assertion only when this script wrote it (never the
+  // generated message, which embeds the compared values).
+  const detail = failureDetail(error);
+  if (detail) console.error(`FAIL detail: ${detail}`);
   process.exitCode = 1;
 } finally {
   try {
@@ -284,4 +290,13 @@ async function saveReport() {
   await mkdir(reportDir, { recursive: true });
   await writeFile(join(reportDir, "report.md"), report, { mode: 0o600 });
   if (process.env.GITHUB_STEP_SUMMARY) await writeFile(process.env.GITHUB_STEP_SUMMARY, report);
+}
+
+function failureDetail(error) {
+  if (error?.name === "AssertionError") {
+    return error.generatedMessage === false ? `assertion: ${String(error.message).slice(0, 160)}` : "assertion (generated message withheld)";
+  }
+  const code = error?.code;
+  if (typeof code === "string" && /^[a-z0-9_]{2,64}$/.test(code)) return `code: ${code}${typeof error.status === "number" ? ` (HTTP ${error.status})` : ""}`;
+  return error?.name ? `error type: ${String(error.name).slice(0, 40)}` : null;
 }
