@@ -22,6 +22,8 @@ import {
   type FactaMessages,
   type FactaMessagesOverride,
   type FactaMotion,
+  type FactaSlot,
+  type FactaStyles,
   type FactaTheme,
 } from "../browser/index.ts";
 
@@ -30,21 +32,15 @@ export interface FactaBranding {
   name?: string | undefined;
   /** A logo URL or any element. */
   logo?: ReactNode | string | undefined;
-  /** `false` hides «Emitido con Facta DTE» completely (white-label). Default true. */
+  /** `false` hides «Powered by factadte.com» completely (white-label). Default true. */
   attribution?: boolean | undefined;
 }
 
-export type FactaClassNameSlot =
-  | "root"
-  | "overlay"
-  | "card"
-  | "header"
-  | "title"
-  | "chip"
-  | "body"
-  | "footer"
-  | "primaryButton"
-  | "secondaryButton";
+/** Every element the host can restyle: class, inline style and `data-facta-slot`. */
+export type FactaClassNameSlot = FactaSlot;
+
+/** Inline styles per slot, applied after the stylesheet. */
+export type FactaSlotStyles = FactaStyles<CSSProperties>;
 
 export type FactaClassNames = Partial<Record<FactaClassNameSlot, string>>;
 
@@ -55,6 +51,8 @@ export interface FactaLook {
   appearance?: FactaAppearance | undefined;
   branding?: FactaBranding | undefined;
   classNames?: FactaClassNames | undefined;
+  /** Inline styles per slot (`{ primaryButton: { height: 52 } }`), merged after ours. */
+  styles?: FactaSlotStyles | undefined;
   /** Drop every default `facta-*` class: you bring the CSS. */
   unstyled?: boolean | undefined;
   messages?: FactaMessagesOverride | undefined;
@@ -63,6 +61,14 @@ export interface FactaLook {
 }
 
 export type Cx = (base: string, slot?: FactaClassNameSlot, extra?: string) => string;
+
+export interface SlotProps {
+  className: string;
+  style: CSSProperties | undefined;
+  "data-facta-slot": FactaClassNameSlot;
+}
+/** `className` (ours + host's), host `style` and `data-facta-slot` for one slot. */
+export type SlotFn = (slot: FactaClassNameSlot, base?: string, extra?: string) => SlotProps;
 
 export interface ResolvedLook {
   messages: FactaMessages;
@@ -73,9 +79,11 @@ export interface ResolvedLook {
   branding: FactaBranding;
   attribution: boolean;
   classNames: FactaClassNames;
+  styles: FactaSlotStyles;
   unstyled: boolean;
   showStorage: boolean;
   cx: Cx;
+  sp: SlotFn;
 }
 
 function deepMerge<T>(a: T, b: unknown): T {
@@ -118,12 +126,17 @@ export function useMediaQuery(queryText: string): boolean {
   return matches;
 }
 
+function usePrefersDark(): boolean {
+  return useMediaQuery("(prefers-color-scheme: dark)");
+}
+
 export const ProviderLookContext = createContext<FactaLook>({});
 
 /** Merge the provider's look with a component's own, and resolve everything. */
 export function useResolvedLook(local?: FactaLook): ResolvedLook {
   const base = useContext(ProviderLookContext);
   const prefersReduced = usePrefersReducedMotion();
+  const prefersDark = usePrefersDark();
   return useMemo(() => {
     const appearance = mergeAppearance(
       base.theme ? { theme: base.theme } : undefined,
@@ -137,22 +150,37 @@ export function useResolvedLook(local?: FactaLook): ResolvedLook {
     const messages = mergeMessages(
       deepMerge(deepMerge({}, base.messages), local?.messages) as FactaMessagesOverride,
     );
+    const styles: FactaSlotStyles = {};
+    for (const layer of [base.appearance?.styles, base.styles, local?.appearance?.styles, local?.styles]) {
+      if (!layer) continue;
+      for (const [k, v] of Object.entries(layer)) {
+        styles[k as FactaClassNameSlot] = { ...styles[k as FactaClassNameSlot], ...(v as CSSProperties) };
+      }
+    }
     const cx: Cx = (cls, slot, extra) =>
       [unstyled ? "" : cls, slot ? classNames[slot] : "", extra].filter(Boolean).join(" ");
+    const sp: SlotFn = (slot, cls = "", extra) => ({
+      className: cx(cls, slot, extra),
+      style: styles[slot],
+      "data-facta-slot": slot,
+    });
+    const theme = appearance.theme ?? "auto";
     return {
       messages,
-      theme: appearance.theme ?? "auto",
+      theme,
       density: appearance.density ?? "comfortable",
       motion: resolveMotion(appearance.motion, prefersReduced),
-      vars: appearanceToCssVariables(appearance.variables),
+      vars: appearanceToCssVariables(appearance.variables, { dark: theme === "dark" || (theme === "auto" && prefersDark) }),
       branding,
       attribution: branding.attribution !== false,
       classNames,
+      styles,
       unstyled,
       showStorage: local?.showStorage ?? base.showStorage ?? true,
       cx,
+      sp,
     };
-  }, [base, local, prefersReduced]);
+  }, [base, local, prefersReduced, prefersDark]);
 }
 
 const ResolvedContext = createContext<ResolvedLook | null>(null);
@@ -168,20 +196,30 @@ export interface FactaRootProps extends Omit<HTMLAttributes<HTMLDivElement>, "cl
   look?: FactaLook | undefined;
   resolved?: ResolvedLook | undefined;
   className?: string | undefined;
+  /** Which slot this element is (`root`, or `overlay` for a modal layer). */
+  slot?: "root" | "overlay";
+  /** Exposed as `data-facta-state`, `-run` and `-variant` for host CSS. */
+  state?: string | undefined;
+  run?: string | undefined;
+  variant?: string | undefined;
   children?: ReactNode;
 }
 
 /** The element that carries the tokens and switches. Always the outermost one. */
-export function FactaRoot({ look, resolved, className, children, style, ...rest }: FactaRootProps) {
+export function FactaRoot({ look, resolved, className, children, style, slot = "root", state, run, variant, ...rest }: FactaRootProps) {
   const own = useResolvedLook(look);
   const cfg = resolved ?? own;
-  const merged: CSSProperties = { ...(cfg.vars as CSSProperties), ...style };
+  const merged: CSSProperties = { ...(cfg.vars as CSSProperties), ...cfg.styles.root, ...(slot === "overlay" ? cfg.styles.overlay : undefined), ...style };
   return (
     <ResolvedContext.Provider value={cfg}>
       <div
         {...rest}
         className={cfg.cx("facta-root", "root", className)}
         style={merged}
+        data-facta-slot={slot}
+        data-facta-state={state}
+        data-facta-run={run}
+        data-facta-variant={variant}
         data-facta-theme={cfg.theme}
         data-facta-density={cfg.density}
         data-facta-motion={cfg.motion}

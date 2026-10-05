@@ -73,15 +73,52 @@ export const ChevronIcon = (p: IconProps) => (
   </svg>
 );
 
-/** The quiet attribution glyph: a seal with a notch. */
+/** The seal's scalloped outline: a circle with 12 gentle lobes. */
+function rosette(lobes = 12, radius = 10, amplitude = 1.1): string {
+  let d = "";
+  for (let i = 0; i <= 120; i++) {
+    const t = (i / 120) * Math.PI * 2;
+    const r = radius + amplitude * Math.cos(lobes * t);
+    d += `${i ? "L" : "M"}${(12 + r * Math.sin(t)).toFixed(2)} ${(12 - r * Math.cos(t)).toFixed(2)}`;
+  }
+  return d + "Z";
+}
+
+const ROSETTE = rosette();
+
+/** The quiet attribution glyph: the seal outline with its check. */
 export const SealGlyph = ({ size = 14, ...rest }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden focusable={false} {...rest}>
+    <path d={ROSETTE} />
+    <path d="M8.2 12.4l2.6 2.6 5-5.4" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+/** The filled seal of the sealed screen; the check is cut out in the window colour. */
+export const SealBig = ({ size = 40, ...rest }: IconProps) => (
   <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden focusable={false} {...rest}>
-    <path
-      fill="currentColor"
-      d="M12 1.8l2.4 1.7 2.9-.2 1.2 2.7 2.6 1.3-.2 2.9L22.6 12l-1.7 2.4.2 2.9-2.7 1.2-1.3 2.6-2.9-.2L12 22.6l-2.4-1.7-2.9.2-1.2-2.7-2.6-1.3.2-2.9L1.4 12l1.7-2.4-.2-2.9 2.7-1.2 1.3-2.6 2.9.2L12 1.8z"
-      opacity=".22"
-    />
-    <path fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M8 12.3l2.8 2.8L16.3 9" />
+    <path d={ROSETTE} fill="currentColor" />
+    <path d="M8 12.3l3 3 5.2-5.6" fill="none" stroke="var(--facta-i-bg)" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+export const DocIcon = (p: IconProps) => (
+  <svg {...base(p)} strokeWidth={1.75}>
+    <path d="M7 3.5h7l4 4V20a.5.5 0 0 1-.5.5h-10a.5.5 0 0 1-.5-.5V4a.5.5 0 0 1 .5-.5z" />
+    <path d="M14 3.5V8h4M9 13h6M9 16.5h4" />
+  </svg>
+);
+
+export const HourIcon = (p: IconProps) => (
+  <svg {...base(p)} strokeWidth={1.75}>
+    <path d="M7 4h10M7 20h10M8 4c0 4 4 5 4 8s-4 4-4 8M16 4c0 4-4 5-4 8s4 4 4 8" />
+  </svg>
+);
+
+export const InfoIcon = (p: IconProps) => (
+  <svg {...base(p)} strokeWidth={1.75}>
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M12 11v5M12 8v.01" />
   </svg>
 );
 

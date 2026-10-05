@@ -59,18 +59,19 @@ describe("FactaIssueButton", () => {
     expect(issue).toHaveBeenCalledTimes(2);
   });
 
-  it("confirm=true opens the dialog first", async () => {
-    const { client } = makeClient({ issue: [sealed] });
+  it("run=auto issues on mount; run=auto-close does the same and shows no success popover", async () => {
+    const { client, calls } = makeClient({ issue: [sealed] });
+    const onIssued = vi.fn();
     render(
       <FactaProvider client={client} appearance={NO_MOTION}>
-        <FactaIssueButton session="tok" confirm flowOptions={FAST} />
+        <FactaIssueButton session="tok" run="auto-close" onIssued={onIssued} flowOptions={FAST} />
       </FactaProvider>,
     );
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Emitir factura" }));
-    const dialog = await screen.findByRole("dialog");
-    await user.click(await within(dialog).findByRole("button", { name: "Emitir factura" }));
-    await within(dialog).findByText("Total a pagar");
+    await waitFor(() => expect(screen.getByRole("button").getAttribute("data-kind")).toBe("done"));
+    expect(calls).toEqual(["describe", "issue"]);
+    expect(onIssued).toHaveBeenCalled();
+    await userEvent.setup().click(screen.getByRole("button"));
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });
 

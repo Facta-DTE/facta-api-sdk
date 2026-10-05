@@ -3,10 +3,11 @@
 // Presentational: it takes a FlowState, so the gallery can render any screen.
 
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import type { Environment, FlowState } from "../browser/index.ts";
+import { fill, type Environment, type FlowState } from "../browser/index.ts";
 import { CloseIcon, SealGlyph, Spinner } from "./icons.tsx";
 import { useCfg, type FactaLook } from "./look.tsx";
 import { useScreen, type ScreenAction } from "./screens.tsx";
+import type { AutoCloseState } from "./use-issue.ts";
 
 export type CardVariant = "dialog" | "sheet" | "drawer" | "inline";
 
@@ -23,32 +24,56 @@ export interface FactaWindowViewProps {
   /** Overrides `state.info.environment` (used by the receipt). */
   environment?: Environment | null | undefined;
   look?: FactaLook | undefined;
+  /** The `auto-close` countdown; the bar shows while `active`, any interaction cancels it. */
+  autoClose?: AutoCloseState | undefined;
 }
 
 function BrandMark() {
   const { branding, cx } = useCfg();
-  const { logo, name } = branding;
-  if (!logo && !name) return null;
-  return (
-    <div className={cx("facta-brand")}>
-      {typeof logo === "string" ? <img className="facta-brand-logo" src={logo} alt={name ?? ""} /> : logo}
-      {name && <span className="facta-brand-name">{name}</span>}
-    </div>
-  );
+  const { logo } = branding;
+  if (!logo) return null;
+  return typeof logo === "string"
+    ? <img className={cx("facta-brand-logo")} src={logo} alt="" />
+    : <span className={cx("facta-brand-box")} aria-hidden>{logo}</span>;
 }
 
 function ActionButton({ action, kind, busy }: { action: ScreenAction; kind: "primary" | "secondary"; busy?: boolean }) {
-  const { cx } = useCfg();
+  const { sp } = useCfg();
   return (
     <button
       type="button"
-      className={cx(`facta-btn facta-btn--${kind}`, kind === "primary" ? "primaryButton" : "secondaryButton")}
+      {...sp(kind === "primary" ? "primaryButton" : "secondaryButton", `facta-btn facta-btn--${kind}`)}
       onClick={action.onClick}
       disabled={action.disabled || busy}
     >
       {busy && <Spinner size={16} />}
       {action.label}
     </button>
+  );
+}
+
+/** Countdown bar (full motion) or plain text (reduced/none) for `auto-close`. */
+function Countdown({ delay }: { delay: number }) {
+  const { sp, motion, messages } = useCfg();
+  const [left, setLeft] = useState(delay);
+  useEffect(() => {
+    const end = Date.now() + delay;
+    setLeft(delay);
+    const id = setInterval(() => setLeft(Math.max(0, end - Date.now())), 200);
+    return () => clearInterval(id);
+  }, [delay]);
+  const seconds = Math.max(1, Math.ceil(left / 1000));
+  const text = fill(messages.autoClose.closingIn, { n: seconds });
+  const full = motion === "full";
+  return (
+    <div {...sp("countdown", "facta-countdown")} style={{ ...sp("countdown").style, ["--facta-countdown-ms" as string]: `${delay}ms` }}>
+      {full && (
+        <span className="facta-countdown-track" aria-hidden>
+          <span className="facta-countdown-bar" />
+        </span>
+      )}
+      <p className={full ? "facta-sr" : "facta-countdown-text"} role="status" aria-live="polite">{text}</p>
+    </div>
   );
 }
 
@@ -76,36 +101,49 @@ function Morph({ children, stepKey, enabled }: { children: ReactNode; stepKey: s
 }
 
 export function FactaWindowView(props: FactaWindowViewProps) {
-  const { state, variant = "dialog", titleId = "facta-title", onNext = noop, onRetry = noop, onClose } = props;
+  const { state, variant = "dialog", titleId = "facta-title", onNext = noop, onRetry = noop, onClose, autoClose } = props;
   const cfg = useCfg();
-  const { cx, messages, attribution } = cfg;
+  const { cx, sp, messages, attribution, branding } = cfg;
   const showStorage = props.showStorage ?? cfg.showStorage;
   const busy = state.step === "issuing" || state.step === "verifying";
   const screen = useScreen(state, { onNext, onRetry, onClose }, showStorage);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const first = useRef(true);
+  const programmatic = useRef(false);
   useEffect(() => {
     if (first.current || variant === "inline") {
       first.current = false;
       return;
     }
+    programmatic.current = true;
     headingRef.current?.focus({ preventScroll: true });
+    programmatic.current = false;
   }, [state.step, variant]);
 
+  const counting = Boolean(autoClose?.active);
+  const cancel = autoClose?.cancel;
+  const interact = counting && cancel ? () => cancel() : undefined;
+
   const environment = props.environment !== undefined ? props.environment : state.info?.environment;
-  const subtitle = state.step === "review" ? undefined : state.info?.display?.title;
   const hasActions = Boolean(screen.primary || screen.secondary);
   return (
-    <div className={cx("facta-card", "card", `facta-card--${variant}`)} data-step={state.step} data-tone={screen.tone}>
+    <div
+      {...sp("card", `facta-card facta-card--${variant}`)}
+      data-step={state.step}
+      data-tone={screen.tone}
+      onPointerDownCapture={interact}
+      onKeyDownCapture={interact}
+      onFocusCapture={interact ? () => { if (!programmatic.current) cancel?.(); } : undefined}
+    >
       {variant === "sheet" && <span className="facta-grab" aria-hidden />}
-      <header className={cx("facta-header", "header")}>
+      <header {...sp("header", "facta-header")}>
+        <BrandMark />
         <div className="facta-header-main">
-          <BrandMark />
-          <h2 id={titleId} ref={headingRef} tabIndex={-1} className={cx("facta-title", "title")}>{screen.title}</h2>
-          {subtitle && <p className={cx("facta-subtitle")}>{subtitle}</p>}
+          {branding.name && <span className="facta-eyebrow">{branding.name}</span>}
+          <h2 id={titleId} ref={headingRef} tabIndex={-1} {...sp("title", "facta-title")}>{screen.title}</h2>
         </div>
         <div className="facta-header-side">
-          {environment === "00" && <span className={cx("facta-chip facta-chip--test", "chip")}>{messages.chipTest}</span>}
+          {environment === "00" && <span {...sp("chip", "facta-chip")}>{messages.chipTest}</span>}
           {onClose && !busy && (
             <button type="button" className={cx("facta-close")} aria-label={messages.closeLabel} onClick={onClose}>
               <CloseIcon size={20} />
@@ -113,13 +151,14 @@ export function FactaWindowView(props: FactaWindowViewProps) {
           )}
         </div>
       </header>
-      <div className={cx("facta-scroll", "body")}>
+      {counting && autoClose && <Countdown delay={autoClose.delay} />}
+      <div {...sp("body", "facta-scroll")}>
         <Morph stepKey={state.step} enabled={variant !== "drawer"}>{screen.body}</Morph>
       </div>
       {(attribution || hasActions) && (
-        <footer className={cx("facta-footer", "footer")}>
+        <footer {...sp("footer", "facta-footer")}>
           {attribution ? (
-            <span className={cx("facta-attribution")}><SealGlyph size={14} />{messages.footerBrand}</span>
+            <span {...sp("attribution", "facta-attribution")}><SealGlyph size={14} />{messages.footerBrand}</span>
           ) : <span />}
           {hasActions && (
             <div className="facta-actions">

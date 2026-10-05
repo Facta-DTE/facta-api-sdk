@@ -11,7 +11,9 @@ function Harness(props: {
   onError?: (e: unknown) => void;
   onEvent?: (e: { type: string }) => void;
   onClose?: () => void;
-  confirm?: boolean;
+  run?: "manual" | "auto" | "auto-close";
+  autoCloseDelay?: number;
+  autoCloseOn?: "success" | "any";
   variant?: "dialog" | "drawer";
   provider?: Record<string, unknown>;
 }) {
@@ -24,7 +26,9 @@ function Harness(props: {
         session="tok"
         open={open}
         onOpenChange={setOpen}
-        confirm={props.confirm}
+        run={props.run}
+        autoCloseDelay={props.autoCloseDelay}
+        autoCloseOn={props.autoCloseOn}
         onIssued={props.onIssued}
         onError={props.onError}
         onEvent={props.onEvent as never}
@@ -59,7 +63,7 @@ describe("dialog: review", () => {
     expect(within(dialog).getByText("$22.00")).toBeTruthy();
     expect(within(dialog).getByText(/Hacienda calcula los totales definitivos/)).toBeTruthy();
     expect(within(dialog).getByText("Pruebas")).toBeTruthy();
-    expect(within(dialog).getByText("Emitido con Facta DTE")).toBeTruthy();
+    expect(within(dialog).getByText("Powered by factadte.com")).toBeTruthy();
     expect(within(dialog).getByRole("button", { name: "Emitir factura" })).toBeTruthy();
   });
 
@@ -112,7 +116,7 @@ describe("dialog: issuing to a result", () => {
     const user = await openDialog();
     await user.click(await screen.findByRole("button", { name: "Emitir factura" }));
     const dialog = screen.getByRole("dialog");
-    await within(dialog).findByText("Total a pagar");
+    await within(dialog).findByText("Total emitido");
     expect(within(dialog).getByRole("heading", { name: "Factura emitida" })).toBeTruthy();
     expect(within(dialog).getByText("$1,234.56")).toBeTruthy();
     expect(within(dialog).getByText(sealed.numeroControl)).toBeTruthy();
@@ -145,7 +149,7 @@ describe("dialog: issuing to a result", () => {
     render(<Harness client={client} />);
     const user = await openDialog();
     await user.click(await screen.findByRole("button", { name: "Emitir factura" }));
-    await screen.findByText("Total a pagar");
+    await screen.findByText("Total emitido");
     expect(screen.queryByRole("button", { name: "Descargar PDF" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Descargar JSON" })).toBeNull();
   });
@@ -165,7 +169,7 @@ describe("dialog: issuing to a result", () => {
     expect(within(dialog).queryByRole("button", { name: "Cerrar ventana" })).toBeNull();
     expect(within(dialog).queryByRole("button")).toBeNull();
     await act(async () => release(sealed));
-    await within(dialog).findByText("Total a pagar");
+    await within(dialog).findByText("Total emitido");
   });
 
   it("renders contingency as a warning success with the explanation", async () => {
@@ -176,7 +180,7 @@ describe("dialog: issuing to a result", () => {
     await user.click(await screen.findByRole("button", { name: "Emitir factura" }));
     const dialog = screen.getByRole("dialog");
     await within(dialog).findByText("Factura firmada, pendiente de Hacienda");
-    expect(within(dialog).getByText(/No lo emita de nuevo/)).toBeTruthy();
+    expect(within(dialog).getByText(/No vuelva a emitir este documento/)).toBeTruthy();
     expect(within(dialog).getByText("Hacienda sin servicio")).toBeTruthy();
     expect(within(dialog).getByRole("button", { name: "Descargar JSON" })).toBeTruthy();
     expect(onIssued).toHaveBeenCalled();
@@ -201,7 +205,7 @@ describe("dialog: failures are read-only and helpful", () => {
     expect(within(dialog).getByText("[receptor.nrc] El valor no cumple el formato")).toBeTruthy();
     expect(within(dialog).getByText("NRC del receptor")).toBeTruthy();
     expect(within(dialog).getByText("Precio de la línea 3")).toBeTruthy();
-    expect(within(dialog).getByText(/Se usó el número de control DTE-01-M001P001-000000000000043/)).toBeTruthy();
+    expect(within(dialog).getByText(/Este rechazo usó el número de control DTE-01-M001P001-000000000000043. Al corregir el documento en su sistema, puede volver a usar ese mismo número/)).toBeTruthy();
     expect(within(dialog).queryByRole("button", { name: "Intentar de nuevo" })).toBeNull();
     expect(within(dialog).queryByRole("button", { name: /Corregir/ })).toBeNull();
     expect(within(dialog).getByRole("button", { name: "Cerrar" })).toBeTruthy();
@@ -217,7 +221,7 @@ describe("dialog: failures are read-only and helpful", () => {
     await within(dialog).findByText("No se pudo emitir");
     expect(within(dialog).getByText(/demasiadas solicitudes/)).toBeTruthy();
     await user.click(within(dialog).getByRole("button", { name: "Intentar de nuevo" }));
-    await within(dialog).findByText("Total a pagar");
+    await within(dialog).findByText("Total emitido");
     expect(issue).toHaveBeenCalledTimes(2);
   });
 
@@ -249,7 +253,7 @@ describe("dialog: failures are read-only and helpful", () => {
     render(<Harness client={client} />);
     const user = await openDialog();
     await user.click(await screen.findByRole("button", { name: "Emitir factura" }));
-    await screen.findByText("Total a pagar");
+    await screen.findByText("Total emitido");
   });
 
   it("shows the expired screen with only «Cerrar»", async () => {
@@ -273,7 +277,7 @@ describe("dialog: keyboard and focus", () => {
     await user.keyboard("{Escape}");
     expect(screen.getByRole("dialog")).toBeTruthy();
     await act(async () => release(sealed));
-    await screen.findByText("Total a pagar");
+    await screen.findByText("Total emitido");
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog")).toBeNull();
   });
@@ -316,22 +320,22 @@ describe("dialog: keyboard and focus", () => {
 });
 
 describe("modes and looks", () => {
-  it("confirm=false issues immediately without the review screen", async () => {
+  it("run=auto issues immediately without the review screen", async () => {
     const { client, calls } = makeClient({ issue: [sealed] });
-    render(<Harness client={client} confirm={false} />);
+    render(<Harness client={client} run="auto" />);
     await openDialog();
-    await screen.findByText("Total a pagar");
+    await screen.findByText("Total emitido");
     expect(calls).toEqual(["describe", "issue"]);
     expect(screen.queryByRole("button", { name: "Emitir factura" })).toBeNull();
   });
 
-  it("attribution:false removes «Emitido con Facta DTE»; branding name shows in the header", async () => {
+  it("attribution:false removes «Powered by factadte.com»; branding name shows in the header", async () => {
     const { client } = makeClient({});
     render(<Harness client={client} provider={{ branding: { name: "Café del Volcán", attribution: false } }} />);
     await openDialog();
     const dialog = await screen.findByRole("dialog");
     await within(dialog).findByText("Café del Volcán");
-    expect(within(dialog).queryByText("Emitido con Facta DTE")).toBeNull();
+    expect(within(dialog).queryByText("Powered by factadte.com")).toBeNull();
   });
 
   it("appearance variables become --facta-* custom properties; classNames and unstyled work", async () => {
@@ -381,7 +385,7 @@ describe("modes and looks", () => {
     render(<Harness client={client} provider={{ onEvent }} />);
     const user = await openDialog();
     await user.click(await screen.findByRole("button", { name: "Emitir factura" }));
-    await screen.findByText("Total a pagar");
+    await screen.findByText("Total emitido");
     expect(onEvent.mock.calls.map((c) => c[0].type)).toContain("sealed");
   });
 });
@@ -394,7 +398,7 @@ describe("other presentations", () => {
     const dialog = await screen.findByRole("dialog");
     expect(dialog.closest(".facta-layer--drawer")).toBeTruthy();
     await user.click(await within(dialog).findByRole("button", { name: "Emitir factura" }));
-    await within(dialog).findByText("Total a pagar");
+    await within(dialog).findByText("Total emitido");
   });
 
   it("inline renders in the page flow: no dialog role, no close without onClose", async () => {
@@ -407,7 +411,7 @@ describe("other presentations", () => {
     );
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Emitir factura" }));
-    await screen.findByText("Total a pagar");
+    await screen.findByText("Total emitido");
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.queryByRole("button", { name: "Cerrar ventana" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Listo" })).toBeNull();
