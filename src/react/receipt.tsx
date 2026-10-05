@@ -3,6 +3,7 @@
 
 import { fill, formatDateTime, formatMoney, type Environment, type IssueResult } from "../browser/index.ts";
 import { CheckIcon, ClockIcon, SealGlyph } from "./icons.tsx";
+import { DeliveryRows } from "./delivery.tsx";
 import { FactaRoot, useCfg, type FactaLook } from "./look.tsx";
 import { Downloads, IdRow, ObservationsList, StorageRow } from "./parts.tsx";
 
@@ -52,6 +53,7 @@ function ReceiptCard({ result, environment, reference }: Pick<FactaReceiptProps,
         <IdRow label={m.controlNumber} value={result.numeroControl} copy={false} />
         <IdRow label={m.generationCode} value={result.codigoGeneracion} />
         {showStorage && <StorageRow result={result} />}
+        <DeliveryRows result={result} />
       </dl>
       <ObservationsList result={result} />
       <Downloads result={result} />
