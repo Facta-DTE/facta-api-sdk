@@ -16,7 +16,7 @@ export { describeFieldPath, describeFields } from "./fields.ts";
 export type { FieldIssue } from "./fields.ts";
 export { storageTone } from "./storage.ts";
 export type { StorageTone } from "./storage.ts";
-export { appearanceToCssVariables, mergeAppearance, pickAccentInk, resetAppearanceWarnings, resolveMotion } from "./appearance.ts";
+export { appearanceToCssVariables, colorToSrgb, mergeAppearance, pickAccentInk, resetAppearanceWarnings, resolveAccentInk, resolveMotion } from "./appearance.ts";
 export type {
   FactaAppearance,
   FactaDensity,
