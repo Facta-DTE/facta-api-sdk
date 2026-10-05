@@ -390,6 +390,40 @@ Firma y transmite exactamente lo que devolvió `prepare`. Pase el documento **si
 const dte = await facta.sign(preparado);
 ```
 
+### `deliverEmail`, `deliverWhatsApp`, `getDelivery` y `waitForDelivery`
+
+La entrega por correo y por WhatsApp la hace la API, nunca el SDK, y **nunca
+bloquea la emisión**: `issue` solo marca los canales y devuelve un token de
+entrega; cada canal es una petición aparte.
+
+```typescript
+const dte = await facta.issue(venta, {
+  idempotencyKey: "venta-1042",
+  deliver: { email: true, whatsapp: { number: "+50370000000", consent: true } },
+});
+if (dte.estado === "sellado" && dte.entrega?.token) {
+  await facta.deliverEmail(dte.codigoGeneracion, dte.entrega.token);
+  await facta.deliverWhatsApp(dte.codigoGeneracion, dte.entrega.token);
+  const final = await facta.waitForDelivery(dte.codigoGeneracion);
+  console.log(final.settled, final.canales);
+}
+```
+
+* `deliver.email`: `true` usa `receptor.correo`; un texto lo reemplaza solo para
+  la entrega. `deliver.whatsapp.consent: true` es **su** declaración de que el
+  receptor aceptó recibir documentos por WhatsApp; el SDK lo exige.
+* El token dura 5 minutos desde la emisión. Un documento en contingencia no
+  trae token (`esperando_sello`).
+* Un canal que no se puede entregar es un **estado**, no una excepción:
+  `fallido`, `sin_credito`, `sin_consentimiento`, `no_permitido`, `vencido`,
+  con `motivo` (`smtp_rejected`, `invalid_address`, `wallet_empty`,
+  `provider_unavailable`, `quota_exceeded`). Un 202 (`en_proceso`) tampoco es
+  error. Solo el vencimiento lanza `FactaError`: `entrega_vencida` (410),
+  `entrega_token_invalido` o `canal_no_marcado`. El token se oculta en los
+  mensajes de error.
+* `waitForDelivery(codigoGeneracion, { channels?, timeoutMs = 60000, intervalMs = 2000, signal? })`
+  devuelve `settled: false` al agotar el tiempo en vez de lanzar.
+
 ### `getDocumentStatus(generationCode)`
 
 **No manda la llave de firma.** Devuelve `DocumentStatus`.

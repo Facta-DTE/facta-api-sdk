@@ -52,7 +52,7 @@ and gets the same document back.
 
 ## What the browser sees
 
-`issue` answers `{ result, storage }`. `storage` carries counts and states only:
+`issue` answers `{ result, storage, statusToken }`, plus `{ deliveryHandle, delivery }` when your session marked channels. `storage` carries counts and states only:
 never a path, bucket name, destination id or credential.
 
 ```json
@@ -67,6 +67,55 @@ never a path, bucket name, destination id or credential.
 
 **A storage problem is never an error.** A sealed or contingency document is
 always returned to the browser, even when `archive` is `failed`.
+
+## Delivery by e-mail and WhatsApp
+
+Your server can ask Facta to e-mail or WhatsApp the document right after it is
+sealed. Delivery never blocks the window: «Listo» and closing work from the
+moment the fiscal result is on screen.
+
+```ts
+const session = await createFactaSession({
+  request,
+  idempotencyKey: order.id,
+  // Set by YOUR server only. It rides inside the signed session token.
+  deliver: { email: true, whatsapp: { number: order.phone, consent: true } },
+}, secret);
+```
+
+* **The browser can neither add nor change `deliver`.** The handler reads it
+  from the verified session only; fields of that name in a request body are
+  ignored. The token is authenticated, not encrypted, so the number and address
+  are readable by the person holding it, like the draft itself.
+* After a sealed `issue` that returned a delivery token, the handler starts one
+  channel request per marked channel and **does not wait for them** beyond
+  `deliveryStartTimeoutMs` (default 1 500 ms, so a serverless runtime gets the
+  requests out). A failing request becomes a `delivery_error` event (code and
+  status only) and never fails the issue. A contingency document has no token
+  and shows «Se enviará cuando Hacienda confirme el documento».
+* **The Facta token never reaches the browser in usable form.** The browser
+  receives a `deliveryHandle`: `body.mac`, where the body holds the session
+  nonce, the generation code, an expiry (one hour; status reads outlive the
+  five-minute token) and the Facta token encrypted with AES-256-GCM under a key
+  derived from `sessionSecret` (the nonce and code are authenticated data), and
+  the MAC is HMAC-SHA256. A handle from another session, a tampered or expired
+  one gets the same generic `403 action_not_allowed`. The token is kept inside
+  the handle (instead of re-derived) so a later `delivery.status` can start a
+  channel that is still `pendiente` — the route is idempotent per channel —
+  while the token is alive.
+* **`delivery.status`** (session-scoped like `status`) takes the handle and
+  answers `{ delivery: { canales } }` with an allow-list per marked channel:
+  `estado`, masked `destino`, `motivo`, `actualizado`. Nothing else.
+
+In the window, every marked channel gets an «Entrega» row: «Enviando correo…»,
+then «Correo enviado a m•••@ejemplo.com» or «No se pudo enviar el correo ·
+Dirección rechazada»; WhatsApp states read «Sin saldo de WhatsApp»,
+«Sin consentimiento del cliente», «El permiso de la llave no incluye WhatsApp»
+or «El plazo para enviar venció». The window reads the state every 2 s for up to
+60 s, then says «Consultaremos el estado más tarde». Use `onDelivery(view)` on
+any window or button to follow it (it never replaces `onIssued`). Rows carry
+`data-facta-slot="deliveryRow"` and accept `classNames.deliveryRow`; the text
+lives in `messages.delivery`.
 
 ## Environment and status lookups
 
