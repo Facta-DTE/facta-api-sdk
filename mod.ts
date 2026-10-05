@@ -7,6 +7,7 @@ export {
   type FactaInvalidationArchiveOptions,
   type FactaOptions,
   type FactaRuntimeConfigV1,
+  type IssueOptions,
 } from "./src/client.ts";
 export type {
   ArchiveArtifact,

@@ -2,7 +2,7 @@
 
 **Package and source:** [npm `@facta-dte/api`](https://www.npmjs.com/package/@facta-dte/api) · [public GitHub repository](https://github.com/Facta-DTE/facta-api-sdk).
 
-**Version selection:** This documentation describes `0.1.1`. The [npm registry](https://www.npmjs.com/package/@facta-dte/api?activeTab=versions) is authoritative for published versions and distribution tags. `latest` selects the approved stable release. Confirm that your installed published version includes a method before using it; validate source-only capabilities with a packed checkout.
+**Version selection:** This documentation describes `0.2.0`. The [npm registry](https://www.npmjs.com/package/@facta-dte/api?activeTab=versions) is authoritative for published versions and distribution tags. `latest` selects the approved stable release. Confirm that your installed published version includes a method before using it; validate source-only capabilities with a packed checkout.
 
 The official package supports TypeScript and JavaScript. SDKs for other languages are pending; direct HTTP examples do not represent published SDKs.
 
@@ -10,8 +10,8 @@ The official package supports TypeScript and JavaScript. SDKs for other language
 # Verify published versions and tags, then install the approved stable release:
 npm view @facta-dte/api version dist-tags
 pnpm add @facta-dte/api
-# Optionally pin 0.1.1 after verifying that version is published:
-pnpm add @facta-dte/api@0.1.1
+# Optionally pin 0.2.0 after verifying that version is published:
+pnpm add @facta-dte/api@0.2.0
 ```
 
 
@@ -106,10 +106,14 @@ Spanish field names and enum values from the wire contract.
 
 | Method | Inputs / return | Scope / secret | Side effects, retry, and recovery |
 |---|---|---|---|
-| `issue(request, options?)` | `DteRequest`, optional `{ idempotencyKey?, signal? }` → `IssueResult` | `issue`; `signKey` required | `POST /v1/dte`; server prepares, signs, and submits. A sealed response is final; `contingencia` is an accepted 202 result that still needs reconciliation. A rejection can mean the control number was spent (`error.spent`). Retry only with the same key and same request. |
+| `issue(request, options?)` | `DteRequest`, optional `{ idempotencyKey?, signal?, deliver? }` → `IssueResult` | `issue`; `signKey` required | `POST /v1/dte`; server prepares, signs, and submits. A sealed response is final; `contingencia` is an accepted 202 result that still needs reconciliation. A rejection can mean the control number was spent (`error.spent`). Retry only with the same key and same request. `deliver: { email?: true \| string, whatsapp?: { number, consent: true } }` marks delivery channels (wire `entrega`); issuing never waits for delivery, and a marked sealed result carries `entrega: { token, venceEn, canales }`. See `deliverEmail`. |
 | `prepare(request, options?)` | `DteRequest`, optional call options → `PreparedDte` | `issue`; no `signKey` | `POST /v1/dte/prepare`; reserves a control number and returns the canonical unsigned document and prepare token. The reservation is a fiscal side effect. |
 | `sign(prepared, options?)` | Unmodified `PreparedDte`, optional call options → `IssueResult` | `issue`; `signKey` required | `POST /v1/dte/sign`; transmits the prepared token/document. Pass the result through unchanged. Reuse the same idempotency key after an uncertain response. |
 | `getDocumentStatus(generationCode)` | Generation code → `DocumentStatus` | `query` | `GET /v1/dte/{codigoGeneracion}`; reads known sealed, rejected, or pending status. No idempotency key is sent. |
+| `deliverEmail(generationCode, token, options?)` | UUID, `result.entrega.token`, optional `{ signal? }` → `DeliveryChannelResult` | `entrega:correo` | `POST /v1/dte/{codigoGeneracion}/entrega/correo` with `{ token }`. Token valid 5 minutes from issuance. 200 carries the final channel state, 202 is `en_proceso` (not an error); a second call returns the current state without a second message. A channel that cannot deliver is a **state** (`fallido`, `sin_credito`, `no_permitido`, …) with `motivo`, never an exception. Expiry throws `FactaError` `entrega_vencida` (410); a wrong token `entrega_token_invalido`; a channel the issue did not mark `canal_no_marcado`. The token is redacted from error messages and details. |
+| `deliverWhatsApp(generationCode, token, options?)` | Same → `DeliveryChannelResult` | `entrega:whatsapp` | `POST /v1/dte/{codigoGeneracion}/entrega/whatsapp`. Billed to the company's prepaid wallet; without credit the state is `sin_credito`, without `consent` at issue `sin_consentimiento`. Content is the approved template plus the document only. |
+| `getDelivery(generationCode, options?)` | UUID, optional `{ signal? }` → `DeliveryStatus` | `query` | `GET /v1/dte/{codigoGeneracion}/entrega`; every channel's state with masked destinations. Works after the token expired. |
+| `waitForDelivery(generationCode, options?)` | UUID, optional `{ channels?, timeoutMs = 60000, intervalMs = 2000, signal? }` → `WaitedDelivery` | `query` | Polls `getDelivery` until every awaited channel is final (anything but `pendiente`/`en_proceso`; `esperando_sello` is not waited for). On timeout it returns the last status with `settled: false` instead of throwing: delivery never changes the fiscal outcome. |
 | `listDocuments(filters?)` | Optional date/state/type/limit/cursor filters → `DtePage` | `query` | `GET /v1/dte`; default page size is 50 and the API maximum is 100. Follow `siguiente` exactly; rows are summaries rather than full signed documents. They may include the recipient's name and document number; private-mode encryption at rest does not hide these fields from an authorized API key. Treat the response as personal data and keep it out of general logs. Rejected reservations are queried by generation code and cannot be listed. |
 | `invalidate(generationCode, request, options?)` | Generation code, `InvalidationRequest`, optional call options → `InvalidationResult` | `issue`; `signKey` required | `POST /v1/dte/{codigoGeneracion}/invalidate`; irreversible fiscal action. POST retry uses the same idempotency key. |
 | `invalidateAndArchive(generationCode, request, options)` | Generation code, request, `{ archive, operationId, idempotencyKey, signal? }` → `InvalidationArchiveResult` | `issue`; `signKey` required when sending | Writes an encrypted command journal before sending, reuses the same key after an interrupted response, and retains the returned event JWS. `archive.state` is separate from fiscal success. |
@@ -143,8 +147,9 @@ its hash, idempotency key, and remote-copy state in the
 encrypted local journal. Remote writers must use stable paths and support
 idempotent same-byte writes, or expose `check` so the SDK can resolve an
 ambiguous outcome. The built-in destination adapters are documented in
-[`storage-adapters.md`](storage-adapters.md). The SDK does not currently send
-WhatsApp messages; no WhatsApp endpoint or delivery contract is published.
+[`storage-adapters.md`](storage-adapters.md). Delivery by e-mail and WhatsApp is done by the API, not
+the SDK: mark channels with `issue(…, { deliver })` and start them with
+`deliverEmail` / `deliverWhatsApp` (see above).
 
 ## Types and deeper references
 

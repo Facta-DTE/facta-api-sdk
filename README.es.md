@@ -6,7 +6,7 @@ TypeScript. El código fuente también funciona con Deno 2.6.6; el chequeo del
 tarball prueba un consumidor Node y uno Deno desde un directorio limpio.
 **Paquete y código:** [npm `@facta-dte/api`](https://www.npmjs.com/package/@facta-dte/api) · [repositorio público en GitHub](https://github.com/Facta-DTE/facta-api-sdk).
 
-**Selección de versión:** Esta documentación describe `0.1.1`. El [registro de npm](https://www.npmjs.com/package/@facta-dte/api?activeTab=versions) es la autoridad para las versiones publicadas y sus etiquetas. `latest` elige la versión estable aprobada. Confirme que la versión publicada instalada incluye un método antes de usarlo; valide las capacidades que solo estén en el código fuente con una copia empaquetada.
+**Selección de versión:** Esta documentación describe `0.2.0`. El [registro de npm](https://www.npmjs.com/package/@facta-dte/api?activeTab=versions) es la autoridad para las versiones publicadas y sus etiquetas. `latest` elige la versión estable aprobada. Confirme que la versión publicada instalada incluye un método antes de usarlo; valide las capacidades que solo estén en el código fuente con una copia empaquetada.
 
 El paquete oficial admite TypeScript y JavaScript. Los SDK de otros lenguajes están pendientes; los ejemplos HTTP directos no representan SDK publicados.
 
@@ -14,8 +14,8 @@ El paquete oficial admite TypeScript y JavaScript. Los SDK de otros lenguajes es
 # Verificar versiones y etiquetas, luego instalar la versión estable aprobada:
 npm view @facta-dte/api version dist-tags
 pnpm add @facta-dte/api
-# Opcional: fijar 0.1.1 después de verificar que está publicada:
-pnpm add @facta-dte/api@0.1.1
+# Opcional: fijar 0.2.0 después de verificar que está publicada:
+pnpm add @facta-dte/api@0.2.0
 ```
 
 
@@ -111,6 +111,8 @@ const readiness = await facta.diagnose();
 | `listCustomers()`, `getCustomer(id)`, `searchCustomers(query)` | Lee o busca clientes ya autorizados para esta llave desde el snapshot descifrado localmente. | No |
 | `listProducts()`, `getProduct(id)`, `searchProducts(query)` | Lee o busca productos del snapshot descifrado localmente. | No |
 | `issue(request, options?)` | Prepara, firma y transmite un DTE en una operación. | Sí |
+| `deliverEmail(codigoGeneracion, token)`, `deliverWhatsApp(codigoGeneracion, token)` | Inician la entrega por correo o WhatsApp de un DTE sellado con el token de entrega de `issue(…, { deliver })` (válido 5 minutos). | No |
+| `getDelivery(codigoGeneracion)`, `waitForDelivery(codigoGeneracion, options?)` | Leen el estado de cada canal; `waitForDelivery` consulta hasta que todos sean finales. | No |
 | `prepare(request, options?)` | Reserva correlativo y devuelve el documento canónico sin firma. | No |
 | `sign(prepared, options?)` | Firma y transmite exactamente el resultado de `prepare`. | Sí |
 | `getDocumentStatus(codigoGeneracion)` | Consulta un DTE por su código de generación. | No |
@@ -235,7 +237,7 @@ un fallo de red. Evita registrar requests, documentos o configuraciones enteras.
 
 Las opciones no reciben certificado, clave privada, contraseña de Hacienda,
 perfil de impresión ni proveedor de entrega: el SDK no firma localmente, no
-transmite directo a impresoras y todavía no tiene una API de envío WhatsApp.
+transmite directo a impresoras; el envío por correo y WhatsApp lo hace la API cuando usted marca los canales (`deliver`).
 
 ### Consultas y descarga de documentos
 
@@ -604,9 +606,8 @@ invoice. Invoices issued in the web app cannot be regenerated through this API.
 The `print()` method submits a downloaded PDF once through a caller-supplied
 `PrintTransport`. That adapter owns device discovery and spooling. The result
 reports only `submitted` or `unknown`; it never reports `printed`, and the SDK
-does not retry an uncertain job. The API also does not send WhatsApp messages.
-Saving or sharing bytes does not prove delivery. The WhatsApp sender remains to
-be defined.
+does not retry an uncertain job. Saving or sharing bytes does not prove delivery. To have Facta send the
+document, mark `deliver` on `issue` (see `deliverEmail` / `deliverWhatsApp`).
 
 ## Las tres piezas, y por qué son tres
 

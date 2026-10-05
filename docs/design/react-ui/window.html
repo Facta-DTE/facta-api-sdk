@@ -1,0 +1,783 @@
+<!doctype html>
+<html lang="es-SV">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Facta React UI · Ventana única</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ========== BOARD CHROME ========== */
+:root{--board-bg:#eef2f5;--board-card:#fff;--board-text:#13212a;--board-muted:#5d6f7a;--board-border:#d5dfe6;--board-accent:#006f96;--mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;--sans:"IBM Plex Sans",system-ui,sans-serif}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--board-bg:#0b1115;--board-card:#121b21;--board-text:#e6eef2;--board-muted:#94a7b2;--board-border:#25343d;--board-accent:#5fc3e8}}
+:root[data-theme="dark"]{--board-bg:#0b1115;--board-card:#121b21;--board-text:#e6eef2;--board-muted:#94a7b2;--board-border:#25343d;--board-accent:#5fc3e8}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--board-bg);color:var(--board-text);font:15px/1.5 var(--sans)}
+.board{max-width:1240px;margin:0 auto;padding:32px 16px 96px}
+.board h1{font-size:28px;line-height:1.2;margin:0 0 6px;font-weight:600;letter-spacing:-.01em}
+.board .sub{color:var(--board-muted);max-width:760px;margin:0 0 20px}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;margin:0 0 8px;font-size:13px;color:var(--board-muted)}
+.toolbar button{font:inherit;color:var(--board-text);background:var(--board-card);border:1px solid var(--board-border);border-radius:8px;padding:6px 12px;cursor:pointer}
+nav.toc{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 0}
+nav.toc a{font:500 12px var(--mono);color:var(--board-muted);text-decoration:none;border:1px solid var(--board-border);border-radius:999px;padding:3px 10px;background:var(--board-card)}
+nav.toc a:hover{color:var(--board-accent);border-color:var(--board-accent)}
+section.bs{margin-top:56px;scroll-margin-top:16px}
+section.bs>h2{font-size:20px;font-weight:600;margin:0 0 4px;display:flex;gap:10px;align-items:baseline}
+section.bs>h2 .n{font:500 13px var(--mono);color:var(--board-accent)}
+section.bs>p.lead{color:var(--board-muted);margin:0 0 18px;max-width:820px;font-size:14px}
+h3.sh{font:500 12px var(--mono);color:var(--board-muted);margin:28px 0 8px;text-transform:uppercase;letter-spacing:.06em}
+.pair{display:flex;gap:24px;overflow-x:auto;padding:12px 12px 16px;margin:0 -12px;align-items:flex-start}
+.pair>*{flex:none}
+.frame{margin:0}
+.cap{font:12px/1.4 var(--mono);color:var(--board-muted);margin:0 0 8px;max-width:520px}
+.cap b{color:var(--board-text);font-weight:500}
+.note{font-size:13px;color:var(--board-muted);max-width:820px;margin:8px 0}
+.note code,.cap code,td code{font-family:var(--mono);font-size:12px;background:var(--board-card);border:1px solid var(--board-border);border-radius:5px;padding:0 5px}
+
+/* ========== COMPONENT TOKENS ========== */
+[data-facta-theme="light"]{
+ --facta-accent:#007faa;--facta-accent:oklch(0.55 0.13 225);--facta-accent-ink:#fff;--facta-accent-soft:#e3f2f8;--facta-accent-soft:oklch(0.95 0.03 225);
+ --facta-bg:#fff;--facta-surface:#f6f9fb;--facta-text:#13212a;--facta-muted:#5d6f7a;--facta-border:#dce5eb;
+ --facta-success:#1f8a5b;--facta-success-soft:#e5f4ec;--facta-warning:#a86a00;--facta-warning-soft:#fdf2dd;--facta-danger:#b4372f;--facta-danger-soft:#fbe7e5;
+ --facta-radius:14px;--facta-radius-sm:9px;
+ --facta-shadow:0 1px 2px rgb(16 24 32 / .06),0 12px 40px rgb(16 24 32 / .14);--facta-overlay:rgb(10 18 24 / .45);
+ --host-bg:#eceff2;--host-card:#fff;--host-line:#dfe5ea;--host-ink:#c5cfd7;
+}
+[data-facta-theme="dark"]{
+ --facta-accent:#4cb4dc;--facta-accent:oklch(0.7 0.12 225);--facta-accent-ink:#06181f;--facta-accent-ink:oklch(0.16 0.02 230);--facta-accent-soft:#143646;--facta-accent-soft:oklch(0.3 0.05 230);
+ --facta-bg:#121c22;--facta-surface:#18252d;--facta-text:#e6eef2;--facta-muted:#94a7b2;--facta-border:#26353e;
+ --facta-success:#5cc496;--facta-success-soft:#173327;--facta-warning:#e3a744;--facta-warning-soft:#3a2c12;--facta-danger:#ef7d74;--facta-danger-soft:#3d1d1a;
+ --facta-radius:14px;--facta-radius-sm:9px;
+ --facta-shadow:0 1px 2px rgb(0 0 0 / .4),0 16px 48px rgb(0 0 0 / .5);--facta-overlay:rgb(0 0 0 / .6);
+ --host-bg:#0e151a;--host-card:#151e24;--host-line:#212d34;--host-ink:#2c3a43;
+}
+[data-facta-theme]{--facta-font:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+
+/* ========== STAGES (fake host) ========== */
+.stage{position:relative;overflow:hidden;border-radius:12px;background:var(--host-bg);display:flex;justify-content:center;align-items:flex-start;padding:36px 24px;border:1px solid var(--board-border);font-family:var(--facta-font)}
+.stage.dlg{width:528px}
+.stage>.win-slot{position:relative;z-index:2}
+.host{position:absolute;inset:0;display:grid;grid-template-columns:96px 1fr;gap:0;z-index:0}
+.host .side{background:var(--host-card);border-right:1px solid var(--host-line);padding:16px 12px;display:flex;flex-direction:column;gap:10px}
+.host .main{padding:16px 18px;display:flex;flex-direction:column;gap:12px}
+.host .bar{height:10px;border-radius:5px;background:var(--host-ink);opacity:.8}
+.host .bar.s{width:40%}.host .bar.m{width:65%}.host .bar.l{width:90%}
+.host .card{background:var(--host-card);border:1px solid var(--host-line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.host .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.host .row{display:grid;grid-template-columns:1.4fr 1fr .6fr;gap:12px;align-items:center}
+.host .logo{width:28px;height:28px;border-radius:8px;background:var(--host-ink)}
+.ov{position:absolute;inset:0;background:var(--facta-overlay);z-index:1}
+
+/* ========== COMPONENT ========== */
+.facta-win{--pad:20px;--gap:12px;--btn-h:44px;position:relative;width:480px;max-width:100%;display:flex;flex-direction:column;background:var(--facta-bg);color:var(--facta-text);font:400 15px/1.45 var(--facta-font);border-radius:var(--facta-radius);box-shadow:var(--facta-shadow);border:1px solid var(--facta-border);font-variant-numeric:tabular-nums;text-align:left}
+.facta-win[data-density="compact"]{--pad:16px;--gap:8px;--btn-h:38px}
+.facta-win *{box-sizing:border-box}
+.facta-head{display:flex;align-items:center;gap:10px;padding:14px var(--pad) 10px;min-height:64px}
+.facta-ht{flex:1;min-width:0;display:flex;flex-direction:column}
+.facta-title{margin:0;font:600 18px/1.3 var(--facta-font);letter-spacing:-.005em}
+.facta-eyebrow{font-size:12px;color:var(--facta-muted);line-height:1.2;margin-bottom:2px}
+.facta-logo{width:36px;height:36px;border-radius:9px;display:grid;place-items:center;flex:none;background:var(--facta-accent);color:var(--facta-accent-ink)}
+.facta-chip{display:inline-flex;align-items:center;gap:6px;font:600 12px/1 var(--facta-font);color:var(--facta-warning);background:var(--facta-warning-soft);border-radius:999px;padding:5px 10px}
+.facta-chip::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.facta-x{flex:none;width:44px;height:44px;margin:-8px -12px -8px 0;border:0;background:none;color:var(--facta-muted);border-radius:var(--facta-radius-sm);display:grid;place-items:center;cursor:pointer}
+.facta-x:hover{background:var(--facta-surface);color:var(--facta-text)}
+.facta-body{padding:4px var(--pad) var(--pad);display:flex;flex-direction:column;gap:var(--gap);overflow:auto;min-height:0}
+.facta-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px var(--pad);border-top:1px solid var(--facta-border);min-height:72px}
+.facta-attr{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--facta-muted);white-space:nowrap}
+.facta-actions{display:flex;gap:8px;margin-left:auto}
+.facta-btn{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:8px;height:var(--btn-h);min-width:44px;padding:0 18px;border-radius:var(--facta-radius-sm);border:1px solid var(--facta-border);background:var(--facta-bg);color:var(--facta-text);font:600 15px/1 var(--facta-font);cursor:pointer;transition:transform 90ms,background-color 120ms,border-color 120ms}
+.facta-btn:hover{background:var(--facta-surface)}
+.facta-btn:active{transform:scale(.98)}
+.facta-btn.primary{background:var(--facta-accent);border-color:var(--facta-accent);color:var(--facta-accent-ink)}
+.facta-btn.primary:hover{background:color-mix(in oklab,var(--facta-accent) 90%,#000)}
+.facta-btn.sm{font-size:14px;padding:0 14px}
+.facta-btn.focus,.facta-btn:focus-visible,.facta-x:focus-visible,.facta-copy:focus-visible{outline:2px solid var(--facta-accent);outline-offset:2px}
+.facta-block{background:var(--facta-surface);border-radius:var(--facta-radius-sm);padding:12px 14px}
+.facta-meta{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.facta-doc{display:inline-flex;align-items:center;gap:8px;font-weight:600}
+.facta-doc svg{color:var(--facta-accent)}
+.facta-ref{font-size:13px;color:var(--facta-muted)}
+.facta-sub{font-size:13px;color:var(--facta-muted)}
+.facta-lbl{display:block;font-size:12px;color:var(--facta-muted);margin-bottom:2px}
+.facta-rname{font-weight:500}
+.facta-lines{display:flex;flex-direction:column}
+.facta-line{display:flex;justify-content:space-between;gap:12px;padding:10px 2px;border-bottom:1px solid var(--facta-border)}
+.facta-line:last-child{border-bottom:0}
+.facta-line .q{font-size:13px;color:var(--facta-muted)}
+.facta-line .a{white-space:nowrap}
+.facta-totalrow{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding-top:4px}
+.facta-totalrow span{color:var(--facta-muted);font-size:14px}
+.facta-total{font:650 32px/1.1 var(--facta-font);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.facta-noteln{font-size:12px;color:var(--facta-muted);margin:0}
+.facta-hero{display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;padding:8px 0 4px}
+.facta-hero h3{margin:8px 0 0;font:600 20px/1.3 var(--facta-font)}
+.facta-hero p{margin:0;color:var(--facta-muted);font-size:14px;max-width:360px}
+.facta-hero .facta-total{margin-top:2px}
+.facta-hero.left{align-items:flex-start;text-align:left}
+.facta-badge{position:relative;width:64px;height:64px;border-radius:50%;display:grid;place-items:center;flex:none}
+.facta-badge.ok{background:var(--facta-success-soft);color:var(--facta-success)}
+.facta-badge.warn{background:var(--facta-warning-soft);color:var(--facta-warning)}
+.facta-badge.bad{background:var(--facta-danger-soft);color:var(--facta-danger)}
+.facta-badge.mute{background:var(--facta-surface);color:var(--facta-muted)}
+.facta-badge.sm{width:48px;height:48px}
+.facta-badge .ring{position:absolute;inset:0;border-radius:50%;border:2px solid currentColor;opacity:0;pointer-events:none}
+.facta-kv{display:flex;flex-direction:column;gap:12px}
+.facta-kv .r{display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:14px}
+.facta-kv .r.st{flex-direction:column;align-items:stretch;gap:2px}
+.facta-kv dt,.facta-kv .k{font-size:12px;color:var(--facta-muted);margin:0}
+.facta-kv .r:not(.st) .k{font-size:14px}
+.facta-id{display:flex;align-items:center;justify-content:space-between;gap:8px;font:500 12.5px/1.3 "IBM Plex Mono",ui-monospace,Menlo,monospace;word-break:break-all}
+.facta-copy{position:relative;flex:none;height:32px;min-width:32px;padding:0 8px;border:0;border-radius:8px;background:var(--facta-bg);color:var(--facta-muted);display:inline-flex;align-items:center;gap:4px;font:500 12px var(--facta-font);cursor:pointer;box-shadow:inset 0 0 0 1px var(--facta-border)}
+.facta-copy::after{content:"";position:absolute;inset:-6px}
+.facta-copy:hover{color:var(--facta-text)}
+.facta-copy.done{color:var(--facta-success);background:var(--facta-success-soft);box-shadow:none}
+.facta-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;background:var(--facta-success)}
+.facta-dot.w{background:var(--facta-warning);animation:fpulse 1.4s ease-in-out infinite}
+.facta-dot.m{background:var(--facta-muted)}
+.facta-dl2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.facta-callout{display:flex;gap:10px;border-radius:var(--facta-radius-sm);padding:12px 14px;font-size:14px;line-height:1.45;align-items:flex-start}
+.facta-callout svg{flex:none;margin-top:1px}
+.facta-callout.warn{background:var(--facta-warning-soft);color:var(--facta-text)}
+.facta-callout.warn svg{color:var(--facta-warning)}
+.facta-callout.bad{background:var(--facta-danger-soft)}
+.facta-callout.bad svg{color:var(--facta-danger)}
+.facta-callout.info{background:var(--facta-accent-soft)}
+.facta-callout.info svg{color:var(--facta-accent)}
+.facta-callout b{font-weight:600}
+.facta-fields{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;border:1px solid var(--facta-border);border-radius:var(--facta-radius-sm);overflow:hidden}
+.facta-fields li{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-bottom:1px solid var(--facta-border);font-size:14px}
+.facta-fields li:last-child{border-bottom:0}
+.facta-fields svg{color:var(--facta-danger);flex:none;margin-top:2px}
+.facta-fields b{font-weight:600}
+.facta-fields code{display:block;font:400 11.5px "IBM Plex Mono",ui-monospace,monospace;color:var(--facta-muted);margin-top:2px}
+.facta-quote{margin:0;border-left:3px solid var(--facta-danger);background:var(--facta-surface);border-radius:0 var(--facta-radius-sm) var(--facta-radius-sm) 0;padding:10px 12px;font:400 12px/1.5 "IBM Plex Mono",ui-monospace,Menlo,monospace;color:var(--facta-text);word-break:break-word}
+.facta-quote small{display:block;font:500 11px var(--facta-font);color:var(--facta-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px}
+.facta-code{font:500 12px/1.3 "IBM Plex Mono",ui-monospace,monospace;color:var(--facta-muted)}
+.facta-grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+/* stepper */
+.facta-steps{list-style:none;margin:6px 0 0;padding:0}
+.facta-steps li{position:relative;display:grid;grid-template-columns:28px 1fr;gap:14px;padding-bottom:26px}
+.facta-steps li:last-child{padding-bottom:0}
+.facta-steps .node{position:relative;width:28px;height:28px;border-radius:50%;border:2px solid var(--facta-border);background:var(--facta-bg);display:grid;place-items:center;color:var(--facta-accent-ink);z-index:1}
+.facta-steps .node svg{opacity:0;position:absolute}
+.facta-steps .conn{position:absolute;left:13px;top:28px;bottom:0;width:2px;background:var(--facta-border);border-radius:1px;overflow:hidden}
+.facta-steps .conn i{position:absolute;inset:0;background:var(--facta-accent);transform-origin:top;transform:scaleY(0)}
+.facta-steps li.done .node{background:var(--facta-accent);border-color:var(--facta-accent)}
+.facta-steps li.done .node svg{opacity:1}
+.facta-steps li.done .conn i{transform:scaleY(1)}
+.facta-steps li.active .node{border-color:var(--facta-accent)}
+.facta-steps li.active .node::before{content:"";width:10px;height:10px;border-radius:50%;background:var(--facta-accent)}
+.facta-steps li.active .node::after{content:"";position:absolute;inset:-2px;border-radius:50%;border:2px solid var(--facta-accent);animation:fring 1.6s ease-out infinite}
+.facta-steps li.active .conn i{transform:scaleY(.35)}
+.facta-steps .st b{display:block;font-weight:500;line-height:28px}
+.facta-steps .st small{display:block;font-size:13px;color:var(--facta-muted);margin-top:-2px}
+.facta-steps li.pending .st b{color:var(--facta-muted)}
+.facta-steps li.active .st b{font-weight:600}
+.facta-spin{animation:fspin .9s linear infinite;flex:none}
+.facta-live{display:flex;gap:12px;align-items:center;background:var(--facta-surface);border-radius:var(--facta-radius-sm);padding:12px 14px;font-size:14px}
+/* skeleton */
+.facta-skel{display:block;border-radius:6px;background:linear-gradient(90deg,var(--facta-surface) 0%,var(--facta-border) 45%,var(--facta-surface) 90%);background-size:220% 100%;animation:fshimmer 1.4s linear infinite}
+/* sheet, drawer, inline */
+.facta-win.sheet{width:100%;border-radius:20px 20px 0 0;box-shadow:0 -8px 40px rgb(0 0 0 / .25);border-bottom:0;max-height:88%;--btn-h:44px}
+.facta-grab{width:36px;height:4px;border-radius:2px;background:var(--facta-border);margin:8px auto 0;flex:none}
+.facta-win.sheet .facta-head{min-height:56px;padding-top:8px}
+.facta-win.sheet .facta-foot{flex-direction:column-reverse;align-items:stretch;gap:12px;padding-bottom:calc(14px + 34px)}
+.facta-win.sheet .facta-actions{flex-direction:column-reverse;margin:0}
+.facta-win.sheet .facta-actions .facta-btn{width:100%}
+.facta-win.sheet .facta-attr{justify-content:center}
+.facta-win.drawer{width:440px;height:100%;border-radius:0;border-width:0 0 0 1px;box-shadow:-12px 0 40px rgb(16 24 32 / .18)}
+.facta-win.drawer .facta-body{flex:1}
+.facta-win.inline{width:100%;box-shadow:none}
+/* issue button */
+.facta-ib{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:8px;height:44px;padding:0 20px;border-radius:var(--facta-radius-sm);border:1px solid var(--facta-accent);background:var(--facta-accent);color:var(--facta-accent-ink);font:600 15px/1 var(--facta-font);white-space:nowrap;cursor:pointer;transition:transform 90ms,background-color 160ms,border-color 160ms,color 160ms}
+.facta-ib[data-density="compact"]{height:38px;padding:0 16px;font-size:14px}
+.facta-ib:active{transform:scale(.98)}
+.facta-ib.busy{cursor:progress;background:var(--facta-accent-soft);border-color:var(--facta-accent-soft);color:var(--facta-accent)}
+.facta-ib.ok{background:var(--facta-success);border-color:var(--facta-success);color:#fff}
+[data-facta-theme="dark"] .facta-ib.ok{color:#06180f}
+.facta-ib.err{background:var(--facta-danger-soft);border-color:var(--facta-danger);color:var(--facta-danger)}
+.facta-pop{width:288px;background:var(--facta-bg);border:1px solid var(--facta-border);border-radius:var(--facta-radius);box-shadow:var(--facta-shadow);padding:14px;display:flex;flex-direction:column;gap:10px;color:var(--facta-text);font:400 14px/1.4 var(--facta-font);font-variant-numeric:tabular-nums}
+.facta-pop .h{display:flex;align-items:center;gap:10px;font-weight:600}
+.facta-pop .t{font:650 22px/1.1 var(--facta-font);letter-spacing:-.01em}
+.facta-pop .ft{display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:1px solid var(--facta-border)}
+.facta-rc{width:460px;max-width:100%;background:var(--facta-bg);color:var(--facta-text);border:1px solid var(--facta-border);border-radius:var(--facta-radius);padding:18px;display:flex;flex-direction:column;gap:14px;font:400 15px/1.45 var(--facta-font);font-variant-numeric:tabular-nums}
+.facta-rc .top{display:flex;align-items:center;gap:12px}
+.facta-rc .top .tt{flex:1;min-width:0}
+.facta-rc .top b{display:block;font-weight:600}
+.facta-pill{display:inline-flex;align-items:center;gap:6px;font:600 12px/1 var(--facta-font);border-radius:999px;padding:5px 10px}
+.facta-pill.ok{background:var(--facta-success-soft);color:var(--facta-success)}
+.facta-rc .cp{font-size:13px;color:var(--facta-muted);margin:0}
+
+@keyframes fspin{to{transform:rotate(360deg)}}
+@keyframes fring{0%{transform:scale(1);opacity:.55}100%{transform:scale(1.7);opacity:0}}
+@keyframes fpulse{50%{opacity:.35}}
+@keyframes fshimmer{from{background-position:120% 0}to{background-position:-120% 0}}
+@keyframes fpulseop{50%{opacity:.5}}
+@media (prefers-reduced-motion:reduce){
+ .facta-spin{animation:fpulseop 1.6s ease-in-out infinite}
+ .facta-skel{animation:none}
+ .facta-steps li.active .node::after{animation:none;opacity:.35}
+ .facta-dot.w{animation:none}
+ .facta-btn,.facta-ib{transition:none}.facta-btn:active,.facta-ib:active{transform:none}
+}
+html[data-rm="1"] .facta-spin{animation:fpulseop 1.6s ease-in-out infinite}
+html[data-rm="1"] .facta-skel{animation:none}
+html[data-rm="1"] .facta-steps li.active .node::after{animation:none;opacity:.35}
+html[data-rm="1"] .facta-dot.w{animation:none}
+
+/* download tiles */
+.facta-win,.facta-pop,.facta-rc{--dl-h:56px}
+.facta-win[data-density="compact"],.facta-pop[data-density="compact"],.facta-rc[data-density="compact"]{--dl-h:48px}
+.facta-dls{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.facta-dls.one{grid-template-columns:1fr}
+.facta-tile{appearance:none;display:flex;align-items:center;gap:12px;height:var(--dl-h);min-width:0;padding:0 14px;border-radius:var(--facta-radius-sm);border:1px solid var(--facta-border);background:var(--facta-surface);color:var(--facta-text);font:inherit;text-align:left;cursor:pointer;transition:border-color 120ms,background-color 120ms}
+.facta-tile .ti{flex:none;width:20px;height:20px;display:grid;place-items:center;color:var(--facta-accent)}
+.facta-tile .tt{min-width:0;display:flex;flex-direction:column;gap:1px}
+.facta-tile .tt b{font:600 15px/1.25 var(--facta-font);white-space:nowrap}
+.facta-tile .tt small{font:400 12px/1.2 var(--facta-font);color:var(--facta-muted)}
+.facta-tile:hover,.facta-tile.hover{border-color:var(--facta-accent);background:var(--facta-accent-soft)}
+.facta-tile:focus-visible,.facta-tile.focus{outline:2px solid var(--facta-accent);outline-offset:2px}
+.facta-tile.loading{cursor:progress;border-color:var(--facta-accent);background:var(--facta-accent-soft)}
+.facta-tile.done{border-color:var(--facta-success);background:var(--facta-success-soft)}
+.facta-tile.done .ti{color:var(--facta-success)}
+.facta-win.sheet .facta-tile{padding:0 10px;gap:8px}
+.facta-win.sheet .facta-tile .tt small{font-size:11.5px}
+/* countdown */
+.facta-count{height:3px;flex:none;overflow:hidden}
+.facta-count i{display:block;height:100%;background:var(--facta-accent);border-radius:0 2px 2px 0}
+.facta-countcap{font-size:12px;line-height:1.4;color:var(--facta-muted);padding:6px var(--pad) 0}
+/* fake host page + run storyboards */
+.hostpg{position:relative;width:480px;height:712px;background:var(--host-bg);color:var(--facta-text);font:15px/1.4 Georgia,"Times New Roman",serif;padding:20px;display:flex;flex-direction:column;gap:14px;overflow:hidden;--hok-bg:#e8f5ec;--hok-bd:#1b7f53;--hok-ink:#124d33;--hok-a:#0b5a39;--hbad-bg:#fdecec;--hbad-bd:#c0392b;--hbad-ink:#7a1f16}
+[data-facta-theme="dark"] .hostpg{--hok-bg:#10281c;--hok-bd:#3fae7d;--hok-ink:#b6ead0;--hok-a:#8fd9b6;--hbad-bg:#33181a;--hbad-bd:#e0685c;--hbad-ink:#f5c1bb}
+.hostpg .hb{display:flex;align-items:center;gap:10px;font:600 17px Georgia,serif}
+.hostpg h4{margin:0;font:600 24px/1.2 Georgia,serif}
+.hostpg .ord{background:var(--host-card);border:1px solid var(--host-line);border-radius:6px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;font-size:14px}
+.hostpg .ord div{display:flex;justify-content:space-between}
+.hostpg .hbtn{align-self:flex-start;background:#3b2f2f;color:#fff;border-radius:4px;padding:10px 16px;font:600 14px Georgia,serif}
+[data-facta-theme="dark"] .hostpg .hbtn{background:#e9dccf;color:#2a1f1f}
+.hbanner{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:6px;background:var(--hok-bg);border:1px solid var(--hok-bd);color:var(--hok-ink);font:14px/1.35 Georgia,serif}
+.hbanner u{margin-left:auto;color:var(--hok-a);white-space:nowrap}
+.htoast{position:absolute;left:16px;right:16px;bottom:16px;display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:6px;background:var(--hbad-bg);border:1px solid var(--hbad-bd);color:var(--hbad-ink);font:14px/1.35 Georgia,serif;box-shadow:0 6px 18px rgb(0 0 0 / .2)}
+.thumb.fit{height:252px}
+.flow .arr.t{width:92px;flex-direction:column;gap:2px;margin-top:-18px}
+.flow .arr.t span{font:500 10.5px/1.25 var(--mono);text-align:center;color:var(--facta-muted);max-width:86px}
+.tapm{position:absolute;width:0;height:0;pointer-events:none;z-index:5}
+.tapm i{position:absolute;left:-11px;top:-11px;width:22px;height:22px;border-radius:50%;border:2px solid #e0457b;background:rgb(224 69 123 / .22)}
+.tapm svg{position:absolute;left:4px;top:4px;width:18px;height:18px;filter:drop-shadow(0 1px 1px rgb(0 0 0 / .35))}
+.snip{margin:0;background:var(--board-card);color:var(--board-text);border:1px solid var(--board-border);border-radius:10px;padding:12px 14px;font:12.5px/1.6 var(--mono);overflow-x:auto;white-space:pre;max-width:100%}
+.runbox{margin:0 0 6px}
+.runbox .twocols>div{min-width:0;flex:1 1 380px}
+.cdbar{height:3px;margin:2px -14px 0;position:relative}
+.cdbar i{display:block;height:100%;width:100%;background:var(--facta-accent);border-radius:0 2px 2px 0}
+.cdcap{font-size:11px;line-height:1.35;color:var(--facta-muted)}
+
+/* ========== FLOW STRIP ========== */
+.flow{display:flex;align-items:flex-start;gap:0;overflow-x:auto;padding:16px;border-radius:12px;background:var(--host-bg);border:1px solid var(--board-border)}
+.flow .col{flex:none}
+.thumb{position:relative;width:170px;height:252px;overflow:hidden;border-radius:10px}
+.thumb>.sc{transform:scale(.354);transform-origin:top left;width:480px;pointer-events:none}
+.thumb .facta-win{box-shadow:0 1px 3px rgb(0 0 0 / .15)}
+.tl{font:500 11px var(--mono);color:var(--facta-muted);margin:6px 2px 0;text-align:center}
+.flow .arr{flex:none;align-self:center;width:34px;color:var(--facta-muted);display:grid;place-items:center;margin-top:-18px}
+.flow .alts{display:flex;flex-direction:column;gap:8px;margin-left:4px;padding-left:14px;border-left:2px dashed var(--facta-border)}
+.flow .alts .lab{font:500 11px var(--mono);color:var(--facta-muted);text-transform:uppercase;letter-spacing:.06em}
+.flow .altrow{display:flex;gap:12px}
+.flow .altrow .arr{display:none}
+
+/* ========== PHONE ========== */
+.phone{position:relative;width:390px;height:844px;border-radius:44px;overflow:hidden;background:var(--host-bg);box-shadow:0 0 0 8px #0b0f12,0 0 0 9px #2a3640;font-family:var(--facta-font)}
+.phone .sb{position:absolute;top:0;left:0;right:0;height:47px;display:flex;justify-content:space-between;align-items:center;padding:6px 32px 0;font:600 15px var(--facta-font);color:var(--facta-text);z-index:0}
+.phone .ph{position:absolute;inset:47px 0 0;padding:12px 16px;display:flex;flex-direction:column;gap:10px}
+.phone .ph .card{background:var(--host-card);border:1px solid var(--host-line);border-radius:12px;padding:12px;display:flex;gap:10px;align-items:center}
+.phone .ph .card .bar{height:9px;border-radius:5px;background:var(--host-ink)}
+.phone .ph .hd{height:22px;width:50%;border-radius:6px;background:var(--host-ink);margin:6px 0}
+.phone .ov{z-index:1}
+.phone .sheetwrap{position:absolute;left:0;right:0;bottom:0;max-height:88%;display:flex;flex-direction:column;justify-content:flex-end;z-index:2;height:88%}
+.phone .sheetwrap .facta-win{max-height:100%}
+.phone .home{position:absolute;bottom:8px;left:50%;width:134px;height:5px;margin-left:-67px;border-radius:3px;background:var(--facta-text);opacity:.85;z-index:3}
+.phone .safe{position:absolute;left:0;right:0;bottom:0;height:34px;z-index:4;border-top:1px dashed rgb(224 64 64 / .7);pointer-events:none;display:none}
+.phone.showsafe .safe{display:block}
+
+/* ========== DRAWER / INLINE / BUTTON STAGES ========== */
+.stage.erp{width:780px;height:640px;padding:0;display:block}
+.stage.erp .host{grid-template-columns:120px 1fr}
+.stage.erp .dwr{position:absolute;top:0;right:0;bottom:0;z-index:2;display:flex}
+.stage.erp .dwr .facta-win{height:100%}
+.stage.chk{width:600px;padding:0;display:block}
+.chk .top{display:flex;align-items:center;gap:10px;padding:14px 28px;background:var(--host-card);border-bottom:1px solid var(--host-line);color:var(--facta-text);font-weight:600}
+.chk .pg{padding:28px;display:flex;flex-direction:column;gap:14px;color:var(--facta-text)}
+.chk h4{margin:0;font:600 26px/1.2 var(--facta-font);letter-spacing:-.01em}
+.chk p{margin:0;color:var(--facta-muted)}
+.chk .ord{background:var(--host-card);border:1px solid var(--host-line);border-radius:12px;padding:14px 16px;display:flex;justify-content:space-between;font-size:14px}
+.chk .fine{font-size:12px;color:var(--facta-muted)}
+.btnstage{padding:28px 24px;width:528px;min-height:140px;background:var(--host-card);border:1px solid var(--board-border);border-radius:12px;display:flex;flex-direction:column;gap:18px;color:var(--facta-text);font-family:var(--facta-font)}
+.btnrow{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.btnrow .tag{font:500 11px var(--mono);color:var(--facta-muted);width:92px;flex:none}
+.pstage{background:var(--host-bg);border:1px solid var(--board-border);border-radius:12px;padding:24px;display:flex;flex-direction:column;gap:20px;width:528px;font-family:var(--facta-font)}
+.pos{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+
+/* ========== MOTION DEMOS ========== */
+.motion{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:20px}
+.mcard{background:var(--board-card);border:1px solid var(--board-border);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.mcard h4{margin:0;font:600 15px var(--sans)}
+.mcard .spec{font:12px/1.5 var(--mono);color:var(--board-muted)}
+.mcard .spec b{color:var(--board-text);font-weight:500}
+.mcard .rm{font-size:12px;color:var(--board-muted);border-top:1px dashed var(--board-border);padding-top:8px}
+.mcard .rm b{font-weight:600;color:var(--board-text)}
+.play{align-self:flex-start;background-color:var(--board-card);font:500 13px var(--sans);color:var(--board-accent);border:1px solid var(--board-accent);border-radius:8px;padding:6px 12px;min-height:34px;cursor:pointer}
+.play:hover{background:color-mix(in oklab,var(--board-accent) 12%,transparent)}
+.mstage{position:relative;border-radius:10px;background:var(--host-bg);height:260px;overflow:hidden;display:grid;place-items:center;padding:12px;font-family:var(--facta-font)}
+.mstage.light,.mstage[data-facta-theme]{color:var(--facta-text)}
+.mini{width:220px;background:var(--facta-bg);border:1px solid var(--facta-border);border-radius:var(--facta-radius);box-shadow:var(--facta-shadow);padding:14px;display:flex;flex-direction:column;gap:8px;position:relative;z-index:2}
+.mini .b{height:8px;border-radius:4px;background:var(--facta-border)}
+.mini .t{height:12px;width:55%;border-radius:5px;background:var(--facta-text);opacity:.8}
+.mini .btn{margin-top:6px;height:30px;border-radius:8px;background:var(--facta-accent)}
+.mstage .ov{opacity:0}
+.mph{position:relative;width:180px;height:238px;border-radius:22px;overflow:hidden;background:var(--host-bg);box-shadow:0 0 0 5px #0b0f12;margin-top:2px}
+.mph .sheet{position:absolute;left:0;right:0;bottom:0;background:var(--facta-bg);border-radius:16px 16px 0 0;padding:8px 14px 18px;display:flex;flex-direction:column;gap:7px;z-index:2;box-shadow:0 -6px 24px rgb(0 0 0 / .25);transform:translateY(100%)}
+.mph .sheet .g{width:30px;height:4px;border-radius:2px;background:var(--facta-border);margin:0 auto 4px}
+.mph .sheet .b{height:8px;border-radius:4px;background:var(--facta-border)}
+.mph .sheet .btn{height:28px;border-radius:8px;background:var(--facta-accent);margin-top:4px}
+.mdr{position:absolute;top:0;right:0;bottom:0;width:62%;background:var(--facta-bg);border-left:1px solid var(--facta-border);z-index:2;padding:16px;display:flex;flex-direction:column;gap:8px;box-shadow:-10px 0 30px rgb(0 0 0 / .2);transform:translateX(100%)}
+.mdr .b{height:8px;border-radius:4px;background:var(--facta-border)}
+.mdr .btn{height:30px;border-radius:8px;background:var(--facta-accent);margin-top:auto}
+.morphwin{width:100%;max-width:440px;overflow:hidden}#m-morph{height:auto;min-height:260px;align-items:start}#m-press .facta-win{width:auto;box-shadow:none;border:0;background:transparent;flex-direction:row}
+.morphwrap{position:relative;overflow:hidden}
+.morph-inner{display:flex;flex-direction:column}
+.morphwin .facta-win{width:100%;box-shadow:none}
+.rowc{display:flex;flex-direction:column;align-items:center;gap:6px}
+.anim-seal .facta-hero{padding:0}
+.shake-wrap{display:flex;align-items:center;gap:14px}
+.stbl{width:100%;border-collapse:collapse;font-size:13px;background:var(--board-card);border:1px solid var(--board-border);border-radius:10px;overflow:hidden}
+.stbl th,.stbl td{padding:9px 12px;border-bottom:1px solid var(--board-border);text-align:left;vertical-align:top}
+.stbl th{font:500 11px var(--mono);text-transform:uppercase;letter-spacing:.05em;color:var(--board-muted);background:color-mix(in oklab,var(--board-card) 90%,var(--board-border))}
+.stbl tr:last-child td{border-bottom:0}
+.stbl td:first-child{font-weight:500;white-space:nowrap}
+.stbl td .mono,.stbl td code{font-family:var(--mono)}
+.tbwrap{overflow-x:auto}
+.tbwrap .stbl{min-width:640px}
+.redfig{position:relative;display:inline-block;margin:26px 160px 0 0}
+.redfig .br{position:absolute;right:-8px;width:10px;border:1.5px solid #e0457b;border-left:0;border-radius:0 4px 4px 0}
+.redfig .rl{position:absolute;left:calc(100% + 8px);font:500 11px/1.3 var(--mono);color:#e0457b;white-space:nowrap;width:150px}
+.redfig .hl{position:absolute;left:0;right:0;pointer-events:none;background:rgb(224 69 123 / .03);outline:1px dashed rgb(224 69 123 / .6)}
+.hit{position:relative;display:inline-block}
+.hit::after{content:"";position:absolute;left:50%;top:50%;width:44px;height:44px;margin:-22px 0 0 -22px;border:1.5px dashed #e0457b;border-radius:6px;pointer-events:none}
+.twocols{display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start}.twocols>*{max-width:100%;min-width:0}
+@media (max-width:640px){.board{padding-top:20px}.board h1{font-size:23px}.motion{grid-template-columns:1fr}.btnstage,.pstage{width:100%}}
+</style>
+</head>
+<body>
+<main class="board" id="top">
+ <h1>Ventana única · FactaInvoiceDialog y variantes</h1>
+ <p class="sub">Tablero de diseño de la ventana de emisión del SDK de React (<code style="font-family:var(--mono);font-size:13px">@facta-dte/api/react</code>). Cada pantalla se muestra a tamaño real, en claro y oscuro, con los tokens <code style="font-family:var(--mono);font-size:13px">--facta-*</code> exactos del BRIEF. El tema del tablero es independiente del de los componentes.</p>
+ <div class="toolbar">
+  <span>Tablero:</span><button id="bt">Alternar claro / oscuro</button>
+  <label><input type="checkbox" id="rmToggle"> Simular «reducir movimiento»</label>
+  <label><input type="checkbox" id="safeToggle"> Mostrar zona segura del teléfono</label>
+ </div>
+ <nav class="toc" id="toc"></nav>
+ <div id="app"></div>
+</main>
+<script>
+/* ========== helpers ========== */
+const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
+const rm=()=>document.documentElement.dataset.rm==='1'||matchMedia('(prefers-reduced-motion: reduce)').matches;
+const money=n=>'$'+Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const EASE='cubic-bezier(.2,.8,.2,1)';
+
+/* icons: 24 grid, 1.75 stroke */
+const P={
+ check:'<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+ x:'<path d="M6 6l12 12M18 6L6 18"/>',
+ alert:'<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.2v.01"/>',
+ clock:'<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+ copy:'<rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M5 15V6.5A2.5 2.5 0 0 1 7.5 4H15"/>',
+ dl:'<path d="M12 4v11M7.5 10.5L12 15l4.5-4.5M5 19.5h14"/>',
+ info:'<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8v.01"/>',
+ doc:'<path d="M7 3.5h7l4 4V20a.5.5 0 0 1-.5.5h-10a.5.5 0 0 1-.5-.5V4a.5.5 0 0 1 .5-.5z"/><path d="M14 3.5V8h4M9 13h6M9 16.5h4"/>',
+ hour:'<path d="M7 4h10M7 20h10M8 4c0 4 4 5 4 8s-4 4-4 8M16 4c0 4-4 5-4 8s4 4 4 8"/>',
+ xcircle:'<circle cx="12" cy="12" r="8.5"/><path d="M9 9l6 6M15 9l-6 6"/>',
+ arrow:'<path d="M5 12h14M13 6l6 6-6 6"/>',
+ down:'<path d="M12 5v14M6 13l6 6 6-6"/>'
+};
+const ic=(n,s=20,cls='')=>`<svg class="${cls}" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n]}</svg>`;
+const spin=(s=18)=>`<svg class="facta-spin" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" opacity=".25"/><path d="M21 12a9 9 0 0 0-9-9"/></svg>`;
+function rosette(n=12,R=10,a=1.1){let d='';for(let i=0;i<=120;i++){const t=i/120*Math.PI*2,r=R+a*Math.cos(n*t);d+=(i?'L':'M')+(12+r*Math.sin(t)).toFixed(2)+' '+(12-r*Math.cos(t)).toFixed(2)}return d+'Z'}
+const ROS=rosette();
+const sealGlyph=(s=14)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="${ROS}"/><path d="M8.2 12.4l2.6 2.6 5-5.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const sealBig=(s=40)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" aria-hidden="true"><path d="${ROS}" fill="currentColor"/><path d="M8 12.3l3 3 5.2-5.6" fill="none" stroke="var(--facta-bg)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const hostLogo=`<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V9l8-5 8 5v11"/><path d="M9 20v-6h6v6"/></svg>`;
+
+/* ========== data ========== */
+const D={
+ cafe:{issuer:'Café Las Brumas, S.A. de C.V.',ref:'Pedido #1042',type:'Factura',total:36.15,
+  lines:[['Café molido de altura, 500 g',2,6.5],['Taza de cerámica «Brumas»',1,14.9],['Filtro de tela reutilizable',3,2.75]],
+  recv:{name:'María José Hernández',line:'DUI 04812345-6 · mjhernandez@example.com'}},
+ ferr:{issuer:'Ferretería San Miguel',ref:'Pedido #318',type:'Factura',total:22.85,
+  lines:[['Martillo de uña, 16 oz',1,12.5],['Clavos de 2 pulgadas (libra)',3,1.8],['Cinta métrica de 5 m',1,4.95]],recv:null}
+};
+const ID={control:'DTE-01-M001P001-000000000000042',code:'7C1E5B2A-93D4-4F0E-A1B8-5D26E0C47F13',sello:'2026F3A19C0E…B7D52A64',date:'05/10/2026 · 14:32:08'};
+const BR={name:'Ferretería San Miguel',logo:hostLogo};
+
+/* ========== window builder ========== */
+const copyBtn=(done=false)=>done?`<button class="facta-copy done" type="button" aria-label="Copiado">${ic('check',14)}Copiado</button>`:`<button class="facta-copy" type="button" aria-label="Copiar">${ic('copy',16)}</button>`;
+const btn=(t,cls='',icn='')=>`<button class="facta-btn ${cls}" type="button">${icn?ic(icn,18):''}${t}</button>`;
+const idrow=(k,v,copy=true,done=false)=>`<div class="r st"><dt class="k">${k}</dt><dd class="facta-id" style="margin:0"><span>${v}</span>${copy?copyBtn(done):''}</dd></div>`;
+const storageRow=s=>{const m={ok:['','Guardadas'],wait:['w','Guardándose…'],none:['m','Sin copia automática']}[s];return `<div class="r"><span class="k">Copias</span><span><span class="facta-dot ${m[0]}"></span>${m[1]}</span></div>`};
+const steps=(st,labels)=>{const L=labels||['Preparando el documento','Firmando','Enviando a Hacienda'];const sub={done:'Listo',active:'En curso…',pending:'En espera'};
+ return `<ol class="facta-steps" aria-live="polite">${st.map((s,i)=>`<li class="${s}"><span class="node">${ic('check',16)}</span>${i<2?'<span class="conn"><i></i></span>':''}<div class="st"><b>${L[i]}</b><small>${sub[s]}</small></div></li>`).join('')}</ol>`};
+const lines=d=>`<div class="facta-lines">${d.lines.map(l=>`<div class="facta-line"><div><div>${l[0]}</div><div class="q">${l[1]} × ${money(l[2])}</div></div><div class="a">${money(l[1]*l[2])}</div></div>`).join('')}</div>`;
+const ctx=d=>`<div class="facta-block"><div class="facta-meta"><span class="facta-doc">${ic('doc',20)}${d.type}</span><span class="facta-ref">${d.ref}</span></div><div class="facta-sub" style="margin-top:2px">${d.issuer}</div></div>`;
+
+const tileIco={idle:ic('dl',20),hover:ic('dl',20),loading:spin(20),done:ic('check',20)};
+const tile=(k,st='idle')=>{const m={pdf:['Descargar PDF','Representación gráfica'],json:['Descargar JSON','Documento firmado']}[k];return `<button class="facta-tile ${st==='idle'?'':st}" type="button" data-k="${k}" ${st==='loading'?'aria-busy="true"':''}><span class="ti">${tileIco[st]}</span><span class="tt"><b>${m[0]}</b><small>${st==='done'?'Descargado':st==='loading'?'Preparando…':m[1]}</small></span></button>`};
+const tiles=(a=['pdf','json'],st='idle')=>`<div class="facta-dls ${a.length===1?'one':''}">${a.map(k=>tile(k,st)).join('')}</div>`;
+const SCREENS={
+ loading:o=>({title:'Cargando su factura',body:`<div class="facta-body" aria-busy="true"><span class="facta-skel" style="height:62px;border-radius:9px"></span><span class="facta-skel" style="height:50px;border-radius:9px"></span>
+   ${[0,1,2].map(()=>`<div style="display:flex;justify-content:space-between;gap:20px;padding:6px 2px"><div style="flex:1;display:flex;flex-direction:column;gap:7px"><span class="facta-skel" style="height:13px;width:70%"></span><span class="facta-skel" style="height:10px;width:30%"></span></div><span class="facta-skel" style="height:13px;width:56px"></span></div>`).join('')}
+   <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px"><span class="facta-skel" style="height:12px;width:110px"></span><span class="facta-skel" style="height:30px;width:130px"></span></div></div>`,
+  actions:`<span class="facta-skel" style="height:var(--btn-h);width:92px;border-radius:9px"></span><span class="facta-skel" style="height:var(--btn-h);width:140px;border-radius:9px"></span>`}),
+ review:o=>({title:'Revise su factura',body:`<div class="facta-body">${ctx(o.data)}
+   <div class="facta-block"><span class="facta-lbl">Receptor</span>${o.data.recv?`<div class="facta-rname">${o.data.recv.name}</div><div class="facta-sub">${o.data.recv.line}</div>`:`<div class="facta-rname">Consumidor final</div><div class="facta-sub">Sin datos del receptor</div>`}</div>
+   ${lines(o.data)}<div class="facta-totalrow"><span>Total de su pedido</span><b class="facta-total">${money(o.data.total)}</b></div>
+   <p class="facta-noteln">Hacienda calcula los totales definitivos al sellar.</p></div>`,
+  actions:btn('Cancelar')+btn('Emitir factura','primary')}),
+ issuing:o=>({title:'Emitiendo su factura',body:`<div class="facta-body">${ctx(o.data)}${steps(['done','active','pending'])}<p class="facta-noteln" style="text-align:center">Esto toma unos segundos.</p></div>`,actions:''}),
+ verifying:o=>({title:'Confirmando con Hacienda',body:`<div class="facta-body">${ctx(o.data)}${steps(['done','done','active'])}
+   <div class="facta-live" role="status">${spin(20)}<span>Estamos confirmando con Hacienda. <b style="font-weight:600">No cierre esta ventana.</b></span></div></div>`,actions:''}),
+ sealed:o=>({title:'Emisión completada',body:`<div class="facta-body">
+   <div class="facta-hero"><span class="facta-badge ok"><span class="ring"></span>${sealBig(40)}</span><h3>${o.data.type==='Factura'?'Factura emitida':o.data.type}</h3><span class="facta-sub">Total emitido</span><b class="facta-total">${money(o.data.total)}</b></div>
+   <dl class="facta-block facta-kv" style="margin:0">${idrow('Número de control',ID.control,false)}${idrow('Código de generación',ID.code,true,o.copied)}${idrow('Sello de recepción',ID.sello,true)}
+    <div class="r"><span class="k">Fecha y hora</span><span>${ID.date}</span></div>${storageRow(o.storage)}</dl>
+   ${tiles()}</div>`,
+  actions:btn('Listo','primary')}),
+ contingency:o=>({title:'Emisión en espera',body:`<div class="facta-body">
+   <div class="facta-hero"><span class="facta-badge warn">${ic('clock',32)}</span><h3>Factura firmada, pendiente de Hacienda</h3><p>Su factura quedó firmada y Facta DTE la transmitirá a Hacienda en cuanto el servicio responda. No necesita hacer nada más.</p></div>
+   <div class="facta-callout warn">${ic('alert',20)}<span><b>No vuelva a emitir este documento.</b> Si lo hace, el cliente recibiría dos facturas por el mismo pedido.</span></div>
+   <dl class="facta-block facta-kv" style="margin:0">${idrow('Número de control',ID.control,false)}${idrow('Código de generación',ID.code)}<div class="r"><span class="k">Firmada</span><span>${ID.date}</span></div></dl>${tiles(['json'])}</div>`,
+  actions:btn('Listo','primary')}),
+ rejected:o=>({title:'Emisión rechazada',body:`<div class="facta-body">
+   <div class="facta-hero left"><span class="facta-badge bad sm" style="--x:0">${ic('xcircle',28)}</span><h3 style="margin-top:6px">Hacienda rechazó el documento</h3><p style="max-width:none">El documento no pasó la validación. Este dato debe corregirse en su sistema:</p></div>
+   <ul class="facta-fields"><li>${ic('x',16)}<div><b>NRC del receptor</b> — no cumple el formato<code>receptor.nrc</code></div></li><li>${ic('x',16)}<div><b>Correo del receptor</b> — falta el símbolo @<code>receptor.correo</code></div></li></ul>
+   <blockquote class="facta-quote"><small>Observaciones de Hacienda</small>[receptor.nrc] CAMPO #/receptor/nrc NO CUMPLE CON EL FORMATO REQUERIDO<br>[receptor.correo] CAMPO #/receptor/correo NO CUMPLE CON EL FORMATO REQUERIDO</blockquote>
+   <p class="facta-noteln" style="font-size:13px">Este rechazo usó el número de control ${ID.control}. Al corregir el documento en su sistema, puede volver a usar ese mismo número.</p>
+   <div class="facta-callout info">${ic('info',20)}<span>Corrija el dato en su sistema y vuelva a abrir la ventana.</span></div></div>`,
+  actions:btn('Cerrar','primary')}),
+ failed:o=>({title:'No se pudo emitir',body:`<div class="facta-body">
+   <div class="facta-hero"><span class="facta-badge bad">${ic('alert',30)}</span><h3>No pudimos completar la emisión</h3><p>${o.retry?'No logramos comunicarnos con el servicio de emisión. No se gastó ningún número de control, puede intentarlo de nuevo.':'El servicio devolvió un error que no se resuelve reintentando. Avise a quien administra su sistema e indique este código.'}</p></div>
+   <div class="facta-block"><span class="facta-lbl">Detalle</span><div class="facta-code">${o.retry?'network_error · HTTP 503':'session_invalid · HTTP 422'}</div></div></div>`,
+  actions:btn('Cerrar',o.retry?'':'primary')+(o.retry?btn('Intentar de nuevo','primary'):'')}),
+ expired:o=>({title:'Ventana vencida',body:`<div class="facta-body"><div class="facta-hero"><span class="facta-badge mute">${ic('hour',30)}</span><h3>Esta ventana venció</h3><p>Esta ventana venció. Vuelva a abrirla desde su pedido.</p></div></div>`,actions:btn('Cerrar','primary')})
+};
+
+function win(o={}){
+ o=Object.assign({screen:'review',env:'00',density:'comfortable',brand:null,attr:true,data:D.cafe,kind:'dialog',copied:false,storage:'ok',retry:true},o);
+ const S=SCREENS[o.screen](o);
+ const busy=o.screen==='issuing'||o.screen==='verifying'||o.screen==='loading';
+ const close=(o.kind==='inline'||busy)?'':`<button class="facta-x" type="button" aria-label="Cerrar">${ic('x',20)}</button>`;
+ const head=`<header class="facta-head">${o.brand?`<span class="facta-logo">${o.brand.logo}</span>`:''}<div class="facta-ht">${o.brand?`<span class="facta-eyebrow">${o.brand.name}</span>`:''}<h2 class="facta-title">${S.title}</h2></div>${o.env==='00'?'<span class="facta-chip">Pruebas</span>':''}${close}</header>`;
+ const hasFoot=o.attr||S.actions||o.actions;
+ const acts=o.actions!==undefined?o.actions:S.actions;
+ const bar=o.bar!=null?`<div class="facta-count" aria-hidden="true"><i style="width:${o.bar}%"></i></div><div class="facta-countcap" role="status">Se cerrará en 1 s · toque para mantener abierta</div>`:'';
+ const foot=hasFoot?`<footer class="facta-foot"><span class="facta-attr">${o.attr?sealGlyph(14)+'Powered by factadte.com':''}</span><div class="facta-actions">${acts}</div></footer>`:'';
+ const role=o.kind==='inline'?'region':'dialog';
+ return `<div class="facta-win ${o.kind==='sheet'?'sheet':o.kind==='drawer'?'drawer':o.kind==='inline'?'inline':''}" data-density="${o.density}" role="${role}" ${o.kind==='inline'?'':'aria-modal="true"'} aria-label="${S.title}">${o.kind==='sheet'?'<div class="facta-grab"></div>':''}${head}${bar}${S.body}${foot}</div>`;
+}
+
+/* ========== frames ========== */
+const host=()=>`<div class="host"><div class="side"><div class="logo"></div><div class="bar l"></div><div class="bar m"></div><div class="bar l"></div><div class="bar s"></div></div><div class="main"><div class="bar s" style="height:14px"></div><div class="kpis"><div class="card"><div class="bar s"></div><div class="bar l" style="height:18px"></div></div><div class="card"><div class="bar s"></div><div class="bar l" style="height:18px"></div></div><div class="card"><div class="bar s"></div><div class="bar l" style="height:18px"></div></div></div><div class="card">${'<div class="row"><div class="bar l"></div><div class="bar m"></div><div class="bar s"></div></div>'.repeat(6)}</div></div></div>`;
+const cap=(t)=>`<figcaption class="cap">${t}</figcaption>`;
+function dlgFrame(theme,o,capHtml,minH){return `<figure class="frame" data-facta-theme="${theme}">${cap(capHtml)}<div class="stage dlg" style="${minH?`min-height:${minH}px`:''}">${host()}<div class="ov"></div><div class="win-slot" style="width:100%;display:flex;justify-content:center">${win(o)}</div></div></figure>`}
+function dlgPair(id,label,o,note,minH){const c=l=>`<b>FactaInvoiceDialog</b> · ${label} · ${l}${note?` · ${note}`:''}`;return `<h3 class="sh" id="${id}">${label}</h3><div class="pair">${dlgFrame('light',o,c('light'),minH)}${dlgFrame('dark',o,c('dark'),minH)}</div>`}
+function phoneHost(){return `<div class="sb"><span>9:41</span><span style="font-size:12px">5G ▮▮▮</span></div><div class="ph"><div class="hd"></div>${[0,1,2,3,4,5].map(()=>`<div class="card"><div style="flex:1;display:flex;flex-direction:column;gap:7px"><div class="bar" style="width:70%"></div><div class="bar" style="width:40%"></div></div><div class="bar" style="width:46px"></div></div>`).join('')}</div>`}
+function phoneFrame(theme,o,capHtml){return `<figure class="frame" data-facta-theme="${theme}">${cap(capHtml)}<div class="phone">${phoneHost()}<div class="ov"></div><div class="sheetwrap">${win(Object.assign({kind:'sheet'},o))}</div><div class="home"></div><div class="safe"></div></div></figure>`}
+
+/* ========== sections ========== */
+const SECTIONS=[];
+const sec=(id,n,title,lead,html)=>SECTIONS.push({id,n,title,html:`<section class="bs" id="${id}"><h2><span class="n">${n}</span>${title}</h2><p class="lead">${lead}</p>${html}</section>`});
+
+/* 1 flow */
+(function(){
+ const th=(o,l)=>`<div class="col"><div class="thumb"><div class="sc">${win(o)}</div></div><div class="tl">${l}</div></div>`;
+ const arr=`<div class="arr">${ic('arrow',22)}</div>`;
+ const flow=(theme)=>`<figure class="frame" data-facta-theme="${theme}">${cap(`<b>Flujo</b> · ${theme} · run="manual" · camino feliz a la izquierda, finales alternos a la derecha · auto y auto-close en §8`)}<div class="flow">
+  ${th({screen:'review'},'1 · review')}${arr}${th({screen:'issuing'},'2 · issuing')}${arr}${th({screen:'sealed'},'3 · sealed')}
+  <div class="alts" style="margin-left:14px"><div class="lab">Finales alternos</div><div class="altrow">${th({screen:'contingency'},'contingency')}${th({screen:'rejected'},'rejected')}${th({screen:'failed'},'failed')}${th({screen:'expired'},'expired')}</div></div></div></figure>`;
+ sec('flow','1','Vista general del flujo','Revisar → Emitiendo → Sellada. Si Hacienda no responde queda en contingencia; si rechaza, se explica y se corrige en el sistema anfitrión; un fallo de transporte reintenta solo si es seguro; una sesión caducada se reabre desde el pedido. «Verificando» es un sub-estado de «Emitiendo» y comparte su pantalla. Este recorrido es <code>run="manual"</code> (por defecto); <code>run="auto"</code> y <code>run="auto-close"</code> lo acortan y se dibujan en la sección 8.',`<div class="pair" style="flex-direction:column">${flow('light')}${flow('dark')}</div>`);
+})();
+
+/* 2 dialog */
+(function(){
+ let h='';
+ h+=dlgPair('d-loading','2.1 Cargando',{screen:'loading'},'skeleton con shimmer · aria-busy · sin cerrar');
+ h+=dlgPair('d-review','2.2 Revisar',{screen:'review'},'receptor identificado');
+ h+=`<h3 class="sh">2.2b Revisar · consumidor final · compacto</h3><div class="pair">${dlgFrame('light',{screen:'review',data:Object.assign({},D.cafe,{recv:null}),density:'compact'},'<b>FactaInvoiceDialog</b> · review · density=compact · recv=null · light')}${dlgFrame('dark',{screen:'review',data:Object.assign({},D.cafe,{recv:null}),density:'compact'},'<b>FactaInvoiceDialog</b> · review · density=compact · recv=null · dark')}</div>`;
+ h+=dlgPair('d-issuing','2.3 Emitiendo',{screen:'issuing'},'conector rellena · activo pulsa · × oculto · Esc deshabilitado');
+ h+=dlgPair('d-verifying','2.4 Verificando',{screen:'verifying'},'sin botón de reintento · × oculto');
+ h+=dlgPair('d-sealed','2.5 Sellada',{screen:'sealed'},'copias guardadas');
+ h+=`<h3 class="sh">2.5b Sellada · producción (sin chip) · «Copiado ✓»</h3><div class="pair">${dlgFrame('light',{screen:'sealed',env:'01',copied:true},'<b>FactaInvoiceDialog</b> · sealed · ambiente 01 · tras pulsar copiar · light')}${dlgFrame('dark',{screen:'sealed',env:'01',copied:true},'<b>FactaInvoiceDialog</b> · sealed · ambiente 01 · tras pulsar copiar · dark')}</div>`;
+ h+=dlgPair('d-contingency','2.6 Contingencia',{screen:'contingency'},'tono ámbar · no reemitir');
+ h+=dlgPair('d-rejected','2.7 Rechazada',{screen:'rejected'},'solo lectura · sin «Corregir datos»');
+ h+=dlgPair('d-failed','2.8 Error con reintento',{screen:'failed',retry:true},'retryable: true · nada gastado');
+ h+=`<h3 class="sh">2.8b Error sin reintento</h3><div class="pair">${dlgFrame('light',{screen:'failed',retry:false},'<b>FactaInvoiceDialog</b> · failed · retryable: false · «Cerrar» pasa a primario · light')}${dlgFrame('dark',{screen:'failed',retry:false},'<b>FactaInvoiceDialog</b> · failed · retryable: false · dark')}</div>`;
+ h+=dlgPair('d-expired','2.9 Sesión vencida',{screen:'expired'},'');
+ sec('dialog','2','FactaInvoiceDialog · escritorio (480 px)','Sobre el sistema anfitrión con velo (<code>--facta-overlay</code>). Cabecera: título por paso, chip «Pruebas» solo en ambiente 00, × oculto mientras emite. Pie: «Powered by factadte.com» a la izquierda, acciones a la derecha.',h);
+})();
+
+/* 3 phone */
+(function(){
+ const L=['review','issuing','sealed','rejected'];
+ const row=theme=>`<div class="pair" style="gap:32px;padding-bottom:20px">${L.map(s=>phoneFrame(theme,{screen:s,env:s==='sealed'?'01':'00'},`<b>FactaInvoiceDialog</b> · sheet · ${s} · ${theme}`)).join('')}</div>`;
+ sec('phone','3','Hoja inferior · teléfono (390 × 844)','≤ 640 px la ventana pasa a hoja: asa de arrastre, esquinas superiores de 20 px, altura máxima 88 %, pie fijo con la acción primaria arriba a ancho completo y la atribución debajo, y el inset inferior (34 px) reservado para el indicador de inicio. Active «Mostrar zona segura» arriba para ver el límite.',`<h3 class="sh">Claro</h3>${row('light')}<h3 class="sh">Oscuro</h3>${row('dark')}`);
+})();
+
+/* 4 drawer */
+(function(){
+ const fr=(theme,s,o={})=>`<figure class="frame" data-facta-theme="${theme}">${cap(`<b>FactaInvoiceDrawer</b> · 440 px · alto completo · ${s} · ${theme}`)}<div class="stage erp">${host()}<div class="ov"></div><div class="dwr">${win(Object.assign({screen:s,kind:'drawer'},o))}</div></div></figure>`;
+ sec('drawer','4','FactaInvoiceDrawer · panel lateral','Panel de 440 px pegado a la derecha, alto completo, sin esquinas; el sistema anfitrión sigue visible y atenuado a la izquierda. El cuerpo crece y se desplaza, el pie se queda fijo abajo.',`<div class="pair">${fr('light','review')}${fr('dark','review')}</div><div class="pair">${fr('light','sealed',{env:'01'})}${fr('dark','sealed',{env:'01'})}</div>`);
+})();
+
+/* 5 inline */
+(function(){
+ const fr=(theme,s,o={})=>`<figure class="frame" data-facta-theme="${theme}">${cap(`<b>FactaInvoiceInline</b> · sin velo, sin × · ${s} · ${theme}`)}<div class="stage chk"><div class="top"><span class="facta-logo" style="width:28px;height:28px;border-radius:8px;display:grid;place-items:center;background:var(--facta-accent);color:var(--facta-accent-ink)">${ic('doc',16)}</span>Café Las Brumas</div><div class="pg"><h4>Gracias por su compra</h4><p>Su pedido #1042 está confirmado. Aquí puede emitir su factura electrónica.</p><div class="ord"><span>Pedido #1042</span><b style="font-variant-numeric:tabular-nums">$36.15</b></div>${win(Object.assign({screen:s,kind:'inline'},o))}<p class="fine">¿Necesita ayuda? Escríbanos a ayuda@cafelasbrumas.example</p></div></div></figure>`;
+ sec('inline','5','FactaInvoiceInline · dentro de la página','La misma tarjeta sin superposición: borde de 1 px en lugar de sombra, ancho del contenedor, sin botón de cierre. Pensada para la página «Gracias por su compra».',`<div class="pair">${fr('light','review')}${fr('dark','review')}</div><div class="pair">${fr('light','sealed',{env:'01'})}${fr('dark','sealed',{env:'01'})}</div>`);
+})();
+
+/* 6 issue button */
+const ibLabel={idle:`${ic('doc',18)}Emitir factura`,busy:`${spin(18)}Enviando a Hacienda…`,ok:`${ic('check',18)}Emitida`,err:`${ic('alert',18)}No se emitió · Ver detalle`};
+const ib=(s,d)=>`<button class="facta-ib ${s==='idle'?'':s}" data-density="${d}" type="button" ${s==='busy'?'aria-busy="true" disabled':''}>${ibLabel[s]}</button>`;
+const popover=(d='comfortable')=>`<div class="facta-pop" data-density="${d}" role="status"><div class="h"><span class="facta-badge ok sm" style="width:32px;height:32px;display:grid">${sealGlyph(18)}</span>Factura emitida</div><div><span class="facta-sub">Total emitido</span><div class="t">${money(36.15)}</div></div><div class="facta-id" style="font-size:12px"><span>7C1E5B2A-93D4…5D26E0C47F13</span>${copyBtn()}</div><div class="facta-dls one">${tile('pdf')}${tile('json')}</div><div class="ft"><span class="facta-attr">${sealGlyph(12)}factadte.com</span></div></div>`;
+(function(){
+ const st=(theme,d)=>`<figure class="frame" data-facta-theme="${theme}">${cap(`<b>FactaIssueButton</b> · ${d} · ${theme}`)}<div class="btnstage">
+  ${['idle','busy','ok','err'].map(s=>`<div class="btnrow"><span class="tag">${{idle:'1 idle',busy:'2 sending',ok:'3 success',err:'4 error'}[s]}</span>${ib(s,d)}</div>`).join('')}
+  <div class="btnrow" style="align-items:flex-start"><span class="tag">5 popover</span><div class="pos">${ib('ok',d)}${popover(d)}</div></div></div></figure>`;
+ const demo=(theme)=>`<figure class="frame" data-facta-theme="${theme}">${cap(`<b>FactaIssueButton</b> · secuencia viva · ${theme}`)}<div class="pstage" data-seq style="min-height:420px"><div class="pos"><div class="sq-b"></div><div class="sq-p" style="min-height:330px"></div></div><button class="play" type="button" data-play-seq>▶ Reproducir secuencia</button></div></figure>`;
+ sec('button','6','FactaIssueButton · POS, un solo botón','El botón mismo cambia de estado: idle → «Enviando a Hacienda…» → «Emitida» → popover con total, código y PDF. En error pasa a «No se emitió · Ver detalle». Cómodo = 44 px, compacto = 38 px (en táctil se conserva el área de 44 px por padding invisible).',
+  `<h3 class="sh">Cómodo · 44 px</h3><div class="pair">${st('light','comfortable')}${st('dark','comfortable')}</div><h3 class="sh">Compacto · 38 px</h3><div class="pair">${st('light','compact')}${st('dark','compact')}</div><h3 class="sh">Secuencia animada (ancho 200 ms al cambiar de estado)</h3><div class="pair">${demo('light')}${demo('dark')}</div>`);
+})();
+
+/* 7 receipt */
+(function(){
+ const rc=(s,extra='')=>{const msg={ok:'',wait:'<p class="cp">Se están copiando a su almacenamiento. Puede descargar el PDF mientras tanto.</p>',none:'<p class="cp">Esta cuenta no tiene copia automática. Descargue el PDF y el JSON y guárdelos usted.</p>'}[s];
+  return `<article class="facta-rc" aria-label="Factura emitida"><div class="top"><span class="facta-badge ok sm" style="width:40px;height:40px">${sealGlyph(22)}</span><div class="tt"><b>Factura · ${D.cafe.ref}</b><span class="facta-sub">${ID.date}</span></div><span class="facta-pill ok">${ic('check',14)}Sellada</span></div>
+  <div style="display:flex;justify-content:space-between;align-items:baseline"><span class="facta-sub">Total emitido</span><b class="facta-total" style="font-size:28px">${money(36.15)}</b></div>
+  <dl class="facta-block facta-kv" style="margin:0">${idrow('Número de control',ID.control,false)}${idrow('Código de generación',ID.code)}${storageRow(s)}</dl>${msg}
+  ${tiles()}</article>`};
+ const col=theme=>`<figure class="frame" data-facta-theme="${theme}">${cap(`<b>FactaReceipt</b> · ${theme} · storage = Guardadas · Guardándose… · Sin copia automática`)}<div class="pstage" style="width:530px">${rc('ok')}${rc('wait')}${rc('none')}</div></figure>`;
+ sec('receipt','7','FactaReceipt · documento ya emitido','Tarjeta para listados e historial de un documento sellado. Mismo vocabulario que la pantalla «Sellada»; la fila «Copias» resume el almacenamiento y el punto cambia de color y de texto, nunca solo de color.',`<div class="pair">${col('light')}${col('dark')}</div>`);
+})();
+
+/* 8 run modes */
+const hostPage=(kind='plain',h=712)=>{
+ const banner=kind==='ok'?`<div class="hbanner">${ic('check',18)}<span>Factura emitida · DTE-01-…042</span><u>Ver PDF</u></div>`:'';
+ const toast=kind==='err'?`<div class="htoast">${ic('alert',18)}<span>No pudimos emitir la factura de este pedido. Revise el NRC del cliente e intente de nuevo.</span></div>`:'';
+ return `<div class="hostpg" style="height:${h}px"><div class="hb">${hostLogo}Café Las Brumas</div><h4>Pedido #1042</h4>${banner}<div class="ord"><div><span>Café molido de altura, 500 g × 2</span><span>$13.00</span></div><div><span>Taza de cerámica «Brumas»</span><span>$14.90</span></div><div><span>Filtro de tela × 3</span><span>$8.25</span></div><div style="border-top:1px solid var(--host-line);padding-top:8px"><b>Total</b><b>$36.15</b></div></div><span class="hbtn">${kind==='plain'?'Facturar pedido':'Pedido facturado'}</span>${toast}</div>`};
+(function(){
+ const thW=(o,l,tap)=>`<div class="col"><div class="thumb fit"${tap?` data-tap="${tap}"`:''}><div class="sc">${win(o)}</div></div><div class="tl">${l}</div></div>`;
+ const thH=(kind,l)=>`<div class="col"><div class="thumb fit"><div class="sc">${hostPage(kind)}</div></div><div class="tl">${l}</div></div>`;
+ const ar=t=>`<div class="arr t"><span>${t}</span>${ic('arrow',22)}</div>`;
+ const flow=(theme,title,parts)=>`<figure class="frame" data-facta-theme="${theme}">${cap(`${title} · ${theme}`)}<div class="flow">${parts.join('')}</div></figure>`;
+ const both=(title,mk)=>`<div class="pair" style="flex-direction:column">${['light','dark'].map(t=>flow(t,title,mk())).join('')}</div>`;
+ const code=t=>`<pre class="snip">${t.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</pre>`;
+ const box=(id,h,note,snips,flows)=>`<div class="runbox"><h3 class="sh" id="${id}">${h}</h3><p class="note">${note}</p><div class="twocols">${snips.map(x=>`<div>${code(x)}</div>`).join('')}</div>${flows}</div>`;
+ let h='';
+ h+=box('r-manual','8.1 run="manual" · por defecto','El recorrido completo: la persona revisa, pulsa «Emitir factura», espera, ve el resultado y pulsa «Listo». Dos clics, ninguna sorpresa.',
+  ['<FactaInvoiceDialog session={token} />','const result = await open(token) // run: "manual"'],
+  both('<b>run="manual"</b> · el marcador rosa es el clic o toque de la persona',()=>[
+   thW({screen:'review'},'review','primary'),ar('clic en «Emitir factura»'),thW({screen:'issuing'},'issuing'),ar('≈ 3 s · Hacienda sella'),thW({screen:'sealed'},'sealed','primary'),ar('clic en «Listo»'),thH('plain','cerrada · open() resuelve')]));
+ h+=box('r-auto','8.2 run="auto"','Abre directo en «Emitiendo»: sin revisión y sin clic. Al sellarse el resultado se queda abierto hasta que la persona lo cierre con «Listo» o con la ×.',
+  ['<FactaInvoiceDialog session={token} run="auto" />','const result = await open(token, { run: "auto" })'],
+  both('<b>run="auto"</b> · abrir y dejar abierto el resultado',()=>[
+   thW({screen:'issuing'},'0 ms · abre ya en issuing'),ar('≈ 3 s · sin clic'),thW({screen:'sealed'},'sealed · queda abierta','primary'),ar('la persona cierra'),thH('plain','cerrada')]));
+ h+=box('r-autoclose','8.3 run="auto-close"','Abre, emite y se cierra sola. Mientras el resultado está visible, una barra fina de 3 px bajo la cabecera se encoge de derecha a izquierda durante <code>autoCloseDelay</code> (1200 ms por defecto). Al cerrar, la página anfitriona muestra el resultado con su propia interfaz, a partir de <code>onIssued</code> o de la promesa de <code>open()</code>.',
+  ['<FactaInvoiceDialog\n  session={token}\n  run="auto-close"\n  autoCloseDelay={1200}\n  onIssued={(r) => showBanner(r)}\n/>','const result = await open(token, { run: "auto-close" })\nshowBanner(result)'],
+  both('<b>run="auto-close"</b> · autoCloseOn="success" (por defecto)',()=>[
+   thW({screen:'issuing'},'0 ms · issuing'),ar('≈ 3 s · sello'),thW({screen:'sealed',bar:100,actions:''},'sealed · t = 0 ms'),ar('autoCloseDelay · 1200 ms'),thW({screen:'sealed',bar:30,actions:''},'t = 840 ms'),ar('1200 ms + salida de 140 ms'),thH('ok','cerrada · el anfitrión pinta su banner')]));
+ h+=`<h3 class="sh">Lo que ve el anfitrión · a tamaño real</h3><p class="note">El diseño de esta pieza es del anfitrión: la ventana ya se cerró y solo entrega datos (<code>onIssued</code>, <code>onError</code>). Aquí, con la tipografía y los colores de un sistema ficticio.</p><div class="pair">${['light','dark'].map(t=>`<figure class="frame" data-facta-theme="${t}">${cap(`<b>Anfitrión</b> · banner desde onIssued · ${t}`)}<div style="border-radius:12px;overflow:hidden;border:1px solid var(--board-border)">${hostPage('ok',360)}</div></figure><figure class="frame" data-facta-theme="${t}">${cap(`<b>Anfitrión</b> · aviso de error desde onError · ${t}`)}<div style="border-radius:12px;overflow:hidden;border:1px solid var(--board-border)">${hostPage('err',360)}</div></figure>`).join('')}</div>`;
+ h+=box('r-fail','8.4 auto-close · rama de fallo','Con <code>autoCloseOn="success"</code> (por defecto) solo el sello y la contingencia se cierran solos: un rechazo o un fallo se queda abierto para que la persona lo lea. Con <code>autoCloseOn="any"</code> también se cierran y el anfitrión muestra su propio error desde <code>onError</code>.',
+  ['<FactaInvoiceDialog\n  session={token}\n  run="auto-close"\n  autoCloseOn="success" // por defecto\n/>','<FactaInvoiceDialog\n  session={token}\n  run="auto-close"\n  autoCloseOn="any"\n  onError={(e) => showToast(e)}\n/>'],
+  both('<b>autoCloseOn="success"</b> · el rechazo se queda abierto',()=>[
+   thW({screen:'issuing'},'issuing'),ar('Hacienda rechaza'),thW({screen:'rejected'},'rejected · queda abierta','primary'),ar('la persona pulsa «Cerrar»'),thH('plain','cerrada')])
+  +both('<b>autoCloseOn="any"</b> · cierra y el anfitrión avisa',()=>[
+   thW({screen:'issuing'},'issuing'),ar('Hacienda rechaza'),thW({screen:'rejected',bar:100,actions:''},'rejected · t = 0 ms'),ar('1200 ms + salida'),thH('err','cerrada · onError → aviso del anfitrión')]));
+ h+=box('r-touch','8.5 La interacción cancela el cierre','Cualquier puntero o tecla dentro de la ventana cancela el cierre automático: la persona quiso leer. La barra desaparece y aparece «Listo». No hay cierre diferido ni reanudación.',
+  ['// sin código: es parte del contrato de run="auto-close"'],
+  both('<b>interacción</b> · toque a mitad de la cuenta',()=>[
+   thW({screen:'sealed',bar:55,actions:''},'t = 660 ms','body'),ar('toque o tecla dentro de la ventana'),thW({screen:'sealed'},'cuenta cancelada · aparece «Listo»')]));
+ h+=`<h3 class="sh" id="r-real">Cuenta regresiva · a tamaño real</h3><p class="note">Barra de 3 px, color <code>--facta-accent</code>, anclada a la izquierda y pegada al borde inferior de la cabecera; debajo, la leyenda de 12 px en gris. Las acciones se ocultan mientras corre; la × sigue disponible.</p>
+  <div class="pair">${dlgFrame('light',{screen:'sealed',env:'01',bar:70,actions:''},'<b>auto-close</b> · cuenta en curso · light')}${dlgFrame('dark',{screen:'sealed',env:'01',bar:70,actions:''},'<b>auto-close</b> · cuenta en curso · dark')}</div>
+  <div class="pair">${dlgFrame('light',{screen:'sealed',env:'01'},'<b>auto-close</b> · tras interactuar · light')}${dlgFrame('dark',{screen:'sealed',env:'01'},'<b>auto-close</b> · tras interactuar · dark')}</div>
+  <h3 class="sh">Hoja de 390 px · la leyenda y la atribución no se cruzan</h3><div class="pair" style="gap:32px">${['light','dark'].map(t=>phoneFrame(t,{screen:'sealed',env:'01',bar:70,actions:''},`<b>auto-close</b> · sheet · ${t}`)).join('')}</div>`;
+ sec('run','8','Modos de ejecución · run','Tres formas de correr la misma ventana: <code>manual</code> (por defecto), <code>auto</code> y <code>auto-close</code>. Cambia cuántos clics hacen falta y quién muestra el resultado; no cambia nada de lo que se firma ni se envía a Hacienda.',h);
+})();
+
+/* 9 white label */
+(function(){
+ const o=s=>({screen:s,brand:BR,attr:false,data:D.ferr,env:'01'});
+ const fr=(theme,s)=>`<figure class="frame" data-facta-theme="${theme}" style="--facta-accent:${theme==='light'?'#c2410c':'#fb923c'};--facta-accent-ink:${theme==='light'?'#fff':'#2a0f02'};--facta-accent-soft:${theme==='light'?'#ffedd5':'#4a2410'}">${cap(`<b>branding</b> · logo + nombre del anfitrión · <b>attribution: false</b> · --facta-accent sobrescrito · ${s} · ${theme}`)}<div class="stage dlg">${host()}<div class="ov"></div><div class="win-slot" style="width:100%;display:flex;justify-content:center">${win(o(s))}</div></div></figure>`;
+ sec('white','9','Marca blanca','<code>branding={{ name, logo }}</code> pone el logo y el nombre del anfitrión en la cabecera; <code>attribution={false}</code> quita «Powered by factadte.com» (el pie conserva solo las acciones). Los colores salen de variables CSS del anfitrión: aquí el acento es naranja ladrillo.',`<div class="pair">${fr('light','sealed')}${fr('dark','sealed')}</div><div class="pair">${fr('light','review')}${fr('dark','review')}</div>`);
+})();
+
+/* 10 motion */
+(function(){
+ const fr=(c)=>c;
+ const card=(id,t,spec,rmtxt,stage,theme='light')=>`<div class="mcard" data-facta-theme="${theme}" style="--x:0"><h4>${t}</h4><button class="play" type="button" data-demo="${id}">▶ Reproducir</button><div class="mstage" data-facta-theme="${theme}" id="m-${id}">${stage}</div><div class="spec">${spec}</div><div class="rm"><b>Reducir movimiento:</b> ${rmtxt}</div></div>`;
+ const stepper=`<div style="width:280px">${steps(['active','pending','pending'])}</div>`;
+ const mstep=`<div class="facta-win" style="width:300px;padding:18px;box-shadow:none;border:0;background:transparent"><ol class="facta-steps" id="stp"><li class="active"><span class="node"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5" pathLength="20" style="stroke-dasharray:20;stroke-dashoffset:20"/></svg></span><span class="conn"><i></i></span><div class="st"><b>Preparando el documento</b><small>En curso…</small></div></li><li class="pending"><span class="node"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5" pathLength="20" style="stroke-dasharray:20;stroke-dashoffset:20"/></svg></span><span class="conn"><i></i></span><div class="st"><b>Firmando</b><small>En espera</small></div></li><li class="pending"><span class="node"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5" pathLength="20" style="stroke-dasharray:20;stroke-dashoffset:20"/></svg></span><div class="st"><b>Enviando a Hacienda</b><small>En espera</small></div></li></ol></div>`;
+ const body=(s)=>{const S=SCREENS[s]({data:D.cafe,retry:true});return S.body+`<footer class="facta-foot"><span class="facta-attr">${sealGlyph(14)}Powered by factadte.com</span><div class="facta-actions">${S.actions}</div></footer>`};
+ const morph=`<div class="morphwin"><div class="facta-win" style="width:100%"><header class="facta-head"><div class="facta-ht"><h2 class="facta-title" id="mtitle">Revise su factura</h2></div><span class="facta-chip">Pruebas</span></header><div class="morphwrap" id="mwrap"><div class="morph-inner" id="mA">${body('review')}</div><div class="morph-inner" id="mB" style="display:none">${body('issuing')}</div></div></div></div>`;
+ const seal=`<div class="anim-seal" style="width:260px"><div class="facta-win" style="width:100%;box-shadow:none;border:0;background:transparent"><div class="facta-hero"><span class="facta-badge ok" id="sealbadge"><span class="ring" id="sealring"></span>${sealBig(40)}</span><h3 id="sealh">Factura emitida</h3><span class="facta-sub">Total emitido</span><b class="facta-total" id="sealtotal">${money(36.15)}</b></div></div></div>`;
+ const rej=`<div class="facta-win" style="width:300px;box-shadow:none;border:0;background:transparent"><div class="shake-wrap"><span class="facta-badge bad sm" id="rejicon">${ic('xcircle',28)}</span><div><b style="font:600 17px var(--facta-font)">Hacienda rechazó el documento</b></div></div></div>`;
+ const cp=`<div class="facta-win" style="width:340px;box-shadow:none;border:0;background:transparent;padding:14px"><div class="facta-block"><span class="facta-lbl">Código de generación</span><div class="facta-id"><span>7C1E5B2A-93D4-4F0E-A1B8-5D26E0C47F13</span><span id="cpslot">${copyBtn()}</span></div></div><div class="facta-sub" id="cplive" aria-live="polite" style="margin-top:8px;min-height:20px"></div></div>`;
+ const press=`<div style="display:flex;gap:14px;align-items:center" class="facta-win" ><button class="facta-btn primary" id="pressbtn" type="button" style="box-shadow:none">Emitir factura</button><span class="facta-sub" style="width:150px">Pulse o use el botón de reproducir</span></div>`;
+ const shim=`<div class="facta-win" style="width:300px;padding:16px;gap:10px;box-shadow:none"><span class="facta-skel" id="shim1" style="height:52px"></span><span class="facta-skel" style="height:14px;width:80%"></span><span class="facta-skel" style="height:14px;width:55%"></span><span class="facta-skel" style="height:30px;width:40%;align-self:flex-end"></span></div>`;
+ const dlgM=`<div class="ov" id="o1"></div><div class="mini" id="w1"><div class="t"></div><div class="b"></div><div class="b" style="width:80%"></div><div class="b" style="width:60%"></div><div class="btn"></div></div>`;
+ const shM=`<div class="mph"><div class="ov" id="o2" style="z-index:1"></div><div class="sheet" id="w2"><div class="g"></div><div class="t" style="height:12px;width:55%;border-radius:5px;background:var(--facta-text);opacity:.8"></div><div class="b"></div><div class="b" style="width:70%"></div><div class="btn"></div></div></div>`;
+ const drM=`<div class="ov" id="o3"></div><div class="mdr" id="w3"><div class="t" style="height:12px;width:55%;border-radius:5px;background:var(--facta-text);opacity:.8"></div><div class="b"></div><div class="b" style="width:80%"></div><div class="b" style="width:60%"></div><div class="btn"></div></div>`;
+ const cdM=`<div class="ov" id="o4"></div><div class="mini" id="w4"><div class="t"></div><div class="cdbar" id="cdb"><i></i></div><div class="cdcap" id="cdc">Se cerrará en 1 s · toque para mantener abierta</div><div class="b"></div><div class="b" style="width:70%"></div><div class="btn"></div></div>`;
+ const dtM=`<div class="facta-win" style="width:100%;max-width:300px;box-shadow:none;border:0;background:transparent;padding:14px"><div class="facta-dls one" id="dltiles">${tile('pdf')}</div></div>`;
+ const html=`<div class="motion">
+ ${card('dlg','Diálogo · entrada y salida','<b>Entrada</b> 180 ms · opacity 0→1 + scale .96→1 · <b>cubic-bezier(.2,.8,.2,1)</b><br><b>Salida</b> 140 ms · opacity 1→0 + scale 1→.98 · ease-in<br><b>Velo</b> opacity 0→1, 180 ms, lineal.','solo opacidad (120 ms); sin escala.',dlgM)}
+ ${card('sheet','Hoja inferior · deslizar hacia arriba','<b>Entrada</b> 360 ms · translateY(100%)→0 · <b>cubic-bezier(.32,.72,0,1)</b> (curva tipo resorte, sin rebote para no mostrar hueco abajo)<br><b>Salida</b> 240 ms ease-in · también por arrastre del asa (umbral 80 px o velocidad > .5 px/ms).','aparece con opacidad (120 ms) en su sitio, sin deslizar.',shM,'dark')}
+ ${card('drawer','Panel lateral · entrada desde la derecha','<b>Entrada</b> 280 ms · translateX(100%)→0 · <b>cubic-bezier(.2,.8,.2,1)</b><br><b>Salida</b> 200 ms · ease-in · velo en paralelo.','solo opacidad (120 ms).',drM)}
+ ${card('morph','Cambio de altura · revisar → emitiendo','<b>Altura</b> 260 ms · height A→B · cubic-bezier(.2,.8,.2,1)<br><b>Contenido</b> A sale en 100 ms; B entra con opacity 0→1 + translateY(4px→0), 180 ms, retraso 80 ms. El pie cambia con el cuerpo.','corte directo con fundido de 100 ms; la altura salta.',morph)}
+ ${card('stepper','Pasos · conector y palomita','<b>Conector</b> scaleY 0→1 · 280 ms · cubic-bezier(.2,.8,.2,1)<br><b>Palomita</b> stroke-dashoffset 20→0 · 200 ms · ease-out · el nodo se rellena en 120 ms<br><b>Activo</b> anillo que pulsa 1.6 s (scale 1→1.7, opacity .55→0).','sin anillo pulsante (punto fijo de 35 % de opacidad); palomita y relleno aparecen sin trazo, en 100 ms.',mstep)}
+ ${card('seal','Sello · estampado + contador','<b>Sello</b> 420 ms · scale 1.15→1 · rotate −6°→0 · opacity 0→1 · <b>cubic-bezier(.2,.8,.2,1)</b> + un anillo (scale .9→1.7, opacity .5→0, 600 ms)<br><b>Total</b> cuenta de $0.00 al total en 600 ms · ease-out · cifras tabulares.','sin rotación ni escala ni anillo: aparecen la insignia y el total final con fundido de 120 ms.',seal)}
+ ${card('reject','Rechazada · una sacudida','<b>Icono</b> translateX 0 → −4 → 4 → −3 → 3 → 0 px · 360 ms · ease-in-out · <b>una sola vez</b>, nunca en bucle.','sin sacudida; el icono hace un fundido de 120 ms.',rej)}
+ ${card('copy','Copiar · «Copiado ✓»','<b>Botón</b> cambia a «Copiado» con palomita durante 1600 ms · fondo success-soft en 120 ms · el texto va en una región <code>aria-live="polite"</code>.','igual: es un cambio de texto, sin movimiento.',cp)}
+${card('count','Cuenta regresiva · cierre automático','<b>Barra</b> width 100%→0 · <b>lineal</b> · duración = <code>autoCloseDelay</code> (1200 ms), anclada a la izquierda para encogerse de derecha a izquierda · 3 px · <code>--facta-accent</code><br><b>Después</b> salida del diálogo: opacity 1→0 + scale 1→.98, 140 ms, ease-in, velo en paralelo.','sin animación de la barra (oculta); solo el texto «Se cerrará en 1 s»; la ventana sale con un fundido de 120 ms tras el mismo retraso.',cdM)}
+ ${card('dltile','Mosaico de descarga · estados','<b>Hover</b> borde y fondo a acento en 120 ms · <b>Cargando</b> el icono pasa a un spinner de 20 px (borde de acento) y la segunda línea dice «Preparando…» · <b>Hecho</b> palomita con trazo 200 ms ease-out, borde y fondo success, segunda línea «Descargado»; vuelve al reposo a los 1600 ms.','el spinner pulsa en opacidad; la palomita aparece sin trazo; los cambios de color son instantáneos.',dtM)}
+ ${card('press','Botón · pulsación','<b>:active</b> scale .98 · 90 ms al bajar, 140 ms al soltar · transform únicamente · foco visible con anillo de 2 px y offset de 2 px.','sin escala; solo cambia el color de fondo.',press)}
+ ${card('shimmer','Esqueleto · brillo','<b>Brillo</b> gradiente de 220 % de ancho desplazándose · 1.4 s · linear · infinito mientras carga · superficie → borde → superficie.','sin brillo: bloque estático con el color de superficie.',shim)}
+ </div>`;
+ sec('motion','10','Movimiento','Cada demo se puede repetir con «▶ Reproducir». Los tiempos son los del contrato de implementación; solo se anima <code>transform</code>, <code>opacity</code> y, en el cambio de altura, <code>height</code>. «Simular reducir movimiento» (arriba) conmuta cada demo a su alternativa.',html);
+})();
+
+/* 11 redlines */
+(function(){
+ const rows=[
+ ['Diálogo','<code>width 480</code> · <code>max-height 88vh</code> · radio 14 (<code>--facta-radius</code>) · borde 1 px <code>--facta-border</code> · sombra <code>--facta-shadow</code>'],
+ ['Hoja (≤ 640 px)','ancho 100 % · radio superior 20 · asa 36×4 radio 2, 8 px desde arriba · alto máx. 88 % · inset inferior <code>env(safe-area-inset-bottom)</code> (34 px en iPhone) sumado al padding del pie'],
+ ['Panel','<code>width 440</code> · alto 100 % · sin radio · borde izquierdo 1 px · cuerpo con scroll, pie fijo'],
+ ['Inline','ancho del contenedor · mismo radio y borde · sin sombra ni velo ni ×'],
+ ['Cabecera','padding 14 / 20 / 10 · alto mínimo 64 · gap 10 · logo del anfitrión 36×36 radio 9 · chip «Pruebas» 12/600, padding 5×10, píldora'],
+ ['Cuerpo','padding 4 / 20 / 20 (cómodo) · 4 / 16 / 16 (compacto) · gap 12 (cómodo) · 8 (compacto)'],
+ ['Pie','padding 14 / 20 · alto mínimo 72 · borde superior 1 px · acciones a la derecha, gap 8'],
+ ['Mosaico de descarga','alto 56 (cómodo) · 48 (compacto) · dos columnas, gap 8 (una sola columna en el popover y cuando solo hay JSON) · radio <code>--facta-radius-sm</code> · fondo <code>--facta-surface</code> + borde 1 px <code>--facta-border</code> · icono 20 a la izquierda · título 15/600 · segunda línea 12 muted («Representación gráfica» / «Documento firmado»). «Listo» del pie sigue en 44.'],
+ ['Cuenta regresiva','barra de 3 px de alto, <code>--facta-accent</code>, al ras bajo la cabecera, ancho 100 %→0 lineal durante <code>autoCloseDelay</code> · leyenda 12 muted con padding lateral del cuerpo'],
+ ['Bloques','fondo <code>--facta-surface</code> · radio 9 (<code>--facta-radius-sm</code>) · padding 12×14 · sin borde'],
+ ['Botones','alto 44 (cómodo) · 38 (compacto, escritorio) · 44 siempre en táctil · padding 0 18 · radio 9 · 15/600 · primario: fondo acento, tinta <code>--facta-accent-ink</code>'],
+ ['Áreas táctiles','todo control ≥ 44×44: × (44×44, icono 20), copiar (32 visibles + 6 de área extra por lado = 44), botones, filas de enlace'],
+ ['Foco','<code>outline: 2px solid var(--facta-accent); outline-offset: 2px</code> · nunca <code>outline:none</code> sin sustituto · el foco entra al título al abrir y vuelve al disparador al cerrar'],
+ ['Pasos','nodo 28 px, borde 2 px · conector 2 px · separación 26 px entre pasos · texto 15/500, subtexto 13 muted'],
+ ['Insignia','64 px (resultado) / 48 px (rechazo, receipt) · icono 40 / 28–30 · fondo *-soft, icono en el color pleno'],
+ ['Contraste','texto ≥ 4.5:1 sobre <code>--facta-bg</code> y <code>--facta-surface</code>; muted ≥ 4.5:1; estados nunca solo por color (icono + palabra)']
+ ];
+ const type=[['Título','18 / 600 · 1.3','Revise su factura'],['Total','32 / 650 · tabular · −0.02em','$36.15'],['Titular de resultado','20 / 600','Factura emitida'],['Cuerpo','15 / 400 · 1.45','Café molido de altura, 500 g'],['Secundario','13–14 / 400 muted','2 × $6.50'],['Pie de página, notas','12 / 400 muted','Powered by factadte.com'],['Identificadores','12.5 · IBM Plex Mono 500 (o mono del sistema)','7C1E5B2A-93D4-4F0E-A1B8-5D26E0C47F13']];
+ const fig=`<figure class="frame" data-facta-theme="light">${cap('<b>Redline</b> · bandas medidas en el DOM')}<div class="redfig" id="redfig">${win({screen:'review'})}</div></figure>`;
+ const tok=`<div class="tbwrap"><table class="stbl"><thead><tr><th>Elemento</th><th>Especificación</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('')}</tbody></table></div>`;
+ const ty=`<div class="tbwrap"><table class="stbl" data-facta-theme="light" style="--x:0"><thead><tr><th>Escala</th><th>Tamaño / peso</th><th>Muestra</th></tr></thead><tbody>${type.map((r,i)=>`<tr><td>${r[0]}</td><td class="mono" style="font-family:var(--mono);font-size:12px">${r[1]}</td><td style="font-family:system-ui,sans-serif;${i===0?'font:600 18px system-ui':i===1?'font:650 32px system-ui;letter-spacing:-.02em;font-variant-numeric:tabular-nums':i===2?'font:600 20px system-ui':i===3?'font:400 15px system-ui':i===6?'font:500 12.5px var(--mono)':i===5?'font:400 12px system-ui;color:var(--board-muted)':'font:400 13px system-ui;color:var(--board-muted)'}">${r[2]}</td></tr>`).join('')}</tbody></table></div>`;
+ const focus=`<div class="twocols"><figure class="frame" data-facta-theme="light">${cap('<b>Foco y área táctil</b> · light')}<div class="pstage" style="width:340px;flex-direction:row;gap:30px;background:var(--facta-bg)"><span class="hit"><button class="facta-btn primary focus" type="button">Listo</button></span><span class="hit"><button class="facta-x" type="button" style="margin:0" aria-label="Cerrar">${ic('x',20)}</button></span><span class="hit"><span class="facta-copy">${ic('copy',16)}</span></span></div></figure><figure class="frame" data-facta-theme="dark">${cap('<b>Foco y área táctil</b> · dark')}<div class="pstage" style="width:340px;flex-direction:row;gap:30px;background:var(--facta-bg)"><span class="hit"><button class="facta-btn primary focus" type="button">Listo</button></span><span class="hit"><button class="facta-x" type="button" style="margin:0" aria-label="Cerrar">${ic('x',20)}</button></span><span class="hit"><span class="facta-copy">${ic('copy',16)}</span></span></div></figure></div>`;
+ const tst=th=>`<figure class="frame" data-facta-theme="${th}">${cap(`<b>Mosaicos</b> · reposo, hover, cargando, hecho y compacto · ${th}`)}<div class="pstage" style="width:520px;background:var(--facta-bg);gap:12px">${['idle','hover','loading','done'].map(st=>`<div class="facta-win" style="width:100%;box-shadow:none;border:0"><span class="cap" style="margin:0 0 4px">${st}</span>${tiles(['pdf','json'],st)}</div>`).join('')}<div class="facta-win" data-density="compact" style="width:100%;box-shadow:none;border:0"><span class="cap" style="margin:0 0 4px">compact · 48 px</span>${tiles()}</div></div></figure>`;
+ sec('redlines','11','Redlines y especificación','Valores que la implementación debe copiar tal cual. Todo se expresa con los tokens <code>--facta-*</code>; el anfitrión puede sobrescribir color, radio y fuente, nunca tamaños de área táctil ni contraste.',`<div class="twocols" style="flex-direction:column;align-items:stretch"><div class="pair" style="max-width:100%">${fig}</div><div>${tok}</div></div><h3 class="sh">Escala tipográfica</h3>${ty}<h3 class="sh">Foco y áreas táctiles (recuadro rosa discontinuo = 44×44)</h3>${focus}<h3 class="sh">Mosaicos de descarga · estados</h3><div class="pair">${tst('light')}${tst('dark')}</div>`);
+})();
+
+/* mount */
+$('#app').innerHTML=SECTIONS.map(s=>s.html).join('');
+$('#toc').innerHTML=SECTIONS.map(s=>`<a href="#${s.id}">${s.n} ${s.title.split(' · ')[0]}</a>`).join('');
+
+/* run storyboards: fit thumbs to the scaled window and place tap markers */
+$$('.thumb.fit').forEach(t=>{const sc=$('.sc',t);if(sc)t.style.height=Math.max(252,Math.ceil(sc.offsetHeight*.354))+'px'});
+$$('.thumb[data-tap]').forEach(t=>{const el=$({primary:'.facta-btn.primary',x:'.facta-x',body:'.facta-body'}[t.dataset.tap],t);if(!el)return;
+ const tr=t.getBoundingClientRect(),r=el.getBoundingClientRect(),body=t.dataset.tap==='body';
+ const m=document.createElement('span');m.className='tapm';m.innerHTML='<i></i><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M3 2l11 6.2-4.8 1.4L7.4 15z" fill="#13212a" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/></svg>';
+ m.style.left=(r.left-tr.left+r.width*(body?.5:.6))+'px';m.style.top=(r.top-tr.top+r.height*(body?.45:.5))+'px';t.appendChild(m)});
+/* redline brackets */
+(function(){const f=$('#redfig');if(!f)return;const w=$('.facta-win',f),fr=f.getBoundingClientRect();
+ [['.facta-head','Cabecera · mín. 64','8px'],['.facta-body','Cuerpo · pad 20 · gap 12',''],['.facta-foot','Pie · mín. 72 · botón 44','']].forEach(([sel,lab])=>{const e=$(sel,w),r=e.getBoundingClientRect();
+  const b=document.createElement('div');b.className='br';b.style.top=(r.top-fr.top)+'px';b.style.height=r.height+'px';f.appendChild(b);
+  const l=document.createElement('div');l.className='rl';l.style.top=(r.top-fr.top+r.height/2-8)+'px';l.textContent=lab+' · '+Math.round(r.height)+' px';f.appendChild(l);
+  const h=document.createElement('div');h.className='hl';h.style.top=(r.top-fr.top)+'px';h.style.height=r.height+'px';f.appendChild(h)});
+ const wl=document.createElement('div');wl.className='rl';wl.style.top='-18px';wl.style.left='0';wl.textContent='ancho 480 px · radio 14';f.appendChild(wl)})();
+
+/* ========== behaviour ========== */
+$('#bt').onclick=()=>{const r=document.documentElement;const d=getComputedStyle(r).getPropertyValue('--board-bg').trim()==='#0b1115';r.dataset.theme=d?'light':'dark'};
+$('#rmToggle').onchange=e=>{document.documentElement.dataset.rm=e.target.checked?'1':'0'};
+$('#safeToggle').onchange=e=>$$('.phone').forEach(p=>p.classList.toggle('showsafe',e.target.checked));
+const anim=(el,kf,opt)=>el.animate(kf,Object.assign({fill:'both'},opt)).finished.catch(()=>{});
+const fade=(el,from,to,d=120)=>anim(el,[{opacity:from},{opacity:to}],{duration:d,easing:'ease-out'});
+
+const demos={
+ async dlg(){const o=$('#o1'),w=$('#w1');
+  if(rm()){await fade(w,0,1);await sleep(900);await fade(w,1,0);return}
+  anim(o,[{opacity:0},{opacity:1}],{duration:180,easing:'linear'});await anim(w,[{opacity:0,transform:'scale(.96)'},{opacity:1,transform:'scale(1)'}],{duration:180,easing:EASE});
+  await sleep(900);anim(o,[{opacity:1},{opacity:0}],{duration:140});await anim(w,[{opacity:1,transform:'scale(1)'},{opacity:0,transform:'scale(.98)'}],{duration:140,easing:'ease-in'})},
+ async sheet(){const o=$('#o2'),w=$('#w2');
+  if(rm()){await fade(w,0,1);w.style.transform='none';await sleep(900);await fade(w,1,0);return}
+  w.style.transform='';anim(o,[{opacity:0},{opacity:1}],{duration:200});await anim(w,[{transform:'translateY(100%)'},{transform:'translateY(0)'}],{duration:360,easing:'cubic-bezier(.32,.72,0,1)'});
+  await sleep(900);anim(o,[{opacity:1},{opacity:0}],{duration:240});await anim(w,[{transform:'translateY(0)'},{transform:'translateY(100%)'}],{duration:240,easing:'ease-in'})},
+ async drawer(){const o=$('#o3'),w=$('#w3');
+  if(rm()){await fade(w,0,1);w.style.transform='none';await sleep(900);await fade(w,1,0);return}
+  anim(o,[{opacity:0},{opacity:1}],{duration:280});await anim(w,[{transform:'translateX(100%)'},{transform:'translateX(0)'}],{duration:280,easing:EASE});
+  await sleep(900);anim(o,[{opacity:1},{opacity:0}],{duration:200});await anim(w,[{transform:'translateX(0)'},{transform:'translateX(100%)'}],{duration:200,easing:'ease-in'})},
+ async morph(){const wrap=$('#mwrap'),A=$('#mA'),B=$('#mB'),t=$('#mtitle');
+  const toB=B.style.display==='none';const from=toB?A:B,to=toB?B:A;
+  const h0=wrap.offsetHeight;wrap.style.height=h0+'px';
+  await fade(from,1,0,100);from.style.display='none';to.style.display='';t.textContent=toB?'Emitiendo su factura':'Revise su factura';
+  wrap.style.height='auto';const h1=wrap.offsetHeight;wrap.style.height=h0+'px';
+  if(rm()){wrap.style.height='auto';await fade(to,0,1,100);return}
+  anim(to,[{opacity:0,transform:'translateY(4px)'},{opacity:1,transform:'none'}],{duration:180,delay:80,easing:EASE});
+  await anim(wrap,[{height:h0+'px'},{height:h1+'px'}],{duration:260,easing:EASE});wrap.style.height='auto'},
+ async stepper(){const li=$$('#stp li');const L=[['Listo'],['Listo'],['Listo']];
+  const reset=()=>{li.forEach((e,i)=>{e.className=i?'pending':'active';$('small',e).textContent=i?'En espera':'En curso…';const p=$('path',e);p.style.strokeDashoffset=20;const c=$('.conn i',e);if(c)c.style.transform='';$('.node',e).style.background='';$('.node',e).style.borderColor=''})};
+  reset();await sleep(700);
+  for(let i=0;i<3;i++){const e=li[i],p=$('path',e),c=$('.conn i',e),n=$('.node',e);
+   e.classList.remove('active');e.classList.add('done');$('small',e).textContent='Listo';
+   p.style.strokeDashoffset=0;
+   if(rm()){await fade(n.querySelector('svg'),0,1,100)}else{anim(p,[{strokeDashoffset:20},{strokeDashoffset:0}],{duration:200,easing:'ease-out'});anim(n,[{background:'var(--facta-bg)'},{background:'var(--facta-accent)'}],{duration:120})}
+   if(c){if(rm()){c.style.transform='scaleY(1)'}else{await anim(c,[{transform:'scaleY(0)'},{transform:'scaleY(1)'}],{duration:280,easing:EASE})}}
+   if(i<2){const nx=li[i+1];nx.classList.remove('pending');nx.classList.add('active');$('small',nx).textContent='En curso…';const ci=$('.conn i',nx);if(ci)ci.style.transform='scaleY(.35)'}
+   await sleep(rm()?500:380)}},
+ async seal(){const b=$('#sealbadge'),r=$('#sealring'),tt=$('#sealtotal'),h=$('#sealh');const T=36.15;
+  if(rm()){tt.textContent=money(T);await Promise.all([fade(b,0,1),fade(h,0,1),fade(tt,0,1)]);return}
+  tt.textContent='$0.00';
+  anim(h,[{opacity:0},{opacity:1}],{duration:300,delay:120});
+  anim(r,[{transform:'scale(.9)',opacity:.5},{transform:'scale(1.7)',opacity:0}],{duration:600,easing:'ease-out'});
+  const a=anim(b,[{transform:'scale(1.15) rotate(-6deg)',opacity:0},{transform:'scale(1) rotate(0)',opacity:1}],{duration:420,easing:EASE});
+  const t0=performance.now();const tick=now=>{const k=Math.min(1,(now-t0)/600),e=1-Math.pow(1-k,3);tt.textContent=money(T*e);if(k<1)requestAnimationFrame(tick)};requestAnimationFrame(tick);await a},
+ async reject(){const i=$('#rejicon');
+  if(rm()){await fade(i,0,1);return}
+  await anim(i,[{transform:'translateX(0)'},{transform:'translateX(-4px)',offset:.2},{transform:'translateX(4px)',offset:.4},{transform:'translateX(-3px)',offset:.6},{transform:'translateX(3px)',offset:.8},{transform:'translateX(0)'}],{duration:360,easing:'ease-in-out'})},
+ async copy(){const s=$('#cpslot'),l=$('#cplive');s.innerHTML=copyBtn(true);l.textContent='Código copiado al portapapeles';await sleep(1600);s.innerHTML=copyBtn();l.textContent=''},
+ async count(){const o=$('#o4'),w=$('#w4'),bar=$('#cdb i'),cap=$('#cdc');
+  [o,w,bar].forEach(e=>e.getAnimations().forEach(a=>a.cancel()));
+  if(rm()){bar.parentElement.style.visibility='hidden';cap.textContent='Se cerrará en 1 s';await fade(w,0,1);await sleep(1200);await fade(w,1,0);bar.parentElement.style.visibility='';return}
+  cap.textContent='Se cerrará en 1 s · toque para mantener abierta';
+  anim(o,[{opacity:0},{opacity:1}],{duration:180,easing:'linear'});await anim(w,[{opacity:0,transform:'scale(.96)'},{opacity:1,transform:'scale(1)'}],{duration:180,easing:EASE});
+  await anim(bar,[{width:'100%'},{width:'0%'}],{duration:1200,easing:'linear'});
+  anim(o,[{opacity:1},{opacity:0}],{duration:140});await anim(w,[{opacity:1,transform:'scale(1)'},{opacity:0,transform:'scale(.98)'}],{duration:140,easing:'ease-in'})},
+ async dltile(){const box=$('#dltiles');const t=$('.facta-tile',box);const set=(st)=>{const k=t.dataset.k;const n=document.createElement('div');n.innerHTML=tile(k,st);t.replaceWith(n.firstElementChild)};
+  const cur=()=>$('.facta-tile',box);
+  const swap=(st)=>{const old=cur();const n=document.createElement('div');n.innerHTML=tile(old.dataset.k,st);old.replaceWith(n.firstElementChild)};
+  swap('idle');await sleep(400);swap('hover');await sleep(700);swap('loading');await sleep(1000);swap('done');
+  const pth=$('.ti path',cur());if(pth&&!rm()){pth.setAttribute('pathLength','20');anim(pth,[{strokeDasharray:20,strokeDashoffset:20},{strokeDasharray:20,strokeDashoffset:0}],{duration:200,easing:'ease-out'})}
+  await sleep(1600);swap('idle')},
+ async press(){const b=$('#pressbtn');if(rm()){b.style.opacity='.8';await sleep(160);b.style.opacity='';return}
+  await anim(b,[{transform:'scale(1)'},{transform:'scale(.98)'}],{duration:90,easing:'ease-out'});await anim(b,[{transform:'scale(.98)'},{transform:'scale(1)'}],{duration:140,easing:EASE});b.getAnimations().forEach(a=>a.cancel())},
+ async shimmer(){$$('#m-shimmer .facta-skel').forEach(e=>{e.style.animation='none';e.offsetWidth;e.style.animation=''})}
+};
+$$('[data-demo]').forEach(b=>b.onclick=async()=>{b.disabled=true;try{await demos[b.dataset.demo]()}finally{b.disabled=false}});
+$('#m-copy')?.addEventListener('click',e=>{if(e.target.closest('.facta-copy'))demos.copy()});
+$('#m-press')?.addEventListener('pointerdown',()=>{});
+
+/* issue-button sequence */
+$$('[data-seq]').forEach(box=>{const bw=$('.sq-b',box),pw=$('.sq-p',box),play=$('[data-play-seq]',box);
+ const state=(s,animate=true)=>{const old=bw.firstElementChild,w0=old?old.getBoundingClientRect().width:0;bw.innerHTML=ib(s,'comfortable');const n=bw.firstElementChild;
+  if(animate&&old&&!rm())n.animate([{width:w0+'px'},{width:n.getBoundingClientRect().width+'px'}],{duration:200,easing:EASE})};
+ const init=()=>{state('idle',false);pw.innerHTML=''};init();
+ play.onclick=async()=>{play.disabled=true;init();await sleep(500);state('busy');await sleep(1500);state('ok');await sleep(500);pw.innerHTML=popover();if(!rm())pw.firstElementChild.animate([{opacity:0,transform:'translateY(-4px) scale(.98)'},{opacity:1,transform:'none'}],{duration:160,easing:EASE});await sleep(2200);play.disabled=false}});
+</script>
+</body>
+</html>

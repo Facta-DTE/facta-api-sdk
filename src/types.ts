@@ -56,14 +56,14 @@ export interface ExcludedSubjectRecipient {
 }
 
 export interface LineItem {
-  /** Optional when productId resolves this field from the encrypted catalog. */
+  /** Optional when productId resolves this field (locally, or on the server for a readable-catalog key). */
   descripcion?: string;
   cantidad: number;
   /** FE (01): VAT INCLUDED. CCF (03): VAT EXCLUDED. The official schemas
    * differ and the server does not guess. */
-  /** Optional when productId resolves this field from the encrypted catalog. */
+  /** Optional when productId resolves this field (locally, or on the server for a readable-catalog key). */
   precioUni?: number;
-  /** Facta catalog product reference; resolved locally by the SDK. */
+  /** Facta catalog product reference. Resolved on the server for a key with a readable catalog, otherwise locally by the SDK. */
   productId?: string;
   /** 05/06: target document number when the note corrects multiple documents. */
   numeroDocumento?: string;
@@ -202,6 +202,8 @@ export interface SealedDte {
   storage?: ManagedStorageReceipt;
   /** Fiscal success is preserved when an attached storage receipt is malformed. */
   storageErrorCode?: "storage_contract_invalid";
+  /** Present only when the request marked delivery channels (`deliver`). Carries the delivery token. */
+  entrega?: DeliveryOffer;
 }
 
 export interface DteInContingency {
@@ -221,6 +223,8 @@ export interface DteInContingency {
   storage?: ManagedStorageReceipt;
   /** Fiscal success is preserved when an attached storage receipt is malformed. */
   storageErrorCode?: "storage_contract_invalid";
+  /** Channels are `esperando_sello` and there is NO token: delivery after contingency is not offered yet. */
+  entrega?: DeliveryOffer;
 }
 
 export type IssueResult = SealedDte | DteInContingency;
@@ -440,7 +444,16 @@ export interface Status {
     alcances: string[];
     tiposDte: DteType[];
     venceEl: string | null;
+    /**
+     * `readable`: the owner enabled «Catálogo legible por la API», so the
+     * server resolves `customerId` / `productId` and the SDK just sends the
+     * ids. `encrypted` (or absent on older servers): the SDK resolves them
+     * locally from the encrypted catalog and needs the unlock key.
+     */
+    catalogMode?: "encrypted" | "readable";
   };
+  /** Freshness of the published readable catalog; null unless `catalogMode` is readable. */
+  catalogoLegible?: { publicado: boolean; revisionPublicada: number | null; revisionActual: number } | null;
   /** Whether this key can sign and its signing origin. The vault has no read
    * endpoint; only separately registered public certificate facts are exposed. */
   firma?: {
@@ -466,4 +479,106 @@ export interface Status {
     estado: RateLimitWindow | null;
     montoMaximoPorDocumentoCentavos: number;
   };
+}
+
+
+// --- Delivery by e-mail and WhatsApp (docs/api-delivery-tokens.md §3) ------------
+// Wire names stay Spanish (they are the API's); identifiers are English.
+
+export type DeliveryChannel = "correo" | "whatsapp";
+
+/** `pendiente` and `en_proceso` are the only non-final states. */
+export type DeliveryChannelState =
+  | "pendiente"
+  | "en_proceso"
+  | "enviado"
+  | "fallido"
+  | "sin_credito"
+  | "sin_consentimiento"
+  | "no_permitido"
+  | "vencido"
+  | "esperando_sello";
+
+/** Stable reason codes the API documents; unknown codes may appear later. */
+export type DeliveryReason =
+  | "smtp_rejected"
+  | "invalid_address"
+  | "wallet_empty"
+  | "provider_unavailable"
+  | "quota_exceeded"
+  | "consent_not_attested"
+  | "scope_missing"
+  | "token_expired"
+  | "contingency"
+  | "document_rejected"
+  | "document_unavailable"
+  | "provider_rejected"
+  | "outcome_unknown"
+  | "delivery_unavailable"
+  | (string & {});
+
+/** What the issue request sends as `entrega`. */
+export interface DeliveryRequest {
+  /** `true` uses `receptor.correo`; a string overrides it for delivery only. */
+  correo?: true | string;
+  whatsapp?: { numero: string; consentimiento: true };
+}
+
+/** The `deliver` option of `issue`: English names, mapped to `DeliveryRequest`. */
+export interface DeliverOptions {
+  /** `true` uses `receptor.correo`; a string overrides it for delivery only. */
+  email?: true | string;
+  /**
+   * `consent: true` is YOUR attestation that the receiver agreed to receive
+   * documents by WhatsApp. It is stored with the key id and the masked number.
+   */
+  whatsapp?: { number: string; consent: true };
+}
+
+export interface DeliveryChannelStatus {
+  estado: DeliveryChannelState;
+  /** The recipient, always masked by the server («m•••@ejemplo.com»). */
+  destino?: string | null;
+  /** Stable reason code when the state is not `enviado`. */
+  motivo?: DeliveryReason | null;
+  /** ISO-8601 instant of the last change. */
+  actualizado?: string;
+}
+
+export type DeliveryChannels = Partial<Record<DeliveryChannel, DeliveryChannelStatus>>;
+
+/** `IssueResult.entrega`. The token is a bearer secret for five minutes: keep it on your server. */
+export interface DeliveryOffer {
+  /** Absent when nothing is deliverable: a contingency document, or no marked channel has its scope and consent. */
+  token?: string;
+  /** Issuance + 5 minutes. */
+  venceEn?: string;
+  canales: DeliveryChannels;
+}
+
+/** Answer of `GET /v1/dte/{code}/entrega`. Works after the token expired. */
+export interface DeliveryStatus {
+  codigoGeneracion?: string;
+  ambiente?: "00" | "01";
+  /** Token expiry, while the API still reports it. */
+  venceEn?: string;
+  canales: DeliveryChannels;
+}
+
+/** Answer of `POST …/entrega/{canal}`: 200 final, or 202 with `en_proceso`. */
+export type DeliveryChannelResult = DeliveryChannelStatus & { canal?: DeliveryChannel };
+
+export interface WaitForDeliveryOptions {
+  /** Channels to wait for. Default: every channel the API reports. */
+  channels?: DeliveryChannel[];
+  /** Give up waiting (not sending) after this long. Default 60 000. */
+  timeoutMs?: number;
+  /** Pause between reads. Default 2 000. */
+  intervalMs?: number;
+  signal?: AbortSignal;
+}
+
+/** `waitForDelivery` result: the last status read, and whether every awaited channel is final. */
+export interface WaitedDelivery extends DeliveryStatus {
+  settled: boolean;
 }

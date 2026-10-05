@@ -1,7 +1,7 @@
 {
   "//": "This SDK builds and releases independently and has no runtime dependency on the Facta application monorepo. Its HTTP contract is checked against the published OpenAPI document.",
   "name": "@facta-dte/api",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "TypeScript client for the Facta electronic invoicing API (DTE) in El Salvador.",
   "repository": {
     "type": "git",
@@ -28,15 +28,34 @@
       "types": "./dist/types/node.d.ts",
       "import": "./dist/node.js",
       "default": "./dist/node.js"
+    },
+    "./browser": {
+      "types": "./dist/types/browser.d.ts",
+      "import": "./dist/browser.js",
+      "default": "./dist/browser.js"
+    },
+    "./react": {
+      "types": "./dist/types/react.d.ts",
+      "import": "./dist/react.js",
+      "default": "./dist/react.js"
+    },
+    "./react/styles.css": "./dist/react/styles.css",
+    "./server": {
+      "types": "./dist/types/server.d.ts",
+      "import": "./dist/server.js",
+      "default": "./dist/server.js"
     }
   },
   "types": "./dist/types/mod.d.ts",
   "files": [
     "mod.ts",
     "node.ts",
+    "browser.ts",
+    "react.ts",
     "src",
     "dist",
     "examples",
+    "preview",
     ".env.example",
     "guides",
     "README.md"
@@ -50,11 +69,39 @@
     "prepack": "node scripts/build.mjs",
     "test": "deno test --allow-read --allow-write --allow-net .",
     "test:local-s3-storage": "pnpm build && node scripts/test-s3-local-storage.mjs",
-    "pack:check": "pnpm build && node scripts/check-packed-consumer.mjs"
+    "pack:check": "pnpm build && node scripts/check-packed-consumer.mjs",
+    "test:react": "vitest run --config vitest.config.ts",
+    "test:browser": "deno test --allow-read --allow-write --allow-net test/browser-*.test.ts test/architecture.test.ts",
+    "typecheck:react": "tsc --noEmit -p tsconfig.react.json",
+    "build:preview": "node scripts/build-preview.mjs"
   },
   "devDependencies": {
+    "@testing-library/dom": "10.4.2",
+    "@testing-library/react": "16.3.3",
+    "@testing-library/user-event": "14.6.7",
     "@types/node": "22.19.11",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
     "esbuild": "0.25.12",
-    "typescript": "5.9.3"
+    "happy-dom": "20.14.5",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "typescript": "5.9.3",
+    "vite": "8.3.2",
+    "vite-plugin-singlefile": "2.3.3",
+    "vitest": "5.0.3"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    }
   }
 }

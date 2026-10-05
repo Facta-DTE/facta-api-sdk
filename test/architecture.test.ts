@@ -51,12 +51,21 @@ const SIGNING_PATTERNS: Array<[string, RegExp]> = [
   ["material de certificado", /\.crt\b|parseMhCertificate|importSigningKey/i],
 ];
 
+/** The browser half is fiscal-rule free and signs nothing, like the rest. */
+async function browserSources(): Promise<string[]> {
+  const out: string[] = ["browser.ts"];
+  for await (const entry of Deno.readDir(new URL("../src/browser", import.meta.url))) {
+    if (entry.isFile && entry.name.endsWith(".ts")) out.push(`src/browser/${entry.name}`);
+  }
+  return out;
+}
+
 async function read(path: string): Promise<string> {
   return await Deno.readTextFile(new URL(`../${path}`, import.meta.url));
 }
 
 Deno.test("el SDK no lleva ni una regla fiscal", async () => {
-  for (const source of SOURCES) {
+  for (const source of [...SOURCES, ...await browserSources()]) {
     const text = await read(source);
     for (const [what, pattern] of FISCAL_PATTERNS) {
       assertEquals(pattern.test(text), false, `${source} contiene ${what}`);
@@ -65,11 +74,24 @@ Deno.test("el SDK no lleva ni una regla fiscal", async () => {
 });
 
 Deno.test("el SDK no puede sign nada", async () => {
-  for (const source of SOURCES) {
+  for (const source of [...SOURCES, ...await browserSources()]) {
     const text = await read(source);
     for (const [what, pattern] of SIGNING_PATTERNS) {
       assertEquals(pattern.test(text), false, `${source} contiene ${what}`);
     }
+  }
+});
+
+Deno.test("la raíz del SDK nunca importa React ni la mitad del navegador", async () => {
+  for (const source of SOURCES) {
+    const text = await read(source);
+    assertEquals(/from\s+["']react(?:-dom)?(?:\/[^"']*)?["']/.test(text), false, `${source} importa React`);
+    assertEquals(/(?:browser|react)(?:\/[\w.-]+)*\.tsx?["']/.test(text), false, `${source} importa src/browser o src/react`);
+  }
+  // The framework-free half must not import React either.
+  for (const source of await browserSources()) {
+    const text = await read(source);
+    assertEquals(/from\s+["']react/.test(text), false, `${source} importa React`);
   }
 });
 

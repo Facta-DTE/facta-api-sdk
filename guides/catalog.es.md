@@ -43,6 +43,23 @@ requiriendo una sincronización inicial correcta.
 | `syncStatus` | Estado público de sincronización del catálogo, o `null`. |
 | `statusError` | Código seguro del SDK si falló la consulta de estado. Nunca incluye credenciales ni contenido del vault. |
 
+## Catálogo legible por la API: el servidor resuelve los ids
+
+Si el dueño de la llave activó «Catálogo legible por la API» en Facta,
+`GET /v1/status` anuncia `llave.catalogMode: "readable"`. En ese modo el SDK
+**envía `customerId` y `productId` tal cual** y el servidor los resuelve desde el
+catálogo que la app publicó para esa llave: no hace falta `unlockKey`, no se
+descarga ni se descifra ninguna instantánea y un cambio en el catálogo no deja a
+la integración con una copia vieja. Un id desconocido responde `404` con
+`detail.reason: "catalog_unknown_id"`; `detail.catalogStale` indica si el
+catálogo publicado va atrasado respecto al de la app.
+
+Con `catalogMode: "encrypted"` (o un servidor anterior que no lo anuncia) todo
+funciona como se describe abajo. El SDK pregunta el modo una vez por minuto y,
+si no puede consultarlo, conserva la resolución local: esa consulta nunca es
+la razón de que una emisión falle. Una integración que envía los datos
+completos no depende de ninguno de los dos modos.
+
 ## Las solicitudes fiscales siempre requieren una instantánea vigente
 
 `issue()` y `issueAndArchive()` resuelven `customerId` y `productId` contra una
