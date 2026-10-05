@@ -21,6 +21,8 @@ export interface FactaMessages {
   chipTest: string;
   closeLabel: string;
   footerBrand: string;
+  autoClose: { closingIn: string };
+  downloads: { pdfHint: string; jsonHint: string };
   dialogLabel: string;
   docTypes: Record<DteType, string>;
   review: {
@@ -35,6 +37,8 @@ export interface FactaMessages {
   };
   issuing: {
     steps: { preparing: string; signing: string; sending: string };
+    stepStates: { done: string; active: string; pending: string };
+    takesAFewSeconds: string;
     doNotClose: string;
     status: string;
   };
@@ -54,11 +58,14 @@ export interface FactaMessages {
     copyLabel: string;
     observations: string;
   };
-  contingency: { headline: string; body: string; detail: string };
+  contingency: { headline: string; body: string; detail: string; warningTitle: string; warningBody: string; signedAt: string };
   rejected: {
     headline: string;
     quoteHeading: string;
+    intro: string;
     spent: string;
+    spentUnknown: string;
+    fixInSystem: string;
     fieldsHeading: string;
     close: string;
   };
@@ -66,6 +73,7 @@ export interface FactaMessages {
     headline: string;
     retry: string;
     close: string;
+    detailLabel: string;
     uncertainTitle: string;
     uncertainBody: string;
     codeLabel: string;
@@ -100,15 +108,17 @@ export const esMessages: FactaMessages = {
     review: "Revise su factura",
     issuing: "Emitiendo su factura",
     verifying: "Verificando con Hacienda",
-    sealed: "Factura emitida",
-    contingency: "Pendiente de Hacienda",
-    rejected: "Hacienda rechazó el documento",
+    sealed: "Emisión completada",
+    contingency: "Emisión en espera",
+    rejected: "Emisión rechazada",
     failed: "No se pudo emitir",
     expired: "Ventana vencida",
   },
+  autoClose: { closingIn: "Se cerrará en {n} s" },
+  downloads: { pdfHint: "Representación gráfica", jsonHint: "Documento firmado" },
   chipTest: "Pruebas",
   closeLabel: "Cerrar ventana",
-  footerBrand: "Emitido con Facta DTE",
+  footerBrand: "Powered by factadte.com",
   dialogLabel: "Emisión de factura",
   docTypes: {
     "01": "Factura",
@@ -134,6 +144,8 @@ export const esMessages: FactaMessages = {
       signing: "Firmando",
       sending: "Enviando a Hacienda",
     },
+    stepStates: { done: "Listo", active: "En curso…", pending: "En espera" },
+    takesAFewSeconds: "Esto toma unos segundos.",
     doNotClose: "No cierre esta ventana.",
     status: "Paso {n} de 3: {label}",
   },
@@ -143,7 +155,7 @@ export const esMessages: FactaMessages = {
   },
   sealed: {
     headline: "Factura emitida",
-    total: "Total a pagar",
+    total: "Total emitido",
     controlNumber: "Número de control",
     generationCode: "Código de generación",
     seal: "Sello de recepción",
@@ -159,13 +171,21 @@ export const esMessages: FactaMessages = {
   contingency: {
     headline: "Factura firmada, pendiente de Hacienda",
     body:
-      "Su documento quedó firmado y se transmitirá a Hacienda en cuanto el servicio responda. No lo emita de nuevo: ya existe y es válido.",
+      "Su factura quedó firmada y Facta DTE la transmitirá a Hacienda en cuanto el servicio responda. No necesita hacer nada más.",
     detail: "Detalle",
+    warningTitle: "No vuelva a emitir este documento.",
+    warningBody: "Si lo hace, el cliente recibiría dos facturas por el mismo pedido.",
+    signedAt: "Firmada",
   },
   rejected: {
     headline: "Hacienda rechazó el documento",
     quoteHeading: "Lo que dijo Hacienda",
-    spent: "Se usó el número de control {numeroControl}.",
+    intro: "El documento no pasó la validación. Este dato debe corregirse en su sistema:",
+    spent:
+      "Este rechazo usó el número de control {numeroControl}. Al corregir el documento en su sistema, puede volver a usar ese mismo número.",
+    spentUnknown:
+      "Este rechazo usó un número de control. Al corregir el documento en su sistema, puede volver a usar ese mismo número.",
+    fixInSystem: "Corrija el dato en su sistema y vuelva a abrir la ventana.",
     fieldsHeading: "Datos que hay que corregir",
     close: "Cerrar",
   },
@@ -173,6 +193,7 @@ export const esMessages: FactaMessages = {
     headline: "No pudimos emitir su factura",
     retry: "Intentar de nuevo",
     close: "Cerrar",
+    detailLabel: "Detalle",
     uncertainTitle: "No pudimos confirmar el resultado",
     uncertainBody:
       "No vuelva a emitir este documento: pudo haberse emitido. Revise el estado desde su pedido o comuníquese con quien le atiende.",

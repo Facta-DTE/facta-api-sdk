@@ -7,8 +7,9 @@
 //   loading -> review -> issuing -> (verifying) -> sealed | contingency |
 //   rejected | failed | expired
 //
-// With `confirm: false` the review step is skipped and issuing starts as soon
-// as the session loads (point-of-sale use).
+// With `run: "auto"` or `"auto-close"` the review step is skipped and issuing
+// starts as soon as the session loads (point-of-sale use). Closing after the
+// result is the window's job, not the machine's.
 //
 // Fiscal-safety rules the machine owns:
 //  * an uncertain outcome (no usable answer after something was sent) never
@@ -35,6 +36,9 @@ export type FlowStep =
   | "rejected"
   | "failed"
   | "expired";
+
+/** `manual`: review then click. `auto`: issue on open. `auto-close`: issue on open, close after. */
+export type RunMode = "manual" | "auto" | "auto-close";
 
 export type IssuePhase = "preparing" | "signing" | "sending";
 
@@ -72,8 +76,8 @@ export interface IssueFlowOptions {
   client: FactaClient;
   session: string;
   messages?: FactaMessages;
-  /** Show the review step first (default true). `false` issues immediately. */
-  confirm?: boolean;
+  /** Default `"manual"`. Any other value issues as soon as the session loads. */
+  run?: RunMode;
   /** Resends of the same session before falling back to `status`. Default 2. */
   maxResends?: number;
   /** Wait before each resend/status. Default 1500 ms. */
@@ -291,7 +295,7 @@ export function createIssueFlow(options: IssueFlowOptions): IssueFlow {
         })));
       } else {
         set({ step: "review" });
-        proceed = options.confirm === false;
+        proceed = (options.run ?? "manual") !== "manual";
       }
     } catch (error) {
       applyFailure(toFailure(error));

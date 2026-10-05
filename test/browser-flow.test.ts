@@ -88,9 +88,9 @@ Deno.test("flow: loading -> review -> issuing -> sealed", async () => {
   flow.destroy();
 });
 
-Deno.test("flow: confirm=false issues as soon as the session loads", async () => {
+Deno.test("flow: run=auto issues as soon as the session loads", async () => {
   const { client, calls } = fakeClient({ issue: [sealed] });
-  const flow = flowFor(client, { confirm: false });
+  const flow = flowFor(client, { run: "auto" });
   await flow.start();
   assertEquals(flow.getState().step, "sealed");
   assertEquals(calls.map((c) => c.action), ["describe", "issue"]);
