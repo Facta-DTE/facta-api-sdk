@@ -1,0 +1,855 @@
+/*
+ * Facta DTE signing window.
+ *
+ * Every selector starts with `.facta-` and every custom property with
+ * `--facta-`. Nothing here targets a bare element or the page, so the sheet is
+ * safe to load next to any host styles.
+ *
+ * Public tokens (override on any ancestor or via the `appearance` prop):
+ *   --facta-accent --facta-accent-ink --facta-accent-soft --facta-bg
+ *   --facta-surface --facta-text --facta-muted --facta-border
+ *   --facta-success --facta-warning --facta-danger --facta-radius
+ *   --facta-radius-sm --facta-shadow --facta-font --facta-font-size
+ *
+ * Internal `--facta-d-*` are the theme defaults and `--facta-i-*` the values in
+ * use (`public token` falling back to `default`); that indirection is what lets
+ * a host override a token from an ancestor without fighting specificity.
+ */
+
+/* ---------- Themes: light (default), dark, auto ---------- */
+
+.facta-root {
+  --facta-d-accent: #007faa;
+  --facta-d-accent-ink: #ffffff;
+  --facta-d-accent-soft: #e3f2f8;
+  --facta-d-bg: #ffffff;
+  --facta-d-surface: #f5f7f9;
+  --facta-d-text: #13202b;
+  --facta-d-muted: #566676;
+  --facta-d-border: #dce2e8;
+  --facta-d-success: #137a4c;
+  --facta-d-success-soft: #e2f4ea;
+  --facta-d-success-ink: #ffffff;
+  --facta-d-warning: #8a5a00;
+  --facta-d-warning-soft: #fdf1d8;
+  --facta-d-warning-ink: #ffffff;
+  --facta-d-danger: #b3261e;
+  --facta-d-danger-soft: #fbe6e4;
+  --facta-d-danger-ink: #ffffff;
+  --facta-d-chip-bg: #ffe9b8;
+  --facta-d-chip-ink: #6b4300;
+  --facta-d-backdrop: rgba(12, 22, 32, 0.46);
+  --facta-d-shadow: 0 1px 2px rgba(15, 30, 45, 0.06), 0 12px 32px rgba(15, 30, 45, 0.16);
+}
+
+@supports (color: oklch(0 0 0)) {
+  .facta-root { --facta-d-accent: oklch(0.55 0.13 225); }
+}
+
+.facta-root[data-facta-theme="dark"] {
+  --facta-d-accent: #3fb1db;
+  --facta-d-accent-ink: #04202b;
+  --facta-d-accent-soft: #14303b;
+  --facta-d-bg: #151a20;
+  --facta-d-surface: #1c232b;
+  --facta-d-text: #e8edf2;
+  --facta-d-muted: #9aa7b4;
+  --facta-d-border: #2d3640;
+  --facta-d-success: #52c892;
+  --facta-d-success-soft: #14301f;
+  --facta-d-success-ink: #04210f;
+  --facta-d-warning: #e8b04a;
+  --facta-d-warning-soft: #342810;
+  --facta-d-warning-ink: #241700;
+  --facta-d-danger: #f3766f;
+  --facta-d-danger-soft: #3a1a18;
+  --facta-d-danger-ink: #2a0705;
+  --facta-d-chip-bg: #4a3710;
+  --facta-d-chip-ink: #ffd88a;
+  --facta-d-backdrop: rgba(0, 0, 0, 0.62);
+  --facta-d-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 16px 40px rgba(0, 0, 0, 0.5);
+}
+
+@supports (color: oklch(0 0 0)) {
+  .facta-root[data-facta-theme="dark"] { --facta-d-accent: oklch(0.7 0.12 225); }
+}
+
+@media (prefers-color-scheme: dark) {
+  .facta-root[data-facta-theme="auto"] {
+    --facta-d-accent: #3fb1db;
+    --facta-d-accent-ink: #04202b;
+    --facta-d-accent-soft: #14303b;
+    --facta-d-bg: #151a20;
+    --facta-d-surface: #1c232b;
+    --facta-d-text: #e8edf2;
+    --facta-d-muted: #9aa7b4;
+    --facta-d-border: #2d3640;
+    --facta-d-success: #52c892;
+    --facta-d-success-soft: #14301f;
+    --facta-d-success-ink: #04210f;
+    --facta-d-warning: #e8b04a;
+    --facta-d-warning-soft: #342810;
+    --facta-d-warning-ink: #241700;
+    --facta-d-danger: #f3766f;
+    --facta-d-danger-soft: #3a1a18;
+    --facta-d-danger-ink: #2a0705;
+    --facta-d-chip-bg: #4a3710;
+    --facta-d-chip-ink: #ffd88a;
+    --facta-d-backdrop: rgba(0, 0, 0, 0.62);
+    --facta-d-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 16px 40px rgba(0, 0, 0, 0.5);
+  }
+  @supports (color: oklch(0 0 0)) {
+    .facta-root[data-facta-theme="auto"] { --facta-d-accent: oklch(0.7 0.12 225); }
+  }
+}
+
+/* ---------- Tokens in use ---------- */
+
+.facta-root {
+  --facta-i-accent: var(--facta-accent, var(--facta-d-accent));
+  --facta-i-accent-ink: var(--facta-accent-ink, var(--facta-d-accent-ink));
+  --facta-i-bg: var(--facta-bg, var(--facta-d-bg));
+  --facta-i-surface: var(--facta-surface, var(--facta-d-surface));
+  --facta-i-text: var(--facta-text, var(--facta-d-text));
+  --facta-i-muted: var(--facta-muted, var(--facta-d-muted));
+  --facta-i-border: var(--facta-border, var(--facta-d-border));
+  --facta-i-success: var(--facta-success, var(--facta-d-success));
+  --facta-i-warning: var(--facta-warning, var(--facta-d-warning));
+  --facta-i-danger: var(--facta-danger, var(--facta-d-danger));
+  --facta-i-radius: var(--facta-radius, 12px);
+  --facta-i-radius-sm: var(--facta-radius-sm, calc(var(--facta-i-radius) * 0.667));
+  --facta-i-shadow: var(--facta-shadow, var(--facta-d-shadow));
+  --facta-i-font: var(--facta-font, inherit);
+  --facta-i-fs: var(--facta-font-size, 15px);
+  --facta-i-pad: 20px;
+  --facta-i-gap: 16px;
+
+  --facta-i-accent-soft: var(--facta-accent-soft, var(--facta-d-accent-soft));
+  --facta-i-success-soft: var(--facta-d-success-soft);
+  --facta-i-warning-soft: var(--facta-d-warning-soft);
+  --facta-i-danger-soft: var(--facta-d-danger-soft);
+
+  font-family: var(--facta-i-font);
+  font-size: var(--facta-i-fs);
+  line-height: 1.45;
+  color: var(--facta-i-text);
+  -webkit-font-smoothing: antialiased;
+  text-align: left;
+}
+
+@supports (color: color-mix(in srgb, red, blue)) {
+  .facta-root {
+    --facta-i-accent-soft: var(
+      --facta-accent-soft,
+      color-mix(in srgb, var(--facta-i-accent) 11%, var(--facta-i-bg))
+    );
+  }
+}
+
+.facta-root[data-facta-density="compact"] {
+  --facta-i-pad: 14px;
+  --facta-i-gap: 11px;
+  --facta-i-fs: var(--facta-font-size, 14px);
+}
+
+.facta-root,
+.facta-root *,
+.facta-root *::before,
+.facta-root *::after {
+  box-sizing: border-box;
+}
+
+.facta-root :focus-visible {
+  outline: 2px solid var(--facta-i-accent);
+  outline-offset: 2px;
+}
+
+.facta-root .facta-title:focus,
+.facta-root .facta-panel:focus { outline: none; }
+
+.facta-sr {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------- Layers: dialog, sheet, drawer ---------- */
+
+.facta-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 16px;
+}
+
+.facta-backdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--facta-d-backdrop);
+}
+
+.facta-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 480px;
+  max-width: 100%;
+  max-height: 88vh;
+  max-height: 88dvh;
+  min-height: 0;
+}
+
+.facta-layer--sheet {
+  align-items: flex-end;
+  padding: 0;
+}
+
+.facta-layer--sheet .facta-panel {
+  width: 100%;
+  max-height: 92vh;
+  max-height: 92dvh;
+}
+
+.facta-layer--drawer {
+  justify-content: flex-end;
+  align-items: stretch;
+  padding: 0;
+}
+
+.facta-layer--drawer .facta-panel {
+  width: 440px;
+  max-height: none;
+  height: 100%;
+}
+
+/* ---------- Card ---------- */
+
+.facta-card {
+  container-type: inline-size;
+  container-name: facta;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  background: var(--facta-i-bg);
+  color: var(--facta-i-text);
+  border: 1px solid var(--facta-i-border);
+  border-radius: var(--facta-i-radius);
+  box-shadow: var(--facta-i-shadow);
+  overflow: hidden;
+}
+
+.facta-card--sheet {
+  border-radius: calc(var(--facta-i-radius) * 1.5) calc(var(--facta-i-radius) * 1.5) 0 0;
+  border-bottom: 0;
+}
+
+.facta-card--drawer {
+  border-radius: 0;
+  border-top: 0;
+  border-bottom: 0;
+  border-right: 0;
+}
+
+.facta-inline { display: block; max-width: 520px; }
+.facta-inline .facta-card { box-shadow: 0 1px 2px rgba(15, 30, 45, 0.05); }
+
+.facta-grab {
+  display: block;
+  width: 40px;
+  height: 4px;
+  margin: 8px auto 0;
+  border-radius: 2px;
+  background: var(--facta-i-border);
+}
+
+.facta-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: var(--facta-i-pad) var(--facta-i-pad) 10px;
+}
+
+.facta-header-main { min-width: 0; flex: 1; }
+
+.facta-header-side {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  margin: -6px -8px 0 0;
+}
+
+.facta-title {
+  margin: 0;
+  font-size: 1.28em;
+  line-height: 1.25;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.facta-subtitle { margin: 4px 0 0; font-size: 0.9em; color: var(--facta-i-muted); }
+
+.facta-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  color: var(--facta-i-muted);
+  font-weight: 600;
+  font-size: 0.9em;
+}
+
+.facta-brand-logo { display: block; height: 22px; max-width: 132px; object-fit: contain; }
+
+.facta-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.facta-chip--test { background: var(--facta-d-chip-bg); color: var(--facta-d-chip-ink); }
+
+.facta-close {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--facta-i-muted);
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.facta-close:hover { background: var(--facta-i-surface); color: var(--facta-i-text); }
+
+.facta-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 var(--facta-i-pad) var(--facta-i-pad);
+}
+
+.facta-morph { margin: -3px; }
+.facta-morph[data-morph] { overflow: hidden; }
+.facta-morph-inner { padding: 3px; }
+
+.facta-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px var(--facta-i-pad) calc(14px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--facta-i-border);
+}
+
+.facta-attribution {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--facta-i-muted);
+}
+
+.facta-attribution svg { color: var(--facta-i-accent); }
+
+.facta-actions { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
+
+/* ---------- Buttons ---------- */
+
+.facta-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 20px;
+  border: 1px solid transparent;
+  border-radius: var(--facta-i-radius-sm);
+  font: inherit;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background-color 0.15s, border-color 0.15s, color 0.2s, box-shadow 0.15s, transform 0.12s;
+}
+
+.facta-btn--primary { background: var(--facta-i-accent); color: var(--facta-i-accent-ink); }
+.facta-btn--primary:hover { box-shadow: inset 0 0 0 999px rgba(0, 0, 0, 0.09); }
+
+.facta-btn--secondary {
+  background: var(--facta-i-bg);
+  color: var(--facta-i-text);
+  border-color: var(--facta-i-border);
+}
+
+.facta-btn--secondary:hover { background: var(--facta-i-surface); }
+.facta-btn--sm { padding: 0 14px; font-size: 0.93em; }
+
+.facta-btn[disabled],
+.facta-btn[aria-disabled="true"] { cursor: default; }
+.facta-btn[disabled] { opacity: 0.55; }
+
+/* ---------- Text ---------- */
+
+.facta-label {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--facta-i-muted);
+}
+
+.facta-text { margin: 0; }
+.facta-text--small { font-size: 0.9em; color: var(--facta-i-muted); }
+.facta-text--center { text-align: center; }
+.facta-note { margin-top: 10px; }
+.facta-block { margin-top: var(--facta-i-gap); }
+.facta-headline { margin: 0; font-size: 1.15em; line-height: 1.3; font-weight: 650; }
+.facta-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
+.facta-break { overflow-wrap: anywhere; min-width: 0; }
+.facta-amount { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; white-space: nowrap; font-weight: 600; }
+.facta-amount--lg { font-size: 1.5em; font-weight: 700; letter-spacing: -0.01em; }
+.facta-amount--xl { font-size: 2.3em; line-height: 1.1; font-weight: 700; letter-spacing: -0.02em; }
+.facta-codeline { margin: 14px 0 0; font-size: 12px; color: var(--facta-i-muted); }
+
+/* ---------- Review ---------- */
+
+.facta-doc-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; }
+
+.facta-doctype {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 11px;
+  border-radius: 999px;
+  background: var(--facta-i-accent-soft);
+  color: var(--facta-i-accent);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.facta-ref { font-size: 0.9em; color: var(--facta-i-muted); }
+
+.facta-receptor { margin: 0; display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
+.facta-receptor span { font-size: 0.9em; color: var(--facta-i-muted); }
+
+.facta-lines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--facta-i-border);
+  border-radius: var(--facta-i-radius-sm);
+  overflow: hidden;
+}
+
+.facta-lines li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 11px 14px;
+}
+
+.facta-lines li + li { border-top: 1px solid var(--facta-i-border); }
+.facta-line-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.facta-line-desc { font-weight: 550; overflow-wrap: anywhere; }
+.facta-line-sub { font-size: 0.88em; color: var(--facta-i-muted); font-variant-numeric: tabular-nums; }
+
+.facta-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: var(--facta-i-gap);
+  padding: 14px 16px;
+  border-radius: var(--facta-i-radius-sm);
+  background: var(--facta-i-accent-soft);
+}
+
+.facta-total > span { font-weight: 600; }
+
+/* ---------- Progress ---------- */
+
+.facta-progress { padding: 6px 2px 2px; }
+.facta-progress--verifying { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 18px 0 8px; }
+.facta-verify-spin { color: var(--facta-i-accent); }
+
+.facta-steps { list-style: none; margin: 0; padding: 4px 0; }
+
+.facta-step {
+  position: relative;
+  min-height: 56px;
+  padding: 3px 0 0 44px;
+  font-weight: 600;
+}
+
+.facta-step-label { display: block; padding-top: 3px; }
+.facta-step--pending .facta-step-label { color: var(--facta-i-muted); font-weight: 500; }
+
+.facta-step-marker {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 2px solid var(--facta-i-border);
+  background: var(--facta-i-bg);
+  color: var(--facta-i-accent-ink);
+  transition: background-color 0.25s, border-color 0.25s;
+}
+
+.facta-step--active .facta-step-marker { border-color: var(--facta-i-accent); }
+.facta-step--done .facta-step-marker { background: var(--facta-i-accent); border-color: var(--facta-i-accent); }
+
+.facta-step-dot { width: 10px; height: 10px; border-radius: 999px; background: var(--facta-i-accent); }
+
+.facta-step + .facta-step::before,
+.facta-step + .facta-step::after {
+  content: "";
+  position: absolute;
+  left: 14px;
+  top: -26px;
+  width: 2px;
+  height: 26px;
+  border-radius: 1px;
+}
+
+.facta-step + .facta-step::before { background: var(--facta-i-border); }
+
+.facta-step + .facta-step::after {
+  background: var(--facta-i-accent);
+  transform: scaleY(0);
+  transform-origin: top;
+}
+
+.facta-step--done + .facta-step::after,
+.facta-step--active::after { transform: scaleY(1); }
+
+.facta-step--done + .facta-step--active::after { transform: scaleY(1); }
+
+/* ---------- Result screens ---------- */
+
+.facta-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0 2px;
+  text-align: center;
+}
+
+.facta-hero-total { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.facta-hero-total .facta-label { margin: 0; }
+
+.facta-tone-success { --facta-t: var(--facta-i-success); --facta-t-soft: var(--facta-i-success-soft); }
+.facta-tone-warning { --facta-t: var(--facta-i-warning); --facta-t-soft: var(--facta-i-warning-soft); }
+.facta-tone-danger { --facta-t: var(--facta-i-danger); --facta-t-soft: var(--facta-i-danger-soft); }
+.facta-tone-neutral { --facta-t: var(--facta-i-muted); --facta-t-soft: var(--facta-i-surface); }
+
+.facta-stamp { position: relative; display: inline-grid; place-items: center; width: 68px; height: 68px; }
+
+.facta-stamp-badge {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 68px;
+  height: 68px;
+  border-radius: 999px;
+  background: var(--facta-t-soft);
+  color: var(--facta-t);
+  border: 2px solid var(--facta-t);
+}
+
+.facta-stamp-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  border: 2px solid var(--facta-t);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.facta-details {
+  margin: var(--facta-i-gap) 0 0;
+  padding: 0;
+  border: 1px solid var(--facta-i-border);
+  border-radius: var(--facta-i-radius-sm);
+}
+
+.facta-row {
+  display: grid;
+  grid-template-columns: minmax(104px, 132px) minmax(0, 1fr);
+  align-items: baseline;
+  gap: 12px;
+  padding: 10px 14px;
+}
+
+.facta-row + .facta-row { border-top: 1px solid var(--facta-i-border); }
+.facta-row dt { margin: 0; font-size: 0.88em; color: var(--facta-i-muted); }
+
+.facta-row dd {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 8px;
+  min-width: 0;
+}
+
+@container facta (max-width: 420px) {
+  .facta-row { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+}
+
+.facta-copy {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--facta-i-accent);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s, transform 0.12s;
+}
+
+.facta-copy::after { content: ""; position: absolute; inset: -7px -4px; }
+.facta-copy:hover { background: var(--facta-i-accent-soft); }
+.facta-copy[data-copied] { color: var(--facta-i-success); }
+.facta-copy-icon { display: inline-grid; }
+
+.facta-downloads { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+
+.facta-storage { display: inline-flex; align-items: center; gap: 7px; font-weight: 550; }
+.facta-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--facta-i-muted); flex: none; }
+.facta-storage--saved .facta-dot { background: var(--facta-i-success); }
+.facta-storage--pending .facta-dot { background: var(--facta-i-warning); }
+.facta-storage--off .facta-dot { background: var(--facta-i-border); box-shadow: inset 0 0 0 1px var(--facta-i-muted); }
+.facta-help { display: block; width: 100%; font-size: 12px; font-weight: 400; color: var(--facta-i-muted); }
+
+.facta-quote {
+  margin: 0;
+  padding: 11px 14px;
+  border-left: 3px solid var(--facta-i-danger);
+  border-radius: 4px var(--facta-i-radius-sm) var(--facta-i-radius-sm) 4px;
+  background: var(--facta-i-surface);
+  font-size: 0.93em;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.facta-quote p { margin: 0; }
+.facta-quote p + p { margin-top: 6px; }
+
+.facta-fields { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--facta-i-border); }
+
+.facta-fields li {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--facta-i-border);
+}
+
+.facta-fields span { font-size: 0.9em; color: var(--facta-i-muted); }
+
+/* ---------- Skeleton ---------- */
+
+.facta-skeleton { display: flex; flex-direction: column; gap: 12px; padding-top: 4px; }
+
+.facta-sk {
+  border-radius: 7px;
+  background: var(--facta-i-surface);
+}
+
+.facta-sk--chip { width: 96px; height: 26px; border-radius: 999px; }
+.facta-sk--line { height: 14px; }
+.facta-sk--block { height: 92px; border-radius: var(--facta-i-radius-sm); }
+.facta-sk--total { height: 58px; margin-top: 4px; border-radius: var(--facta-i-radius-sm); }
+.facta-sk--w40 { width: 40%; }
+.facta-sk--w60 { width: 60%; }
+.facta-sk--w80 { width: 80%; }
+
+/* ---------- Issue button + popover ---------- */
+
+.facta-button-wrap { position: relative; display: inline-block; }
+
+.facta-issue-btn {
+  overflow: hidden;
+  white-space: nowrap;
+  transition: width 0.28s cubic-bezier(0.2, 0.8, 0.2, 1), background-color 0.25s, color 0.25s, transform 0.12s;
+}
+
+.facta-issue-btn[aria-disabled="true"] { cursor: default; }
+.facta-issue-btn[data-kind="working"] { box-shadow: none; }
+.facta-issue-btn[data-kind="done"] { background: var(--facta-i-success); color: var(--facta-d-success-ink); }
+.facta-issue-btn[data-kind="contingency"] { background: var(--facta-i-warning); color: var(--facta-d-warning-ink); }
+.facta-issue-btn[data-kind="failed"] { background: var(--facta-i-danger); color: var(--facta-d-danger-ink); }
+
+.facta-issue-btn-content { display: inline-flex; align-items: center; gap: 8px; }
+.facta-issue-btn-icon { display: inline-grid; }
+.facta-issue-btn-chevron { opacity: 0.8; margin-left: -2px; }
+.facta-issue-btn[aria-expanded="true"] .facta-issue-btn-chevron { transform: rotate(180deg); }
+
+.facta-popover {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 8px);
+  left: 0;
+  width: min(390px, 92vw);
+  padding: 22px 16px 16px;
+  background: var(--facta-i-bg);
+  color: var(--facta-i-text);
+  border: 1px solid var(--facta-i-border);
+  border-radius: var(--facta-i-radius);
+  box-shadow: var(--facta-i-shadow);
+  container-type: inline-size;
+  container-name: facta;
+  white-space: normal;
+}
+
+.facta-popover-close { position: absolute; top: 4px; right: 4px; width: 40px; height: 40px; }
+.facta-popover-actions { margin-top: 14px; display: flex; justify-content: flex-end; }
+
+/* ---------- Status badge ---------- */
+
+.facta-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 11px 3px 9px;
+  border-radius: 999px;
+  background: var(--facta-t-soft);
+  color: var(--facta-t);
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
+.facta-badge .facta-dot { background: currentColor; }
+.facta-badge--success { --facta-t: var(--facta-i-success); --facta-t-soft: var(--facta-i-success-soft); }
+.facta-badge--warning { --facta-t: var(--facta-i-warning); --facta-t-soft: var(--facta-i-warning-soft); }
+.facta-badge--danger { --facta-t: var(--facta-i-danger); --facta-t-soft: var(--facta-i-danger-soft); }
+.facta-badge--neutral { --facta-t: var(--facta-i-muted); --facta-t-soft: var(--facta-i-surface); }
+
+/* ---------- Spinner (static by default; motion rules below) ---------- */
+
+.facta-spinner { display: block; }
+
+/* ---------- Motion: full ---------- */
+
+@keyframes facta-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes facta-fade-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes facta-dialog-in { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
+@keyframes facta-dialog-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(0.97); } }
+@keyframes facta-sheet-in { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes facta-sheet-out { from { transform: none; } to { transform: translateY(100%); } }
+@keyframes facta-drawer-in { from { transform: translateX(100%); } to { transform: none; } }
+@keyframes facta-drawer-out { from { transform: none; } to { transform: translateX(100%); } }
+@keyframes facta-screen-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes facta-pop-in { from { opacity: 0; transform: translateY(-4px) scale(0.98); } to { opacity: 1; transform: none; } }
+@keyframes facta-spin { to { transform: rotate(360deg); } }
+@keyframes facta-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(0.72); opacity: 0.6; } }
+@keyframes facta-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes facta-stamp { 0% { opacity: 0; transform: scale(1.15) rotate(-9deg); } 55% { opacity: 1; } 100% { opacity: 1; transform: none; } }
+@keyframes facta-ripple { 0% { opacity: 0.55; transform: scale(1); } 100% { opacity: 0; transform: scale(1.75); } }
+@keyframes facta-shake { 0%, 100% { transform: none; } 20% { transform: translateX(-4px); } 45% { transform: translateX(3px); } 70% { transform: translateX(-2px); } }
+@keyframes facta-shimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+@keyframes facta-pop { 0% { transform: scale(0.7); } 60% { transform: scale(1.15); } 100% { transform: none; } }
+
+.facta-root[data-facta-motion="full"] .facta-backdrop { animation: facta-fade-in 0.18s ease-out both; }
+.facta-root[data-facta-motion="full"][data-state="closed"] .facta-backdrop { animation: facta-fade-out 0.2s ease-in both; }
+
+.facta-root[data-facta-motion="full"].facta-layer--dialog .facta-panel { animation: facta-dialog-in 0.18s ease-out both; }
+.facta-root[data-facta-motion="full"][data-state="closed"].facta-layer--dialog .facta-panel { animation: facta-dialog-out 0.18s ease-in both; }
+
+.facta-root[data-facta-motion="full"].facta-layer--sheet .facta-panel { animation: facta-sheet-in 0.34s cubic-bezier(0.32, 0.72, 0, 1) both; }
+.facta-root[data-facta-motion="full"][data-state="closed"].facta-layer--sheet .facta-panel { animation: facta-sheet-out 0.22s cubic-bezier(0.4, 0, 1, 1) both; }
+
+.facta-root[data-facta-motion="full"].facta-layer--drawer .facta-panel { animation: facta-drawer-in 0.36s cubic-bezier(0.32, 0.72, 0, 1) both; }
+.facta-root[data-facta-motion="full"][data-state="closed"].facta-layer--drawer .facta-panel { animation: facta-drawer-out 0.24s cubic-bezier(0.4, 0, 1, 1) both; }
+
+.facta-root[data-facta-motion="full"] .facta-morph[data-morph] { transition: height 0.26s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.facta-root[data-facta-motion="full"] .facta-screen { animation: facta-screen-in 0.24s ease-out both; }
+.facta-root[data-facta-motion="full"] .facta-issue-btn-content { animation: facta-screen-in 0.2s ease-out both; }
+.facta-root[data-facta-motion="full"] .facta-popover { animation: facta-pop-in 0.16s ease-out both; }
+
+.facta-root[data-facta-motion="full"] .facta-spinner { animation: facta-spin 0.85s linear infinite; }
+.facta-root[data-facta-motion="full"] .facta-step-dot { animation: facta-pulse 1.4s ease-in-out infinite; }
+.facta-root[data-facta-motion="full"] .facta-step + .facta-step::after { transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
+.facta-root[data-facta-motion="full"] .facta-draw { stroke-dasharray: 1; animation: facta-draw 0.4s 0.05s ease-out both; }
+
+.facta-root[data-facta-motion="full"] .facta-tone-success .facta-stamp-badge { animation: facta-stamp 0.42s cubic-bezier(0.2, 1.1, 0.3, 1) both; }
+.facta-root[data-facta-motion="full"] .facta-tone-success .facta-stamp-ring { animation: facta-ripple 0.8s 0.18s ease-out both; }
+.facta-root[data-facta-motion="full"] .facta-tone-warning .facta-stamp-badge,
+.facta-root[data-facta-motion="full"] .facta-tone-neutral .facta-stamp-badge { animation: facta-fade-in 0.5s ease-out both; }
+.facta-root[data-facta-motion="full"] .facta-tone-danger .facta-stamp-badge { animation: facta-shake 0.38s 0.1s ease-in-out both; }
+
+.facta-root[data-facta-motion="full"] .facta-sk {
+  background-image: linear-gradient(90deg, transparent 20%, color-mix(in srgb, var(--facta-i-text) 7%, transparent) 50%, transparent 80%);
+  background-size: 200% 100%;
+  animation: facta-shimmer 1.4s linear infinite;
+}
+
+.facta-root[data-facta-motion="full"] .facta-btn:active { transform: scale(0.98); }
+.facta-root[data-facta-motion="full"] .facta-copy:active { transform: scale(0.96); }
+.facta-root[data-facta-motion="full"] .facta-copy[data-copied] .facta-copy-icon { animation: facta-pop 0.24s ease-out; }
+.facta-root[data-facta-motion="full"] .facta-storage--pending .facta-dot { animation: facta-pulse 1.6s ease-in-out infinite; }
+
+/* ---------- Motion: reduced (opacity only) and none ---------- */
+
+.facta-root[data-facta-motion="reduced"] .facta-backdrop,
+.facta-root[data-facta-motion="reduced"] .facta-panel,
+.facta-root[data-facta-motion="reduced"] .facta-screen,
+.facta-root[data-facta-motion="reduced"] .facta-popover { animation: facta-fade-in 0.12s linear both; }
+.facta-root[data-facta-motion="reduced"] .facta-spinner,
+.facta-root[data-facta-motion="reduced"] .facta-step-dot { animation: facta-fade-in 1s ease-in-out infinite alternate; }
+.facta-root[data-facta-motion="reduced"] .facta-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
+
+.facta-root[data-facta-motion="none"] *,
+.facta-root[data-facta-motion="none"] *::before,
+.facta-root[data-facta-motion="none"] *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .facta-root[data-facta-motion="full"] *,
+  .facta-root[data-facta-motion="full"] *::before,
+  .facta-root[data-facta-motion="full"] *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
