@@ -25,7 +25,7 @@ describe("FactaReceipt card", () => {
   });
 
   it("uses a warning pill for a contingency document", () => {
-    render(<FactaReceipt result={{ ...sealed, estado: "contingencia", representacionGrafica: undefined }} appearance={NO_MOTION} />);
+    render(<FactaReceipt result={{ ...sealed, estado: "contingencia", representacionGrafica: null }} appearance={NO_MOTION} />);
     expect(screen.getByText("En contingencia")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Descargar PDF" })).toBeNull();
   });

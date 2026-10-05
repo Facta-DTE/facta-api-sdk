@@ -435,16 +435,6 @@
 
 .facta-downloads--one { grid-auto-flow: row; }
 
-/* Narrow cards keep two columns down to 360 px: the second line wraps (the board's sheet). */
-@container facta (max-width: 420px) {
-  .facta-download { gap: 8px; padding: 0 10px; }
-  .facta-download-hint { font-size: 11.5px; white-space: normal; overflow: visible; text-overflow: clip; }
-}
-
-/* Under 360 px two tiles no longer fit: stack them. */
-@container facta (max-width: 359px) {
-  .facta-downloads { grid-auto-flow: row; }
-}
 
 .facta-download {
   display: flex;
@@ -472,6 +462,17 @@
 .facta-download-text { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
 .facta-download-label { font-size: 15px; font-weight: 600; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .facta-download-hint { font-size: 12px; line-height: 1.2; color: var(--facta-i-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Narrow cards keep two columns down to 360 px: the second line wraps (the board's sheet). */
+@container facta (max-width: 420px) {
+  .facta-download { gap: 8px; padding: 0 10px; height: auto; min-height: var(--facta-i-dl-h); padding-block: 6px; }
+  .facta-download-hint { font-size: 11.5px; white-space: normal; overflow: visible; text-overflow: clip; }
+}
+
+/* Under 360 px two tiles no longer fit: stack them. */
+@container facta (max-width: 359px) {
+  .facta-downloads { grid-auto-flow: row; }
+}
 
 /* ---------- Text and blocks ---------- */
 
@@ -726,7 +727,7 @@
 .facta-popover-head { display: flex; align-items: center; gap: 10px; font-weight: 600; padding-right: 36px; }
 .facta-popover-close { position: absolute; top: 4px; right: 4px; width: 40px; height: 40px; margin: 0; }
 .facta-popover-actions { display: flex; justify-content: flex-end; }
-:where(.facta-popover) .facta-download { height: 48px; }
+:where(.facta-popover) .facta-download { --facta-i-dl-h: 48px; }
 :where(.facta-popover) .facta-total { font-size: 22px; line-height: 1.1; letter-spacing: -0.01em; }
 .facta-popover-id { font-size: 12px; }
 .facta-popover-foot { display: flex; justify-content: space-between; align-items: center; padding-top: 8px; border-top: 1px solid var(--facta-i-border); }
