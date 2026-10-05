@@ -3,19 +3,20 @@
 // result, the downloads and, for failures, the structured explanation.
 
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import type { FlowState, IssueResult } from "../browser/index.ts";
-import { AlertIcon, ChevronIcon, CheckIcon, ClockIcon, CloseIcon, Spinner } from "./icons.tsx";
+import { formatMoney, truncateMiddle, type FlowState, type RunMode } from "../browser/index.ts";
+import { AlertIcon, CheckIcon, ChevronIcon, ClockIcon, CloseIcon, DocIcon, SealGlyph, Spinner } from "./icons.tsx";
 import { FactaRoot, useCfg, useResolvedLook, type FactaLook } from "./look.tsx";
-import { ContingencyContent, FailureContent, SealedContent } from "./parts.tsx";
+import { DeliveryRows } from "./delivery.tsx";
+import { ContingencyContent, CopyButton, Downloads, FailureContent } from "./parts.tsx";
 import { useFactaIssue, type FactaEvent } from "./use-issue.ts";
-import { FactaInvoiceDialog, type FactaWindowProps } from "./windows.tsx";
+import type { FactaWindowProps } from "./windows.tsx";
 import type { FlowFailure } from "../browser/index.ts";
 
 export interface FactaIssueButtonProps extends FactaWindowProps {
   /** Button text before issuing. Default «Emitir factura». */
   label?: string | undefined;
   disabled?: boolean | undefined;
-  /** Show the result popover (default true). */
+  /** Show the result popover (default true). With `run="auto-close"` it is never shown after success. */
   popover?: boolean | undefined;
   className?: string | undefined;
 }
@@ -27,6 +28,7 @@ export interface IssueButtonViewProps {
   label?: string | undefined;
   disabled?: boolean | undefined;
   popover?: boolean | undefined;
+  run?: RunMode | undefined;
   /** Force the popover open (gallery). */
   detailsOpen: boolean;
   onPress: () => void;
@@ -55,7 +57,7 @@ function kindOf(state: FlowState, started: boolean): Kind {
 }
 
 function ButtonInner({ view }: { view: IssueButtonViewProps }) {
-  const { cx, messages, motion } = useCfg();
+  const { cx, sp, messages, motion } = useCfg();
   const { state, started, popover = true, detailsOpen } = view;
   const kind = kindOf(state, started);
   const popoverId = useId();
@@ -81,7 +83,7 @@ function ButtonInner({ view }: { view: IssueButtonViewProps }) {
 
   const order = ["preparing", "signing", "sending"] as const;
   let text = view.label ?? messages.button.label;
-  let icon = null as React.ReactNode;
+  let icon: React.ReactNode = kind === "idle" ? <DocIcon size={18} /> : null;
   if (kind === "working") {
     icon = <Spinner size={18} />;
     text = state.step === "verifying"
@@ -113,7 +115,7 @@ function ButtonInner({ view }: { view: IssueButtonViewProps }) {
     return () => document.removeEventListener("keydown", onKey);
   }, [open, toggle]);
 
-  const inspectable = popover && (kind === "done" || kind === "contingency" || kind === "failed");
+  const inspectable = popover && (kind === "failed" || ((kind === "done" || kind === "contingency") && view.run !== "auto-close"));
   const onClick = inspectable ? view.onToggleDetails : kind === "idle" ? view.onPress : undefined;
   const lock = kind === "working" || (!inspectable && kind !== "idle") || (kind === "idle" && view.disabled);
 
@@ -122,7 +124,7 @@ function ButtonInner({ view }: { view: IssueButtonViewProps }) {
       <button
         ref={buttonRef}
         type="button"
-        className={cx("facta-btn facta-btn--primary facta-issue-btn", "primaryButton")}
+        {...sp("primaryButton", "facta-btn facta-btn--primary facta-issue-btn")}
         data-kind={kind}
         style={animate && width !== null ? { width } : undefined}
         aria-disabled={lock || undefined}
@@ -155,12 +157,37 @@ function ButtonInner({ view }: { view: IssueButtonViewProps }) {
 }
 
 function PopoverBody({ state, onRetry }: { state: FlowState; onRetry: () => void }) {
-  const { cx, messages, showStorage } = useCfg();
-  if (state.step === "sealed" && state.result) return <SealedContent result={state.result} showStorage={showStorage} showHeadline />;
-  if (state.step === "contingency" && state.result) return <ContingencyContent result={state.result} showStorage={showStorage} />;
+  const { cx, messages, showStorage, sp } = useCfg();
+  if (state.step === "sealed" && state.result) {
+    const r = state.result;
+    const total = r.totales?.totalPagar;
+    return (
+      <div className="facta-popover-body">
+        <div className="facta-popover-head">
+          <span className="facta-stamp facta-stamp--xs facta-tone-success" aria-hidden><SealGlyph size={18} /></span>
+          {messages.sealed.headline}
+        </div>
+        {typeof total === "number" && (
+          <div>
+            <span className="facta-sub">{messages.sealed.total}</span>
+            <div {...sp("total", "facta-total")}>{formatMoney(total)}</div>
+          </div>
+        )}
+        <div className="facta-id facta-mono">
+          <span title={r.codigoGeneracion}>{truncateMiddle(r.codigoGeneracion, 12, 12)}</span>
+          <CopyButton value={r.codigoGeneracion} label={messages.sealed.generationCode} />
+        </div>
+        {r.delivery && <dl {...sp("identifiers", "facta-block facta-details")}><DeliveryRows result={r} /></dl>}
+        <Downloads result={r} />
+      </div>
+    );
+  }
+  if (state.step === "contingency" && state.result) {
+    return <div className="facta-popover-body"><ContingencyContent result={state.result} showStorage={showStorage} /></div>;
+  }
   if (state.error) {
     return (
-      <>
+      <div className="facta-popover-body">
         <FailureContent error={state.error} kind={state.step === "rejected" ? "rejected" : "failed"} />
         {state.error.canRetry && (
           <div className="facta-popover-actions">
@@ -169,7 +196,7 @@ function PopoverBody({ state, onRetry }: { state: FlowState; onRetry: () => void
             </button>
           </div>
         )}
-      </>
+      </div>
     );
   }
   return null;
@@ -178,7 +205,14 @@ function PopoverBody({ state, onRetry }: { state: FlowState; onRetry: () => void
 /** Presentational half (used by the gallery with synthetic states). */
 export function IssueButtonView(view: IssueButtonViewProps) {
   return (
-    <FactaRoot look={view.look} className={view.className} style={{ display: "inline-block" }}>
+    <FactaRoot
+      look={view.look}
+      className={view.className}
+      state={kindOf(view.state, view.started)}
+      run={view.run ?? "manual"}
+      variant="button"
+      style={{ display: "inline-block" }}
+    >
       <div className="facta-button-wrap">
         <ButtonInner view={view} />
       </div>
@@ -186,32 +220,34 @@ export function IssueButtonView(view: IssueButtonViewProps) {
   );
 }
 
-/** One-tap issuing for a point of sale. `confirm` defaults to false here. */
+/**
+ * One-tap issuing for a point of sale. `run="manual"` (default): the person
+ * presses it. `"auto"`: issues as soon as it mounts. `"auto-close"`: same, and
+ * the success popover is not shown (the host reads `onIssued`); a rejection
+ * still opens its explanation unless `autoCloseOn="any"`.
+ */
 export function FactaIssueButton(props: FactaIssueButtonProps) {
   const resolved = useResolvedLook(props);
-  const confirm = props.confirm ?? false;
+  const run = props.run ?? "manual";
+  const autoCloseOn = props.autoCloseOn ?? "success";
   const { session } = props;
-  const [started, setStarted] = useState(false);
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [started, setStarted] = useState(run !== "manual");
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [doneResult, setDoneResult] = useState<IssueResult | null>(null);
 
   useEffect(() => {
-    setStarted(false);
-    setDialogOpen(false);
+    setStarted(run !== "manual");
     setDetailsOpen(false);
-    setDoneResult(null);
-  }, [session]);
+  }, [session, run]);
 
   const { onError } = props;
   const handleError = useCallback((error: FlowFailure) => {
-    setDetailsOpen(true);
+    if (!(run === "auto-close" && autoCloseOn === "any")) setDetailsOpen(true);
     onError?.(error);
-  }, [onError]);
+  }, [onError, run, autoCloseOn]);
 
   const issue = useFactaIssue(session, {
-    enabled: started && !confirm,
-    confirm: false,
+    enabled: started,
+    run: "auto",
     onIssued: props.onIssued,
     onError: handleError,
     onDelivery: props.onDelivery,
@@ -220,51 +256,24 @@ export function FactaIssueButton(props: FactaIssueButtonProps) {
     flowOptions: props.flowOptions,
   });
 
-  const onPress = useCallback(() => {
-    if (confirm) setDialogOpen(true);
-    else setStarted(true);
-  }, [confirm]);
-
-  // With `confirm`, the dialog owns the flow; the button only mirrors its end.
-  const state: FlowState = confirm
-    ? {
-      ...issue.state,
-      step: doneResult ? (doneResult.estado === "sellado" ? "sealed" : "contingency") : "loading",
-      result: doneResult,
-    }
-    : issue.state;
+  const onPress = useCallback(() => setStarted(true), []);
+  const popover = props.popover !== false && run !== "auto-close";
+  const failurePopover = props.popover !== false && run === "auto-close" && autoCloseOn === "success";
 
   return (
-    <>
-      <IssueButtonView
-        state={state}
-        started={confirm ? doneResult !== null : started}
-        label={props.label}
-        disabled={props.disabled}
-        popover={props.popover}
-        detailsOpen={detailsOpen}
-        onPress={onPress}
-        onToggleDetails={() => setDetailsOpen((o) => !o)}
-        onRetry={issue.retry}
-        look={props}
-        className={props.className}
-      />
-      {confirm && (
-        <FactaInvoiceDialog
-          {...props}
-          confirm
-          open={dialogOpen}
-          onOpenChange={setDialogOpen}
-          onIssued={(r) => {
-            setDoneResult(r);
-            props.onIssued?.(r);
-          }}
-          onDelivery={(delivery) => {
-            setDoneResult((r) => (r ? { ...r, delivery } : r));
-            props.onDelivery?.(delivery);
-          }}
-        />
-      )}
-    </>
+    <IssueButtonView
+      state={issue.state}
+      started={started}
+      label={props.label}
+      disabled={props.disabled}
+      popover={popover || failurePopover}
+      run={run}
+      detailsOpen={detailsOpen}
+      onPress={onPress}
+      onToggleDetails={() => setDetailsOpen((o) => !o)}
+      onRetry={issue.retry}
+      look={props}
+      className={props.className}
+    />
   );
 }

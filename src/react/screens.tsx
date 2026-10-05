@@ -10,9 +10,9 @@ import {
   type FlowState,
   type SessionInfo,
 } from "../browser/index.ts";
-import { Spinner } from "./icons.tsx";
+import { DocIcon, Spinner } from "./icons.tsx";
 import { useCfg } from "./look.tsx";
-import { ContingencyContent, FailureContent, SealedContent, StampSeal, Stepper, type Tone } from "./parts.tsx";
+import { ContingencyContent, ExpiredIcon, FailureContent, SealedContent, Stepper, type Tone } from "./parts.tsx";
 
 export interface ScreenAction {
   label: string;
@@ -40,111 +40,127 @@ function LoadingBody() {
   return (
     <div className={cx("facta-skeleton")} aria-busy="true" aria-live="polite">
       <span className="facta-sr">…</span>
-      <div className="facta-sk facta-sk--chip" />
-      <div className="facta-sk facta-sk--line facta-sk--w60" />
-      <div className="facta-sk facta-sk--line facta-sk--w40" />
-      <div className="facta-sk facta-sk--block" />
-      <div className="facta-sk facta-sk--line" />
-      <div className="facta-sk facta-sk--line facta-sk--w80" />
-      <div className="facta-sk facta-sk--total" />
+      <span className="facta-sk facta-sk--ctx" />
+      <span className="facta-sk facta-sk--rec" />
+      {[0, 1, 2].map((i) => (
+        <div key={i} className="facta-sk-row">
+          <div className="facta-sk-col">
+            <span className="facta-sk facta-sk--l1" />
+            <span className="facta-sk facta-sk--l2" />
+          </div>
+          <span className="facta-sk facta-sk--amt" />
+        </div>
+      ))}
+      <div className="facta-sk-row">
+        <span className="facta-sk facta-sk--lbl" />
+        <span className="facta-sk facta-sk--total" />
+      </div>
+    </div>
+  );
+}
+
+function ContextBlock({ info }: { info: SessionInfo }) {
+  const { messages } = useCfg();
+  const { draft, display } = info;
+  return (
+    <div className="facta-block">
+      <div className="facta-meta">
+        <span className="facta-doctype"><DocIcon size={20} />{messages.docTypes[draft.tipoDte]}</span>
+        {display?.reference && <span className="facta-ref">{fill(messages.review.reference, { reference: display.reference })}</span>}
+      </div>
+      {display?.title && <div className="facta-sub">{display.title}</div>}
     </div>
   );
 }
 
 function ReviewBody({ info }: { info: SessionInfo }) {
-  const { cx, messages } = useCfg();
+  const { messages, sp } = useCfg();
   const m = messages.review;
   const { draft, display } = info;
   const receptor = draft.receptor;
   const hasReceptor = Boolean(receptor && (receptor.nombre || receptor.numDocumento));
   return (
-    <div className={cx("facta-review")}>
-      <div className={cx("facta-doc-head")}>
-        <span className={cx("facta-doctype")}>{messages.docTypes[draft.tipoDte]}</span>
-        {display?.reference && <span className={cx("facta-ref")}>{fill(m.reference, { reference: display.reference })}</span>}
-      </div>
-      {display?.title && <p className={cx("facta-text facta-text--small")}>{display.title}</p>}
-      <section className={cx("facta-block")}>
-        <h3 className={cx("facta-label")}>{m.recipientHeading}</h3>
+    <>
+      <ContextBlock info={info} />
+      <div className="facta-block">
+        <span className="facta-label">{m.recipientHeading}</span>
         {hasReceptor
           ? (
-            <p className={cx("facta-receptor")}>
-              <strong>{receptor?.nombre}</strong>
+            <>
+              <div className="facta-rname">{receptor?.nombre}</div>
               {(receptor?.numDocumento || receptor?.correo) && (
-                <span>{[receptor?.numDocumento, receptor?.correo].filter(Boolean).join(" · ")}</span>
+                <div className="facta-sub">{[receptor?.numDocumento, receptor?.correo].filter(Boolean).join(" · ")}</div>
               )}
-            </p>
+            </>
           )
-          : <p className={cx("facta-receptor")}><strong>{m.finalConsumer}</strong></p>}
-      </section>
-      <section className={cx("facta-block")}>
-        <h3 className={cx("facta-label")}>{m.linesHeading}</h3>
-        <ul className={cx("facta-lines")}>
-          {draft.items.map((item, i) => {
-            const amount = lineAmount(item.cantidad, item.precioUni);
-            return (
-              <li key={i}>
-                <span className="facta-line-main">
-                  <span className="facta-line-desc">{item.descripcion ?? "—"}</span>
-                  <span className="facta-line-sub">
-                    {formatQuantity(item.cantidad)} × {formatMoney(item.precioUni)}
-                  </span>
-                </span>
-                <span className="facta-amount">{amount === null ? "—" : formatMoney(amount)}</span>
-              </li>
-            );
-          })}
-        </ul>
-      </section>
+          : <div className="facta-rname">{m.finalConsumer}</div>}
+      </div>
+      <ul className="facta-lines" aria-label={m.linesHeading}>
+        {draft.items.map((item, i) => {
+          const amount = lineAmount(item.cantidad, item.precioUni);
+          return (
+            <li key={i} className="facta-line">
+              <span className="facta-line-main">
+                <span className="facta-line-desc">{item.descripcion ?? "—"}</span>
+                <span className="facta-line-sub">{formatQuantity(item.cantidad)} × {formatMoney(item.precioUni)}</span>
+              </span>
+              <span className="facta-line-amount">{amount === null ? "—" : formatMoney(amount)}</span>
+            </li>
+          );
+        })}
+      </ul>
       {typeof display?.total === "number" && (
-        <div className={cx("facta-total")}>
-          <span>{m.total}</span>
-          <strong className="facta-amount facta-amount--lg">{formatMoney(display.total)}</strong>
+        <div className="facta-totalrow">
+          <span className="facta-totalrow-label">{m.total}</span>
+          <b {...sp("total", "facta-total")}>{formatMoney(display.total)}</b>
         </div>
       )}
-      <p className={cx("facta-text facta-text--small facta-note")}>{m.totalNote}</p>
-    </div>
+      <p className="facta-note">{m.totalNote}</p>
+    </>
   );
 }
 
 function IssuingBody({ state }: { state: FlowState }) {
-  const { cx, messages } = useCfg();
+  const { messages } = useCfg();
   const order = ["preparing", "signing", "sending"] as const;
   const n = state.phase ? order.indexOf(state.phase) + 1 : 1;
   const label = messages.issuing.steps[order[n - 1]!];
   return (
-    <div className={cx("facta-progress")}>
+    <>
+      {state.info && <ContextBlock info={state.info} />}
       <Stepper phase={state.phase} />
-      <p className={cx("facta-text facta-text--small facta-note")}>{messages.issuing.doNotClose}</p>
+      <p className="facta-note facta-note--center">{messages.issuing.takesAFewSeconds} {messages.issuing.doNotClose}</p>
       <div className="facta-sr" role="status" aria-live="polite">{fill(messages.issuing.status, { n, label })}</div>
-    </div>
+    </>
   );
 }
 
 function VerifyingBody({ state }: { state: FlowState }) {
-  const { cx, messages } = useCfg();
+  const { messages } = useCfg();
   return (
-    <div className={cx("facta-progress facta-progress--verifying")}>
-      <div className={cx("facta-verify-spin")}><Spinner size={34} /></div>
-      <p className={cx("facta-text facta-text--center")} role="status" aria-live="polite">{messages.verifying.body}</p>
+    <>
+      {state.info && <ContextBlock info={state.info} />}
+      <Stepper phase="sending" />
+      <div className="facta-live" role="status" aria-live="polite">
+        <span className="facta-live-icon"><Spinner size={20} /></span>
+        <span>{messages.verifying.body}</span>
+      </div>
       {state.attempt > 0 && (
-        <p className={cx("facta-text facta-text--small facta-text--center")}>
+        <p className="facta-note facta-note--center">
           {fill(messages.verifying.attempt, { n: state.attempt, total: state.maxAttempts })}
         </p>
       )}
-    </div>
+    </>
   );
 }
 
 function ExpiredBody() {
-  const { cx, messages } = useCfg();
+  const { messages } = useCfg();
   return (
-    <div className={cx("facta-result")}>
-      <div className={cx("facta-hero")}>
-        <StampSeal tone="neutral" />
-        <h3 className={cx("facta-headline")}>{messages.expired.headline}</h3>
-        <p className={cx("facta-text")}>{messages.expired.body}</p>
-      </div>
+    <div className="facta-hero">
+      <ExpiredIcon />
+      <h3 className="facta-headline">{messages.expired.headline}</h3>
+      <p className="facta-hero-text">{messages.expired.body}</p>
     </div>
   );
 }
@@ -194,7 +210,7 @@ export function useScreen(state: FlowState, handlers: ScreenHandlers, showStorag
       return {
         title: t.rejected,
         tone: "danger",
-        body: state.error ? <FailureContent error={state.error} kind="rejected" showHeadline={false} /> : null,
+        body: state.error ? <FailureContent error={state.error} kind="rejected" /> : null,
         ...withClose(messages.rejected.close),
       };
     case "failed": {

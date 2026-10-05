@@ -1,9 +1,11 @@
 // An in-browser fake of the handler's §5 wire, for design review and tests.
-// It answers `session.describe`, `issue` and `status` like the real handler.
+// It answers `session.describe`, `issue`, `status` and `delivery.status` like the real handler.
 
 export type Outcome =
   | "sealed"
   | "sealed-copies-pending"
+  | "sealed-delivered"
+  | "sealed-delivering"
   | "contingency"
   | "rejected"
   | "uncertain-then-sealed"
@@ -20,7 +22,7 @@ const CG = "7C2F1E5A-9B3D-4A6E-8F10-2D5B7C9E1A34";
 
 const draft = {
   tipoDte: "01",
-  receptor: { nombre: "María Fernanda López", numDocumento: "053085465", correo: "maria@example.com" },
+  receptor: { nombre: "María Fernanda López", numDocumento: "037155821", correo: "maria@example.com" },
   items: [
     { descripcion: "Café de altura, bolsa 1 lb", cantidad: 2, precioUni: 8.5 },
     { descripcion: "Pupusas revueltas", cantidad: 4, precioUni: 1.25 },
@@ -45,11 +47,26 @@ function sealedResult(config: MockConfig) {
   };
 }
 
+const MASK_EMAIL = "m•••@ejemplo.com";
+const MASK_PHONE = "+503 •••• 0000";
+
+/** What the browser gets first; `sealed-delivering` then turns `enviado` on the third poll. */
+function initialDelivery(outcome: Outcome) {
+  if (outcome === "sealed-delivered") {
+    return {
+      correo: { estado: "enviado", destino: MASK_EMAIL },
+      whatsapp: { estado: "sin_credito", destino: MASK_PHONE, motivo: "wallet_empty" },
+    };
+  }
+  return { correo: { estado: "pendiente", destino: MASK_EMAIL }, whatsapp: { estado: "pendiente", destino: MASK_PHONE } };
+}
+
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 export function createMockFetch(config: MockConfig): typeof fetch {
   let issueCalls = 0;
+  let deliveryReads = 0;
   const wait = () => new Promise((r) => setTimeout(r, config.latencyMs ?? 900));
   return (async (_input: RequestInfo | URL, init?: RequestInit) => {
     const body = JSON.parse(String(init?.body ?? "{}")) as { action: string };
@@ -73,6 +90,16 @@ export function createMockFetch(config: MockConfig): typeof fetch {
         switch (config.outcome) {
           case "sealed":
             return json({ result: sealedResult(config), storage: { managed: "stored", archive: "complete" }, statusToken: "st" });
+          case "sealed-delivered":
+          case "sealed-delivering":
+            deliveryReads = 0;
+            return json({
+              result: sealedResult(config),
+              storage: { managed: "stored", archive: "complete" },
+              statusToken: "st",
+              deliveryHandle: "mock-handle.mac",
+              delivery: { canales: initialDelivery(config.outcome) },
+            });
           case "sealed-copies-pending":
             return json({
               result: sealedResult(config),
@@ -113,6 +140,22 @@ export function createMockFetch(config: MockConfig): typeof fetch {
           default:
             return json({ error: { code: "internal_error", message: "x", retryable: false } }, 500);
         }
+      }
+      case "delivery.status": {
+        await new Promise((r) => setTimeout(r, 300));
+        deliveryReads++;
+        if (config.outcome === "sealed-delivering") {
+          const sent = deliveryReads >= 3;
+          return json({
+            delivery: {
+              canales: {
+                correo: { estado: sent ? "enviado" : "en_proceso", destino: MASK_EMAIL },
+                whatsapp: { estado: deliveryReads >= 4 ? "enviado" : "en_proceso", destino: MASK_PHONE },
+              },
+            },
+          });
+        }
+        return json({ delivery: { canales: initialDelivery(config.outcome) } });
       }
       case "status":
         return json({ status: { estado: "sellado", codigoGeneracion: CG, numeroControl: "DTE-01-M001P001-000000000000042", tipoDte: "01", ambiente: config.environment, fecEmi: "2026-10-05" } });

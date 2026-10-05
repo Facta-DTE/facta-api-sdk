@@ -4,16 +4,24 @@
 
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import type { DeliveryView, FlowFailure, IssueResult } from "../browser/index.ts";
+import type { DeliveryView, FlowFailure, IssueResult, RunMode } from "../browser/index.ts";
 import { FactaWindowView } from "./card.tsx";
 import { FactaRoot, useMediaQuery, useResolvedLook, type FactaLook, type ResolvedLook } from "./look.tsx";
-import { useFactaIssue, type FactaEvent, type UseFactaIssueOptions } from "./use-issue.ts";
+import { useFactaIssue, type AutoCloseOn, type FactaEvent, type UseFactaIssueOptions } from "./use-issue.ts";
 
 export interface FactaWindowProps extends FactaLook {
   /** The opaque token your server created with `createFactaSession`. */
   session: string;
-  /** Show the review step first (default true). `false` issues as soon as it opens. */
-  confirm?: boolean | undefined;
+  /**
+   * `"manual"` (default): review, then «Emitir factura». `"auto"`: issues as soon
+   * as it opens and the result stays until the person closes it. `"auto-close"`:
+   * issues, shows the result for `autoCloseDelay` ms and closes itself.
+   */
+  run?: RunMode | undefined;
+  /** Milliseconds the result stays visible before `auto-close` closes (default 1200). */
+  autoCloseDelay?: number | undefined;
+  /** `"success"` (default): only sealed/contingency close. `"any"`: every final state closes. */
+  autoCloseOn?: AutoCloseOn | undefined;
   onIssued?: ((result: IssueResult) => void) | undefined;
   onError?: ((error: FlowFailure) => void) | undefined;
   /** Delivery state updates (e-mail / WhatsApp); never blocks «Listo» or closing. */
@@ -53,6 +61,8 @@ function usePresence(open: boolean, exitMs: number) {
 interface LayerProps {
   kind: "dialog" | "sheet" | "drawer";
   state: "open" | "closed";
+  step: string;
+  run: RunMode;
   resolved: ResolvedLook;
   titleId: string;
   canClose: boolean;
@@ -61,7 +71,7 @@ interface LayerProps {
 }
 
 /** Portal + backdrop + focus trap + scroll lock + Esc. */
-function Layer({ kind, state, resolved, titleId, canClose, onRequestClose, children }: LayerProps) {
+function Layer({ kind, state, step, run, resolved, titleId, canClose, onRequestClose, children }: LayerProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef({ canClose, onRequestClose });
   closeRef.current = { canClose, onRequestClose };
@@ -115,7 +125,15 @@ function Layer({ kind, state, resolved, titleId, canClose, onRequestClose, child
 
   const { cx } = resolved;
   return createPortal(
-    <FactaRoot resolved={resolved} className={cx(`facta-layer facta-layer--${kind}`, "overlay")} data-state={state}>
+    <FactaRoot
+      resolved={resolved}
+      slot="overlay"
+      state={step}
+      run={run}
+      variant={kind}
+      className={cx(`facta-layer facta-layer--${kind}`, "overlay")}
+      data-state={state}
+    >
       <div className={cx("facta-backdrop")} aria-hidden onClick={() => canClose && onRequestClose()} />
       <div
         ref={panelRef}
@@ -140,7 +158,10 @@ function useLayerWindow(props: FactaLayerProps, kind: "dialog" | "drawer", prese
   const { mounted, state } = usePresence(props.open, exitMs);
   const issue = useFactaIssue(props.session, {
     enabled: mounted,
-    confirm: props.confirm,
+    run: props.run,
+    autoCloseDelay: props.autoCloseDelay,
+    autoCloseOn: props.autoCloseOn,
+    onAutoClose: () => closeRef.current(),
     onIssued: props.onIssued,
     onError: props.onError,
     onDelivery: props.onDelivery,
@@ -148,6 +169,7 @@ function useLayerWindow(props: FactaLayerProps, kind: "dialog" | "drawer", prese
     messages: resolved.messages,
     flowOptions: props.flowOptions,
   });
+  const closeRef = useRef<() => void>(() => {});
   const busy = issue.state.step === "issuing" || issue.state.step === "verifying";
   const { onOpenChange, onClose } = props;
   const { emit } = issue;
@@ -157,6 +179,7 @@ function useLayerWindow(props: FactaLayerProps, kind: "dialog" | "drawer", prese
     onOpenChange?.(false);
     onClose?.();
   }, [busy, emit, onOpenChange, onClose]);
+  closeRef.current = close;
   const titleId = useId();
   const layerKind: "dialog" | "sheet" | "drawer" = kind === "drawer"
     ? "drawer"
@@ -171,7 +194,7 @@ export function FactaInvoiceDialog(props: FactaLayerProps & { presentation?: "au
   const w = useLayerWindow(props, "dialog", props.presentation);
   if (!w.mounted) return null;
   return (
-    <Layer kind={w.layerKind} state={w.state} resolved={w.resolved} titleId={w.titleId} canClose={!w.busy} onRequestClose={w.close}>
+    <Layer kind={w.layerKind} state={w.state} step={w.issue.state.step} run={props.run ?? "manual"} resolved={w.resolved} titleId={w.titleId} canClose={!w.busy} onRequestClose={w.close}>
       <FactaWindowView
         state={w.issue.state}
         variant={w.layerKind === "sheet" ? "sheet" : "dialog"}
@@ -179,6 +202,7 @@ export function FactaInvoiceDialog(props: FactaLayerProps & { presentation?: "au
         onNext={w.issue.next}
         onRetry={w.issue.retry}
         onClose={w.close}
+        autoClose={w.issue.autoClose}
       />
     </Layer>
   );
@@ -189,7 +213,7 @@ export function FactaInvoiceDrawer(props: FactaLayerProps) {
   const w = useLayerWindow(props, "drawer");
   if (!w.mounted) return null;
   return (
-    <Layer kind="drawer" state={w.state} resolved={w.resolved} titleId={w.titleId} canClose={!w.busy} onRequestClose={w.close}>
+    <Layer kind="drawer" state={w.state} step={w.issue.state.step} run={props.run ?? "manual"} resolved={w.resolved} titleId={w.titleId} canClose={!w.busy} onRequestClose={w.close}>
       <FactaWindowView
         state={w.issue.state}
         variant="drawer"
@@ -197,6 +221,7 @@ export function FactaInvoiceDrawer(props: FactaLayerProps) {
         onNext={w.issue.next}
         onRetry={w.issue.retry}
         onClose={w.close}
+        autoClose={w.issue.autoClose}
       />
     </Layer>
   );
@@ -211,7 +236,10 @@ export function FactaInvoiceInline(props: FactaInlineProps) {
   const resolved = useResolvedLook(props);
   const titleId = useId();
   const issue = useFactaIssue(props.session, {
-    confirm: props.confirm,
+    run: props.run,
+    autoCloseDelay: props.autoCloseDelay,
+    autoCloseOn: props.autoCloseOn,
+    onAutoClose: () => closeRef.current(),
     onIssued: props.onIssued,
     onError: props.onError,
     onDelivery: props.onDelivery,
@@ -227,8 +255,10 @@ export function FactaInvoiceInline(props: FactaInlineProps) {
     emit("closed");
     onClose?.();
   }, [busy, emit, onClose]);
+  const closeRef = useRef<() => void>(() => {});
+  closeRef.current = close;
   return (
-    <FactaRoot resolved={resolved} className={resolved.cx("facta-inline", undefined, props.className)}>
+    <FactaRoot resolved={resolved} state={issue.state.step} run={props.run ?? "manual"} variant="inline" className={resolved.cx("facta-inline", undefined, props.className)}>
       <section aria-labelledby={titleId}>
         <FactaWindowView
           state={issue.state}
@@ -237,6 +267,7 @@ export function FactaInvoiceInline(props: FactaInlineProps) {
           onNext={issue.next}
           onRetry={issue.retry}
           onClose={onClose ? close : undefined}
+          autoClose={onClose ? issue.autoClose : undefined}
         />
       </section>
     </FactaRoot>

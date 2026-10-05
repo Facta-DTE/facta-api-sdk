@@ -18,7 +18,7 @@ export function FactaReceipt({ result, environment, className, ...look }: FactaR
     result,
   };
   return (
-    <FactaRoot look={look} className={className}>
+    <FactaRoot look={look} className={className} state={state.step} run="manual" variant="inline">
       <FactaWindowView state={state} variant="inline" environment={environment ?? null} />
     </FactaRoot>
   );

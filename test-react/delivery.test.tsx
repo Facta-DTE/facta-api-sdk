@@ -37,7 +37,7 @@ function renderInline(client: FactaClient, extra: Record<string, unknown> = {}, 
     <FactaProvider client={client} appearance={NO_MOTION}>
       <FactaInvoiceInline
         session="tok"
-        confirm={false}
+        run="auto"
         flowOptions={{ verifyDelayMs: 0, phaseDelaysMs: [60_000, 120_000], ...(sleep ? { sleep } : {}) }}
         {...extra}
       />
@@ -70,6 +70,20 @@ describe("delivery rows", () => {
     expect(onDelivery.mock.calls.map(([d]) => d.canales.correo.estado)).toEqual(["pendiente", "enviado"]);
   });
 
+  it("auto-close does not wait for delivery, and onDelivery still reports the final state", async () => {
+    const g = gate();
+    const { client } = clientWith(PENDING, [view({ correo: { estado: "enviado", destino: "m•••@ejemplo.com" } })]);
+    const onClose = vi.fn();
+    const onDelivery = vi.fn();
+    const { unmount } = renderInline(client, { run: "auto-close", autoCloseDelay: 0, onClose, onDelivery }, g.sleep);
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(onDelivery).toHaveBeenCalledTimes(1); // still «pendiente»
+    unmount(); // the host removes the window on close
+    await g.release();
+    await waitFor(() => expect(onDelivery).toHaveBeenCalledTimes(2));
+    expect(onDelivery.mock.calls[1]![0].canales.correo.estado).toBe("enviado");
+  });
+
   it("explains each WhatsApp state in words", async () => {
     const cases: Array<[string, string | null, RegExp]> = [
       ["sin_credito", "wallet_empty", /Sin saldo de WhatsApp/],
@@ -89,7 +103,8 @@ describe("delivery rows", () => {
   it("explains a failed e-mail with a readable reason", async () => {
     const { client } = clientWith(view({ correo: { estado: "fallido", motivo: "invalid_address" } }), []);
     renderInline(client);
-    await screen.findByText("No se pudo enviar el correo · Dirección rechazada");
+    await screen.findByText("No se pudo enviar el correo");
+    await screen.findByText("Dirección rechazada");
   });
 
   it("shows only the marked channels, e-mail first", async () => {

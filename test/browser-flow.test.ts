@@ -88,9 +88,9 @@ Deno.test("flow: loading -> review -> issuing -> sealed", async () => {
   flow.destroy();
 });
 
-Deno.test("flow: confirm=false issues as soon as the session loads", async () => {
+Deno.test("flow: run=auto issues as soon as the session loads", async () => {
   const { client, calls } = fakeClient({ issue: [sealed] });
-  const flow = flowFor(client, { confirm: false });
+  const flow = flowFor(client, { run: "auto" });
   await flow.start();
   assertEquals(flow.getState().step, "sealed");
   assertEquals(calls.map((c) => c.action), ["describe", "issue"]);
@@ -388,4 +388,16 @@ Deno.test("delivery: destroying the flow stops the polling", async () => {
   flow.destroy();
   await new Promise((r) => setTimeout(r, 20));
   assert(handles.length < 5);
+});
+
+Deno.test("delivery: after destroy (auto-close) a host with onDelivery still gets the final state", async () => {
+  const base = fakeClient({ issue: [sealedWithDelivery()] });
+  withDeliveryReads(base, [{ canales: { correo: { estado: "enviado", destino: "m•••@e.com" } } }]);
+  const updates: string[] = [];
+  const flow = flowFor(base.client, { onDelivery: (d) => updates.push(d.canales.correo?.estado ?? "") });
+  await flow.start();
+  await flow.next();
+  flow.destroy();
+  await settle(() => updates.includes("enviado"));
+  assertEquals(updates.at(-1), "enviado");
 });

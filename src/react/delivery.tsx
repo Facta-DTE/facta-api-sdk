@@ -4,7 +4,6 @@
 
 import { fill, type DeliveryView, type IssueResult } from "../browser/index.ts";
 import type { DeliveryChannel, DeliveryChannelStatus } from "../types.ts";
-import { Spinner } from "./icons.tsx";
 import { useCfg } from "./look.tsx";
 
 const CHANNELS: DeliveryChannel[] = ["correo", "whatsapp"];
@@ -42,9 +41,11 @@ function describe(
   }
 }
 
-/** The `<div>` rows are valid children of the `<dl>` that `Identifiers` renders. */
+const DOT: Record<RowTone, string> = { pending: "pending", ok: "saved", info: "off", problem: "problem" };
+
+/** Same markup as the «Copias» row (`facta-kv` + the status dot), so it sits in the identifiers list. */
 export function DeliveryRows({ result }: { result: IssueResult }) {
-  const { cx, messages } = useCfg();
+  const { sp, messages } = useCfg();
   const view = result.delivery;
   if (!view) return null;
   return (
@@ -56,15 +57,17 @@ export function DeliveryRows({ result }: { result: IssueResult }) {
         return (
           <div
             key={channel}
-            className={cx("facta-row facta-delivery-row", "deliveryRow", `facta-delivery--${tone}`)}
-            data-facta-slot="deliveryRow"
+            {...sp("deliveryRow", "facta-kv facta-delivery-row")}
             data-channel={channel}
             data-state={status.estado}
           >
-            <dt>{messages.delivery.label[channel]}</dt>
-            <dd role="status" aria-live="polite">
-              {tone === "pending" && <Spinner size={14} />}
-              <span className="facta-delivery-text">{text}{reason ? ` · ${reason}` : ""}</span>
+            <dt className="facta-kv-k">{messages.delivery.label[channel]}</dt>
+            <dd className="facta-kv-v facta-dd" role="status" aria-live="polite">
+              <span className={`facta-storage facta-storage--${DOT[tone]}`}>
+                <span className="facta-dot" aria-hidden />
+                {text}
+              </span>
+              {reason && <small className="facta-help">{reason}</small>}
             </dd>
           </div>
         );

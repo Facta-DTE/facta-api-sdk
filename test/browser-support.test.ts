@@ -47,8 +47,11 @@ Deno.test("storage: copies are saved, pending or off, never an error", () => {
 Deno.test("appearance: variables map to --facta-* and layers merge", () => {
   assertEquals(appearanceToCssVariables({ accent: "#0a0", fontFamily: "Inter", radius: "16px" }), {
     "--facta-accent": "#0a0",
+    "--facta-accent-ink": "#0b1419",
+    "--facta-accent-soft": "color-mix(in srgb, #0a0 12%, var(--facta-i-bg))",
     "--facta-font": "Inter",
     "--facta-radius": "16px",
+    "--facta-radius-sm": "10px",
   });
   assertEquals(appearanceToCssVariables(undefined), {});
   const merged = mergeAppearance({ theme: "dark", variables: { accent: "#111", radius: "4px" } }, { variables: { accent: "#222" }, density: "compact" });

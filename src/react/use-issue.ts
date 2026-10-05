@@ -10,6 +10,7 @@ import {
   type FlowState,
   type IssueFlow,
   type IssueResult,
+  type RunMode,
 } from "../browser/index.ts";
 import { ProviderLookContext } from "./look.tsx";
 
@@ -34,7 +35,28 @@ export interface FactaEvent {
 export interface FactaContextValue {
   client: FactaClient | null;
   onEvent?: ((event: FactaEvent) => void) | undefined;
-  openWindow?: ((session: string, options?: { variant?: "dialog" | "drawer"; confirm?: boolean }) => Promise<IssueResult>) | undefined;
+  openWindow?: ((session: string, options?: OpenWindowOptions) => Promise<IssueResult>) | undefined;
+}
+
+/** Options of `useFactaWindow().open(session, options)`. */
+export interface OpenWindowOptions {
+  variant?: "dialog" | "drawer";
+  run?: RunMode;
+  autoCloseDelay?: number;
+  autoCloseOn?: AutoCloseOn;
+}
+
+/** `success`: sealed and contingency close. `any`: every final state closes. */
+export type AutoCloseOn = "success" | "any";
+
+export const DEFAULT_AUTO_CLOSE_DELAY = 1200;
+
+export interface AutoCloseState {
+  /** The countdown is running (final state reached, nobody interacted). */
+  active: boolean;
+  delay: number;
+  /** Stop it for good: the person is reading. */
+  cancel(): void;
 }
 
 export const FactaContext = createContext<FactaContextValue>({ client: null });
@@ -44,8 +66,14 @@ export function useFactaContext(): FactaContextValue {
 }
 
 export interface UseFactaIssueOptions {
-  /** Show the review step first (default true). `false` issues immediately. */
-  confirm?: boolean | undefined;
+  /** `"manual"` (default): review, then click. `"auto"`: issue on open. `"auto-close"`: issue on open, close after. */
+  run?: RunMode | undefined;
+  /** Milliseconds the result stays visible before `auto-close` closes (default 1200, 0 = at once). */
+  autoCloseDelay?: number | undefined;
+  /** `"success"` (default) closes after sealed/contingency only; `"any"` after every final state. */
+  autoCloseOn?: AutoCloseOn | undefined;
+  /** Called when the auto-close countdown ends (the windows close themselves). */
+  onAutoClose?: (() => void) | undefined;
   /** Start only when true (default true). Turning it off destroys the flow. */
   enabled?: boolean | undefined;
   onIssued?: ((result: IssueResult) => void) | undefined;
@@ -77,6 +105,8 @@ export interface UseFactaIssue {
   /** Primary action of the review step: issue. */
   next(): void;
   retry(): void;
+  /** The auto-close countdown, for the card's bar; `active` is false in other modes. */
+  autoClose: AutoCloseState;
   /** Report a custom event (the windows use it for `closed`). */
   emit(type: FactaEventType, extra?: { result?: IssueResult; error?: FlowFailure }): void;
 }
@@ -87,7 +117,10 @@ export function useFactaIssue(session: string, options: UseFactaIssueOptions = {
   const look = useContext(ProviderLookContext);
   const client = options.client ?? ctx.client;
   const enabled = options.enabled ?? true;
-  const confirm = options.confirm ?? true;
+  const run = options.run ?? "manual";
+  const autoCloseDelay = Math.max(0, options.autoCloseDelay ?? DEFAULT_AUTO_CLOSE_DELAY);
+  const autoCloseOn = options.autoCloseOn ?? "success";
+  const [cancelled, setCancelled] = useState(false);
   const [state, setState] = useState<FlowState>(() => initialFlowState());
   const flowRef = useRef<IssueFlow | null>(null);
   const latest = useRef({ options, ctx, session });
@@ -115,11 +148,12 @@ export function useFactaIssue(session: string, options: UseFactaIssueOptions = {
       client,
       session,
       messages: messagesRef.current,
-      confirm,
+      run,
       onDelivery: (delivery) => latest.current.options.onDelivery?.(delivery),
       ...options.flowOptions,
     });
     flowRef.current = flow;
+    setCancelled(false);
     let lastStep = flow.getState().step;
     setState(flow.getState());
     emit("opened");
@@ -154,9 +188,21 @@ export function useFactaIssue(session: string, options: UseFactaIssueOptions = {
     };
     // `options.flowOptions` is a test hook and intentionally not a dependency.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, session, enabled, confirm, emit]);
+  }, [client, session, enabled, run, emit]);
+
+  const step = state.step;
+  const finalForClose = step === "sealed" || step === "contingency" ||
+    (autoCloseOn === "any" && (step === "rejected" || step === "failed" || step === "expired"));
+  const active = enabled && run === "auto-close" && !cancelled && finalForClose;
+  useEffect(() => {
+    if (!active) return;
+    const timer = setTimeout(() => latest.current.options.onAutoClose?.(), autoCloseDelay);
+    return () => clearTimeout(timer);
+  }, [active, autoCloseDelay]);
+  const cancel = useCallback(() => setCancelled(true), []);
+  const autoClose = useMemo<AutoCloseState>(() => ({ active, delay: autoCloseDelay, cancel }), [active, autoCloseDelay, cancel]);
 
   const next = useCallback(() => void flowRef.current?.next(), []);
   const retry = useCallback(() => void flowRef.current?.retry(), []);
-  return { state, delivery: state.delivery, next, retry, emit };
+  return { state, delivery: state.delivery, next, retry, emit, autoClose };
 }

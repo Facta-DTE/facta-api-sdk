@@ -7,8 +7,9 @@
 //   loading -> review -> issuing -> (verifying) -> sealed | contingency |
 //   rejected | failed | expired
 //
-// With `confirm: false` the review step is skipped and issuing starts as soon
-// as the session loads (point-of-sale use).
+// With `run: "auto"` or `"auto-close"` the review step is skipped and issuing
+// starts as soon as the session loads (point-of-sale use). Closing after the
+// result is the window's job, not the machine's.
 //
 // Fiscal-safety rules the machine owns:
 //  * an uncertain outcome (no usable answer after something was sent) never
@@ -36,6 +37,9 @@ export type FlowStep =
   | "rejected"
   | "failed"
   | "expired";
+
+/** `manual`: review then click. `auto`: issue on open. `auto-close`: issue on open, close after. */
+export type RunMode = "manual" | "auto" | "auto-close";
 
 export type IssuePhase = "preparing" | "signing" | "sending";
 
@@ -79,8 +83,8 @@ export interface IssueFlowOptions {
   client: FactaClient;
   session: string;
   messages?: FactaMessages;
-  /** Show the review step first (default true). `false` issues immediately. */
-  confirm?: boolean;
+  /** Default `"manual"`. Any other value issues as soon as the session loads. */
+  run?: RunMode;
   /** Resends of the same session before falling back to `status`. Default 2. */
   maxResends?: number;
   /** Wait before each resend/status. Default 1500 ms. */
@@ -199,8 +203,12 @@ export function createIssueFlow(options: IssueFlowOptions): IssueFlow {
     return Object.values(view.canales).every((c) => c === undefined || isFinalDeliveryState(c.estado));
   }
 
+  // Delivery outlives the window only for a host that listens (`onDelivery`):
+  // auto-close then still reports the final state, within the same time budget.
+  let trackingStopped = false;
+
   function publishDelivery(view: DeliveryView) {
-    if (destroyed || !state.result) return;
+    if (trackingStopped || !state.result) return;
     set({ delivery: view, result: { ...state.result, delivery: view } });
     try {
       options.onDelivery?.(view);
@@ -213,10 +221,10 @@ export function createIssueFlow(options: IssueFlowOptions): IssueFlow {
     publishDelivery(view);
     if (view.settled || !handle || typeof client.deliveryStatus !== "function") return;
     let waited = 0;
-    while (!destroyed && waited < deliveryTimeout) {
+    while (!trackingStopped && waited < deliveryTimeout) {
       await sleep(deliveryInterval);
       waited += deliveryInterval;
-      if (destroyed) return;
+      if (trackingStopped) return;
       try {
         const next = await client.deliveryStatus(session, handle);
         view = { ...next, settled: isSettled(next), timedOut: false };
@@ -227,7 +235,7 @@ export function createIssueFlow(options: IssueFlowOptions): IssueFlow {
         if (error instanceof FactaClientError && !error.transport && !error.retryable) break;
       }
     }
-    if (!destroyed) publishDelivery({ ...view, timedOut: true });
+    if (!trackingStopped) publishDelivery({ ...view, timedOut: true });
   }
 
   function applyResult(result: IssueSummary) {
@@ -356,7 +364,7 @@ export function createIssueFlow(options: IssueFlowOptions): IssueFlow {
         })));
       } else {
         set({ step: "review" });
-        proceed = options.confirm === false;
+        proceed = (options.run ?? "manual") !== "manual";
       }
     } catch (error) {
       applyFailure(toFailure(error));
@@ -383,6 +391,7 @@ export function createIssueFlow(options: IssueFlowOptions): IssueFlow {
     },
     destroy() {
       destroyed = true;
+      if (!options.onDelivery) trackingStopped = true;
       stopPhases();
       listeners.clear();
     },
