@@ -77,11 +77,26 @@ export function Gallery() {
         </section>
       ))}
       <section>
-        <h2>Hoja en teléfono (390 px)</h2>
-        <div style={{ width: 390 }}>
-          <FactaRoot look={{ appearance: { motion: "none" } }}>
-            <FactaWindowView state={STATES[4]![1]} variant="sheet" titleId="g-sheet" onClose={() => {}} />
+        <h2>auto-close · cuenta regresiva (movimiento completo)</h2>
+        <div className="pv-grid">
+          <FactaRoot look={{ appearance: { motion: "full" } }}>
+            <FactaWindowView state={STATES[4]![1]} variant="dialog" titleId="g-ac" onClose={() => {}} autoClose={{ active: true, delay: 60000, cancel() {} }} />
           </FactaRoot>
+          <FactaRoot look={{ appearance: { motion: "reduced" } }}>
+            <FactaWindowView state={STATES[4]![1]} variant="dialog" titleId="g-ac2" onClose={() => {}} autoClose={{ active: true, delay: 60000, cancel() {} }} />
+          </FactaRoot>
+        </div>
+      </section>
+      <section>
+        <h2>Hoja en teléfono (390 px)</h2>
+        <div className="pv-grid" style={{ gridTemplateColumns: "repeat(auto-fill, 390px)" }}>
+          {(["review", "issuing", "sealed", "rejected"] as const).map((name) => (
+            <div key={name} style={{ width: 390 }}>
+              <FactaRoot look={{ appearance: { motion: "none" } }}>
+                <FactaWindowView state={STATES.find(([n]) => n === name)![1]} variant="sheet" titleId={`g-sheet-${name}`} onClose={() => {}} />
+              </FactaRoot>
+            </div>
+          ))}
         </div>
       </section>
     </>
