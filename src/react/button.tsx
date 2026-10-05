@@ -6,6 +6,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from
 import { formatMoney, truncateMiddle, type FlowState, type RunMode } from "../browser/index.ts";
 import { AlertIcon, CheckIcon, ChevronIcon, ClockIcon, CloseIcon, DocIcon, SealGlyph, Spinner } from "./icons.tsx";
 import { FactaRoot, useCfg, useResolvedLook, type FactaLook } from "./look.tsx";
+import { DeliveryRows } from "./delivery.tsx";
 import { ContingencyContent, CopyButton, DownloadTile, FailureContent } from "./parts.tsx";
 import { useFactaIssue, type FactaEvent } from "./use-issue.ts";
 import type { FactaWindowProps } from "./windows.tsx";
@@ -177,6 +178,7 @@ function PopoverBody({ state, onRetry }: { state: FlowState; onRetry: () => void
           <span title={r.codigoGeneracion}>{truncateMiddle(r.codigoGeneracion, 12, 12)}</span>
           <CopyButton value={r.codigoGeneracion} label={messages.sealed.generationCode} />
         </div>
+        {r.delivery && <dl {...sp("identifiers", "facta-block facta-details")}><DeliveryRows result={r} /></dl>}
         {pdf && (
           <div className="facta-downloads facta-downloads--one">
             <DownloadTile kind="pdf" result={r} />
@@ -258,6 +260,7 @@ export function FactaIssueButton(props: FactaIssueButtonProps) {
     run: "auto",
     onIssued: props.onIssued,
     onError: handleError,
+    onDelivery: props.onDelivery,
     onEvent: props.onEvent as ((e: FactaEvent) => void) | undefined,
     messages: resolved.messages,
     flowOptions: props.flowOptions,

@@ -4,6 +4,7 @@ import {
   initialFlowState,
   mergeMessages,
   type FactaClient,
+  type DeliveryView,
   type FactaMessages,
   type FlowFailure,
   type FlowState,
@@ -77,16 +78,30 @@ export interface UseFactaIssueOptions {
   enabled?: boolean | undefined;
   onIssued?: ((result: IssueResult) => void) | undefined;
   onError?: ((error: FlowFailure) => void) | undefined;
+  /**
+   * Delivery by e-mail / WhatsApp (only when your server marked channels in the
+   * session): called with the marked channels at once and again on every poll
+   * until each is final or the time budget (60 s) ends. It never delays `onIssued`.
+   */
+  onDelivery?: ((delivery: DeliveryView) => void) | undefined;
   onEvent?: ((event: FactaEvent) => void) | undefined;
   /** Use this client instead of the provider's. */
   client?: FactaClient | undefined;
   messages?: FactaMessages | undefined;
   /** Test hooks. */
-  flowOptions?: { verifyDelayMs?: number; phaseDelaysMs?: [number, number]; sleep?: (ms: number) => Promise<void> } | undefined;
+  flowOptions?: {
+    verifyDelayMs?: number;
+    phaseDelaysMs?: [number, number];
+    sleep?: (ms: number) => Promise<void>;
+    deliveryIntervalMs?: number;
+    deliveryTimeoutMs?: number;
+  } | undefined;
 }
 
 export interface UseFactaIssue {
   state: FlowState;
+  /** Delivery rows state; `null` until a sealed result with marked channels. Mirrors `state.delivery`. */
+  delivery: DeliveryView | null;
   /** Primary action of the review step: issue. */
   next(): void;
   retry(): void;
@@ -134,6 +149,7 @@ export function useFactaIssue(session: string, options: UseFactaIssueOptions = {
       session,
       messages: messagesRef.current,
       run,
+      onDelivery: (delivery) => latest.current.options.onDelivery?.(delivery),
       ...options.flowOptions,
     });
     flowRef.current = flow;
@@ -188,5 +204,5 @@ export function useFactaIssue(session: string, options: UseFactaIssueOptions = {
 
   const next = useCallback(() => void flowRef.current?.next(), []);
   const retry = useCallback(() => void flowRef.current?.retry(), []);
-  return { state, next, retry, emit, autoClose };
+  return { state, delivery: state.delivery, next, retry, emit, autoClose };
 }

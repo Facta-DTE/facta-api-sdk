@@ -4,10 +4,10 @@
 
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import type { FlowFailure, IssueResult, RunMode } from "../browser/index.ts";
+import type { DeliveryView, FlowFailure, IssueResult, RunMode } from "../browser/index.ts";
 import { FactaWindowView } from "./card.tsx";
 import { FactaRoot, useMediaQuery, useResolvedLook, type FactaLook, type ResolvedLook } from "./look.tsx";
-import { useFactaIssue, type AutoCloseOn, type FactaEvent } from "./use-issue.ts";
+import { useFactaIssue, type AutoCloseOn, type FactaEvent, type UseFactaIssueOptions } from "./use-issue.ts";
 
 export interface FactaWindowProps extends FactaLook {
   /** The opaque token your server created with `createFactaSession`. */
@@ -24,10 +24,12 @@ export interface FactaWindowProps extends FactaLook {
   autoCloseOn?: AutoCloseOn | undefined;
   onIssued?: ((result: IssueResult) => void) | undefined;
   onError?: ((error: FlowFailure) => void) | undefined;
+  /** Delivery state updates (e-mail / WhatsApp); never blocks «Listo» or closing. */
+  onDelivery?: ((delivery: DeliveryView) => void) | undefined;
   onEvent?: ((event: FactaEvent) => void) | undefined;
   onClose?: (() => void) | undefined;
   /** Test hook. */
-  flowOptions?: { verifyDelayMs?: number; phaseDelaysMs?: [number, number]; sleep?: (ms: number) => Promise<void> } | undefined;
+  flowOptions?: UseFactaIssueOptions["flowOptions"];
 }
 
 export interface FactaLayerProps extends FactaWindowProps {
@@ -162,6 +164,7 @@ function useLayerWindow(props: FactaLayerProps, kind: "dialog" | "drawer", prese
     onAutoClose: () => closeRef.current(),
     onIssued: props.onIssued,
     onError: props.onError,
+    onDelivery: props.onDelivery,
     onEvent: props.onEvent,
     messages: resolved.messages,
     flowOptions: props.flowOptions,
@@ -239,6 +242,7 @@ export function FactaInvoiceInline(props: FactaInlineProps) {
     onAutoClose: () => closeRef.current(),
     onIssued: props.onIssued,
     onError: props.onError,
+    onDelivery: props.onDelivery,
     onEvent: props.onEvent,
     messages: resolved.messages,
     flowOptions: props.flowOptions,

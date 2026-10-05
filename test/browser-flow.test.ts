@@ -277,3 +277,127 @@ Deno.test("flow: the issuing phase advances while one call is pending", async ()
   assertEquals(flow.getState().step, "sealed");
   assertEquals(flow.getState().phase, null);
 });
+
+// --- Delivery tracking --------------------------------------------------------
+
+type View = NonNullable<IssueSummary["delivery"]>;
+const pendingView = (): View => ({ canales: { correo: { estado: "pendiente", destino: "m•••@e.com" } } });
+const sealedWithDelivery = (): IssueSummary => ({ ...sealed, deliveryHandle: "h.mac", delivery: pendingView() });
+
+async function settle(check: () => boolean) {
+  for (let i = 0; i < 200 && !check(); i++) await new Promise((r) => setTimeout(r, 0));
+}
+
+function withDeliveryReads(base: ReturnType<typeof fakeClient>, reads: Array<View | Error>) {
+  const seen: string[] = [];
+  base.client.deliveryStatus = (_session, handle) => {
+    seen.push(handle);
+    const item = reads.shift();
+    if (item === undefined) return Promise.reject(new Error("no more reads"));
+    return item instanceof Error ? Promise.reject(item) : Promise.resolve(item);
+  };
+  return seen;
+}
+
+Deno.test("delivery: sealed shows the marked channels at once; polling updates them and stops when final", async () => {
+  const base = fakeClient({ issue: [sealedWithDelivery()] });
+  const handles = withDeliveryReads(base, [
+    { canales: { correo: { estado: "en_proceso" } } },
+    { canales: { correo: { estado: "enviado", destino: "m•••@e.com" } } },
+  ]);
+  const updates: View[] = [];
+  const flow = flowFor(base.client, { onDelivery: (d) => updates.push(d) });
+  await flow.start();
+  await flow.next();
+  assertEquals(flow.getState().step, "sealed");
+  await settle(() => flow.getState().delivery?.settled === true);
+  assertEquals(flow.getState().delivery?.canales.correo?.estado, "enviado");
+  assertEquals(flow.getState().result?.delivery?.canales.correo?.estado, "enviado");
+  assertEquals(handles, ["h.mac", "h.mac"]); // stopped after the final state: no third read
+  assertEquals(updates.map((u) => u.canales.correo?.estado), ["pendiente", "en_proceso", "enviado"]);
+  assertEquals("deliveryHandle" in (flow.getState().result ?? {}), false); // consumed, not leaked to onIssued
+  flow.destroy();
+});
+
+Deno.test("delivery: never blocks the fiscal step, and a polling failure does not change it", async () => {
+  const base = fakeClient({ issue: [sealedWithDelivery()] });
+  withDeliveryReads(base, [netError(), netError()]);
+  const flow = flowFor(base.client, { deliveryTimeoutMs: 4000, deliveryIntervalMs: 2000 });
+  await flow.start();
+  await flow.next();
+  await settle(() => flow.getState().delivery?.timedOut === true);
+  assertEquals(flow.getState().step, "sealed");
+  assertEquals(flow.getState().error, null);
+  assertEquals(flow.getState().delivery?.timedOut, true);
+  assertEquals(flow.getState().delivery?.canales.correo?.estado, "pendiente");
+  flow.destroy();
+});
+
+Deno.test("delivery: gives up after the time budget (60 s of 2 s reads = 30 reads)", async () => {
+  const base = fakeClient({ issue: [sealedWithDelivery()] });
+  const reads = Array.from({ length: 100 }, (): View => ({ canales: { correo: { estado: "en_proceso" } } }));
+  const handles = withDeliveryReads(base, reads);
+  const flow = flowFor(base.client);
+  await flow.start();
+  await flow.next();
+  await settle(() => flow.getState().delivery?.timedOut === true);
+  assertEquals(handles.length, 30);
+  assertEquals(flow.getState().delivery?.timedOut, true);
+  flow.destroy();
+});
+
+Deno.test("delivery: a definitive answer (handle refused) stops polling and says «later»", async () => {
+  const base = fakeClient({ issue: [sealedWithDelivery()] });
+  const handles = withDeliveryReads(base, [envelope("action_not_allowed", { status: 403 })]);
+  const flow = flowFor(base.client);
+  await flow.start();
+  await flow.next();
+  await settle(() => flow.getState().delivery?.timedOut === true);
+  assertEquals(handles.length, 1);
+  assertEquals(flow.getState().step, "sealed");
+  flow.destroy();
+});
+
+Deno.test("delivery: a result without delivery has no tracking, and an all-final view needs no polling", async () => {
+  const plain = fakeClient({ issue: [sealed] });
+  const flow = flowFor(plain.client);
+  await flow.start();
+  await flow.next();
+  assertEquals(flow.getState().delivery, null);
+  flow.destroy();
+
+  const done = fakeClient({
+    issue: [{ ...sealed, deliveryHandle: "h", delivery: { canales: { whatsapp: { estado: "sin_credito", motivo: "wallet_empty" } } } }],
+  });
+  const handles = withDeliveryReads(done, []);
+  const second = flowFor(done.client);
+  await second.start();
+  await second.next();
+  assertEquals(second.getState().delivery?.settled, true);
+  assertEquals(handles.length, 0);
+  second.destroy();
+});
+
+Deno.test("delivery: destroying the flow stops the polling", async () => {
+  const base = fakeClient({ issue: [sealedWithDelivery()] });
+  const reads = Array.from({ length: 100 }, (): View => ({ canales: { correo: { estado: "en_proceso" } } }));
+  const handles = withDeliveryReads(base, reads);
+  const flow = flowFor(base.client);
+  await flow.start();
+  await flow.next();
+  flow.destroy();
+  await new Promise((r) => setTimeout(r, 20));
+  assert(handles.length < 5);
+});
+
+Deno.test("delivery: after destroy (auto-close) a host with onDelivery still gets the final state", async () => {
+  const base = fakeClient({ issue: [sealedWithDelivery()] });
+  withDeliveryReads(base, [{ canales: { correo: { estado: "enviado", destino: "m•••@e.com" } } }]);
+  const updates: string[] = [];
+  const flow = flowFor(base.client, { onDelivery: (d) => updates.push(d.canales.correo?.estado ?? "") });
+  await flow.start();
+  await flow.next();
+  flow.destroy();
+  await settle(() => updates.includes("enviado"));
+  assertEquals(updates.at(-1), "enviado");
+});

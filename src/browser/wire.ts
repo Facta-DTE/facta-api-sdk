@@ -6,7 +6,7 @@
 // a subset of the SDK's own types: the handler minimises what it returns, so
 // every field beyond the summary is optional here.
 
-import type { DteType, Totals } from "../types.ts";
+import type { DeliveryChannelStatus, DeliveryChannel, DteType, Totals } from "../types.ts";
 import type { FactaErrorCode } from "../errors.ts";
 
 /** Codes the handler adds on top of `FactaErrorCode`. */
@@ -95,6 +95,23 @@ export interface IssueSummary {
   storage?: StorageSummary;
   /** Lets the window ask `status` about this document. Added by the client. */
   statusToken?: string;
+  /** Opaque, session-bound handle for `delivery.status`. Added by the client, consumed by the flow. */
+  deliveryHandle?: string;
+  /** The delivery rows to show; present only when the integrator's server marked channels. */
+  delivery?: DeliveryView;
+}
+
+/**
+ * Delivery state as the browser sees it: per marked channel, the state, the
+ * MASKED destination and a reason code. Never the Facta token or an address.
+ * `settled` and `timedOut` are added by the flow, not by the server.
+ */
+export interface DeliveryView {
+  canales: Partial<Record<DeliveryChannel, DeliveryChannelStatus>>;
+  /** Every channel reached a final state. */
+  settled?: boolean;
+  /** The flow stopped polling after its time budget; the state may still change. */
+  timedOut?: boolean;
 }
 
 /** Alias used by the React surface and `useFactaWindow`. */
@@ -136,4 +153,4 @@ export interface StatusSummary {
   totales?: Partial<Totals>;
 }
 
-export type Action = "session.describe" | "issue" | "status";
+export type Action = "session.describe" | "issue" | "status" | "delivery.status";

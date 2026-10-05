@@ -44,7 +44,7 @@ const PRESETS: Record<string, { appearance: FactaAppearance; branding: FactaBran
   },
 };
 
-const OUTCOMES: Outcome[] = ["sealed", "sealed-copies-pending", "contingency", "rejected", "uncertain-then-sealed", "failed-retryable", "expired"];
+const OUTCOMES: Outcome[] = ["sealed", "sealed-copies-pending", "sealed-delivered", "sealed-delivering", "contingency", "rejected", "uncertain-then-sealed", "failed-retryable", "expired"];
 
 function Imperative({ run, delay, on }: { run: RunMode; delay: number; on: AutoCloseOn }) {
   const { open } = useFactaWindow();
@@ -108,7 +108,7 @@ function App() {
         <section>
           <h2>Recibo</h2>
           <div style={{ maxWidth: 520 }}>
-            <FactaReceipt environment={environment} result={{ estado: "sellado", codigoGeneracion: "7C2F1E5A-9B3D-4A6E-8F10-2D5B7C9E1A34", numeroControl: "DTE-01-M001P001-000000000000042", tipoDte: "01", ambiente: environment, fecEmi: "2026-10-05", horEmi: "14:32:10", selloRecibido: "20267C2F1E5A9B3D4A6E8F102D5B7C9E1A34ABCD", totales: { totalPagar: 22.25 }, storage: { managed: "pending", archive: "partial" } }} />
+            <FactaReceipt environment={environment} result={{ estado: "sellado", codigoGeneracion: "7C2F1E5A-9B3D-4A6E-8F10-2D5B7C9E1A34", numeroControl: "DTE-01-M001P001-000000000000042", tipoDte: "01", ambiente: environment, fecEmi: "2026-10-05", horEmi: "14:32:10", selloRecibido: "20267C2F1E5A9B3D4A6E8F102D5B7C9E1A34ABCD", totales: { totalPagar: 22.25 }, storage: { managed: "pending", archive: "partial" }, delivery: { canales: { correo: { estado: "enviado", destino: "m•••@ejemplo.com" }, whatsapp: { estado: "sin_credito", destino: "+503 •••• 0000", motivo: "wallet_empty" } } } }} />
           </div>
         </section>
       </main>
