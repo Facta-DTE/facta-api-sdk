@@ -572,7 +572,7 @@ export function toNodeHandler(
     }
     const host = headers.get("host") ?? "localhost";
     const response = await handler(
-      new Request(`http://${host}${req.url ?? "/"}`, { method, headers, body: body as BodyInit | undefined }),
+      new Request(`http://${host}${req.url ?? "/"}`, { method, headers, body: (body ?? null) as BodyInit | null }),
     );
     res.statusCode = response.status;
     response.headers.forEach((value, name) => res.setHeader(name, value));
