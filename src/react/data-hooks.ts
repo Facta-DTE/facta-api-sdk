@@ -83,10 +83,12 @@ export function useCachedQuery<T>(key: string | null, fetcher: () => Promise<T>,
     return cache.subscribe(key, rerender);
   }, [cache, key]);
 
+  // `cache.invalidate` zeroes `updatedAt`; a mounted query then refetches on its own.
+  const invalidated = key !== null && cache.get(key)?.updatedAt === 0 && cache.get(key)?.data !== undefined;
   useEffect(() => {
     if (!enabled || !key) return;
     void cache.revalidate(key, () => fetcherRef.current(), staleMs);
-  }, [cache, key, enabled, staleMs, visible]);
+  }, [cache, key, enabled, staleMs, visible, invalidated]);
 
   const pollMs = options.pollMs ?? null;
   useEffect(() => {

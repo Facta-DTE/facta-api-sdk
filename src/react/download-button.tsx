@@ -102,6 +102,7 @@ export function DownloadSplit(props: Omit<FactaDownloadButtonProps, keyof FactaL
         {...sp("downloadButton", `facta-btn${tone}${size === "sm" ? " facta-btn--sm" : ""} facta-split-main`)}
         disabled={busy}
         data-state={phase}
+        aria-label={compactLabel !== label ? label : undefined}
         onClick={() => void run(kind)}
       >
         <span className="facta-split-label" key={phase}>{lead}{compactLabel}</span>
