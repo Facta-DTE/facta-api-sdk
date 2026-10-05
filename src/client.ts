@@ -55,6 +55,7 @@ import type {
   RemoteDestinationProbeReport,
   RemoteReplicationReport,
 } from "./archive.ts";
+import { deliveryRequestFor, GENERATION_CODE, isFinalDeliveryState } from "./delivery.ts";
 import type {
   CatalogCustomer,
   CatalogProduct,
@@ -62,6 +63,11 @@ import type {
   CatalogSearchOptions,
   CatalogSnapshot,
   CatalogState,
+  DeliverOptions,
+  DeliveryChannel,
+  DeliveryChannelResult,
+  DeliveryRequest,
+  DeliveryStatus,
   DocumentStatus,
   PreparedDte,
   InvalidationResult,
@@ -76,6 +82,8 @@ import type {
   InvalidationRequest,
   DteRequest,
   Status,
+  WaitedDelivery,
+  WaitForDeliveryOptions,
 } from "./types.ts";
 
 export interface FactaOptions {
@@ -136,6 +144,8 @@ export interface FactaRuntimeConfigV1 {
 /** Per-operation fields remain explicit; configured runtime adapters are fallbacks. */
 export type FactaArchiveEmissionOptions = Omit<ArchiveEmissionOptions, "archive"> & {
   archive?: InvoiceArchive;
+  /** Mark delivery channels. Part of the journaled request, so a recovery replays it. */
+  deliver?: DeliverOptions;
 };
 
 export interface FactaInvalidationArchiveOptions {
@@ -156,6 +166,16 @@ export interface CallOptions {
   idempotencyKey?: string;
   /** Abort this operation; retries are stopped with the same signal. */
   signal?: AbortSignal;
+}
+
+/** `CallOptions` of the calls that can mark delivery channels. */
+export interface IssueOptions extends CallOptions {
+  /**
+   * Mark e-mail and/or WhatsApp delivery. Issuing never waits for it: the
+   * result carries `entrega.token`, and `deliverEmail` / `deliverWhatsApp`
+   * start each channel within five minutes.
+   */
+  deliver?: DeliverOptions;
 }
 
 export interface DownloadOptions {
@@ -310,6 +330,10 @@ function redactErrorValue(value: unknown, secrets: readonly string[], depth = 0)
   return value;
 }
 
+function withDelivery(request: DteRequest, deliver: DeliverOptions | undefined): DteRequest {
+  return deliver === undefined ? request : ({ ...request, entrega: deliveryRequestFor(deliver) } as unknown as DteRequest);
+}
+
 const SIGN_KEY_PREFIX = "factask_";
 const UNLOCK_KEY_PREFIX = "factauk_";
 
@@ -386,6 +410,26 @@ export class Facta {
     this.#timeoutMs = options.timeoutMs ?? config?.timeoutMs ?? 60_000;
     this.#maxRetries = options.maxRetries ?? config?.maxRetries ?? 3;
     this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
+  }
+
+  /**
+   * True when `runtime.archive` is configured, so `issueAndArchive` needs no
+   * per-call archive. Lets a wrapper (the signing window's handler) decide
+   * between `issue` and `issueAndArchive` without reaching into runtime config.
+   */
+  get archiveConfigured(): boolean { return this.#runtime.archive !== undefined; }
+  /** Whether `invalidateAndArchive` can run without passing an archive. */
+  get invalidationArchiveConfigured(): boolean { return this.#runtime.invalidationArchive !== undefined; }
+
+  /**
+   * The environment the API key selects: `facta_test_` is "00", `facta_live_`
+   * is "01", anything else null. Read-only and derived from the prefix; the key
+   * itself is never exposed.
+   */
+  get environment(): "00" | "01" | null {
+    if (this.#apiKey.startsWith("facta_test_")) return "00";
+    if (this.#apiKey.startsWith("facta_live_")) return "01";
+    return null;
   }
 
   /** Health, environment and the ceilings left on this key. */
@@ -804,11 +848,12 @@ export class Facta {
   }
 
   /** Emit in one call: correlative, signature, transmission and index. */
-  async issue(request: DteRequest, options: CallOptions = {}): Promise<IssueResult> {
+  async issue(request: DteRequest, options: IssueOptions = {}): Promise<IssueResult> {
     throwIfAborted(options.signal);
-    const resolved = await this.#resolveCatalogRefs(request);
+    const { deliver, ...call } = options;
+    const resolved = withDelivery(await this.#resolveCatalogRefs(request), deliver);
     throwIfAborted(options.signal);
-    return this.#request<IssueResult>("POST", "/v1/dte", resolved, options);
+    return this.#request<IssueResult>("POST", "/v1/dte", resolved, call);
   }
 
   /**
@@ -852,7 +897,7 @@ export class Facta {
     });
     if (!created) {
       return await this.recoverOperation(operationId, {
-        request,
+        request: withDelivery(request, options.deliver),
         archive,
         ...(signal ? { signal } : {}),
         ...(remoteDestinations ? { remoteDestinations } : {}),
@@ -1452,6 +1497,91 @@ export class Facta {
       prepareToken: prepared.prepareToken,
       documento: prepared.documento,
     }, options);
+  }
+
+  /**
+   * Start the e-mail delivery of a sealed document. `token` is
+   * `result.entrega.token`, valid five minutes from issuance. Answers 200 with
+   * the final channel state, or 202 with `en_proceso` (read it with
+   * `getDelivery`/`waitForDelivery`). A second call returns the current state
+   * without a second message. A channel that cannot be delivered is a state
+   * (`fallido`, …), not an error; expiry is `FactaError("entrega_vencida")`.
+   */
+  deliverEmail(generationCode: string, token: string, options: { signal?: AbortSignal } = {}): Promise<DeliveryChannelResult> {
+    return this.#deliver("correo", generationCode, token, options);
+  }
+
+  /** WhatsApp counterpart of `deliverEmail`; billed to the company's prepaid wallet. */
+  deliverWhatsApp(generationCode: string, token: string, options: { signal?: AbortSignal } = {}): Promise<DeliveryChannelResult> {
+    return this.#deliver("whatsapp", generationCode, token, options);
+  }
+
+  async #deliver(
+    channel: DeliveryChannel,
+    generationCode: string,
+    token: string,
+    options: { signal?: AbortSignal },
+  ): Promise<DeliveryChannelResult> {
+    if (!GENERATION_CODE.test(generationCode)) throw new TypeError("generationCode must be a codigoGeneracion.");
+    if (typeof token !== "string" || token === "") throw new TypeError("token is required (IssueResult.entrega.token).");
+    try {
+      return await this.#request<DeliveryChannelResult>(
+        "POST",
+        `/v1/dte/${encodeURIComponent(generationCode)}/entrega/${channel}`,
+        { token },
+        // The route is idempotent per channel on the server (a second call
+        // returns the current state), so the default per-call key is enough.
+        options.signal ? { signal: options.signal } : {},
+      );
+    } catch (error) {
+      // The token is a bearer secret: strip it from anything the server echoed.
+      if (error instanceof FactaError) {
+        throw new FactaError(
+          error.code,
+          redactErrorValue(error.message, [token]) as string,
+          error.status,
+          redactErrorValue(error.details, [token]),
+        );
+      }
+      throw error;
+    }
+  }
+
+  /** Read every channel's delivery state. Works after the token expired. */
+  getDelivery(generationCode: string, options: { signal?: AbortSignal } = {}): Promise<DeliveryStatus> {
+    if (!GENERATION_CODE.test(generationCode)) throw new TypeError("generationCode must be a codigoGeneracion.");
+    return this.#request<DeliveryStatus>(
+      "GET",
+      `/v1/dte/${encodeURIComponent(generationCode)}/entrega`,
+      undefined,
+      options.signal ? { signal: options.signal } : {},
+    );
+  }
+
+  /**
+   * Poll `getDelivery` until every awaited channel is final (anything except
+   * `pendiente`/`en_proceso`; `esperando_sello` is not waited for). On timeout
+   * it returns the last status with `settled: false` instead of throwing:
+   * delivery never changes the fiscal outcome.
+   */
+  async waitForDelivery(generationCode: string, options: WaitForDeliveryOptions = {}): Promise<WaitedDelivery> {
+    const timeoutMs = options.timeoutMs ?? 60_000;
+    const intervalMs = options.intervalMs ?? 2_000;
+    if (!Number.isFinite(timeoutMs) || timeoutMs < 0) throw new RangeError("timeoutMs must be a non-negative number.");
+    if (!Number.isFinite(intervalMs) || intervalMs <= 0) throw new RangeError("intervalMs must be positive.");
+    const { signal } = options;
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      throwIfAborted(signal);
+      const status = await this.getDelivery(generationCode, signal ? { signal } : {});
+      const wanted = (options.channels ?? Object.keys(status.canales) as DeliveryChannel[]);
+      const settled = wanted.every((c) => {
+        const channel = status.canales[c];
+        return channel !== undefined && isFinalDeliveryState(channel.estado);
+      });
+      if (settled || Date.now() + intervalMs > deadline) return { ...status, settled };
+      await sleep(intervalMs, signal);
+    }
   }
 
   /** Look a document up. Answers for rejected ones too, not just sealed. */
