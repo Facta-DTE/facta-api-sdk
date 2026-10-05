@@ -70,7 +70,16 @@ export type FactaSlot =
   | "countdown"
   | "stepper"
   | "fieldList"
-  | "quote";
+  | "quote"
+  | "list"
+  | "row"
+  | "detail"
+  | "menu"
+  | "field"
+  | "option"
+  | "pill"
+  | "meter"
+  | "dialog";
 
 export interface FactaAppearance {
   /** Same as the `styles` prop; appearance-level entries are the base. */

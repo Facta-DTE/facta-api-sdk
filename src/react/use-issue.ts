@@ -3,7 +3,9 @@ import {
   createIssueFlow,
   initialFlowState,
   mergeMessages,
+  type FactaCache,
   type FactaClient,
+  type InvalidationOutcome,
   type DeliveryView,
   type FactaMessages,
   type FlowFailure,
@@ -36,6 +38,10 @@ export interface FactaContextValue {
   client: FactaClient | null;
   onEvent?: ((event: FactaEvent) => void) | undefined;
   openWindow?: ((session: string, options?: OpenWindowOptions) => Promise<IssueResult>) | undefined;
+  /** Shared cache of the data hooks (one per provider). */
+  cache?: FactaCache | undefined;
+  /** Opens `FactaInvalidateDialog` for a session from `createFactaInvalidationSession`. */
+  openInvalidation?: ((session: string) => Promise<InvalidationOutcome>) | undefined;
 }
 
 /** Options of `useFactaWindow().open(session, options)`. */

@@ -108,6 +108,156 @@ export interface FactaMessages {
     close: string;
   };
   status: Record<string, string>;
+  /** Data components (lists, detail, pickers, status, meter, invalidation). */
+  data: {
+    list: {
+      title: string;
+      inPeriod: string;
+      refresh: string;
+      period: string;
+      allTypes: string;
+      allStates: string;
+      searchPlaceholder: string;
+      searchLoadedNote: string;
+      clearFilters: string;
+      filters: string;
+      from: string;
+      to: string;
+      columns: { date: string; type: string; control: string; receiver: string; total: string; status: string };
+      receiverHidden: string;
+      finalConsumer: string;
+      actions: string;
+      showing: string;
+      loadMore: string;
+      loadingMore: string;
+      empty: { title: string; body: string };
+      noMatches: { title: string; body: string };
+      error: { title: string; body: string; retry: string };
+      apply: string;
+      close: string;
+    };
+    menu: {
+      pdf: string;
+      json: string;
+      ticket: string;
+      copyCode: string;
+      codeCopied: string;
+      detail: string;
+      invalidate: string;
+    };
+    detail: {
+      label: string;
+      total: string;
+      identifiers: string;
+      code: string;
+      control: string;
+      seal: string;
+      totals: string;
+      taxed: string;
+      exempt: string;
+      notSubject: string;
+      discount: string;
+      iva: string;
+      grandTotal: string;
+      receiver: string;
+      receiverHidden: string;
+      receiverHiddenHelp: string;
+      observations: string;
+      copies: { heading: string; facta: string; saved: string; pending: string; failed: string; retry: string; retrying: string; none: string; json: string; pdf: string };
+      timeline: {
+        heading: string;
+        issued: string;
+        sealed: string;
+        sealedHelp: string;
+        contingency: string;
+        contingencyHelp: string;
+        waiting: string;
+        invalidated: string;
+        invalidatedHelp: string;
+      };
+      loading: string;
+      error: string;
+      retry: string;
+      close: string;
+    };
+    download: {
+      pdf: string;
+      json: string;
+      ticket: string;
+      more: string;
+      preparing: string;
+      done: string;
+      formats: string;
+      pdfHint: string;
+      jsonHint: string;
+      ticketHint: string;
+      failed: string;
+    };
+    picker: {
+      customerLabel: string;
+      customerPlaceholder: string;
+      productLabel: string;
+      productPlaceholder: string;
+      typeMore: string;
+      searching: string;
+      empty: string;
+      emptyHelp: string;
+      error: string;
+      keys: { navigate: string; chooseCustomer: string; chooseProduct: string; close: string };
+      remove: string;
+      vatIncluded: string;
+      vatExcluded: string;
+      results: string;
+    };
+    service: {
+      online: string;
+      contingency: string;
+      degraded: string;
+      offline: string;
+      checking: string;
+      contingencyHelp: string;
+      degradedHelp: string;
+      offlineHelp: string;
+      onlineHelp: string;
+    };
+    meter: {
+      title: string;
+      of: string;
+      usedPercent: string;
+      free: string;
+      noneFree: string;
+      near: { title: string; body: string };
+      full: { title: string; body: string };
+      none: { title: string; body: string };
+      unavailable: string;
+      retry: string;
+    };
+    invalidate: {
+      label: string;
+      confirm: { title: string; body: string };
+      progress: { title: string; body: string };
+      success: { title: string; body: string };
+      error: { title: string; body: string; hacienda: string };
+      readOnly: string;
+      type: string;
+      types: { "1": string; "2": string; "3": string };
+      replacement: string;
+      reason: string;
+      responsible: string;
+      requester: string;
+      irreversible: { title: string; body: string };
+      steps: { signing: string; sending: string; saving: string };
+      eventSeal: string;
+      submit: string;
+      working: string;
+      cancel: string;
+      close: string;
+      viewDetail: string;
+      understood: string;
+      loading: string;
+      expired: string;
+    };
+  };
   /** Labels for the fields Hacienda or the handler can point at. */
   fieldLabels: Record<string, string>;
   /** Scope suffixes: «del receptor», «de la línea {n}». */
@@ -274,6 +424,190 @@ export const esMessages: FactaMessages = {
     liberado: "Liberado",
     descartado: "Descartado",
     preparado: "Preparado",
+  },
+  data: {
+    list: {
+      title: "Documentos",
+      inPeriod: "{n} en el período",
+      refresh: "Actualizar",
+      period: "Período",
+      allTypes: "Todos los tipos",
+      allStates: "Todos los estados",
+      searchPlaceholder: "Buscar por número de control",
+      searchLoadedNote: "La búsqueda recorre los documentos ya cargados.",
+      clearFilters: "Limpiar filtros",
+      filters: "Filtros",
+      from: "Desde",
+      to: "Hasta",
+      columns: { date: "Fecha", type: "Tipo", control: "Número de control", receiver: "Receptor", total: "Total", status: "Estado" },
+      receiverHidden: "Oculto",
+      finalConsumer: "Consumidor final",
+      actions: "Acciones",
+      showing: "Mostrando {shown}",
+      loadMore: "Cargar más",
+      loadingMore: "Cargando…",
+      empty: {
+        title: "Todavía no hay documentos en este período",
+        body: "Cuando emita una factura aparecerá aquí. También puede ampliar las fechas o quitar filtros.",
+      },
+      noMatches: {
+        title: "Ningún documento coincide",
+        body: "Pruebe con otro número o cargue más documentos.",
+      },
+      error: {
+        title: "No pudimos cargar los documentos",
+        body: "Su conexión con Facta falló. Sus documentos no se perdieron.",
+        retry: "Reintentar",
+      },
+      apply: "Ver documentos",
+      close: "Cerrar filtros",
+    },
+    menu: {
+      pdf: "Descargar PDF",
+      json: "Descargar JSON",
+      ticket: "Ticket 80 mm",
+      copyCode: "Copiar código de generación",
+      codeCopied: "Código copiado",
+      detail: "Ver detalle",
+      invalidate: "Anular documento",
+    },
+    detail: {
+      label: "Detalle del documento",
+      total: "Total a pagar",
+      identifiers: "Identificadores",
+      code: "Código de generación",
+      control: "Número de control",
+      seal: "Sello de recepción",
+      totals: "Totales",
+      taxed: "Gravado",
+      exempt: "Exento",
+      notSubject: "No sujeto",
+      discount: "Descuento",
+      iva: "IVA",
+      grandTotal: "Total",
+      receiver: "Receptor",
+      receiverHidden: "Oculto en esta vista",
+      receiverHiddenHelp: "Su sistema decide si el navegador puede ver el receptor.",
+      observations: "Observaciones de Hacienda",
+      copies: {
+        heading: "Copias",
+        facta: "Facta",
+        saved: "Guardadas",
+        pending: "Pendiente",
+        failed: "Con error",
+        retry: "Reintentar",
+        retrying: "Reintentando…",
+        none: "Aún no hay copias de este documento.",
+        json: "JSON",
+        pdf: "PDF",
+      },
+      timeline: {
+        heading: "Historial",
+        issued: "Emitida",
+        sealed: "Sellada por Hacienda",
+        sealedHelp: "Recepción inmediata",
+        contingency: "Emitida en contingencia",
+        contingencyHelp: "Hacienda no respondió; el documento quedó firmado",
+        waiting: "Esperando el sello de Hacienda",
+        invalidated: "Invalidada",
+        invalidatedHelp: "El documento ya no es válido",
+      },
+      loading: "Cargando el documento…",
+      error: "No pudimos cargar este documento.",
+      retry: "Reintentar",
+      close: "Cerrar detalle",
+    },
+    download: {
+      pdf: "Descargar PDF",
+      json: "Descargar JSON",
+      ticket: "Descargar ticket",
+      more: "Más formatos",
+      preparing: "Preparando {kind}…",
+      done: "{kind} descargado",
+      formats: "Formato",
+      pdfHint: "Carta",
+      jsonHint: "DTE firmado",
+      ticketHint: "Térmica",
+      failed: "No se pudo descargar",
+    },
+    picker: {
+      customerLabel: "Cliente",
+      customerPlaceholder: "Buscar cliente por nombre o documento",
+      productLabel: "Producto",
+      productPlaceholder: "Buscar producto por código o nombre",
+      typeMore: "Escriba al menos {n} caracteres",
+      searching: "Buscando…",
+      empty: "Sin resultados para «{query}»",
+      emptyHelp: "Revise la ortografía o busque por número de documento.",
+      error: "No pudimos buscar en este momento.",
+      keys: { navigate: "↑↓ navegar", chooseCustomer: "Enter elegir", chooseProduct: "Enter agregar", close: "Esc cerrar" },
+      remove: "Quitar selección",
+      vatIncluded: "IVA incluido",
+      vatExcluded: "Más IVA",
+      results: "{n} resultados",
+    },
+    service: {
+      online: "Hacienda en línea",
+      contingency: "Hacienda en contingencia",
+      degraded: "Servicio con avisos",
+      offline: "Sin conexión con Facta",
+      checking: "Comprobando…",
+      onlineHelp: "Sus documentos se envían a Hacienda en el momento.",
+      contingencyHelp:
+        "Hacienda no responde. Sus documentos se firman y quedan en cola; se enviarán solos cuando vuelva el servicio, dentro del plazo legal.",
+      degradedHelp: "Facta responde, pero hay algo por revisar en la configuración de su cuenta.",
+      offlineHelp: "No hay conexión con Facta. No se pueden emitir documentos hasta que vuelva.",
+    },
+    meter: {
+      title: "Almacenamiento de Facta",
+      of: "{used} de {total}",
+      usedPercent: "{n} % usado",
+      free: "{free} libres",
+      noneFree: "Sin espacio libre",
+      near: { title: "Le queda poco espacio", body: "Quedan {free}. Amplíe el plan antes de que se llene." },
+      full: {
+        title: "El almacenamiento de Facta está lleno",
+        body: "Facta no podrá guardar copias nuevas hasta que amplíe el plan. Sus destinos propios siguen recibiendo cada documento.",
+      },
+      none: {
+        title: "Sus documentos se guardan solo en sus propios destinos.",
+        body: "Si desea que Facta también conserve una copia, actívelo desde su cuenta.",
+      },
+      unavailable: "No pudimos leer el almacenamiento.",
+      retry: "Reintentar",
+    },
+    invalidate: {
+      label: "Anular documento",
+      confirm: { title: "Anular documento", body: "Revise los datos. Su sistema los preparó; aquí no se pueden cambiar." },
+      progress: { title: "Anulando…", body: "No cierre esta ventana hasta terminar." },
+      success: { title: "Documento anulado", body: "Hacienda aceptó la anulación el {date}." },
+      error: { title: "No se pudo anular", body: "El documento sigue vigente.", hacienda: "Mensaje de Hacienda" },
+      readOnly: "Preparado por su sistema · solo lectura",
+      type: "Tipo de anulación",
+      types: {
+        "1": "Error en la información, se reemplaza por otro documento",
+        "2": "Rescindir la operación",
+        "3": "Otro",
+      },
+      replacement: "Documento de reemplazo",
+      reason: "Motivo",
+      responsible: "Responsable",
+      requester: "Solicitante",
+      irreversible: {
+        title: "La anulación no se puede deshacer",
+        body: "Hacienda registrará el evento y el documento quedará invalidado para siempre.",
+      },
+      steps: { signing: "Firmando el evento de anulación", sending: "Enviando a Hacienda", saving: "Guardando la copia del evento" },
+      eventSeal: "Sello del evento",
+      submit: "Anular documento",
+      working: "Anulando…",
+      cancel: "Cancelar",
+      close: "Cerrar",
+      viewDetail: "Ver detalle",
+      understood: "Entendido",
+      loading: "Cargando los datos de la anulación…",
+      expired: "Esta ventana venció. Vuelva a abrirla desde su sistema.",
+    },
   },
   fieldLabels: {
     nombre: "Nombre",

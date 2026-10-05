@@ -136,7 +136,7 @@ export function createDataActions(options: DataActionOptions) {
     }
     if (body.estado !== undefined) {
       if (typeof body.estado !== "string" || !ESTADOS.includes(body.estado)) bad("estado is not valid.");
-      filters.estado = body.estado as ListDocumentsFilters["estado"];
+      filters.estado = body.estado as NonNullable<ListDocumentsFilters["estado"]>;
     }
     if (body.tipoDte !== undefined) {
       if (typeof body.tipoDte !== "string" || !DTE_TYPES.includes(body.tipoDte)) bad("tipoDte is not valid.");
@@ -149,7 +149,8 @@ export function createDataActions(options: DataActionOptions) {
     }
     // The host's scope is forced last: the browser cannot widen it.
     for (const key of ["desde", "hasta", "estado", "tipoDte"] as const) {
-      if (forced[key] !== undefined) (filters as Record<string, unknown>)[key] = forced[key];
+      const value = forced[key];
+      if (value !== undefined) (filters as Record<string, unknown>)[key] = value;
     }
     return projectPage(await need(facta, "listDocuments").call(facta, filters), view);
   }
