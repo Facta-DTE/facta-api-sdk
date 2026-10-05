@@ -13,7 +13,7 @@ export function sessionInfo(patch: Partial<SessionInfo> = {}): SessionInfo {
   return {
     draft: {
       tipoDte: "01",
-      receptor: { nombre: "María López", numDocumento: "053085465", correo: "maria@example.com" },
+      receptor: { nombre: "María López", numDocumento: "037155821", correo: "maria@example.com" },
       items: [
         { descripcion: "Café de altura 1 lb", cantidad: 2, precioUni: 8.5 },
         { descripcion: "Pupusas revueltas", cantidad: 4, precioUni: 1.25 },

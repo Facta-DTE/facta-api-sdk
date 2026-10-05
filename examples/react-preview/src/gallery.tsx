@@ -8,7 +8,7 @@ import { initialFlowState, type FlowState, type SessionInfo } from "../../../bro
 const info: SessionInfo = {
   draft: {
     tipoDte: "01",
-    receptor: { nombre: "María Fernanda López", numDocumento: "053085465", correo: "maria@example.com" },
+    receptor: { nombre: "María Fernanda López", numDocumento: "037155821", correo: "maria@example.com" },
     items: [
       { descripcion: "Café de altura, bolsa 1 lb", cantidad: 2, precioUni: 8.5 },
       { descripcion: "Pupusas revueltas", cantidad: 4, precioUni: 1.25 },
