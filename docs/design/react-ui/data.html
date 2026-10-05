@@ -1,0 +1,924 @@
+<!doctype html>
+<html lang="es-SV">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Facta React · Datos y acciones simples</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ============ Board chrome ============ */
+:root{
+  --board-bg:#eef2f5;--board-card:#ffffff;--board-ink:#13212a;--board-muted:#5d6f7a;--board-line:#d5dee5;--board-accent:#007faa;--board-note:#fff7e0;--board-note-ink:#6b4a00;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --board-bg:#0c1318;--board-card:#121c22;--board-ink:#e6eef2;--board-muted:#94a7b2;--board-line:#26353e;--board-accent:#5fb8d9;--board-note:#2e2410;--board-note-ink:#e8c777;}}
+:root[data-theme="dark"]{
+  --board-bg:#0c1318;--board-card:#121c22;--board-ink:#e6eef2;--board-muted:#94a7b2;--board-line:#26353e;--board-accent:#5fb8d9;--board-note:#2e2410;--board-note-ink:#e8c777;}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--board-bg);color:var(--board-ink);font:15px/1.55 "IBM Plex Sans",system-ui,sans-serif;overflow-x:hidden}
+.page{max-width:1360px;margin:0 auto;padding:0 16px 96px}
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+header.top{padding:40px 0 8px;display:flex;gap:16px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
+header.top h1{font-size:30px;line-height:1.15;margin:6px 0 8px;font-weight:600;letter-spacing:-.01em}
+header.top p{margin:0;max-width:760px;color:var(--board-muted)}
+.eyebrow{font:500 12px "IBM Plex Mono",monospace;letter-spacing:.06em;text-transform:uppercase;color:var(--board-accent)}
+.toggle{border:1px solid var(--board-line);background:var(--board-card);color:var(--board-ink);border-radius:999px;padding:8px 14px;font:500 13px "IBM Plex Sans";cursor:pointer;min-height:44px}
+nav.toc{display:flex;flex-wrap:wrap;gap:8px;margin:20px 0 4px}
+nav.toc a{font:500 12px "IBM Plex Mono",monospace;color:var(--board-muted);text-decoration:none;border:1px solid var(--board-line);padding:6px 10px;border-radius:999px;background:var(--board-card)}
+nav.toc a:hover{color:var(--board-accent);border-color:var(--board-accent)}
+section.board{margin-top:64px}
+section.board>h2{font-size:22px;margin:0 0 4px;font-weight:600;display:flex;gap:10px;align-items:baseline}
+section.board>h2 .n{font:500 13px "IBM Plex Mono",monospace;color:var(--board-accent)}
+section.board>.lede{margin:0 0 20px;color:var(--board-muted);max-width:820px}
+.note{background:var(--board-note);color:var(--board-note-ink);border-radius:10px;padding:10px 14px;font-size:13.5px;margin:0 0 18px;max-width:900px}
+.note b{font-weight:600}
+figure.spec{margin:0 0 28px;min-width:0}
+figcaption.cap{font:400 12px/1.5 "IBM Plex Mono",monospace;color:var(--board-muted);margin:0 0 8px}
+figcaption.cap b{color:var(--board-ink);font-weight:500}
+.scroll{overflow-x:auto;padding-bottom:6px}
+.frame{border:1px solid var(--board-line);border-radius:14px;overflow:hidden;position:relative;background:var(--facta-bg);flex:none}
+.frame.phone{width:390px;height:844px;border-radius:30px}
+.phones{display:flex;gap:28px;overflow-x:auto;padding:4px 2px 12px;align-items:flex-start}
+.phones figure.spec{flex:none;margin:0}
+.pairs{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:20px;align-items:start}
+.pairs>*{min-width:0}
+.panel{border:1px solid var(--board-line);border-radius:14px;overflow:hidden;background:var(--facta-bg)}
+.redline{display:inline-flex;align-items:center;gap:6px;font:400 11px "IBM Plex Mono",monospace;color:#d6336c;margin-top:6px}
+.redline i{display:inline-block;height:1px;background:#d6336c;position:relative}
+.decisions{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-top:24px}
+.decisions div{background:var(--board-card);border:1px solid var(--board-line);border-radius:12px;padding:12px 14px;font-size:13.5px}
+.decisions b{display:block;font:500 12px "IBM Plex Mono",monospace;color:var(--board-accent);margin-bottom:4px}
+.btn-play{border:1px solid var(--board-line);background:var(--board-card);color:var(--board-ink);border-radius:8px;padding:6px 12px;font:500 12px "IBM Plex Mono",monospace;cursor:pointer;min-height:36px;margin:0 8px 8px 0}
+
+/* ============ Component tokens ============ */
+[data-facta-theme="light"]{
+  --facta-accent:#007faa;--facta-accent-ink:#fff;--facta-accent-soft:#e3f2f8;
+  --facta-bg:#fff;--facta-surface:#f6f9fb;--facta-text:#13212a;--facta-muted:#5d6f7a;--facta-border:#dce5eb;
+  --facta-success:#1f8a5b;--facta-success-soft:#e5f4ec;--facta-warning:#a86a00;--facta-warning-soft:#fdf2dd;
+  --facta-danger:#b4372f;--facta-danger-soft:#fbe7e5;--facta-overlay:rgb(10 18 24 / .45);
+  --facta-shadow:0 1px 2px rgb(16 24 32 / .06),0 12px 40px rgb(16 24 32 / .14);
+  --host-bg:#f4f1ec;--host-card:#fff;--host-ink:#2a2622;--host-muted:#7b746b;--host-line:#e6e0d7;
+}
+[data-facta-theme="dark"]{
+  --facta-accent:#58b9dc;--facta-accent-ink:#06141b;--facta-accent-soft:#17323e;
+  --facta-bg:#121c22;--facta-surface:#18252d;--facta-text:#e6eef2;--facta-muted:#94a7b2;--facta-border:#26353e;
+  --facta-success:#5cc496;--facta-success-soft:#173327;--facta-warning:#e3a744;--facta-warning-soft:#3a2c12;
+  --facta-danger:#ef7d74;--facta-danger-soft:#3d1d1a;--facta-overlay:rgb(0 0 0 / .6);
+  --facta-shadow:0 1px 2px rgb(0 0 0 / .4),0 12px 40px rgb(0 0 0 / .5);
+  --host-bg:#161412;--host-card:#1f1c19;--host-ink:#eee8df;--host-muted:#9a9186;--host-line:#2e2a26;
+}
+@supports (color: oklch(0.5 0.1 200)){
+  [data-facta-theme="light"]{--facta-accent:oklch(0.55 0.13 225);--facta-accent-soft:oklch(0.95 0.03 225)}
+  [data-facta-theme="dark"]{--facta-accent:oklch(0.7 0.12 225);--facta-accent-ink:oklch(0.16 0.02 230);--facta-accent-soft:oklch(0.3 0.05 230)}
+}
+.facta{--facta-radius:14px;--facta-radius-sm:9px;font-family:var(--facta-font,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif);color:var(--facta-text);background:var(--facta-bg);font-size:14px;line-height:1.4;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+.facta *{box-sizing:border-box}
+.facta .ic{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.facta .ic.sm{width:14px;height:14px}.facta .ic.lg{width:20px;height:20px}
+.facta .m{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;letter-spacing:-.01em}
+.facta .muted{color:var(--facta-muted)}
+.facta .num{text-align:right;font-variant-numeric:tabular-nums}
+
+/* buttons */
+.f-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:44px;padding:0 16px;border-radius:var(--facta-radius-sm);border:1px solid var(--facta-border);background:var(--facta-bg);color:var(--facta-text);font:500 14px/1 inherit;font-family:inherit;cursor:pointer;white-space:nowrap}
+.f-btn.primary{background:var(--facta-accent);border-color:var(--facta-accent);color:var(--facta-accent-ink)}
+.f-btn.danger{background:var(--facta-danger);border-color:var(--facta-danger);color:#fff}
+[data-facta-theme="dark"] .f-btn.danger{color:#2b0d0a}
+.f-btn.ghost{border-color:transparent;background:transparent;color:var(--facta-muted)}
+.f-btn.soft{background:var(--facta-surface)}
+.f-btn.sm{height:38px;padding:0 12px;font-size:13px}
+.f-btn[disabled]{opacity:.55;cursor:not-allowed}
+.f-btn.icon{width:44px;padding:0}.f-btn.icon.sm{width:38px}
+.f-btn.focus,.f-focus{outline:2px solid var(--facta-accent);outline-offset:2px}
+.f-link{color:var(--facta-accent);background:none;border:0;font:500 13px inherit;font-family:inherit;cursor:pointer;padding:0;display:inline-flex;align-items:center;gap:6px;min-height:28px}
+
+/* badges */
+.f-badge{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px 0 8px;border-radius:999px;font:600 12px/1 inherit;font-family:inherit;white-space:nowrap}
+.f-badge .ic{width:13px;height:13px;stroke-width:2.4}
+.f-badge.sellado{background:var(--facta-success-soft);color:var(--facta-success)}
+.f-badge.contingencia{background:var(--facta-warning-soft);color:var(--facta-warning)}
+.f-badge.invalidado{background:var(--facta-surface);color:var(--facta-muted);box-shadow:inset 0 0 0 1px var(--facta-border)}
+.f-badge.rechazado{background:var(--facta-danger-soft);color:var(--facta-danger)}
+.f-tag{display:inline-flex;align-items:center;height:20px;padding:0 7px;border-radius:6px;background:var(--facta-accent-soft);color:var(--facta-accent);font:600 11px/1 inherit;font-family:inherit}
+
+/* fields */
+.f-field{display:flex;align-items:center;gap:8px;height:38px;padding:0 12px;border-radius:var(--facta-radius-sm);border:1px solid var(--facta-border);background:var(--facta-bg);color:var(--facta-text);font-size:13.5px;white-space:nowrap;min-width:0}
+.f-field.tall{height:44px;font-size:14.5px}
+.f-field .muted{overflow:hidden;text-overflow:ellipsis}
+.f-field.grow{flex:1}
+.f-field .sp{margin-left:auto}
+.f-field.active{border-color:var(--facta-accent);box-shadow:0 0 0 3px var(--facta-accent-soft)}
+.f-field .caret{width:1px;height:18px;background:var(--facta-accent);animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+
+/* list */
+.f-list{padding:20px}
+.f-list-head{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.f-list-head h3{margin:0;font-size:18px;font-weight:600}
+.f-list-head .sp{margin-left:auto;display:flex;gap:8px;align-items:center}
+.f-toolbar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.f-chips{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px}
+.f-chip{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 6px 0 11px;border-radius:999px;background:var(--facta-accent-soft);color:var(--facta-accent);font:600 12.5px/1 inherit;font-family:inherit}
+.f-chip.plain{background:var(--facta-surface);color:var(--facta-text);padding:0 11px;border:1px solid var(--facta-border);font-weight:500}
+.f-chip .x{width:20px;height:20px;border-radius:50%;display:grid;place-items:center}
+.f-table{border:1px solid var(--facta-border);border-radius:var(--facta-radius);position:relative}
+.f-tr{display:grid;grid-template-columns:104px 128px minmax(170px,1.1fr) minmax(130px,1fr) 104px 136px 48px;align-items:center;gap:12px;padding:0 8px 0 16px;min-height:52px;border-bottom:1px solid var(--facta-border);font-size:13.5px}
+.f-tr>*{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.f-tr:last-child{border-bottom:0}
+.f-tr.th{min-height:40px;background:var(--facta-surface);font:600 11.5px/1 inherit;font-family:inherit;color:var(--facta-muted);text-transform:uppercase;letter-spacing:.05em;border-radius:var(--facta-radius) var(--facta-radius) 0 0}
+.f-tr.row:hover,.f-tr.row.hl{background:var(--facta-surface)}
+.f-tr.row.void .m,.f-tr.row.void .tot{color:var(--facta-muted);text-decoration:line-through;text-decoration-color:color-mix(in srgb,var(--facta-muted) 60%,transparent)}
+.f-tr .date b{font-weight:500;display:block}
+.f-tr .date small{color:var(--facta-muted);font-size:12px}
+.f-tr .tot{font-weight:600;text-align:right}
+.f-tr .hidden-r{display:inline-flex;align-items:center;gap:6px;color:var(--facta-muted);font-style:normal}
+.f-tr .kebab{width:38px;height:38px;border-radius:8px;border:0;background:transparent;color:var(--facta-muted);display:grid;place-items:center;cursor:pointer;overflow:visible}
+.f-tr.row:hover .kebab,.f-tr .kebab.open{background:var(--facta-bg);box-shadow:inset 0 0 0 1px var(--facta-border);color:var(--facta-text)}
+.f-menu{position:absolute;z-index:5;width:250px;background:var(--facta-bg);border:1px solid var(--facta-border);border-radius:12px;box-shadow:var(--facta-shadow);padding:6px}
+.f-menu .it{display:flex;align-items:center;gap:10px;height:40px;padding:0 10px;border-radius:8px;font-size:13.5px;color:var(--facta-text);white-space:nowrap}
+.f-menu[style*='static']{width:auto}
+.f-menu .it.hl{background:var(--facta-accent-soft);color:var(--facta-accent)}
+.f-menu .it.dg{color:var(--facta-danger)}
+.f-menu .it .kb{margin-left:auto;font:400 11px "IBM Plex Mono",monospace;color:var(--facta-muted)}
+.f-menu hr{border:0;border-top:1px solid var(--facta-border);margin:5px 4px}
+.f-menu .lbl{padding:6px 10px 2px;font:600 11px/1 inherit;font-family:inherit;color:var(--facta-muted);text-transform:uppercase;letter-spacing:.05em}
+.f-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;color:var(--facta-muted);font-size:12.5px;flex-wrap:wrap}
+.f-attr{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--facta-muted)}
+.f-attr .ic{width:13px;height:13px}
+.f-hostname{display:inline-flex;align-items:center;gap:8px;font-weight:600;font-size:13px}
+.f-hostname i{width:20px;height:20px;border-radius:6px;background:#d9622b;display:block}
+.f-skel{height:12px;border-radius:6px;background:linear-gradient(90deg,var(--facta-surface) 0%,var(--facta-border) 50%,var(--facta-surface) 100%);background-size:200% 100%;animation:shim 1.4s linear infinite}
+@keyframes shim{to{background-position:-200% 0}}
+.f-empty{display:grid;place-items:center;text-align:center;gap:6px;padding:56px 24px}
+.f-empty .ring{width:56px;height:56px;border-radius:50%;background:var(--facta-surface);display:grid;place-items:center;color:var(--facta-muted);margin-bottom:6px}
+.f-empty h4{margin:0;font-size:15px;font-weight:600}
+.f-empty p{margin:0 0 10px;color:var(--facta-muted);max-width:340px}
+.f-callout{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border-radius:var(--facta-radius-sm);font-size:13.5px}
+.f-callout .ic{margin-top:2px}
+.f-callout b{display:block;font-weight:600}
+.f-callout.danger{background:var(--facta-danger-soft);color:var(--facta-danger)}
+.f-callout.warn{background:var(--facta-warning-soft);color:var(--facta-warning)}
+.f-callout.ok{background:var(--facta-success-soft);color:var(--facta-success)}
+.f-callout.info{background:var(--facta-accent-soft);color:var(--facta-accent)}
+.f-callout .tx{color:var(--facta-text)}
+.f-callout .tx span{color:var(--facta-muted);display:block}
+
+/* phone list */
+.p-wrap{display:flex;flex-direction:column;height:100%}
+.p-bar{display:flex;align-items:center;gap:10px;height:56px;padding:0 12px 0 16px;border-bottom:1px solid var(--facta-border);flex:none}
+.p-bar h3{margin:0;font-size:17px;font-weight:600;flex:1}
+.p-body{flex:1;overflow:hidden;padding:12px 16px 0;background:var(--facta-surface)}
+.p-card{background:var(--facta-bg);border:1px solid var(--facta-border);border-radius:var(--facta-radius);padding:14px;margin-bottom:10px;display:grid;grid-template-columns:1fr auto;gap:2px 8px}
+.p-card .t{font-weight:600;font-size:14.5px}
+.p-card .when{color:var(--facta-muted);font-size:12.5px;text-align:right}
+.p-card .ctl{grid-column:1/-1;display:flex;align-items:center;gap:6px;margin-top:4px}
+.p-card .rc{grid-column:1/-1;color:var(--facta-muted);font-size:13px;margin-top:2px;display:flex;gap:6px;align-items:center}
+.p-card .bt{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;margin-top:10px;padding-top:10px;border-top:1px dashed var(--facta-border)}
+.p-card .bt b{font-size:18px;font-weight:600}
+.p-card.void .m,.p-card.void .bt b{color:var(--facta-muted);text-decoration:line-through}
+.p-tabs{display:flex;height:64px;border-top:1px solid var(--facta-border);flex:none;padding-bottom:6px;background:var(--facta-bg)}
+.p-tabs div{flex:1;display:grid;place-items:center;font-size:11px;color:var(--facta-muted);align-content:center;gap:3px}
+.p-tabs div.on{color:var(--facta-accent)}
+.p-sheet{position:absolute;left:0;right:0;bottom:0;background:var(--facta-bg);border-radius:22px 22px 0 0;box-shadow:var(--facta-shadow);display:flex;flex-direction:column;max-height:92%}
+.p-sheet .grab{width:40px;height:4px;border-radius:2px;background:var(--facta-border);margin:8px auto 0;flex:none}
+.p-sheet .hd{display:flex;align-items:center;padding:6px 8px 6px 20px;flex:none}
+.p-sheet .hd h4{margin:0;font-size:17px;font-weight:600;flex:1}
+.p-sheet .bd{padding:4px 20px 16px;overflow:hidden}
+.p-sheet .ft{display:flex;gap:10px;padding:12px 16px calc(12px + 14px);border-top:1px solid var(--facta-border);flex:none}
+.p-sheet .ft .f-btn{flex:1}
+.p-sheet .ft[style*='column'] .f-btn{flex:none}
+.p-sheet .ft[style*='column'] .f-split .f-btn.main{flex:1}
+.p-scrim{position:absolute;inset:0;background:var(--facta-overlay)}
+.sec-t{font:600 11.5px/1 inherit;font-family:inherit;text-transform:uppercase;letter-spacing:.05em;color:var(--facta-muted);margin:16px 0 8px}
+.opts{display:flex;gap:8px;flex-wrap:wrap}
+.opt{height:44px;padding:0 14px;border-radius:999px;border:1px solid var(--facta-border);display:inline-flex;align-items:center;gap:6px;font-size:14px;background:var(--facta-bg)}
+.opt.on{background:var(--facta-accent-soft);border-color:var(--facta-accent);color:var(--facta-accent);font-weight:600}
+
+/* drawer */
+.f-scrim{position:absolute;inset:0;background:var(--facta-overlay)}
+.f-drawer{position:absolute;top:0;right:0;bottom:0;width:460px;background:var(--facta-bg);box-shadow:var(--facta-shadow);display:flex;flex-direction:column;border-left:1px solid var(--facta-border)}
+.d-hd{display:flex;align-items:flex-start;gap:12px;padding:20px 20px 14px;border-bottom:1px solid var(--facta-border);flex:none}
+.d-hd h3{margin:0 0 6px;font-size:17px;font-weight:600}
+.d-hd .sub{color:var(--facta-muted);font-size:13px}
+.d-body{flex:1;overflow:hidden;padding:18px 20px;display:flex;flex-direction:column;gap:18px}
+.d-hero{background:var(--facta-surface);border-radius:var(--facta-radius);padding:16px}
+.d-hero small{color:var(--facta-muted);font-size:12px}
+.d-hero .amt{font-size:32px;font-weight:600;letter-spacing:-.02em;line-height:1.1;margin:2px 0 4px}
+.d-hero.void .amt{text-decoration:line-through;color:var(--facta-muted)}
+.d-sec h5{margin:0 0 8px;font:600 11.5px/1 inherit;font-family:inherit;text-transform:uppercase;letter-spacing:.05em;color:var(--facta-muted);display:flex;justify-content:space-between;align-items:center}
+.d-id{display:grid;grid-template-columns:136px 1fr auto;gap:8px;align-items:center;min-height:36px;border-bottom:1px solid var(--facta-border);font-size:13px}
+.d-id:last-child{border-bottom:0}
+.d-id span:first-child{color:var(--facta-muted)}
+.d-id .m{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.copy{width:32px;height:32px;border-radius:8px;border:0;background:transparent;color:var(--facta-muted);display:grid;place-items:center}
+.copy.done{color:var(--facta-success)}
+.copy:hover{background:var(--facta-surface)}
+.d-tot{width:100%;border-collapse:collapse;font-size:13.5px}
+.d-tot td{padding:7px 0;border-bottom:1px solid var(--facta-border)}
+.d-tot td:last-child{text-align:right}
+.d-tot tr.t td{font-weight:600;font-size:15px;border-bottom:0;padding-top:10px}
+.copies{border:1px solid var(--facta-border);border-radius:var(--facta-radius);overflow:hidden}
+.copies .r{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--facta-border);font-size:13.5px;min-height:44px}
+.copies .r:last-child{border-bottom:0}
+.copies .r.group{background:var(--facta-surface);font-weight:600}
+.copies .r.sub{padding-left:34px}
+.copies .sp{margin-left:auto}
+.st{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:600}
+.st.ok{color:var(--facta-success)}.st.wait{color:var(--facta-warning)}.st.bad{color:var(--facta-danger)}
+.tl{list-style:none;margin:0;padding:0;position:relative}
+.tl li{display:grid;grid-template-columns:22px 1fr auto;gap:10px;padding-bottom:14px;position:relative;font-size:13.5px}
+.tl li:last-child{padding-bottom:0}
+.tl li::before{content:"";position:absolute;left:10px;top:20px;bottom:-2px;width:2px;background:var(--facta-border)}
+.tl li:last-child::before{display:none}
+.tl .dot{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:var(--facta-surface);color:var(--facta-muted);z-index:1;box-shadow:0 0 0 3px var(--facta-bg)}
+.tl .dot .ic{width:12px;height:12px;stroke-width:2.6}
+.tl .dot.ok{background:var(--facta-success-soft);color:var(--facta-success)}
+.tl .dot.wait{background:var(--facta-warning-soft);color:var(--facta-warning)}
+.tl .dot.off{background:var(--facta-surface);color:var(--facta-muted);box-shadow:0 0 0 3px var(--facta-bg),inset 0 0 0 1px var(--facta-border)}
+.tl b{font-weight:600;display:block}
+.tl small{color:var(--facta-muted);font-size:12.5px}
+.tl time{color:var(--facta-muted);font-size:12.5px}
+.d-ft{display:flex;gap:10px;padding:14px 20px;border-top:1px solid var(--facta-border);align-items:center;flex:none}
+.d-ft .attr{margin-left:auto}
+
+/* split button */
+.f-split{display:inline-flex;position:relative}
+.f-split .main{border-radius:var(--facta-radius-sm) 0 0 var(--facta-radius-sm)}
+.f-split .more{border-radius:0 var(--facta-radius-sm) var(--facta-radius-sm) 0;width:44px;padding:0;border-left:1px solid color-mix(in srgb,var(--facta-accent-ink) 30%,transparent)}
+.f-split.out .more{border-left:1px solid var(--facta-border)}
+.f-split .f-menu{top:48px;left:0}
+.spin{width:16px;height:16px;border-radius:50%;border:2.2px solid currentColor;border-right-color:transparent;animation:rot .8s linear infinite;flex:none}
+@keyframes rot{to{transform:rotate(360deg)}}
+
+/* picker */
+.f-combo{position:relative}
+.f-combo label{display:block;font-weight:600;font-size:13px;margin-bottom:6px}
+.f-pop{margin-top:6px;border:1px solid var(--facta-border);border-radius:12px;background:var(--facta-bg);box-shadow:var(--facta-shadow);padding:6px;max-height:340px;overflow:hidden}
+.f-opt{display:grid;grid-template-columns:1fr auto;gap:2px 12px;padding:9px 10px;border-radius:9px;min-height:52px;align-items:center}
+.f-opt.hl{background:var(--facta-accent-soft)}
+.f-opt .n{font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.f-opt .s{color:var(--facta-muted);font-size:12.5px;display:flex;gap:10px;flex-wrap:wrap}
+.f-opt .r{grid-row:1/3;grid-column:2;text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.f-opt .r b{font-size:14px}
+.f-opt mark{background:transparent;color:var(--facta-accent);font-weight:700;text-decoration:underline;text-underline-offset:2px;text-decoration-thickness:2px}
+.f-pop .hint{display:flex;gap:14px;padding:8px 10px 4px;border-top:1px solid var(--facta-border);margin-top:4px;font-size:11.5px;color:var(--facta-muted)}
+.f-sel{display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--facta-border);border-radius:var(--facta-radius-sm);background:var(--facta-surface)}
+.f-sel .av{width:36px;height:36px;border-radius:50%;background:var(--facta-accent-soft);color:var(--facta-accent);display:grid;place-items:center;font-weight:700;font-size:13px;flex:none}
+.f-sel .tx{min-width:0;flex:1}
+.f-sel .tx b{display:block;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.f-sel .tx span{color:var(--facta-muted);font-size:12.5px}
+.host-form{padding:22px;display:grid;gap:18px}
+.host-form h3{margin:0;font-size:18px;color:var(--host-ink)}
+.host-line{display:grid;grid-template-columns:1fr 60px 84px 24px;gap:10px;align-items:center;font-size:13.5px;padding:10px 12px;border:1px solid var(--facta-border);border-radius:var(--facta-radius-sm)}
+
+/* status pills */
+.f-pill{display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 12px 0 10px;border-radius:999px;font:600 12.5px/1 inherit;font-family:inherit;border:1px solid transparent;position:relative}
+.f-pill i{width:8px;height:8px;border-radius:50%;background:currentColor;flex:none}
+.f-pill.online{background:var(--facta-success-soft);color:var(--facta-success)}
+.f-pill.online i{box-shadow:0 0 0 0 currentColor;animation:ping 2.4s ease-out infinite}
+@keyframes ping{0%{box-shadow:0 0 0 0 color-mix(in srgb,currentColor 50%,transparent)}70%,100%{box-shadow:0 0 0 7px transparent}}
+.f-pill.contingency{background:var(--facta-warning-soft);color:var(--facta-warning)}
+.f-pill.offline{background:var(--facta-danger-soft);color:var(--facta-danger)}
+.f-pill.unknown{background:var(--facta-surface);color:var(--facta-muted);border-color:var(--facta-border)}
+.f-dot{display:inline-grid;place-items:center;width:44px;height:44px}
+.f-dot i{width:10px;height:10px;border-radius:50%;display:block}
+.f-dot.online i{background:var(--facta-success)}.f-dot.contingency i{background:var(--facta-warning)}.f-dot.offline i{background:var(--facta-danger)}
+.f-tip{position:absolute;top:40px;left:0;width:290px;background:var(--facta-text);color:var(--facta-bg);padding:10px 12px;border-radius:10px;font:400 12.5px/1.45 inherit;font-family:inherit;box-shadow:var(--facta-shadow);z-index:3;white-space:normal}
+.f-tip::before{content:"";position:absolute;top:-5px;left:22px;width:10px;height:10px;background:inherit;transform:rotate(45deg)}
+.pos-head{display:flex;align-items:center;gap:8px;height:52px;padding:0 6px 0 16px;background:#2b2f36;color:#fff;font-weight:600;font-size:14px}
+.pos-head .sp{margin-left:auto}
+.pos-head .f-dot{color:#fff}
+
+/* meter */
+.f-meter{padding:16px 18px;border:1px solid var(--facta-border);border-radius:var(--facta-radius);background:var(--facta-bg)}
+.f-meter .hd{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;gap:10px}
+.f-meter .hd b{font-weight:600;font-size:14px}
+.f-meter .bar{height:10px;border-radius:999px;background:var(--facta-surface);box-shadow:inset 0 0 0 1px var(--facta-border);overflow:hidden}
+.f-meter .bar i{display:block;height:100%;border-radius:999px;background:var(--facta-accent);transform-origin:left;animation:grow .9s cubic-bezier(.2,.8,.2,1) both}
+@keyframes grow{from{transform:scaleX(0)}}
+.f-meter.near .bar i{background:var(--facta-warning)}
+.f-meter.full .bar i{background:var(--facta-danger)}
+.f-meter .ft{display:flex;justify-content:space-between;margin-top:8px;font-size:12.5px;color:var(--facta-muted)}
+.f-meter .f-callout{margin-top:12px}
+.f-meter.none .bar{background:repeating-linear-gradient(135deg,var(--facta-surface) 0 6px,var(--facta-border) 6px 7px)}
+
+/* invalidate */
+.f-modal{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:540px;background:var(--facta-bg);border-radius:18px;box-shadow:var(--facta-shadow);border:1px solid var(--facta-border);overflow:hidden;display:flex;flex-direction:column}
+.m-hd{display:flex;gap:14px;padding:20px 22px 14px;align-items:flex-start}
+.m-hd .ico{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;flex:none}
+.m-hd .ico.danger{background:var(--facta-danger-soft);color:var(--facta-danger)}
+.m-hd .ico.ok{background:var(--facta-success-soft);color:var(--facta-success)}
+.m-hd h3{margin:0 0 2px;font-size:18px;font-weight:600}
+.m-hd p{margin:0;color:var(--facta-muted);font-size:13px}
+.m-bd{padding:0 22px 18px;display:grid;gap:14px;min-width:0}
+.m-bd>*{min-width:0}
+.f-callout code.m{display:inline;color:var(--facta-text)}
+.m-sum{display:grid;grid-template-columns:1fr auto;gap:2px 12px;background:var(--facta-surface);border-radius:var(--facta-radius-sm);padding:12px 14px;font-size:13.5px}
+.m-sum b{font-weight:600}.m-sum .tt{font-size:17px;font-weight:600;text-align:right;grid-row:1/3;grid-column:2;align-self:center}
+.m-ro{border:1px solid var(--facta-border);border-radius:var(--facta-radius-sm)}
+.m-ro .row{display:grid;grid-template-columns:132px 1fr;gap:10px;padding:9px 14px;border-bottom:1px solid var(--facta-border);font-size:13.5px}
+.m-ro .row:last-child{border-bottom:0}
+.m-ro .row>span:first-child{color:var(--facta-muted)}
+.m-ro .row small{display:block;color:var(--facta-muted);font-size:12.5px}
+.m-ro .lock{display:flex;align-items:center;gap:6px;padding:7px 14px;background:var(--facta-surface);font-size:11.5px;color:var(--facta-muted);border-bottom:1px solid var(--facta-border);font-weight:600;text-transform:uppercase;letter-spacing:.05em;border-radius:var(--facta-radius-sm) var(--facta-radius-sm) 0 0}
+.m-ft{display:flex;gap:10px;justify-content:flex-end;padding:14px 22px;border-top:1px solid var(--facta-border);align-items:center}
+.m-ft .attr{margin-right:auto}
+.steps{display:grid;gap:0}
+.steps .s{display:grid;grid-template-columns:28px 1fr auto;gap:12px;align-items:center;min-height:48px;font-size:14px;border-bottom:1px solid var(--facta-border)}
+.steps .s:last-child{border-bottom:0}
+.steps .s .c{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:var(--facta-surface);color:var(--facta-muted)}
+.steps .s.done .c{background:var(--facta-success-soft);color:var(--facta-success)}
+.steps .s.now .c{color:var(--facta-accent);background:var(--facta-accent-soft)}
+.steps .s.wait{color:var(--facta-muted)}
+.seal-box{display:flex;align-items:center;gap:10px;padding:12px 14px;border:1px dashed var(--facta-success);background:var(--facta-success-soft);border-radius:var(--facta-radius-sm);color:var(--facta-success)}
+.seal-box .m{color:var(--facta-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.seal-box small{display:block;font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--facta-success)}
+
+/* host shell */
+.host{display:grid;grid-template-columns:216px 1fr;height:100%;background:var(--host-bg);color:var(--host-ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:14px}
+.host aside{background:#2b2f36;color:#d8dbe0;padding:18px 12px;display:flex;flex-direction:column;gap:4px}
+.host aside .logo{display:flex;align-items:center;gap:9px;color:#fff;font-weight:700;padding:2px 10px 18px;font-size:15px}
+.host aside .logo i{width:24px;height:24px;border-radius:7px;background:#d9622b;display:block}
+.host aside a{display:block;padding:9px 12px;border-radius:8px;font-size:13.5px;color:#c4c8ce}
+.host aside a.on{background:#3b4048;color:#fff}
+.host main{padding:20px 24px;min-width:0;overflow:hidden}
+.host .crumb{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;color:var(--host-muted);font-size:13px}
+.host .crumb b{color:var(--host-ink);font-size:20px;font-weight:600}
+.host .card{background:var(--host-card);border:1px solid var(--host-line);border-radius:14px;overflow:hidden}
+.host .hostbtn{background:#d9622b;color:#fff;border-radius:8px;padding:9px 14px;font-weight:600;font-size:13px}
+
+/* diagram */
+.dg{min-width:880px;background:var(--board-card);border:1px solid var(--board-line);border-radius:14px;padding:20px}
+.dg .cols,.dg .rw{display:grid;grid-template-columns:1fr 26px 1.15fr 26px 1.05fr;gap:0;align-items:stretch}
+.dg .cols{margin-bottom:10px}
+.dg .cols div{font:500 11.5px "IBM Plex Mono",monospace;text-transform:uppercase;letter-spacing:.06em;color:var(--board-muted);padding:0 4px}
+.dg .rw{margin-bottom:8px}
+.dg .bx{border:1px solid var(--board-line);border-radius:10px;padding:9px 12px;font:500 12.5px "IBM Plex Mono",monospace;background:var(--board-bg);display:flex;align-items:center;min-height:42px;flex-wrap:wrap;gap:4px 8px}
+.dg .bx small{font:400 11px "IBM Plex Sans";color:var(--board-muted);width:100%}
+.dg .ar{display:grid;place-items:center;color:var(--board-muted);font-size:14px}
+.dg .grp{border:1px solid color-mix(in srgb,var(--board-accent) 40%,transparent);border-radius:12px;padding:12px;background:color-mix(in srgb,var(--board-accent) 5%,transparent);margin-bottom:16px}
+.dg .grp>.lab,.dg .wr>.lab{font:600 12px "IBM Plex Sans";margin-bottom:10px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.dg .grp>.lab span,.dg .wr>.lab span{font:400 12px "IBM Plex Mono",monospace;color:var(--board-muted)}
+.dg .wr{border:1px solid #c0584f;border-radius:12px;padding:12px;background:color-mix(in srgb,#c0584f 7%,transparent)}
+.dg .flow{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.dg .flow .bx{flex-direction:column;align-items:flex-start;justify-content:flex-start}
+.dg .tag-r{color:var(--board-accent)}.dg .tag-w{color:#c0584f}
+@media (max-width:700px){header.top h1{font-size:25px}}
+@media (prefers-reduced-motion:reduce){.f-skel,.spin,.f-pill.online i,.f-meter .bar i,.caret{animation:none!important}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-dots" viewBox="0 0 24 24"><circle cx="12" cy="5.5" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="12" cy="18.5" r="1.2"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M5 15V6.5A1.5 1.5 0 016.5 5H15"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="M6 9.5l6 6 6-6"/></symbol>
+  <symbol id="i-filter" viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24"><rect x="4" y="5.5" width="16" height="14.5" rx="2.5"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/></symbol>
+  <symbol id="i-eyeoff" viewBox="0 0 24 24"><path d="M3 12s3.5-6 9-6c1.7 0 3.2.5 4.5 1.3M21 12s-3.5 6-9 6c-1.7 0-3.2-.5-4.5-1.3M4 4l16 16M9.9 9.9a3 3 0 004.2 4.2"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 24 24"><path d="M7 3.5h7l4 4V19a1.5 1.5 0 01-1.5 1.5h-9.5A1.5 1.5 0 014.5 19V5A1.5 1.5 0 016 3.5zM14 3.5V8h4"/><path d="M8.5 13h7M8.5 16.5h5"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4l9 15.5H3z"/><path d="M12 10v4.5M12 17.4v.1"/></symbol>
+  <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7 18.5a4.5 4.5 0 01-.6-8.96A6 6 0 0118 11a3.8 3.8 0 01-.5 7.5z"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 00-14-4.5L4 9M4 4v5h5M4 13a8 8 0 0014 4.5l2-2.5M20 20v-5h-5"/></symbol>
+  <symbol id="i-seal" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.2l2.4 2.4 4.6-4.9"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.6v.1"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="9.5" rx="2.5"/><path d="M8 10.5V8a4 4 0 018 0v2.5"/></symbol>
+  <symbol id="i-wifioff" viewBox="0 0 24 24"><path d="M3 9.5a14 14 0 0118 0M6 13a9.5 9.5 0 0112 0M9.2 16.4a5 5 0 015.6 0M12 20v.1M4 4l16 16"/></symbol>
+  <symbol id="i-print" viewBox="0 0 24 24"><path d="M7 9V4h10v5M7 17H5a1.5 1.5 0 01-1.5-1.5v-5A1.5 1.5 0 015 9h14a1.5 1.5 0 011.5 1.5v5A1.5 1.5 0 0119 17h-2"/><rect x="7" y="14" width="10" height="6.5" rx="1"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M3 12s3.5-6.5 9-6.5S21 12 21 12s-3.5 6.5-9 6.5S3 12 3 12z"/><circle cx="12" cy="12" r="2.8"/></symbol>
+  <symbol id="i-json" viewBox="0 0 24 24"><path d="M9 4C7 4 6.5 5 6.5 6.5v2C6.5 10 5.5 11.5 4 12c1.5.5 2.5 2 2.5 3.5v2C6.5 19 7 20 9 20M15 4c2 0 2.5 1 2.5 2.5v2c0 1.5 1 3 2.5 3.5-1.5.5-2.5 2-2.5 3.5v2c0 1.5-.5 2.5-2.5 2.5"/></symbol>
+  <symbol id="i-ticket" viewBox="0 0 24 24"><path d="M6.5 3.5h11v17l-2.75-1.7-2.75 1.7-2.75-1.7-2.75 1.7zM9.5 8.5h5M9.5 12h5"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.5-3.5 3.3-5.5 7-5.5s6.5 2 7 5.5"/></symbol>
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 11l8-6.5 8 6.5v8.5H4z"/></symbol>
+  <symbol id="i-cart" viewBox="0 0 24 24"><path d="M3.5 4.5h2.5l2 10h9.5l2-7H7M10 19.5v.1M16 19.5v.1"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+</svg>
+
+<div class="page">
+<header class="top">
+  <div>
+    <div class="eyebrow">Facta DTE · SDK React · Lote 2</div>
+    <h1>Datos y acciones simples</h1>
+    <p>Listados, detalle, descargas, catálogo, estado del servicio, almacenamiento y anulación — siete componentes y siete hooks que viven dentro del sistema de su cliente. Todo se lee a través de su servidor; el navegador nunca escribe un documento fiscal.</p>
+  </div>
+  <button class="toggle" id="bt" type="button">Tema del tablero: automático</button>
+</header>
+
+<nav class="toc" aria-label="Secciones">
+  <a href="#s1">1 · Lista</a><a href="#s2">2 · Detalle</a><a href="#s3">3 · Descarga</a><a href="#s4">4 · Pickers</a>
+  <a href="#s5">5 · Estado del servicio</a><a href="#s6">6 · Almacenamiento</a><a href="#s7">7 · Anular</a><a href="#s8">8 · Teléfono</a><a href="#s9">9 · Cómo se conecta</a>
+</nav>
+
+<div class="decisions">
+  <div><b>D-6 · Receptor oculto por defecto</b>La columna «Receptor» muestra «Oculto» con ícono de ojo tachado mientras el servidor no active <span class="mono">exposeRecipient</span>. El diseño con nombres existe, pero es opt-in del integrador.</div>
+  <div><b>D-5 · Atribución</b>Cada componente con pie muestra «Emitido con Facta DTE». La versión marca blanca (nombre del cliente, sin pie, acento propio) aparece en lista, detalle y diálogo.</div>
+  <div><b>D-7 · Anular desde el navegador</b>Dibujado como «solo sesión»: el diálogo confirma, nunca redacta. Si D-7 se decide «solo servidor», el ítem «Anular documento» simplemente no se ofrece.</div>
+  <div><b>Estados y color</b>Siempre color + ícono + palabra. «Rechazado» solo aparece en filas que el integrador conserva localmente; <span class="mono">ListedDte</span> no lo devuelve.</div>
+</div>
+
+<section class="board" id="s1">
+  <h2><span class="n">01</span>FactaDocumentList · escritorio</h2>
+  <p class="lede">Tabla con filtros de período, tipo, estado y búsqueda por número de control. Una acción primaria por pantalla: «Cargar más». Se muestra dentro de una trastienda ficticia (acento naranja del anfitrión) para dejar claro que el componente hereda su tipografía y trae su propio acento.</p>
+  <div class="note"><b>Receptor:</b> el servidor decide qué proyecta. Por defecto <span class="mono">receptor</span> no viaja al navegador y la celda dice «Oculto». Con <span class="mono">exposeRecipient: true</span> se muestra nombre y, debajo, el documento enmascarado.</div>
+  <div id="list-main"></div>
+  <div id="list-states" style="margin-top:8px"></div>
+  <div id="list-filters"></div>
+</section>
+
+<section class="board" id="s2">
+  <h2><span class="n">02</span>FactaDocumentDetail · panel lateral</h2>
+  <p class="lede">Cajón derecho de 460 px sobre la lista. Identificadores copiables en mono, totales calculados por el servidor (se leen, no se recalculan), sello, copias de almacenamiento y línea de tiempo del evento. Se muestran un documento sellado tras contingencia y uno invalidado.</p>
+  <div id="detail-main"></div>
+</section>
+
+<section class="board" id="s3">
+  <h2><span class="n">03</span>FactaDownloadButton</h2>
+  <p class="lede">Botón dividido: la parte izquierda descarga el último formato usado (PDF por defecto), el chevrón abre PDF / JSON / Ticket 80 mm. La preparación ocurre en el servidor; el botón solo cambia de estado.</p>
+  <div id="dl"></div>
+</section>
+
+<section class="board" id="s4">
+  <h2><span class="n">04</span>FactaCustomerPicker · FactaProductPicker</h2>
+  <p class="lede">Comboboxes sobre el catálogo cifrado de Facta, dentro de un formulario «Nuevo pedido» del anfitrión. Devuelven <b>solo el id del catálogo</b>; el servidor del anfitrión arma la sesión con <span class="mono">customerId</span> / <span class="mono">productId</span>. El navegador no recibe el catálogo completo, solo una proyección de lo que se muestra.</p>
+  <div id="pk"></div>
+</section>
+
+<section class="board" id="s5">
+  <h2><span class="n">05</span>FactaServiceStatus</h2>
+  <p class="lede">Píldora pequeña con punto de color, texto y, en contingencia, una explicación al pasar el cursor o tocar. La versión compacta (solo punto, 44 px de área táctil) cabe en el encabezado de una caja registradora.</p>
+  <div id="ss"></div>
+</section>
+
+<section class="board" id="s6">
+  <h2><span class="n">06</span>FactaStorageMeter</h2>
+  <p class="lede">Barra de cuota del almacenamiento de Facta. Cambia a ámbar desde 85 % y a rojo al llenarse, siempre con una frase que dice qué hacer. Si el cliente no usa almacenamiento de Facta, el medidor lo dice en vez de esconderse.</p>
+  <div id="sm"></div>
+</section>
+
+<section class="board" id="s7">
+  <h2><span class="n">07</span>FactaInvalidateDialog</h2>
+  <p class="lede">Confirma una sesión de anulación que el servidor del anfitrión ya preparó. Nada es editable: tipo, motivo, responsable y solicitante son de solo lectura. Un único botón de peligro, sin escribir texto de confirmación, y después progreso y sello del evento.</p>
+  <div id="inv"></div>
+</section>
+
+<section class="board" id="s8">
+  <h2><span class="n">08</span>Teléfono · lista, detalle y anulación</h2>
+  <p class="lede">390 × 844. La tabla se vuelve tarjetas, los filtros viven en una hoja inferior, el detalle ocupa casi toda la pantalla y la anulación es una hoja con el botón de peligro fijo abajo. Todo objetivo táctil mide 44 px o más.</p>
+  <div id="ph-list"></div>
+  <div id="ph-detail"></div>
+  <div id="ph-inv"></div>
+</section>
+
+<section class="board" id="s9">
+  <h2><span class="n">09</span>Cómo se conecta</h2>
+  <p class="lede">Lecturas y escrituras fiscales siguen caminos distintos. Las lecturas pasan por <span class="mono">authorize(req, {action})</span> y la lista <span class="mono">capabilities</span> que el servidor declara; las escrituras fiscales exigen una sesión firmada que su servidor crea con sus propios datos.</p>
+  <div id="dgm"></div>
+</section>
+</div>
+
+<script>
+(function(){
+/* ---------- helpers ---------- */
+var $=function(s){return document.querySelector(s)};
+function ic(n,c){return '<svg class="ic '+(c||'')+'" aria-hidden="true"><use href="#i-'+n+'"/></svg>'}
+function fm(n){return '$'+n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+function mid(n){return n.slice(0,15)+'…'+n.slice(-6)}
+var B={
+  sellado:['Sellado','check'],contingencia:['Contingencia','clock'],invalidado:['Invalidado','ban'],rechazado:['Rechazado','x']
+};
+function badge(e){return '<span class="f-badge '+e+'">'+ic(B[e][1])+B[e][0]+'</span>'}
+function attr(){return '<span class="f-attr">'+ic('seal')+'Emitido con Facta DTE</span>'}
+function hostName(){return '<span class="f-hostname"><i></i>Ferretería San Miguel</span>'}
+function Fc(theme,inner,cls,style){return '<div class="facta '+(cls||'')+'" data-facta-theme="'+theme+'"'+(style?' style="'+style+'"':'')+'>'+inner+'</div>'}
+function fig(cap,body,w,theme){
+  return '<figure class="spec"><figcaption class="cap">'+cap+'</figcaption><div class="scroll"><div class="frame" data-facta-theme="'+theme+'" style="width:'+w+'px">'+body+'</div></div></figure>';
+}
+function phoneFig(cap,body,theme){
+  return '<figure class="spec"><figcaption class="cap">'+cap+'</figcaption><div class="frame phone" data-facta-theme="'+theme+'">'+body+'</div></figure>';
+}
+function out(sel,html){$(sel).innerHTML=html}
+
+/* ---------- data ---------- */
+var R=[
+ {d:'5 oct',h:'09:52',t:'Factura',n:'DTE-01-M001P001-000000000000042',r:'María José Hernández',doc:'0530 ••••• 5',tot:113.00,e:'sellado'},
+ {d:'5 oct',h:'09:14',t:'Crédito fiscal',n:'DTE-03-M001P001-000000000000017',r:'Ferretería San Miguel',doc:'0614 ••••• 4',tot:1234.56,e:'contingencia'},
+ {d:'4 oct',h:'17:31',t:'Factura',n:'DTE-01-M001P001-000000000000041',r:'Consumidor final',doc:'',tot:24.80,e:'sellado'},
+ {d:'4 oct',h:'11:05',t:'Nota de crédito',n:'DTE-05-M001P001-000000000000003',r:'Café Las Brumas, S.A. de C.V.',doc:'0614 ••••• 9',tot:226.00,e:'sellado'},
+ {d:'3 oct',h:'16:48',t:'Exportación',n:'DTE-11-M001P001-000000000000002',r:'Brumas Coffee Imports LLC',doc:'Pasaporte',tot:3850.00,e:'sellado'},
+ {d:'2 oct',h:'10:02',t:'Factura',n:'DTE-01-M001P001-000000000000040',r:'José Luis Ferrer Menjívar',doc:'0482 ••••• 5',tot:56.50,e:'invalidado'},
+ {d:'1 oct',h:'08:20',t:'Sujeto excluido',n:'DTE-14-M001P001-000000000000001',r:'Rosa Elena Campos',doc:'0129 ••••• 2',tot:180.00,e:'rechazado'}
+];
+function row(x,o){
+  o=o||{};
+  var rc=o.names?'<span>'+x.r+(x.doc?'<small class="muted" style="display:block;font-size:12px;line-height:1.2">'+x.doc+'</small>':'')+'</span>':'<span class="hidden-r">'+ic('eyeoff','sm')+'Oculto</span>';
+  return '<div class="f-tr row'+(x.e==='invalidado'?' void':'')+(o.hl?' hl':'')+'" role="row">'+
+   '<div class="date"><b>'+x.d+'</b><small>'+x.h+'</small></div>'+
+   '<div>'+x.t+'</div>'+
+   '<div class="m" title="'+x.n+'">'+mid(x.n)+'</div>'+
+   '<div>'+rc+'</div>'+
+   '<div class="tot">'+fm(x.tot)+'</div>'+
+   '<div>'+badge(x.e)+'</div>'+
+   '<div><button class="kebab'+(o.open?' open':'')+'" aria-label="Acciones">'+ic('dots')+'</button></div></div>';
+}
+function head(){return '<div class="f-tr th" role="row"><div>Fecha</div><div>Tipo</div><div>Número de control</div><div>Receptor</div><div class="num">Total</div><div>Estado</div><div></div></div>'}
+function menu(){
+  return '<div class="f-menu" role="menu" style="right:14px;top:96px">'+
+   '<div class="it hl">'+ic('doc')+'Descargar PDF<span class="kb">P</span></div>'+
+   '<div class="it">'+ic('json')+'Descargar JSON<span class="kb">J</span></div>'+
+   '<div class="it">'+ic('ticket')+'Ticket 80 mm<span class="kb">T</span></div><hr>'+
+   '<div class="it">'+ic('copy')+'Copiar código de generación</div>'+
+   '<div class="it">'+ic('eye')+'Ver detalle</div><hr>'+
+   '<div class="it dg">'+ic('ban')+'Anular documento</div></div>';
+}
+function toolbar(){
+  return '<div class="f-toolbar">'+
+   '<div class="f-field">'+ic('cal','sm')+'1–5 oct 2026'+ic('chev','sm sp')+'</div>'+
+   '<div class="f-field">Todos los tipos'+ic('chev','sm sp')+'</div>'+
+   '<div class="f-field">Todos los estados'+ic('chev','sm sp')+'</div>'+
+   '<div class="f-field grow" style="min-width:220px">'+ic('search','sm muted')+'<span class="muted">Buscar por número de control</span></div></div>';
+}
+function listHead(brand){
+  return '<div class="f-list-head"><h3>Documentos</h3><span class="f-tag" style="margin-left:2px">38 en el período</span><div class="sp">'+(brand==='host'?hostName():'')+'<button class="f-btn sm icon ghost" aria-label="Actualizar">'+ic('refresh')+'</button></div></div>';
+}
+function listFoot(brand,shown,total){
+  return '<div class="f-foot"><span>Mostrando '+shown+' de '+total+'</span>'+(brand==='host'?'<span></span>':attr())+'</div>';
+}
+function listComp(theme,o){
+  o=o||{};var brand=o.brand||'facta';var body;
+  var tbl;
+  if(o.state==='loading'){
+    var sk='';for(var i=0;i<6;i++)sk+='<div class="f-tr row" aria-hidden="true"><div><div class="f-skel" style="width:60px"></div></div><div><div class="f-skel" style="width:84px"></div></div><div><div class="f-skel" style="width:150px"></div></div><div><div class="f-skel" style="width:'+(90+i*8%40)+'px"></div></div><div><div class="f-skel" style="width:64px;margin-left:auto"></div></div><div><div class="f-skel" style="width:92px;height:22px;border-radius:999px"></div></div><div></div></div>';
+    tbl='<div class="f-table" aria-busy="true">'+head()+sk+'</div>';
+  }else if(o.state==='empty'){
+    tbl='<div class="f-table">'+head()+'<div class="f-empty"><div class="ring">'+ic('doc','lg')+'</div><h4>Todavía no hay documentos en este período</h4><p>Cuando emita una factura aparecerá aquí. También puede ampliar las fechas o quitar filtros.</p><button class="f-btn sm">Ver el mes completo</button></div></div>';
+  }else if(o.state==='error'){
+    tbl='<div class="f-table">'+head()+'<div style="padding:28px 24px"><div class="f-callout danger">'+ic('alert','lg')+'<div class="tx"><b style="color:var(--facta-danger)">No pudimos cargar los documentos</b><span>Su conexión con Facta falló. Sus documentos no se perdieron. <span class="m" style="display:inline;color:var(--facta-muted)">service_unavailable · 503</span></span></div><button class="f-btn sm" style="margin-left:auto;background:var(--facta-bg);color:var(--facta-text)">'+ic('refresh','sm')+'Reintentar</button></div></div></div>';
+  }else{
+    var rs=R.map(function(x,i){return row(x,{names:o.names,open:o.menu&&i===1,hl:o.menu&&i===1})}).join('');
+    tbl='<div class="f-table" role="table" aria-label="Documentos">'+head()+rs+(o.menu?menu():'')+'</div>';
+  }
+  var more=(o.state==='loading'||o.state==='empty'||o.state==='error')?'':'<div style="display:grid;place-items:center;margin-top:16px"><button class="f-btn">Cargar más <span class="muted" style="font-weight:400">· 31 restantes</span></button></div>';
+  var chips=o.chips?'<div class="f-chips"><span class="f-chip">Sellado <span class="x">'+ic('x','sm')+'</span></span><span class="f-chip plain">Factura</span><span class="f-chip plain">Crédito fiscal</span><button class="f-link" style="margin-left:6px">Limpiar filtros</button></div>':'';
+  var acc=o.accent?'--facta-accent:'+o.accent+';--facta-accent-soft:'+o.accentSoft+';':'';
+  return Fc(theme,'<div class="f-list">'+listHead(brand)+toolbar()+chips+tbl+more+listFoot(brand,o.state?'0':'7',o.state?'0':'38')+'</div>','',acc);
+}
+function hostShell(theme,inner,active){
+  var nav=['Panel','Pedidos','Clientes','Productos','Documentos','Reportes','Ajustes'].map(function(n){return '<a class="'+(n===(active||'Documentos')?'on':'')+'">'+n+'</a>'}).join('');
+  return '<div class="host" data-facta-theme="'+theme+'"><aside><div class="logo"><i></i>San Miguel</div>'+nav+'</aside><main><div class="crumb"><b>Documentos</b><span class="hostbtn">+ Nuevo pedido</span></div><div class="card">'+inner+'</div></main></div>';
+}
+
+/* ---------- 1 · list desktop ---------- */
+out('#list-main',
+  fig('<b>FactaDocumentList</b> · variant=table · theme=light · density=compact · row menu open (fila 2) · receptor=hidden (D-6) · pie de atribución',
+      '<div style="height:780px;overflow:hidden">'+hostShell('light',listComp('light',{menu:true,chips:true}))+'</div>',1280,'light')+
+  fig('<b>FactaDocumentList</b> · theme=dark · <b>exposeRecipient: true</b> (nombre + documento enmascarado) · white-label: branding.name, attribution=false, --facta-accent: #d9622b',
+      '<div style="height:640px;overflow:hidden">'+hostShell('dark',listComp('dark',{names:true,brand:'host',accent:'#ee8a58',accentSoft:'#3a2418'}))+'</div>',1280,'dark')
+);
+out('#list-states',
+  '<div class="pairs" style="grid-template-columns:minmax(0,1fr)">'+
+   '<figure class="spec"><figcaption class="cap"><b>state=loading</b> · 6 filas fantasma (shimmer 1.4 s linear; sin movimiento si reduce-motion)</figcaption><div class="panel" data-facta-theme="light">'+listComp('light',{state:'loading'})+'</div></figure>'+
+   '<figure class="spec"><figcaption class="cap"><b>state=empty</b> · texto exacto del período vacío</figcaption><div class="panel" data-facta-theme="dark">'+listComp('dark',{state:'empty'})+'</div></figure>'+
+   '<figure class="spec"><figcaption class="cap"><b>state=error</b> · el código del error es literal, el texto explica sin culpar</figcaption><div class="panel" data-facta-theme="light">'+listComp('light',{state:'error'})+'</div></figure>'+
+  '</div>'
+);
+(function(){
+  function pop(theme){
+    return Fc(theme,'<div style="padding:16px;display:grid;gap:14px"><div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">'+
+      '<div class="f-menu" style="position:static"><div class="lbl">Tipo de documento</div>'+
+      ['Factura','Crédito fiscal','Nota de crédito','Nota de débito','Exportación','Sujeto excluido'].map(function(t,i){return '<div class="it'+(i===1?' hl':'')+'"><span style="width:18px;height:18px;border-radius:5px;border:1.5px solid '+(i<2?'var(--facta-accent)':'var(--facta-border)')+';background:'+(i<2?'var(--facta-accent)':'transparent')+';color:var(--facta-accent-ink);display:grid;place-items:center">'+(i<2?ic('check','sm'):'')+'</span>'+t+'</div>'}).join('')+'</div>'+
+      '<div style="display:grid;gap:14px;align-content:start"><div class="f-menu" style="position:static"><div class="lbl">Estado</div>'+
+      ['sellado','contingencia','invalidado'].map(function(t,i){return '<div class="it"><span style="width:18px;height:18px;border-radius:5px;border:1.5px solid '+(i===0?'var(--facta-accent)':'var(--facta-border)')+';background:'+(i===0?'var(--facta-accent)':'transparent')+';color:var(--facta-accent-ink);display:grid;place-items:center">'+(i===0?ic('check','sm'):'')+'</span>'+badge(t)+'</div>'}).join('')+'</div>'+
+      '<div class="f-menu" style="position:static"><div class="lbl">Período</div><div class="it">Hoy</div><div class="it">Últimos 7 días</div><div class="it hl">1–5 oct 2026<span class="kb">actual</span></div><div class="it">Este mes</div><div class="it">Personalizado…</div></div></div></div></div>');
+  }
+  out('#list-filters','<figure class="spec" style="margin-top:20px"><figcaption class="cap"><b>Filtros abiertos</b> · selección múltiple con casillas de 18 px; el filtro «Estado» solo ofrece lo que el API puede listar (Sellado, Contingencia, Invalidado). «Rechazado» no es filtrable.</figcaption><div class="pairs"><div class="panel" data-facta-theme="light">'+pop('light')+'</div><div class="panel" data-facta-theme="dark">'+pop('dark')+'</div></div></figure>');
+})();
+
+/* ---------- 2 · detail ---------- */
+function ids(x,code){
+  function r(l,v,done){return '<div class="d-id"><span>'+l+'</span><span class="m" title="'+v+'">'+v+'</span><button class="copy'+(done?' done':'')+'" aria-label="Copiar '+l+'">'+ic(done?'check':'copy')+'</button></div>'}
+  return r('Código de generación',code)+r('Número de control',x.n,true)+r('Sello de recepción','2026A7F3B9C14D2E8A06F5B3C1D7E9A04B2C6F81')+'';
+}
+function copiesBlock(){
+  return '<div class="copies"><div class="r group">'+ic('cloud')+'Facta<span class="sp st ok">'+ic('check','sm')+'Guardadas</span></div>'+
+   '<div class="r sub"><span class="muted">JSON · PDF</span><span class="sp m muted">8.2 KB</span></div>'+
+   '<div class="r group">'+ic('cloud')+'Sus destinos<span class="sp"><span class="st wait">2 de 3 guardadas</span></span></div>'+
+   '<div class="r sub">Bucket S3 de la empresa<span class="sp st ok">'+ic('check','sm')+'Guardada</span></div>'+
+   '<div class="r sub">Respaldo en Google Drive<span class="sp st ok">'+ic('check','sm')+'Guardada</span></div>'+
+   '<div class="r sub">SFTP · oficina central<span class="sp st wait">'+ic('clock','sm')+'Pendiente</span><button class="f-btn sm" style="margin-left:8px">'+ic('refresh','sm')+'Reintentar</button></div></div>';
+}
+function timeline(v){
+  if(v==='void')return '<ul class="tl"><li><span class="dot ok">'+ic('check')+'</span><div><b>Emitida</b><small>Factura DTE-01-…000040</small></div><time>2 oct · 10:02</time></li>'+
+   '<li><span class="dot ok">'+ic('check')+'</span><div><b>Sellada por Hacienda</b><small>Recepción inmediata</small></div><time>10:02</time></li>'+
+   '<li><span class="dot off">'+ic('ban')+'</span><div><b>Invalidada</b><small>Tipo 2 · Rescindir la operación</small></div><time>2 oct · 11:30</time></li></ul>';
+  return '<ul class="tl"><li><span class="dot wait">'+ic('clock')+'</span><div><b>Emitida en contingencia</b><small>Hacienda no respondió; el documento quedó firmado</small></div><time>09:14</time></li>'+
+   '<li><span class="dot ok">'+ic('check')+'</span><div><b>Sellada por Hacienda</b><small>Transmitida al volver el servicio</small></div><time>09:52</time></li></ul>';
+}
+function drawer(theme,v,brand){
+  var x=v==='void'?R[5]:R[1];var code='7C1E4B6A-92D3-4F08-A1B7-5E30C9D2F614';
+  var hero='<div class="d-hero'+(v==='void'?' void':'')+'"><small>Total a pagar</small><div class="amt">'+fm(x.tot)+'</div><small>'+(v==='void'?'Gravado $50.00 · IVA $6.50':'Gravado $1,092.57 · IVA $141.99')+'</small></div>';
+  var tot=v==='void'?['50.00','6.50','56.50']:['1,092.57','141.99','1,234.56'];
+  var ft='<div class="d-ft"><div class="f-split"><button class="f-btn primary main">'+ic('down')+'Descargar PDF</button><button class="f-btn primary more" aria-label="Más formatos">'+ic('chev')+'</button></div>'+(v==='void'?'':'<button class="f-btn" style="color:var(--facta-danger)">'+ic('ban')+'Anular</button>')+(brand==='host'?'':'<span class="attr">'+attr()+'</span>')+'</div>';
+  var rec='<div class="d-sec"><h5>Receptor</h5><div class="f-callout info" style="background:var(--facta-surface);color:var(--facta-muted)">'+ic('eyeoff')+'<div class="tx">Oculto en esta vista<span>Su sistema decide si el navegador puede ver el receptor.</span></div></div></div>';
+  var inner='<div class="f-scrim"></div><aside class="f-drawer" role="dialog" aria-label="Detalle del documento">'+
+   '<div class="d-hd"><div style="flex:1;min-width:0"><h3>'+x.t+' · '+x.d+' 2026</h3><div style="display:flex;gap:8px;align-items:center">'+badge(x.e)+'<span class="sub">'+x.h+(brand==='host'?' · '+'Ferretería San Miguel':'')+'</span></div></div><button class="f-btn icon ghost" aria-label="Cerrar">'+ic('x')+'</button></div>'+
+   '<div class="d-body">'+hero+
+   '<div class="d-sec"><h5>Identificadores</h5>'+ids(x,code)+'</div>'+
+   '<div class="d-sec"><h5>Totales</h5><table class="d-tot"><tr><td class="muted">Gravado</td><td>$'+tot[0]+'</td></tr><tr><td class="muted">IVA 13 %</td><td>$'+tot[1]+'</td></tr><tr class="t"><td>Total</td><td>$'+tot[2]+'</td></tr></table></div>'+
+   (v==='void'?'':'<div class="d-sec"><h5>Copias <span style="text-transform:none;letter-spacing:0;font-weight:500">Almacenamiento</span></h5>'+copiesBlock()+'</div>')+
+   '<div class="d-sec"><h5>Historial</h5>'+timeline(v)+'</div></div>'+ft+'</aside>';
+  return inner;
+}
+function detailFrame(theme,v,brand,cap){
+  var listBg=hostShell(theme,listComp(theme,{names:false,brand:brand==='host'?'host':'facta'}));
+  return fig(cap,'<div style="height:'+(v==='void'?880:1180)+'px;overflow:hidden;position:relative">'+listBg+Fc(theme,drawer(theme,v,brand),'','position:absolute;inset:0;background:transparent')+'</div>',1280,theme);
+}
+out('#detail-main',
+  detailFrame('light','sealed','facta','<b>FactaDocumentDetail</b> · side=right · width=460 · theme=light · contingencia → sellado · copias 2 de 3 con «Reintentar»')+
+  detailFrame('dark','void','host','<b>FactaDocumentDetail</b> · theme=dark · documento invalidado (importe tachado, sin «Anular») · white-label sin pie')
+);
+(function(){
+  var h='<div class="redline">←→ ancho 460 px · padding 20 px · cabecera con cerrar de 44 px · pie fijo con acción primaria única (Descargar)</div>';
+  $('#detail-main').insertAdjacentHTML('beforeend',h);
+})();
+
+/* ---------- 3 · download ---------- */
+function split(theme,s){
+  var lab={idle:'Descargar PDF',menu:'Descargar PDF',loading:'Preparando PDF…',done:'PDF descargado'}[s];
+  var icon=s==='loading'?'<span class="spin"></span>':ic(s==='done'?'check':'down');
+  var cls=s==='done'?'f-btn main':'f-btn primary main';
+  var more=s==='done'?'f-btn more':'f-btn primary more';
+  var st=s==='done'?' style="background:var(--facta-success-soft);color:var(--facta-success);border-color:var(--facta-success)"':'';
+  var mn=s==='menu'?'<div class="f-menu" style="top:48px;left:0"><div class="lbl">Formato</div><div class="it hl">'+ic('doc')+'PDF<span class="kb">Carta</span></div><div class="it">'+ic('json')+'JSON<span class="kb">DTE firmado</span></div><div class="it">'+ic('ticket')+'Ticket 80 mm<span class="kb">Térmica</span></div></div>':'';
+  return '<div class="f-split">'+'<button class="'+cls+'"'+st+(s==='loading'?' disabled':'')+'>'+icon+lab+'</button><button class="'+more+'"'+(s==='loading'?' disabled':'')+' aria-label="Más formatos">'+ic('chev')+'</button>'+mn+'</div>';
+}
+function dlCard(theme,s,cap){
+  return '<figure class="spec"><figcaption class="cap">'+cap+'</figcaption><div class="panel" data-facta-theme="'+theme+'">'+Fc(theme,'<div style="padding:22px;height:'+(s==='menu'?'220':'92')+'px">'+split(theme,s)+'</div>')+'</div></figure>';
+}
+out('#dl',
+ '<div class="pairs">'+
+  dlCard('light','idle','<b>idle</b> · 44 px · radio 9 px · chevrón 44×44')+
+  dlCard('light','menu','<b>menu open</b> · ítems de 40 px, teclado ↑↓ Enter')+
+  dlCard('dark','loading','<b>loading</b> · deshabilitado, giro 0.8 s linear')+
+  dlCard('dark','done','<b>done</b> · 2 s, luego vuelve a idle')+
+ '</div>'+
+ '<figure class="spec"><figcaption class="cap"><b>Variantes</b> · variant=outline (en tablas), size=sm 38 px, icon-only para filas</figcaption><div class="panel" data-facta-theme="light">'+Fc('light','<div style="padding:22px;display:flex;gap:16px;align-items:center;flex-wrap:wrap"><div class="f-split out"><button class="f-btn main">'+ic('down')+'Descargar PDF</button><button class="f-btn more" aria-label="Más">'+ic('chev')+'</button></div><div class="f-split out"><button class="f-btn sm main">'+ic('down','sm')+'PDF</button><button class="f-btn sm more" style="width:38px" aria-label="Más">'+ic('chev','sm')+'</button></div><button class="f-btn icon" aria-label="Descargar PDF">'+ic('down')+'</button></div>')+'</div></figure>'+
+ '<button class="btn-play" id="playdl" type="button">▶ Reproducir</button><span class="cap mono" style="font:400 12px \'IBM Plex Mono\',monospace;color:var(--board-muted)">idle → loading (1.4 s) → done (2 s) → idle · la etiqueta cambia con fundido de 120 ms ease-out</span>'+
+ '<div class="panel" data-facta-theme="light" style="margin-top:10px;max-width:360px">'+Fc('light','<div id="dlplay" style="padding:22px">'+split('light','idle')+'</div>')+'</div>'
+);
+var playing=false;
+$('#playdl').addEventListener('click',function(){
+  if(playing)return;playing=true;var el=$('#dlplay');var reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  el.innerHTML=split('light','loading');
+  setTimeout(function(){el.innerHTML=split('light','done');
+    setTimeout(function(){el.innerHTML=split('light','idle');playing=false},reduce?800:2000)},reduce?600:1400);
+});
+
+/* ---------- 4 · pickers ---------- */
+function hl(t,q){var i=t.toLowerCase().indexOf(q);if(i<0)return t;return t.slice(0,i)+'<mark>'+t.slice(i,i+q.length)+'</mark>'+t.slice(i+q.length)}
+var CU=[
+ {n:'Ferretería San Miguel',doc:'NIT 0614-210389-102-4',nrc:'NRC 123456-7'},
+ {n:'Ferretería El Tornillo, S.A. de C.V.',doc:'NIT 0614-150795-101-2',nrc:'NRC 287401-3'},
+ {n:'Ferrer Menjívar, José Luis',doc:'DUI 04829316-5',nrc:''}
+];
+var PR=[
+ {c:'DIS-114',d:'Disco de corte ferretero 4½"',p:2.85},
+ {c:'CAN-040',d:'Candado ferretero 40 mm',p:6.50},
+ {c:'CIN-005',d:'Cinta métrica ferretera 5 m',p:4.10}
+];
+function inputBox(label,val,state,ph){
+  var t=val?'<span>'+val+'</span><span class="caret"></span>':'<span class="muted">'+ph+'</span>';
+  var right=state==='loading'?'<span class="spin sp" style="color:var(--facta-accent)"></span>':ic('search','sm sp muted');
+  return '<div class="f-combo"><label>'+label+'</label><div class="f-field tall active" role="combobox" aria-expanded="true">'+t+right+'</div></div>';
+}
+function custPop(q,hlI){
+  return '<div class="f-pop" role="listbox">'+CU.map(function(c,i){return '<div class="f-opt'+(i===hlI?' hl':'')+'" style="grid-template-columns:minmax(0,1fr)" role="option"><span class="n">'+hl(c.n,q)+'</span><span class="s"><span class="m">'+c.doc+'</span>'+(c.nrc?'<span class="m">'+c.nrc+'</span>':'')+'</span></div>'}).join('')+'<div class="hint"><span>↑↓ navegar</span><span>Enter elegir</span><span>Esc cerrar</span></div></div>';
+}
+function prodPop(q,hlI){
+  return '<div class="f-pop" role="listbox">'+PR.map(function(c,i){return '<div class="f-opt'+(i===hlI?' hl':'')+'" role="option"><span class="n">'+hl(c.d,q)+'</span><span class="s"><span class="m">'+c.c+'</span></span><span class="r"><b>'+fm(c.p)+'</b><span class="f-tag">IVA incluido</span></span></div>'}).join('')+'<div class="hint"><span>↑↓ navegar</span><span>Enter agregar</span><span>Esc cerrar</span></div></div>';
+}
+function pickerCard(theme,cap,html,h){
+  return '<figure class="spec"><figcaption class="cap">'+cap+'</figcaption><div class="panel" data-facta-theme="'+theme+'">'+Fc(theme,'<div style="padding:18px;min-height:'+h+'px">'+html+'</div>')+'</div></figure>';
+}
+function emptyPop(t){return '<div class="f-pop"><div class="f-empty" style="padding:22px 16px"><h4>Sin resultados para «'+t+'»</h4><p style="margin:0">Revise la ortografía o busque por número de documento.</p></div></div>'}
+function loadPop(){return '<div class="f-pop">'+[0,1,2].map(function(i){return '<div class="f-opt"><span class="f-skel" style="width:'+(150+i*30)+'px;height:13px"></span><span class="f-skel" style="width:110px;margin-top:6px"></span></div>'}).join('')+'</div>'}
+function selChip(){
+  return '<div class="f-combo"><label>Cliente</label><div class="f-sel"><span class="av">FS</span><div class="tx"><b>Ferretería San Miguel</b><span class="m">NIT 0614-210389-102-4 · NRC 123456-7</span></div><button class="f-btn icon sm ghost" aria-label="Quitar cliente">'+ic('x')+'</button></div></div>';
+}
+function orderForm(theme){
+  return '<div class="host-form" style="background:var(--facta-bg)"><h3 style="color:var(--facta-text)">Nuevo pedido</h3>'+selChip()+
+   '<div class="f-combo"><label>Productos</label><div style="display:grid;gap:8px"><div class="host-line"><span><b>Disco de corte ferretero 4½"</b><br><span class="m muted">DIS-114</span></span><span class="muted">× 4</span><b style="text-align:right">'+fm(11.40)+'</b><span class="muted">'+ic('x','sm')+'</span></div><div class="f-field tall" style="color:var(--facta-muted)">'+ic('plus','sm')+'Agregar producto…</div></div></div>'+
+   '<div style="display:flex;justify-content:space-between;align-items:center;padding-top:6px;border-top:1px solid var(--facta-border)"><span class="muted">Total del pedido</span><b style="font-size:20px">'+fm(11.40)+'</b></div>'+
+   '<div class="f-callout info">'+ic('info')+'<div class="tx">El navegador solo recibe el <code class="m">id</code> del cliente y del producto.<span>Su servidor arma la sesión con <code class="m">customerId</code> y <code class="m">productId</code>.</span></div></div>'+
+   '<button class="f-btn primary" style="width:100%">Emitir factura</button></div>';
+}
+out('#pk',
+ '<div class="pairs">'+
+  pickerCard('light','<b>FactaCustomerPicker</b> · query=«ferre» · resalte de coincidencia · 2.º resultado con foco de teclado',inputBox('Cliente','ferre','','Buscar cliente por nombre o documento')+custPop('ferre',1),330)+
+  pickerCard('light','<b>FactaProductPicker</b> · código, descripción, precio e «IVA incluido»',inputBox('Producto','ferre','','Buscar producto por código o nombre')+prodPop('ferre',0),330)+
+  pickerCard('dark','<b>loading</b> (clientes) · debounce 250 ms, mínimo 2 caracteres',inputBox('Cliente','ferr','loading','Buscar cliente')+loadPop(),340)+
+  pickerCard('dark','<b>empty</b> (productos)',inputBox('Producto','ferrex','','Buscar producto')+emptyPop('ferrex'),340)+
+  pickerCard('dark','<b>Clientes · tema oscuro</b>',inputBox('Cliente','ferre','','Buscar cliente')+custPop('ferre',0),330)+
+  pickerCard('dark','<b>Productos · tema oscuro</b>',inputBox('Producto','ferre','','Buscar producto')+prodPop('ferre',1),330)+
+ '</div>'+
+ fig('<b>Dentro del formulario «Nuevo pedido» del anfitrión</b> · chip de selección con quitar (44 px) · value = catalog id',
+  '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0">'+Fc('light','<div style="background:var(--host-bg);padding:20px">'+'<div class="card" style="border:1px solid var(--host-line);border-radius:14px;overflow:hidden">'+orderForm('light')+'</div></div>')+Fc('dark','<div style="background:var(--host-bg);padding:20px">'+'<div class="card" style="border:1px solid var(--host-line);border-radius:14px;overflow:hidden">'+orderForm('dark')+'</div></div>')+'</div>',980,'light')
+);
+(function(){var f=document.querySelector('#pk .frame');var h=f.children[0];h.setAttribute('data-facta-theme','light');})();
+
+/* ---------- 5 · service status ---------- */
+function pill(s,tip){
+  var m={online:['Hacienda en línea',''],contingency:['Hacienda en contingencia','clock'],offline:['Sin conexión con Facta','wifioff'],unknown:['Comprobando…','']}[s];
+  var left=m[1]?ic(m[1],'sm'):'<i></i>';
+  return '<span class="f-pill '+s+'" style="'+(tip?'':'')+'">'+left+m[0]+(tip?'<span class="f-tip" role="tooltip">Hacienda no responde. Sus documentos se firman y quedan en cola; se enviarán solos cuando vuelva el servicio, dentro del plazo legal.</span>':'')+'</span>';
+}
+function ssCard(theme,html,cap,h){return '<figure class="spec"><figcaption class="cap">'+cap+'</figcaption><div class="panel" data-facta-theme="'+theme+'">'+Fc(theme,'<div style="padding:22px;display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;min-height:'+(h||64)+'px">'+html+'</div>')+'</div></figure>'}
+out('#ss',
+ '<div class="pairs">'+
+  ssCard('light',pill('online'),'<b>online</b> · punto verde con pulso lento (2.4 s)')+
+  ssCard('light',pill('contingency',true),'<b>contingency</b> · tooltip al foco o toque; 290 px, 12.5 px',130)+
+  ssCard('light',pill('offline'),'<b>offline</b> · no habla con Facta (distinto de Hacienda caída)')+
+  ssCard('dark',pill('online')+pill('contingency')+pill('offline')+pill('unknown'),'<b>tema oscuro</b> · las cuatro píldoras')+
+ '</div>'+
+ '<figure class="spec"><figcaption class="cap"><b>variant=dot</b> · encabezado de caja registradora (POS) · área táctil 44×44, <span class="mono">aria-label</span> con el estado completo</figcaption><div class="panel" data-facta-theme="dark" style="max-width:420px">'+Fc('dark','<div class="pos-head">Caja 1 · Turno mañana<span class="sp"></span><span class="f-dot online" style="--x:1" role="img" aria-label="Hacienda en línea"><i></i></span><span class="f-dot contingency" role="img" aria-label="Hacienda en contingencia"><i></i></span><span class="f-dot offline" role="img" aria-label="Sin conexión con Facta"><i></i></span></div><div style="padding:14px 16px;font-size:12.5px" class="muted">Tres estados mostrados juntos solo para la tabla; en uso real es un único punto.</div>')+'</div></figure>'
+);
+
+/* ---------- 6 · storage ---------- */
+function meter(theme,s){
+  var d={normal:['1.2 GB','5 GB',24,''],near:['4.4 GB','5 GB',88,'near'],full:['5.0 GB','5 GB',100,'full'],none:['','',0,'none']}[s];
+  if(s==='none'){
+    return '<div class="f-meter none"><div class="hd"><b>Almacenamiento de Facta</b><span class="muted">No configurado</span></div><div class="bar"></div><div class="f-callout info">'+ic('info')+'<div class="tx">Sus documentos se guardan solo en sus propios destinos.<span>Si desea que Facta también conserve una copia, actívelo desde su cuenta.</span></div></div></div>';
+  }
+  var extra='';
+  if(s==='near')extra='<div class="f-callout warn">'+ic('alert')+'<div class="tx"><b style="color:var(--facta-warning)">Le queda poco espacio</b><span>Quedan 0.6 GB. Amplíe el plan antes de que se llene.</span></div></div>';
+  if(s==='full')extra='<div class="f-callout danger">'+ic('alert')+'<div class="tx"><b style="color:var(--facta-danger)">El almacenamiento de Facta está lleno</b><span>Facta no podrá guardar copias nuevas hasta que amplíe el plan. Sus destinos propios siguen recibiendo cada documento.</span></div></div>';
+  return '<div class="f-meter '+d[3]+'"><div class="hd"><b>Almacenamiento de Facta</b><span class="m">'+d[0]+' de '+d[1]+'</span></div><div class="bar" role="progressbar" aria-valuenow="'+d[2]+'" aria-valuemin="0" aria-valuemax="100"><i style="width:'+d[2]+'%"></i></div><div class="ft"><span>'+d[2]+' % usado</span><span>'+(s==='full'?'Sin espacio libre':(s==='near'?'0.6 GB libres':'3.8 GB libres'))+'</span></div>'+extra+'</div>';
+}
+function mCard(theme,s,cap){return '<figure class="spec"><figcaption class="cap">'+cap+'</figcaption><div class="panel" data-facta-theme="'+theme+'">'+Fc(theme,'<div style="padding:18px">'+meter(theme,s)+'</div>')+'</div></figure>'}
+out('#sm','<div class="pairs">'+
+  mCard('light','normal','<b>normal</b> · &lt; 85 % · acento')+
+  mCard('light','near','<b>near-limit</b> · ≥ 85 % · ámbar + aviso')+
+  mCard('dark','full','<b>full</b> · 100 % · rojo + explicación')+
+  mCard('dark','none','<b>unconfigured</b> · barra rayada, sin cifras')+
+ '</div><div class="redline">barra 10 px · radio total · llenado animado 0.9 s cubic-bezier(.2,.8,.2,1) desde la izquierda · umbral 85 % configurable (<span class="mono">warnAt</span>)</div>');
+
+/* ---------- 7 · invalidate ---------- */
+function roRows(){
+  return '<div class="m-ro"><div class="lock">'+ic('lock','sm')+'Preparado por su sistema · solo lectura</div>'+
+   '<div class="row"><span>Tipo de anulación</span><span><b>1</b> · Error en la información, se reemplaza por otro documento</span></div>'+
+   '<div class="row"><span>Documento de reemplazo</span><span class="m">9A3F2C71-5B80-4D16-A2E9-0C47D81B35F6</span></div>'+
+   '<div class="row"><span>Motivo</span><span>Precio incorrecto en la línea 2</span></div>'+
+   '<div class="row"><span>Responsable</span><span>Laura Beatriz Ortiz<small>DUI 04829316-5</small></span></div>'+
+   '<div class="row"><span>Solicitante</span><span>María José Hernández<small>DUI 03715582-1</small></span></div></div>';
+}
+function sumBox(){return '<div class="m-sum"><b>Factura · 5 oct 2026 09:52</b><span class="tt">'+fm(113)+'</span><span class="m muted">DTE-01-M001P001-…000042</span></div>'}
+function invModal(theme,stage,brand){
+  var hd,bd,ft;
+  var A=brand==='host'?'<span></span>':'<span class="attr">'+attr()+'</span>';
+  if(stage==='confirm'){
+    hd='<div class="m-hd"><span class="ico danger">'+ic('ban','lg')+'</span><div><h3>Anular documento</h3><p>Revise los datos. Su sistema los preparó; aquí no se pueden cambiar.</p></div></div>';
+    bd='<div class="m-bd">'+sumBox()+roRows()+'<div class="f-callout danger">'+ic('alert')+'<div class="tx"><b style="color:var(--facta-danger)">La anulación no se puede deshacer</b><span>Hacienda registrará el evento y el documento quedará invalidado para siempre.</span></div></div></div>';
+    ft='<div class="m-ft">'+A+'<button class="f-btn">Cancelar</button><button class="f-btn danger">Anular documento</button></div>';
+  }else if(stage==='progress'){
+    hd='<div class="m-hd"><span class="ico danger">'+ic('ban','lg')+'</span><div><h3>Anulando…</h3><p>No cierre esta ventana hasta terminar.</p></div></div>';
+    bd='<div class="m-bd">'+sumBox()+'<div class="steps"><div class="s done"><span class="c">'+ic('check','sm')+'</span>Firmando el evento de anulación<span class="muted m">0.4 s</span></div><div class="s now"><span class="c"><span class="spin" style="width:14px;height:14px;border-width:2px"></span></span>Enviando a Hacienda<span class="muted">…</span></div><div class="s wait"><span class="c">'+ic('clock','sm')+'</span>Guardando la copia del evento<span></span></div></div></div>';
+    ft='<div class="m-ft">'+A+'<button class="f-btn" disabled>Cancelar</button><button class="f-btn danger" disabled><span class="spin"></span>Anulando…</button></div>';
+  }else if(stage==='success'){
+    hd='<div class="m-hd"><span class="ico ok">'+ic('check','lg')+'</span><div><h3>Documento anulado</h3><p>Hacienda aceptó la anulación el 5 oct 2026 a las 11:30.</p></div></div>';
+    bd='<div class="m-bd">'+sumBox().replace('class="m-sum"','class="m-sum" style="opacity:.85"')+'<div class="seal-box">'+ic('seal','lg')+'<div style="min-width:0;flex:1"><small>Sello del evento</small><div class="m">2026D81C07A4E5B93F62A1D08C74B5E3F9A026C1</div></div><button class="copy" aria-label="Copiar sello">'+ic('copy')+'</button></div></div>';
+    ft='<div class="m-ft">'+A+'<button class="f-btn">Ver detalle</button><button class="f-btn primary">Cerrar</button></div>';
+  }else{
+    hd='<div class="m-hd"><span class="ico danger">'+ic('alert','lg')+'</span><div><h3>No se pudo anular</h3><p>Hacienda rechazó el evento. El documento sigue vigente.</p></div></div>';
+    bd='<div class="m-bd">'+sumBox()+'<div class="f-callout danger">'+ic('alert')+'<div class="tx"><b style="color:var(--facta-danger)">Mensaje de Hacienda</b><span class="m" style="display:block">[095] El documento no se encuentra dentro del plazo de anulación</span></div></div></div>';
+    ft='<div class="m-ft">'+A+'<button class="f-btn primary">Entendido</button></div>';
+  }
+  return '<div class="f-modal" role="dialog" aria-modal="true" aria-label="Anular documento">'+hd+bd+ft+'</div>';
+}
+function invFrame(theme,stage,brand,cap,h){
+  var bg=hostShell(theme,listComp(theme,{names:false,brand:'facta'}));
+  return fig(cap,'<div style="height:'+h+'px;overflow:hidden;position:relative">'+bg+Fc(theme,'<div class="f-scrim"></div>'+invModal(theme,stage,brand),'','position:absolute;inset:0;background:transparent')+'</div>',1280,theme);
+}
+out('#inv',
+  invFrame('light','confirm','facta','<b>FactaInvalidateDialog</b> · stage=confirm · tipo 1 con código de reemplazo · un solo botón de peligro · ancho 540',760)+
+  '<div class="pairs">'+
+   '<figure class="spec"><figcaption class="cap"><b>stage=progress</b> · pasos reales: firmar → enviar → guardar</figcaption><div class="panel" data-facta-theme="dark" style="position:relative;padding:16px">'+Fc('dark','<div style="position:relative;height:430px"><div class="f-modal" style="position:static;transform:none;width:100%">'+invModal('dark','progress').replace('<div class="f-modal" role="dialog" aria-modal="true" aria-label="Anular documento">','').replace(/<\/div>$/,'')+'</div></div>')+'</div></figure>'+
+   '<figure class="spec"><figcaption class="cap"><b>stage=success</b> · sello del evento copiable · marca blanca sin pie</figcaption><div class="panel" data-facta-theme="light" style="padding:16px">'+Fc('light','<div style="position:relative;height:430px"><div class="f-modal" style="position:static;transform:none;width:100%">'+invModal('light','success','host').replace('<div class="f-modal" role="dialog" aria-modal="true" aria-label="Anular documento">','').replace(/<\/div>$/,'')+'</div></div>')+'</div></figure>'+
+   '<figure class="spec"><figcaption class="cap"><b>stage=error</b> · mensaje literal de Hacienda, acción única</figcaption><div class="panel" data-facta-theme="light" style="padding:16px">'+Fc('light','<div style="position:relative;height:330px"><div class="f-modal" style="position:static;transform:none;width:100%">'+invModal('light','error').replace('<div class="f-modal" role="dialog" aria-modal="true" aria-label="Anular documento">','').replace(/<\/div>$/,'')+'</div></div>')+'</div></figure>'+
+  '</div>'+
+  '<figure class="spec"><figcaption class="cap"><b>Tipos de anulación</b> · el texto que se muestra por <span class="mono">tipoAnulacion</span></figcaption><div class="panel" data-facta-theme="light">'+Fc('light','<div style="padding:18px;display:grid;gap:10px">'+
+    [['1','Error en la información, se reemplaza por otro documento','Muestra el código del documento de reemplazo.'],['2','Rescindir la operación','No lleva documento de reemplazo.'],['3','Otro','Exige que su servidor envíe un motivo escrito.']].map(function(t){return '<div class="m-ro"><div class="row" style="grid-template-columns:40px 1fr"><span><b style="color:var(--facta-text)">'+t[0]+'</b></span><span>'+t[1]+'<small>'+t[2]+'</small></span></div></div>'}).join('')+'</div>')+'</div></figure>'
+);
+
+/* ---------- 8 · phone ---------- */
+function pCard(x,o){
+  var rc=o&&o.names?x.r:'Receptor oculto';
+  return '<div class="p-card'+(x.e==='invalidado'?' void':'')+'"><span class="t">'+x.t+'</span><span class="when">'+x.d+' · '+x.h+'</span>'+
+   '<span class="ctl"><span class="m" title="'+x.n+'">'+mid(x.n)+'</span><button class="copy" aria-label="Copiar" style="width:44px;height:30px">'+ic('copy','sm')+'</button></span>'+
+   '<span class="rc">'+(o&&o.names?'':ic('eyeoff','sm'))+rc+'</span>'+
+   '<span class="bt"><b>'+fm(x.tot)+'</b>'+badge(x.e)+'</span></div>';
+}
+function phoneHost(theme,inner,tab){
+  return '<div class="p-wrap" style="background:var(--facta-bg)"><div style="height:44px;background:#2b2f36;color:#fff;font:600 12px system-ui;display:flex;align-items:flex-end;padding:0 20px 6px;justify-content:space-between"><span>9:41</span><span>5G</span></div>'+inner+'</div>';
+}
+function phoneList(theme,o){
+  o=o||{};
+  var cards=R.slice(0,4).map(function(x){return pCard(x,o)}).join('');
+  var body='<div class="p-bar"><h3>Documentos</h3><button class="f-btn icon ghost" aria-label="Actualizar">'+ic('refresh')+'</button><button class="f-btn icon" aria-label="Filtros" style="position:relative">'+ic('filter')+'<span style="position:absolute;top:6px;right:6px;min-width:16px;height:16px;border-radius:8px;background:var(--facta-accent);color:var(--facta-accent-ink);font:700 10px/16px system-ui;text-align:center">2</span></button></div>'+
+   '<div style="padding:12px 16px 4px;border-bottom:1px solid var(--facta-border)"><div class="f-field tall" style="margin-bottom:10px">'+ic('search','sm muted')+'<span class="muted">Buscar por número de control</span></div><div class="f-chips" style="flex-wrap:nowrap;overflow:hidden;margin-bottom:8px"><span class="f-chip plain" style="height:34px">'+ic('cal','sm')+'1–5 oct</span><span class="f-chip" style="height:34px">Sellado <span class="x">'+ic('x','sm')+'</span></span><span class="f-chip plain" style="height:34px">2 tipos</span></div></div>'+
+   '<div class="p-body">'+cards+'<div style="display:grid;place-items:center;padding:6px 0 14px"><button class="f-btn" style="width:100%">Cargar más</button></div></div>'+
+   '<div class="p-tabs"><div>'+ic('home','lg')+'Inicio</div><div>'+ic('cart','lg')+'Pedidos</div><div class="on">'+ic('doc','lg')+'Documentos</div><div>'+ic('user','lg')+'Cuenta</div></div>';
+  return Fc(theme,phoneHost(theme,body),'','height:100%');
+}
+function filterSheet(theme){
+  var sheet='<div class="p-scrim"></div><div class="p-sheet"><div class="grab"></div><div class="hd"><h4>Filtros</h4><button class="f-btn icon ghost" aria-label="Cerrar">'+ic('x')+'</button></div><div class="bd">'+
+   '<div class="sec-t">Período</div><div class="opts"><span class="opt">Hoy</span><span class="opt">7 días</span><span class="opt on">'+ic('check','sm')+'1–5 oct</span><span class="opt">Este mes</span></div>'+
+   '<div class="sec-t">Tipo</div><div class="opts"><span class="opt on">'+ic('check','sm')+'Factura</span><span class="opt">Crédito fiscal</span><span class="opt">Nota de crédito</span><span class="opt">Nota de débito</span><span class="opt">Exportación</span><span class="opt">Sujeto excluido</span></div>'+
+   '<div class="sec-t">Estado</div><div class="opts"><span class="opt on">'+ic('check','sm')+'Sellado</span><span class="opt">Contingencia</span><span class="opt">Invalidado</span></div></div>'+
+   '<div class="ft"><button class="f-btn">Limpiar</button><button class="f-btn primary">Ver 31 documentos</button></div></div>';
+  return Fc(theme,'<div style="position:relative;height:100%">'+phoneList(theme).replace('data-facta-theme="'+theme+'"','data-facta-theme="'+theme+'"')+sheet+'</div>','','height:100%');
+}
+out('#ph-list','<div class="phones">'+
+  phoneFig('<b>FactaDocumentList</b> · phone · light · receptor oculto',phoneList('light'),'light')+
+  phoneFig('<b>FactaDocumentList</b> · phone · dark · exposeRecipient',phoneList('dark',{names:true}),'dark')+
+  phoneFig('<b>Hoja de filtros</b> · opciones de 44 px · pie fijo con conteo real · light',filterSheet('light'),'light')+
+ '</div>');
+
+function phoneDetail(theme,v){
+  var x=v==='void'?R[5]:R[1];var code='7C1E4B6A-92D3-4F08-A1B7-5E30C9D2F614';
+  var tot=v==='void'?['50.00','6.50','56.50']:['1,092.57','141.99','1,234.56'];
+  var sheet='<div class="p-scrim"></div><div class="p-sheet" style="top:56px;max-height:none"><div class="grab"></div><div class="hd"><div style="flex:1"><h4 style="font-size:16px">'+x.t+' · '+x.d+'</h4><div style="margin-top:4px">'+badge(x.e)+'</div></div><button class="f-btn icon ghost" aria-label="Cerrar">'+ic('x')+'</button></div>'+
+   '<div class="bd" style="display:flex;flex-direction:column;gap:14px;flex:1;padding-top:6px"><div class="d-hero'+(v==='void'?' void':'')+'" style="padding:12px 14px"><small>Total a pagar</small><div class="amt" style="font-size:28px">'+fm(x.tot)+'</div></div>'+
+   '<div class="d-sec"><h5>Identificadores</h5>'+ids(x,code)+'</div>'+
+   '<div class="d-sec"><h5>Totales</h5><table class="d-tot"><tr><td class="muted">Gravado</td><td>$'+tot[0]+'</td></tr><tr><td class="muted">IVA 13 %</td><td>$'+tot[1]+'</td></tr><tr class="t"><td>Total</td><td>$'+tot[2]+'</td></tr></table></div>'+
+   (v==='void'?'':'<div class="d-sec"><h5>Copias</h5><div class="copies"><div class="r group">'+ic('cloud')+'Facta<span class="sp st ok">'+ic('check','sm')+'Guardadas</span></div><div class="r group">'+ic('cloud')+'Sus destinos<span class="sp st wait">2 de 3</span></div><div class="r sub">SFTP · oficina central<span class="sp st wait">'+ic('clock','sm')+'Pendiente</span><button class="f-btn sm" style="margin-left:6px">Reintentar</button></div></div></div>')+
+   '<div class="d-sec"><h5>Historial</h5>'+timeline(v)+'</div></div>'+
+   '<div class="ft" style="flex-direction:column;gap:8px"><div style="display:flex;gap:10px;width:100%"><div class="f-split" style="flex:1"><button class="f-btn primary main" style="flex:1">'+ic('down')+'Descargar PDF</button><button class="f-btn primary more" aria-label="Más">'+ic('chev')+'</button></div>'+(v==='void'?'':'<button class="f-btn" style="color:var(--facta-danger)">Anular</button>')+'</div><div style="text-align:center">'+attr()+'</div></div></div>';
+  return Fc(theme,'<div style="position:relative;height:100%">'+phoneList(theme)+sheet+'</div>','','height:100%');
+}
+out('#ph-detail','<div class="phones">'+
+  phoneFig('<b>FactaDocumentDetail</b> · phone · light · contingencia → sellado (se desplaza; copias, historial al final)',phoneDetail('light','sealed'),'light')+
+  phoneFig('<b>FactaDocumentDetail</b> · phone · dark · invalidado',phoneDetail('dark','void'),'dark')+
+ '</div>');
+
+function phoneInv(theme,stage){
+  var sheet,rows;
+  if(stage==='confirm'){
+    sheet='<div class="p-sheet"><div class="grab"></div><div class="hd"><div style="display:flex;gap:12px;align-items:center;flex:1"><span class="m-hd ico danger" style="width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:var(--facta-danger-soft);color:var(--facta-danger);padding:0">'+ic('ban','lg')+'</span><h4>Anular documento</h4></div><button class="f-btn icon ghost" aria-label="Cerrar">'+ic('x')+'</button></div>'+
+     '<div class="bd" style="display:grid;gap:12px">'+sumBox()+
+     '<div class="m-ro"><div class="lock">'+ic('lock','sm')+'Solo lectura</div><div class="row" style="grid-template-columns:96px 1fr"><span>Tipo</span><span><b>1</b> · Error en la información, se reemplaza por otro documento</span></div><div class="row" style="grid-template-columns:96px 1fr"><span>Reemplazo</span><span class="m" style="word-break:break-all">9A3F2C71-5B80-…-0C47D81B35F6</span></div><div class="row" style="grid-template-columns:96px 1fr"><span>Motivo</span><span>Precio incorrecto en la línea 2</span></div><div class="row" style="grid-template-columns:96px 1fr"><span>Responsable</span><span>Laura Beatriz Ortiz<small>DUI 04829316-5</small></span></div><div class="row" style="grid-template-columns:96px 1fr"><span>Solicitante</span><span>María José Hernández<small>DUI 03715582-1</small></span></div></div>'+
+     '<div class="f-callout danger">'+ic('alert')+'<div class="tx"><b style="color:var(--facta-danger)">La anulación no se puede deshacer</b></div></div></div>'+
+     '<div class="ft" style="flex-direction:column;gap:8px"><button class="f-btn danger" style="width:100%">Anular documento</button><button class="f-btn ghost" style="width:100%">Cancelar</button></div></div>';
+  }else{
+    sheet='<div class="p-sheet"><div class="grab"></div><div class="hd"><div style="display:flex;gap:12px;align-items:center;flex:1"><span style="width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:var(--facta-success-soft);color:var(--facta-success)">'+ic('check','lg')+'</span><h4>Documento anulado</h4></div></div>'+
+     '<div class="bd" style="display:grid;gap:12px"><p style="margin:0;color:var(--facta-muted);font-size:13px">Hacienda aceptó la anulación el 5 oct 2026 a las 11:30.</p>'+sumBox()+
+     '<div class="seal-box">'+ic('seal','lg')+'<div style="min-width:0;flex:1"><small>Sello del evento</small><div class="m">2026D81C07A4E5B93F62A1D0…</div></div><button class="copy" aria-label="Copiar sello" style="width:44px;height:44px">'+ic('copy')+'</button></div></div>'+
+     '<div class="ft" style="flex-direction:column;gap:8px"><button class="f-btn primary" style="width:100%">Cerrar</button><button class="f-btn ghost" style="width:100%">Ver detalle</button><div style="text-align:center">'+attr()+'</div></div></div>';
+  }
+  return Fc(theme,'<div style="position:relative;height:100%">'+phoneList(theme)+'<div class="p-scrim"></div>'+sheet+'</div>','','height:100%');
+}
+out('#ph-inv','<div class="phones">'+
+  phoneFig('<b>FactaInvalidateDialog</b> · phone sheet · confirm · botón de peligro fijo abajo',phoneInv('light','confirm'),'light')+
+  phoneFig('<b>FactaInvalidateDialog</b> · phone sheet · success · dark',phoneInv('dark','success'),'dark')+
+ '</div>');
+
+/* ---------- 9 · diagram ---------- */
+function bx(t,s){return '<div class="bx">'+t+(s?'<small>'+s+'</small>':'')+'</div>'}
+function rw(a,b,c){return '<div class="rw">'+bx(a)+'<div class="ar">→</div>'+bx(b)+'<div class="ar">→</div>'+bx(c)+'</div>'}
+out('#dgm','<div class="scroll"><div class="dg">'+
+ '<div class="cols"><div>Navegador · React</div><div></div><div>Su servidor · handler</div><div></div><div>SDK de Facta</div></div>'+
+ '<div class="grp"><div class="lab"><b class="tag-r">Lecturas</b><span>authorize(req, {action}) + capabilities declaradas · sin token de sesión</span></div>'+
+   rw('useFactaDocuments','documents.list','listDocuments')+
+   rw('useFactaDocument','documents.get · .copies','getDocumentStatus · getDocumentCopies')+
+   rw('useFactaCustomers','catalog.customers.search','searchCustomers')+
+   rw('useFactaProducts','catalog.products.search','searchProducts')+
+   rw('useFactaServiceStatus','service.status','status · diagnose')+
+   rw('useFactaStorage','storage.status','getStorageStatus')+
+   rw('useFactaActions · download / retryStorage','documents.download · documents.retryStorage','downloadDocument · retryDocumentStorage')+
+ '</div>'+
+ '<div class="wr"><div class="lab"><b class="tag-w">Escrituras fiscales</b><span>siempre una sesión firmada por su servidor, con datos suyos</span></div>'+
+   '<div class="flow">'+
+    bx('1 · Su servidor','createFactaInvalidationSession({ generationCode, tipoAnulacion, motivo, responsable, solicita })')+
+    bx('2 · Navegador','useFactaActions().invalidate(sessionToken) abre FactaInvalidateDialog')+
+    bx('3 · Handler','acción invalidate · verifica la sesión; el navegador no envía campos fiscales')+
+    bx('4 · SDK','invalidateAndArchive(…) → evento sellado + copias')+
+   '</div></div>'+
+ '</div></div>'+
+ '<div class="note" style="margin-top:14px"><b>Regla de lectura:</b> lo que no esté en <span class="mono">capabilities</span> responde <span class="mono">action_not_allowed</span>. <span class="mono">authorize</span> recibe el nombre de la acción, así un cajero puede listar sin poder anular.</div>');
+
+/* ---------- board theme toggle ---------- */
+var modes=['auto','light','dark'],labels={auto:'automático',light:'claro',dark:'oscuro'},mi=0;
+$('#bt').addEventListener('click',function(){
+  mi=(mi+1)%3;var m=modes[mi];
+  if(m==='auto')document.documentElement.removeAttribute('data-theme');else document.documentElement.setAttribute('data-theme',m);
+  this.textContent='Tema del tablero: '+labels[m];
+});
+})();
+</script>
+</body>
+</html>

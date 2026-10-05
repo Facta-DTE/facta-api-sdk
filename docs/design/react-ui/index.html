@@ -1,0 +1,79 @@
+<title>Tableros React Facta DTE</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a short cover with three board cards and the open decisions. */
+:root{
+  --bg:#eef2f5; --card:#ffffff; --fg:#13212a; --muted:#5d6f7a; --line:#d5dfe6;
+  --accent:#007faa; --accent-soft:#e3f2f8;
+  --sans:"IBM Plex Sans",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0b1115;--card:#121b21;--fg:#e6eef2;--muted:#94a7b2;--line:#25343d;--accent:#5fc3e8;--accent-soft:#143646;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0b1115;--card:#121b21;--fg:#e6eef2;--muted:#94a7b2;--line:#25343d;--accent:#5fc3e8;--accent-soft:#143646;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:16px/1.55 var(--sans)}
+.wrap{max-width:980px;margin:0 auto;padding-inline:16px;padding-block:44px 72px;display:grid;gap:36px}
+.eyebrow{font:500 12px var(--mono);letter-spacing:.07em;text-transform:uppercase;color:var(--accent)}
+h1{margin:6px 0 10px;font-size:clamp(28px,5vw,38px);line-height:1.15;font-weight:600;letter-spacing:-.015em;text-wrap:balance}
+h2{margin:0 0 12px;font-size:20px;font-weight:600}
+p{margin:0;max-width:68ch}
+.lead{color:var(--muted)}
+.boards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+a.board{display:grid;gap:10px;align-content:start;text-decoration:none;color:inherit;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;transition:border-color .15s,transform .15s}
+a.board:hover,a.board:focus-visible{border-color:var(--accent);transform:translateY(-2px)}
+a.board:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){a.board{transition:none}a.board:hover{transform:none}}
+.file{font:500 12px var(--mono);color:var(--accent);background:var(--accent-soft);border-radius:6px;padding:2px 8px;justify-self:start}
+a.board h3{margin:0;font-size:17px;font-weight:600}
+a.board p{color:var(--muted);font-size:14.5px}
+a.board ul{margin:0;padding-left:18px;color:var(--muted);font-size:13.5px;display:grid;gap:3px}
+.go{font:500 13px var(--sans);color:var(--accent)}
+.dec{display:grid;gap:10px}
+.d{display:grid;grid-template-columns:4.2rem 1fr;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:14.5px}
+.d b{font:500 13px var(--mono);color:var(--accent)}
+code{font:13px var(--mono)}
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow">@facta-dte/api/react · tableros de diseño</span>
+    <h1>Tableros React Facta DTE</h1>
+    <p class="lead">Referencia visual que la implementación va a copiar: la ventana de emisión en todas sus variantes y estados, cómo el integrador la adapta a su marca, y los componentes de datos de la tanda 2. Cada tablero muestra tema claro y oscuro, escritorio y teléfono, con datos ficticios.</p>
+  </header>
+
+  <section>
+    <h2>Tableros</h2>
+    <div class="boards">
+      <a class="board" href="window.html">
+        <span class="file">window.html</span>
+        <h3>Ventana de emisión</h3>
+        <p>La ventana única, de la revisión al resultado.</p>
+        <ul><li>Modal, hoja de teléfono, panel lateral, tarjeta en página</li><li>Botón de punto de venta y recibo</li><li>Sellada, contingencia, rechazada, error, vencida</li><li>Diez animaciones que se pueden reproducir</li><li>Medidas exactas</li></ul>
+        <span class="go">Abrir tablero →</span>
+      </a>
+      <a class="board" href="appearance.html">
+        <span class="file">appearance.html</span>
+        <h3>Apariencia y marca</h3>
+        <p>Cómo el integrador hace suya la ventana.</p>
+        <ul><li>Panel en vivo que genera el código</li><li>Tres ejemplos: Torogoz, punto de venta, ERP en marca blanca</li><li>Tabla de variables <code>--facta-*</code></li><li>Mapa de <code>classNames</code> y modo <code>unstyled</code></li><li>Aviso de contraste</li></ul>
+        <span class="go">Abrir tablero →</span>
+      </a>
+      <a class="board" href="data.html">
+        <span class="file">data.html</span>
+        <h3>Datos y acciones</h3>
+        <p>Componentes de la tanda 2 dentro de un sistema anfitrión.</p>
+        <ul><li>Lista y detalle de documentos</li><li>Descargas PDF, JSON y ticket</li><li>Buscadores de clientes y productos</li><li>Estado de Hacienda y almacenamiento</li><li>Diálogo de anulación</li></ul>
+        <span class="go">Abrir tablero →</span>
+      </a>
+    </div>
+  </section>
+
+  <section>
+    <h2>Decisiones que los tableros dejan a la vista</h2>
+    <div class="dec">
+      <div class="d"><b>D-5</b><span>«Emitido con Facta DTE» se puede ocultar con <code>attribution: false</code>. El PDF lo sigue decidiendo el servidor según el plan.</span></div>
+      <div class="d"><b>D-6</b><span>El receptor sale «Oculto» en listas y detalle; con <code>exposeRecipient</code> en el servidor se muestra el nombre y el documento enmascarado.</span></div>
+      <div class="d"><b>D-7</b><span>La anulación está dibujada como «solo con sesión del servidor». Si se decide solo servidor, desaparecen la acción «Anular» y su diálogo.</span></div>
+      <div class="d"><b>Nuevo</b><span>Una variable <code>--facta-font-heading</code> para títulos y total, que el ejemplo de ERP necesita.</span></div>
+      <div class="d"><b>Texto</b><span>El aviso de almacenamiento lleno y la ayuda de contingencia son redacción propuesta; hay que confirmarlos antes de implementar.</span></div>
+    </div>
+  </section>
+</div>
