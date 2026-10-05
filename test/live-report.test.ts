@@ -26,6 +26,26 @@ Deno.test("public live report rejects private fields, injected states and raw er
   assertEquals(safeFailureCode({ code: "service_unavailable", message: privateValue }), "service_unavailable");
 });
 
+Deno.test("public live report preserves only known API error codes and labels assertions safely", () => {
+  const apiCodes = [
+    "unauthorized", "invalid_api_key", "key_revoked", "key_expired", "key_inactive",
+    "forbidden_scope", "dte_type_not_allowed", "ip_not_allowed", "environment_not_allowed",
+    "sign_key_required", "sign_key_invalid", "sign_vault_locked", "sign_vault_missing",
+    "invalid_request", "validation_failed", "not_found", "method_not_allowed",
+    "idempotency_key_required", "idempotency_key_reuse", "idempotency_in_flight",
+    "prepare_token_invalid", "rate_limited", "amount_limit", "mh_rejected",
+    "mh_unreachable", "correlative_unavailable", "no_storage_destination",
+    "service_unavailable", "internal_error",
+  ];
+  for (const code of apiCodes) assertEquals(safeFailureCode({ code }), code);
+  assertEquals(safeFailureCode({ code: "ERR_ASSERTION", message: "PRIVATE invoice details" }), "assertion_failed");
+  assertEquals(safeFailureCode({ name: "AssertionError", message: "PRIVATE invoice details" }), "assertion_failed");
+  const report = renderLiveReport(createValidationResults(), "mh_rejected");
+  assertStringIncludes(report, "Failure category: `mh_rejected`.");
+  assertEquals(report.includes("PRIVATE invoice details"), false);
+  assertEquals(safeFailureCode({ code: "PRIVATE invoice details" }), "validation_failed");
+});
+
 Deno.test("public workflow never uploads invoice artifacts and live script never persists cleartext invoice files", async () => {
   const workflow = await Deno.readTextFile(new URL("../.github/workflows/sdk-live-integration.yml", import.meta.url));
   const script = await Deno.readTextFile(new URL("../scripts/live-integration.mjs", import.meta.url));

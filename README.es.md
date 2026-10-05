@@ -6,7 +6,7 @@ TypeScript. El código fuente también funciona con Deno 2.6.6; el chequeo del
 tarball prueba un consumidor Node y uno Deno desde un directorio limpio.
 **Paquete y código:** [npm `@facta-dte/api`](https://www.npmjs.com/package/@facta-dte/api) · [repositorio público en GitHub](https://github.com/Facta-DTE/facta-api-sdk).
 
-**Selección de versión:** Esta documentación describe `0.2.0`. El [registro de npm](https://www.npmjs.com/package/@facta-dte/api?activeTab=versions) es la autoridad para las versiones publicadas y sus etiquetas. `latest` elige la versión estable aprobada. Confirme que la versión publicada instalada incluye un método antes de usarlo; valide las capacidades que solo estén en el código fuente con una copia empaquetada.
+**Selección de versión:** Esta documentación describe `0.2.1`. El [registro de npm](https://www.npmjs.com/package/@facta-dte/api?activeTab=versions) es la autoridad para las versiones publicadas y sus etiquetas. `latest` elige la versión estable aprobada. Confirme que la versión publicada instalada incluye un método antes de usarlo; valide las capacidades que solo estén en el código fuente con una copia empaquetada.
 
 El paquete oficial admite TypeScript y JavaScript. Los SDK de otros lenguajes están pendientes; los ejemplos HTTP directos no representan SDK publicados.
 
@@ -14,8 +14,8 @@ El paquete oficial admite TypeScript y JavaScript. Los SDK de otros lenguajes es
 # Verificar versiones y etiquetas, luego instalar la versión estable aprobada:
 npm view @facta-dte/api version dist-tags
 pnpm add @facta-dte/api
-# Opcional: fijar 0.2.0 después de verificar que está publicada:
-pnpm add @facta-dte/api@0.2.0
+# Opcional: fijar 0.2.1 después de verificar que está publicada:
+pnpm add @facta-dte/api@0.2.1
 ```
 
 
@@ -963,3 +963,17 @@ los seis tipos fiscales requieren documentos designados y condiciones fiscales
 válidas para afirmar que se probaron en vivo.
 
 Use `downloadDocument(generationCode, "pdf", { source: "managed" })` para exigir la copia JSON/PDF de Facta sin recurrir a retención. Esta opción no admite tickets; un servidor anterior sin prueba de origen devuelve `storage_unsupported`. Se conserva el orden de descarga predeterminado.
+
+## Publicación automatizada
+
+La publicación se realiza desde el workflow `publish.yml` de GitHub Actions
+en `Facta-DTE/facta-api-sdk`, con Trusted Publishing de npm (OIDC), sin guardar
+un token de publicación. El editor de confianza debe permitir `npm publish`.
+Un tag `v<versión-del-paquete>` ejecuta las pruebas, valida el paquete en
+consumidores independientes y lo publica. El commit debe pertenecer a `main`
+y su versión debe coincidir con `package.json`. Las versiones estables usan
+`latest`; las preliminares usan su propio tag.
+
+Integre y valide la versión en `main` antes de enviar un tag nuevo. No mueva
+un tag existente ni intente volver a publicar una versión ya publicada. El
+workflow publica directamente, sin una aprobación separada en npm.

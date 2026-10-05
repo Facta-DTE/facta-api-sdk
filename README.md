@@ -6,7 +6,7 @@ Read the [Spanish README](README.es.md). The full [method reference](guides/refe
 
 **Package and source:** [npm `@facta-dte/api`](https://www.npmjs.com/package/@facta-dte/api) · [public GitHub repository](https://github.com/Facta-DTE/facta-api-sdk).
 
-**Version selection:** This documentation describes `0.2.0`. The [npm registry](https://www.npmjs.com/package/@facta-dte/api?activeTab=versions) is authoritative for published versions and distribution tags. `latest` selects the approved stable release. Confirm that your installed published version includes a method before using it; validate source-only capabilities with a packed checkout.
+**Version selection:** This documentation describes `0.2.1`. The [npm registry](https://www.npmjs.com/package/@facta-dte/api?activeTab=versions) is authoritative for published versions and distribution tags. `latest` selects the approved stable release. Confirm that your installed published version includes a method before using it; validate source-only capabilities with a packed checkout.
 
 The official package supports TypeScript and JavaScript. SDKs for other languages are pending; direct HTTP examples do not represent published SDKs.
 
@@ -25,8 +25,8 @@ The portable client relies on standard `fetch`, Web Crypto, `AbortSignal`, and `
 # Verify published versions and tags, then install the approved stable release:
 npm view @facta-dte/api version dist-tags
 pnpm add @facta-dte/api
-# Optionally pin 0.2.0 after verifying that version is published:
-pnpm add @facta-dte/api@0.2.0
+# Optionally pin 0.2.1 after verifying that version is published:
+pnpm add @facta-dte/api@0.2.1
 ```
 
 
@@ -216,3 +216,16 @@ Ticket/invalidation and six fiscal variants still need explicitly designated
 fixtures and their fiscal prerequisites before a live support claim.
 
 Use `downloadDocument(generationCode, "pdf", { source: "managed" })` to require a managed JSON/PDF copy without holding fallback. Ticket requests reject this option locally; an older server without source proof returns `storage_unsupported`. The default download order is unchanged.
+
+## Release automation
+
+Maintainers publish from the `publish.yml` GitHub Actions workflow in
+`Facta-DTE/facta-api-sdk` using npm Trusted Publishing (OIDC), without a saved
+npm publishing token. The trusted publisher must permit direct `npm publish`.
+A `v<package-version>` tag triggers tests, packed-consumer verification and
+publication. The tagged commit must belong to `main` and match `package.json`.
+Stable versions use `latest`; prereleases use their prerelease tag.
+
+Merge and validate a release on `main`, then push a new version tag. Never move
+an existing release tag or try to republish a published version. The workflow
+publishes directly; there is no separate npm staged-package approval step.
