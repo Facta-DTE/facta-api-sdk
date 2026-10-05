@@ -24,7 +24,9 @@ export { FactaWindowView } from "./card.tsx";
 export type { CardVariant, FactaWindowViewProps } from "./card.tsx";
 export { FactaRoot } from "./look.tsx";
 export type { FactaBranding, FactaClassNames, FactaClassNameSlot, FactaLook } from "./look.tsx";
+export { DeliveryRows } from "./delivery.tsx";
 export type {
+  DeliveryView,
   FactaAppearance,
   FactaDensity,
   FactaMotion,

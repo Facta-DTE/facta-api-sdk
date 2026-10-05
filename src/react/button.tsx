@@ -214,6 +214,7 @@ export function FactaIssueButton(props: FactaIssueButtonProps) {
     confirm: false,
     onIssued: props.onIssued,
     onError: handleError,
+    onDelivery: props.onDelivery,
     onEvent: props.onEvent as ((e: FactaEvent) => void) | undefined,
     messages: resolved.messages,
     flowOptions: props.flowOptions,
@@ -257,6 +258,10 @@ export function FactaIssueButton(props: FactaIssueButtonProps) {
           onIssued={(r) => {
             setDoneResult(r);
             props.onIssued?.(r);
+          }}
+          onDelivery={(delivery) => {
+            setDoneResult((r) => (r ? { ...r, delivery } : r));
+            props.onDelivery?.(delivery);
           }}
         />
       )}

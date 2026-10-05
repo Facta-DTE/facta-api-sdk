@@ -44,7 +44,9 @@ export type FactaClassNameSlot =
   | "body"
   | "footer"
   | "primaryButton"
-  | "secondaryButton";
+  | "secondaryButton"
+  /** A row of the «Entrega» (e-mail / WhatsApp) block. It also carries `data-facta-slot="deliveryRow"`. */
+  | "deliveryRow";
 
 export type FactaClassNames = Partial<Record<FactaClassNameSlot, string>>;
 

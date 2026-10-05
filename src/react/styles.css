@@ -853,3 +853,9 @@
     transition: none !important;
   }
 }
+
+/* Delivery rows (e-mail / WhatsApp). */
+.facta-delivery-row dd { display: flex; align-items: center; gap: 8px; }
+.facta-delivery--ok .facta-delivery-text { color: var(--facta-i-success, inherit); }
+.facta-delivery--problem .facta-delivery-text { color: var(--facta-i-danger, inherit); }
+.facta-delivery--info .facta-delivery-text { color: var(--facta-i-muted); }
