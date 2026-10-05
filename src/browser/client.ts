@@ -5,6 +5,7 @@
 
 import type {
   Action,
+  DeliveryView,
   IssueSummary,
   SessionInfo,
   SpentInfo,
@@ -74,6 +75,11 @@ export interface FactaClient {
   describe(session: string): Promise<SessionInfo>;
   issue(session: string): Promise<IssueSummary>;
   status(session: string, codigoGeneracion: string, statusToken: string): Promise<StatusSummary>;
+  /**
+   * Read the delivery state with the `deliveryHandle` of an issue result.
+   * Optional so a hand-written client keeps compiling; `createFactaClient` always has it.
+   */
+  deliveryStatus?(session: string, deliveryHandle: string): Promise<DeliveryView>;
 }
 
 function transportError(message: string, status = 0): FactaClientError {
@@ -142,14 +148,25 @@ export function createFactaClient(options: FactaClientOptions): FactaClient {
   return {
     describe: (session) => call<SessionInfo>("session.describe", session),
     issue: async (session) => {
-      const r = await call<{ result: IssueSummary; storage?: StorageSummary; statusToken?: string }>("issue", session);
+      const r = await call<{
+        result: IssueSummary;
+        storage?: StorageSummary;
+        statusToken?: string;
+        deliveryHandle?: string;
+        delivery?: DeliveryView;
+      }>("issue", session);
       return {
         ...r.result,
         ...(r.storage ? { storage: r.storage } : {}),
         ...(typeof r.statusToken === "string" ? { statusToken: r.statusToken } : {}),
+        ...(typeof r.deliveryHandle === "string" && r.delivery && typeof r.delivery === "object"
+          ? { deliveryHandle: r.deliveryHandle, delivery: r.delivery }
+          : {}),
       };
     },
     status: async (session, codigoGeneracion, statusToken) =>
       (await call<{ status: StatusSummary }>("status", session, { codigoGeneracion, statusToken })).status,
+    deliveryStatus: async (session, deliveryHandle) =>
+      (await call<{ delivery: DeliveryView }>("delivery.status", session, { deliveryHandle })).delivery,
   };
 }
