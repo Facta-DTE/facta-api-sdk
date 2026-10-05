@@ -138,6 +138,8 @@ The type system helps construct payloads but does not replace server-side tax va
 
 `syncCatalog()` and `syncDestinations()` decrypt their respective published snapshots in memory using `unlockKey`. They do not create or update server records and do not write artifacts to storage destinations. Catalog-backed customer/product lookup uses only a fresh snapshot for fiscal issuance; stale opt-in is limited to non-fiscal reads.
 
+`issue()` never writes to storage. With `unlockKey` and a published snapshot, `issueAndArchive()` and `recoverOperation()` also replicate the legal JSON and PDF to your synced destinations under Facta's canonical `DTE/…/YYYY/MM/<numeroControl>` paths (opt out with `replicate: false`), report verified copies to Facta, and surface problems as non-throwing `warnings`. See [what each mode does](guides/storage-adapters.md#where-documents-go-each-mode).
+
 - [Catalog snapshots and offline reads](guides/catalog.md)
 - [Storage adapters](guides/storage-adapters.md)
 - [Node integration](guides/node.md)

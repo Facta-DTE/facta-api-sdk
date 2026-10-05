@@ -295,3 +295,43 @@ The SDK receives no R2 credentials, object paths, signed URLs, or web session
 tokens. An older server reports `storage_unsupported`; do not wrap the app's
 user-session Worker routes in an API-key client. Managed storage, local
 encrypted archives, and BYOS copies have independent receipts and recovery.
+
+## Where documents go: each mode
+
+| Mode | What it writes |
+| --- | --- |
+| `issue()` | Nothing to your storage. It only returns the sealed document. The server may keep its own managed copy; the SDK never writes BYOS here. |
+| `issueAndArchive()` without `unlockKey` | The local encrypted archive, plus any `remoteDestinations` you pass. |
+| `issueAndArchive()` / `recoverOperation()` with `unlockKey` and a published destinations snapshot | The local archive **and** the destinations synced from the Facta app (S3-compatible buckets and Supabase Storage), by default. |
+| Same, with `replicate: false` | The local archive only. Set it per call or in `runtime.replicate`. |
+| Same, with `remoteDestinations` | Exactly your destinations; the synced snapshot is not read. |
+
+Synced destinations use Facta's own layout, so the app can find, count and
+repair the copies: `DTE/pruebas/YYYY/MM/<numeroControl>.json|pdf` for a test
+key and `DTE/YYYY/MM/<numeroControl>.json|pdf` for a live key (year and month
+from `fecEmi`, both read from the exact signed JSON). Only the legal JSON and PDF
+are written there; the JWS and the ticket stay in your local archive. Google
+Drive, OneDrive and bridge entries need an interactive session and are not
+written headlessly; each one is reported as a `byos_not_replicated` warning.
+Adapters you build yourself keep whatever path you give them (the old default
+`api-invoices/{codigoGeneracion}/{kind}` still applies to them).
+
+After a verified write to a synced destination, the SDK tells Facta about it
+(`POST /v1/storage/copies/{codigoGeneracion}/byos`) so the app shows the copy
+instead of «sin copia». It does this only when `GET /v1/storage/status`
+advertises `capabilities.byosCopyReport`; an older server gets no report and no
+error. The capability is read once per client.
+
+### Warnings, never failures
+
+A storage or reporting problem never makes `issueAndArchive()` throw once the
+document is sealed. It appears in `result.warnings`:
+
+- `byos_not_replicated`: a destination could not be resolved or did not confirm
+  the JSON and/or PDF (`destinationId` says which; credentials are never quoted).
+- `copy_report_failed`: the copy is stored but Facta was not told.
+
+Both leave the operation in `listPendingOperations()` (with the built-in
+`FileInvoiceArchive`; a custom archive must treat a remote copy with
+`report: "failed"` as pending). Call `recoverOperation(operationId)` to retry:
+bytes already stored are not rewritten, and only the missing report is resent.
