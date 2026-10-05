@@ -43,6 +43,23 @@ the SDK still requires a successful initial sync.
 | `syncStatus` | Public catalog synchronization state, or `null`. |
 | `statusError` | Safe SDK error code when the API status request failed. It never includes credentials or vault content. |
 
+## Readable catalog: the server resolves the ids
+
+When the key's owner enabled «Catálogo legible por la API» in Facta,
+`GET /v1/status` advertises `llave.catalogMode: "readable"`. In that mode the
+SDK **sends `customerId` and `productId` as they are** and the server resolves
+them from the catalog the app published for that key: no `unlockKey` is needed,
+no snapshot is downloaded or decrypted, and a catalog change cannot leave the
+integration with a stale copy. An unknown id answers `404` with
+`detail.reason: "catalog_unknown_id"`; `detail.catalogStale` says whether the
+published catalog lags the app's.
+
+With `catalogMode: "encrypted"` (or an older server that does not advertise it)
+everything works as described below. The SDK asks for the mode once a minute
+and, if it cannot read it, keeps resolving locally: that check is never the
+reason an emission fails. An integration that sends complete data depends on
+neither mode.
+
 ## Fiscal requests always require a fresh snapshot
 
 `issue()` and `issueAndArchive()` resolve `customerId` and `productId` against

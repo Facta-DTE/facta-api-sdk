@@ -325,6 +325,9 @@ function catalogSearchLimit(value: number | undefined): number {
   return limit;
 }
 
+/** How long the key's advertised catalog mode is trusted before status is asked again. */
+const CATALOG_MODE_TTL_MS = 60_000;
+
 export class Facta {
   readonly #apiKey: string;
   readonly #signKey: string | null;
@@ -337,6 +340,7 @@ export class Facta {
   readonly #runtime: FactaRuntimeConfigV1;
   readonly #secrets: readonly string[];
   #catalogCache: { revision: number; snapshot: CatalogSnapshot; fetchedAt: string } | null = null;
+  #catalogModeCache: { readable: boolean; at: number } | null = null;
 
   constructor(options: FactaOptions) {
     const config = options.config;
@@ -1404,11 +1408,34 @@ export class Facta {
     return this.#request<PreparedDte>("POST", "/v1/dte/prepare", resolved, options);
   }
 
+  /**
+   * True when `/v1/status` advertises `llave.catalogMode: "readable"`. Cached
+   * for a minute (the owner switches it rarely). Any failure answers false,
+   * which keeps the previous behaviour — local resolution from the encrypted
+   * snapshot — so this check can never be the reason an emission fails.
+   */
+  async #serverResolvesCatalog(): Promise<boolean> {
+    const cached = this.#catalogModeCache;
+    if (cached !== null && Date.now() - cached.at < CATALOG_MODE_TTL_MS) return cached.readable;
+    let readable = false;
+    try {
+      readable = (await this.status()).llave?.catalogMode === "readable";
+    } catch {
+      return false;
+    }
+    this.#catalogModeCache = { readable, at: Date.now() };
+    return readable;
+  }
+
   async #resolveCatalogRefs(request: DteRequest): Promise<DteRequest> {
     const hasCustomer = request.receptor !== undefined && request.receptor !== null &&
       "customerId" in request.receptor && typeof request.receptor.customerId === "string";
     const hasProduct = request.items.some((item) => typeof item.productId === "string");
     if (!hasCustomer && !hasProduct) return request;
+    // A key whose owner enabled «Catálogo legible por la API»: the server
+    // resolves the ids itself, so no unlock key and no local snapshot are
+    // needed, and a catalog change can never leave the SDK with a stale copy.
+    if (await this.#serverResolvesCatalog()) return request;
     await this.#freshCatalog();
     const catalog = this.#catalogCache!;
     return resolveCatalogRefs(request, catalog.snapshot, catalog.revision);
