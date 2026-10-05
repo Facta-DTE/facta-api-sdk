@@ -7,7 +7,7 @@
 //
 // Web Crypto only, so it runs unchanged on Node 22, Deno and Bun.
 
-import type { DteRequest } from "../types.ts";
+import type { DteRequest, InvalidationPerson, InvalidationRequest } from "../types.ts";
 
 export interface FactaSessionDisplay {
   /** The implementer's own total, shown as «Total de su pedido». Never computed here. */
@@ -212,4 +212,149 @@ export async function verifyFactaSession(
     throw new FactaSessionError("session_expired", "The session has expired.");
   }
   return payload as unknown as FactaSession;
+}
+
+
+// --- Invalidation sessions (docs/react-signing-ui.md §11, D-7) ---------------
+// The browser never authors an invalidation. The integrator's server seals the
+// target and the event's data; the dialog only shows them and confirms. A
+// separate HMAC domain keeps an invalidation token from verifying as an issue
+// session and the other way round.
+
+const INVALIDATION_DOMAIN = "facta-invalidation-session-v1.";
+const UUID = /^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/;
+
+export interface CreateFactaInvalidationSessionInput {
+  /** The sealed document to invalidate. */
+  generationCode: string;
+  /** 1 = error, replaced by another document; 2 = rescind the operation; 3 = other. */
+  tipoAnulacion: 1 | 2 | 3;
+  /** Required for type 3. */
+  motivo?: string | null;
+  /** Required for type 1: the replacement document. */
+  codigoGeneracionReemplazo?: string | null;
+  responsable: InvalidationPerson;
+  solicita: InvalidationPerson;
+  /** Default `invalidate:<generationCode>`: stable, so a replayed session cannot invalidate twice. */
+  idempotencyKey?: string;
+  /** Lifetime in seconds. Default 900, at most 86 400. */
+  expiresIn?: number;
+}
+
+export interface FactaInvalidationSession {
+  v: 1;
+  kind: "invalidation";
+  nonce: string;
+  iat: number;
+  exp: number;
+  generationCode: string;
+  request: InvalidationRequest;
+  idempotencyKey: string;
+}
+
+function person(value: unknown, label: string): InvalidationPerson {
+  if (!isObject(value)) throw new TypeError(`${label} must be { nombre, tipoDocumento, numDocumento }.`);
+  const out: Record<string, string> = {};
+  for (const key of ["nombre", "tipoDocumento", "numDocumento"]) {
+    const v = value[key];
+    if (typeof v !== "string" || v.trim() === "" || v.length > 120) {
+      throw new TypeError(`${label}.${key} must be a non-empty string of at most 120 characters.`);
+    }
+    out[key] = v;
+  }
+  return out as unknown as InvalidationPerson;
+}
+
+/** Seal an invalidation into an opaque token for `FactaInvalidateDialog`. */
+export async function createFactaInvalidationSession(
+  input: CreateFactaInvalidationSessionInput,
+  secret: string | Uint8Array,
+  now: number = Date.now(),
+): Promise<string> {
+  secretBytes(secret);
+  if (typeof input.generationCode !== "string" || !UUID.test(input.generationCode)) {
+    throw new TypeError("generationCode must be a UUID.");
+  }
+  if (input.tipoAnulacion !== 1 && input.tipoAnulacion !== 2 && input.tipoAnulacion !== 3) {
+    throw new TypeError("tipoAnulacion must be 1, 2 or 3.");
+  }
+  const motivo = input.motivo ?? null;
+  if (motivo !== null && (typeof motivo !== "string" || motivo.length > 500)) {
+    throw new TypeError("motivo must be a string of at most 500 characters.");
+  }
+  if (input.tipoAnulacion === 3 && (motivo === null || motivo.trim() === "")) {
+    throw new TypeError("tipoAnulacion 3 requires a written motivo.");
+  }
+  const replacement = input.codigoGeneracionReemplazo ?? null;
+  if (input.tipoAnulacion === 1) {
+    if (typeof replacement !== "string" || !UUID.test(replacement)) {
+      throw new TypeError("tipoAnulacion 1 requires codigoGeneracionReemplazo (a UUID).");
+    }
+  } else if (replacement !== null) {
+    throw new TypeError("codigoGeneracionReemplazo only applies to tipoAnulacion 1.");
+  }
+  const idempotencyKey = input.idempotencyKey ?? `invalidate:${input.generationCode}`;
+  if (typeof idempotencyKey !== "string" || idempotencyKey.trim() === "" || idempotencyKey.length > 200) {
+    throw new TypeError("idempotencyKey must be a non-empty string of at most 200 characters.");
+  }
+  const ttl = input.expiresIn ?? DEFAULT_SESSION_TTL_SECONDS;
+  if (!Number.isFinite(ttl) || ttl <= 0 || ttl > MAX_SESSION_TTL_SECONDS) {
+    throw new TypeError(`expiresIn must be between 1 and ${MAX_SESSION_TTL_SECONDS} seconds.`);
+  }
+  const nonce = new Uint8Array(16);
+  crypto.getRandomValues(nonce);
+  const iat = Math.floor(now / 1000);
+  const payload: FactaInvalidationSession = {
+    v: 1,
+    kind: "invalidation",
+    nonce: base64urlEncode(nonce),
+    iat,
+    exp: iat + Math.ceil(ttl),
+    generationCode: input.generationCode.toUpperCase(),
+    request: {
+      tipoAnulacion: input.tipoAnulacion,
+      motivo,
+      codigoGeneracionReemplazo: replacement === null ? null : replacement.toUpperCase(),
+      responsable: person(input.responsable, "responsable"),
+      solicita: person(input.solicita, "solicita"),
+    },
+    idempotencyKey,
+  };
+  const body = base64urlEncode(encoder.encode(JSON.stringify(payload)));
+  const mac = await hmac(secret, INVALIDATION_DOMAIN + body);
+  return `${body}.${base64urlEncode(mac)}`;
+}
+
+/** Check the MAC and expiry of an invalidation token. Throws `FactaSessionError`. */
+export async function verifyFactaInvalidationSession(
+  token: unknown,
+  secret: string | Uint8Array,
+  now: number = Date.now(),
+): Promise<FactaInvalidationSession> {
+  secretBytes(secret);
+  const invalid = () => new FactaSessionError("session_invalid", "The session token is not valid.");
+  if (typeof token !== "string" || token.length > 64 * 1024) throw invalid();
+  const parts = token.split(".");
+  if (parts.length !== 2) throw invalid();
+  const [body, macText] = parts;
+  const given = base64urlDecode(macText);
+  if (given === null) throw invalid();
+  if (!timingSafeEqual(given, await hmac(secret, INVALIDATION_DOMAIN + body))) throw invalid();
+  const raw = base64urlDecode(body);
+  if (raw === null) throw invalid();
+  let payload: unknown;
+  try {
+    payload = JSON.parse(new TextDecoder().decode(raw));
+  } catch {
+    throw invalid();
+  }
+  if (
+    !isObject(payload) || payload.v !== 1 || payload.kind !== "invalidation" || typeof payload.exp !== "number" ||
+    typeof payload.nonce !== "string" || typeof payload.idempotencyKey !== "string" ||
+    typeof payload.generationCode !== "string" || !isObject(payload.request)
+  ) {
+    throw invalid();
+  }
+  if (payload.exp * 1000 <= now) throw new FactaSessionError("session_expired", "The session has expired.");
+  return payload as unknown as FactaInvalidationSession;
 }

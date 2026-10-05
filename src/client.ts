@@ -390,6 +390,8 @@ export class Facta {
    * between `issue` and `issueAndArchive` without reaching into runtime config.
    */
   get archiveConfigured(): boolean { return this.#runtime.archive !== undefined; }
+  /** Whether `invalidateAndArchive` can run without passing an archive. */
+  get invalidationArchiveConfigured(): boolean { return this.#runtime.invalidationArchive !== undefined; }
 
   /**
    * The environment the API key selects: `facta_test_` is "00", `facta_live_`
