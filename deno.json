@@ -7,5 +7,8 @@
     "consumer-check": "node scripts/build.mjs && node scripts/check-packed-consumer.mjs",
     "hola": "deno eval \"import { main } from './examples/hola-factura.ts'; await main();\""
   },
+  "test": {
+    "exclude": ["node_modules", "dist", "test-react", "examples/react-preview", "preview"]
+  },
   "lock": false
 }

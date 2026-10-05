@@ -1,0 +1,24 @@
+{
+  "extends": "./tsconfig.build.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "emitDeclarationOnly": false,
+    "declaration": false,
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "types": ["node"]
+  },
+  "include": [
+    "mod.ts",
+    "node.ts",
+    "browser.ts",
+    "react.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "test-react/**/*.ts",
+    "test-react/**/*.tsx",
+    "examples/react-preview/**/*.ts",
+    "examples/react-preview/**/*.tsx",
+    "vitest.config.ts"
+  ]
+}

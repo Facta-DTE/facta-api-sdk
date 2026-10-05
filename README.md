@@ -73,6 +73,7 @@ The `Facta` client exposes the following English methods:
 - **Synchronization and catalog:** `syncDestinations`, `syncCatalog`, `catalogState`, `listCustomers`, `getCustomer`, `searchCustomers`, `listProducts`, `getProduct`, `searchProducts`.
 - **DTE lifecycle:** `issue`, `prepare`, `sign`, `getDocumentStatus`, `listDocuments`, `invalidate`, `listHolding`, `downloadDocument`, `getDocumentCopies`, `retryDocumentStorage`.
 - **Durable archival:** `issueAndArchive`, `recoverOperation`, `listPendingOperations`, `invalidateAndArchive`, `recoverInvalidation`, `listPendingInvalidations`, `replicateArchive`, `diagnoseDestinations`.
+- **Delivery by e-mail and WhatsApp:** `issue(request, { deliver })`, `deliverEmail`, `deliverWhatsApp`, `getDelivery`, `waitForDelivery`. Issuing never waits for delivery; each channel is a separate request with a five-minute token and failures are reported as states.
 - **Local printing:** `print`.
 
 The full [method reference](guides/reference.md) describes every method's inputs, return type, credential scope, network/local effects, errors, and retry or recovery behavior.
@@ -143,7 +144,7 @@ The type system helps construct payloads but does not replace server-side tax va
 - [Node integration](guides/node.md)
 - [Deno integration](guides/deno.md)
 
-The SDK does not send WhatsApp messages. It does not sign locally, choose a signing certificate, or replace the API's fiscal contract.
+The SDK sends nothing itself: e-mail and WhatsApp delivery is performed by the API after you mark the channels. It does not sign locally, choose a signing certificate, or replace the API's fiscal contract.
 
 ## Errors
 
