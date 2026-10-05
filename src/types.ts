@@ -56,14 +56,14 @@ export interface ExcludedSubjectRecipient {
 }
 
 export interface LineItem {
-  /** Optional when productId resolves this field from the encrypted catalog. */
+  /** Optional when productId resolves this field (locally, or on the server for a readable-catalog key). */
   descripcion?: string;
   cantidad: number;
   /** FE (01): VAT INCLUDED. CCF (03): VAT EXCLUDED. The official schemas
    * differ and the server does not guess. */
-  /** Optional when productId resolves this field from the encrypted catalog. */
+  /** Optional when productId resolves this field (locally, or on the server for a readable-catalog key). */
   precioUni?: number;
-  /** Facta catalog product reference; resolved locally by the SDK. */
+  /** Facta catalog product reference. Resolved on the server for a key with a readable catalog, otherwise locally by the SDK. */
   productId?: string;
   /** 05/06: target document number when the note corrects multiple documents. */
   numeroDocumento?: string;
@@ -444,7 +444,16 @@ export interface Status {
     alcances: string[];
     tiposDte: DteType[];
     venceEl: string | null;
+    /**
+     * `readable`: the owner enabled «Catálogo legible por la API», so the
+     * server resolves `customerId` / `productId` and the SDK just sends the
+     * ids. `encrypted` (or absent on older servers): the SDK resolves them
+     * locally from the encrypted catalog and needs the unlock key.
+     */
+    catalogMode?: "encrypted" | "readable";
   };
+  /** Freshness of the published readable catalog; null unless `catalogMode` is readable. */
+  catalogoLegible?: { publicado: boolean; revisionPublicada: number | null; revisionActual: number } | null;
   /** Whether this key can sign and its signing origin. The vault has no read
    * endpoint; only separately registered public certificate facts are exposed. */
   firma?: {
