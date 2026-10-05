@@ -19,13 +19,18 @@ export {
 export {
   createFactaHandler,
   extractFieldIssues,
+  type FactaArchiveMode,
   type FactaFieldIssue,
   type FactaHandlerErrorBody,
   type FactaHandlerEvent,
   type FactaHandlerOptions,
+  type FactaIssuedContext,
   type FactaLike,
+  type FactaStorageSummary,
   type NodeRequestLike,
   type NodeResponseLike,
   normalizeFieldPath,
+  ON_ISSUED_FAILED,
+  summarizeStorage,
   toNodeHandler,
 } from "./src/server/handler.ts";

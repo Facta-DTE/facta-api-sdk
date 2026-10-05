@@ -7,11 +7,34 @@
 
 import { FactaError } from "../errors.ts";
 import type { Facta } from "../client.ts";
-import type { DocumentStatus, IssueResult } from "../types.ts";
+import type { ArchiveEmissionResult } from "../archive.ts";
+import type { DocumentStatus, IssueResult, ManagedStorageArtifactState, ManagedStorageReceipt } from "../types.ts";
 import { FactaSessionError, type FactaSession, secretBytes, verifyFactaSession } from "./session.ts";
 
 /** The slice of `Facta` the handler uses; a fake can stand in for tests. */
-export type FactaLike = Pick<Facta, "issue" | "getDocumentStatus">;
+export type FactaLike =
+  & Pick<Facta, "issue" | "getDocumentStatus">
+  & Partial<Pick<Facta, "issueAndArchive" | "archiveConfigured">>;
+
+/** What the browser learns about storage. No paths, bucket names, destination ids or credentials. */
+export interface FactaStorageSummary {
+  /** Worst of Facta's managed JSON and PDF copies; null when the API reported no receipt. */
+  managed: ManagedStorageArtifactState | null;
+  /** The integrator's own archive: `off` when this handler did not archive. */
+  archive: "complete" | "partial" | "failed" | "off";
+  /** Remote (BYOS) copy counts, present only when destinations were configured. */
+  copies?: { complete: number; pending: number; failed: number };
+}
+
+export type FactaArchiveMode = "auto" | "required" | "off";
+
+/** Context handed to `onIssued`. Server-side only: it may name destinations. */
+export interface FactaIssuedContext {
+  session: FactaSession;
+  /** The archive outcome, or null when no archive was used. */
+  archive: ArchiveEmissionResult["archive"] | null;
+  storage: FactaStorageSummary;
+}
 
 /** A field Hacienda or the API pointed at, so the host can highlight it in its own form. */
 export interface FactaFieldIssue {
@@ -22,8 +45,8 @@ export interface FactaFieldIssue {
 
 /** For the integrator's logging. Never carries a credential or the session secret. */
 export type FactaHandlerEvent =
-  | { type: "issued"; idempotencyKey: string; codigoGeneracion: string; numeroControl: string; tipoDte: string; ambiente: string }
-  | { type: "contingency"; idempotencyKey: string; codigoGeneracion: string; numeroControl: string; tipoDte: string; ambiente: string }
+  | { type: "issued"; idempotencyKey: string; codigoGeneracion: string; numeroControl: string; tipoDte: string; ambiente: string; storage: FactaStorageSummary }
+  | { type: "contingency"; idempotencyKey: string; codigoGeneracion: string; numeroControl: string; tipoDte: string; ambiente: string; storage: FactaStorageSummary }
   | {
     type: "rejected";
     idempotencyKey: string;
@@ -33,6 +56,9 @@ export type FactaHandlerEvent =
     spent?: { codigoGeneracion: string; numeroControl: string };
   }
   | { type: "error"; idempotencyKey?: string; code: string; status: number; retryable: boolean };
+
+/** `code` of the `error` event emitted when `onIssued` throws. */
+export const ON_ISSUED_FAILED = "on_issued_failed";
 
 export interface FactaHandlerOptions {
   facta: FactaLike;
@@ -48,6 +74,18 @@ export interface FactaHandlerOptions {
   exposeDocument?: boolean;
   /** Default 32 768. */
   maxBodyBytes?: number;
+  /**
+   * `auto` (default): archive locally and replicate through `issueAndArchive`
+   * when the client has `runtime.archive`, else plain `issue`. `required`:
+   * throw at construction when no archive is configured. `off`: never archive.
+   */
+  archive?: FactaArchiveMode;
+  /**
+   * Awaited after a fiscal result (sealed or contingency) so you can persist it
+   * in your own database. If it throws, an `error` event is emitted and the
+   * browser still receives the fiscal result.
+   */
+  onIssued?: (result: IssueResult, context: FactaIssuedContext) => void | Promise<void>;
   /** Called after each outcome. Failures inside the hook are swallowed. */
   onEvent?: (event: FactaHandlerEvent) => void | Promise<void>;
 }
@@ -136,6 +174,35 @@ function summarizeStatus(status: DocumentStatus): Record<string, unknown> {
     observaciones: status.observaciones ?? [],
     totales: status.totales,
   };
+}
+
+// --- Storage summary ----------------------------------------------------------
+
+const MANAGED_SEVERITY: ManagedStorageArtifactState[] = ["failed", "pending", "unsupported", "not_configured", "stored"];
+
+function managedState(receipt: ManagedStorageReceipt | undefined, errorCode: string | undefined): ManagedStorageArtifactState | null {
+  if (receipt) {
+    const states = [receipt.json?.state, receipt.pdf?.state].filter((v): v is ManagedStorageArtifactState => v !== undefined);
+    for (const candidate of MANAGED_SEVERITY) if (states.includes(candidate)) return candidate;
+  }
+  return errorCode === undefined ? null : "failed";
+}
+
+/** Count-only view of one archived emission; fiscal success never depends on it. */
+export function summarizeStorage(result: IssueResult, archived: ArchiveEmissionResult | null): FactaStorageSummary {
+  const managed = managedState(archived?.managedStorage ?? result.storage, archived?.storageErrorCode ?? result.storageErrorCode);
+  if (archived === null) return { managed, archive: "off" };
+  const records = archived.archive.remoteCopies ?? [];
+  const copies = { complete: 0, pending: 0, failed: 0 };
+  for (const record of records) {
+    if (record.state === "stored") copies.complete++;
+    else if (record.state === "failed") copies.failed++;
+    else copies.pending++;
+  }
+  let archive: FactaStorageSummary["archive"];
+  if (archived.archive.state === "complete") archive = copies.pending + copies.failed > 0 ? "partial" : "complete";
+  else archive = archived.archive.artifacts.length > 0 ? "partial" : "failed";
+  return { managed, archive, ...(records.length > 0 ? { copies } : {}) };
 }
 
 // --- Best-effort JSON path extraction ----------------------------------------
@@ -276,7 +343,18 @@ export function createFactaHandler(options: FactaHandlerOptions): (req: Request)
       "createFactaHandler requires `authorize`: a function that checks your own login, or the literal \"session-only\".",
     );
   }
-  const { facta, sessionSecret, onEvent } = options;
+  const { facta, sessionSecret, onEvent, onIssued } = options;
+  const archiveMode = options.archive ?? "auto";
+  if (archiveMode !== "auto" && archiveMode !== "required" && archiveMode !== "off") {
+    throw new TypeError("archive must be \"auto\", \"required\" or \"off\".");
+  }
+  const archiveAvailable = facta.archiveConfigured === true && typeof facta.issueAndArchive === "function";
+  if (archiveMode === "required" && !archiveAvailable) {
+    throw new TypeError(
+      "archive: \"required\" needs a Facta client configured with runtime.archive (see issueAndArchive).",
+    );
+  }
+  const useArchive = archiveMode !== "off" && archiveAvailable;
   const exposeDocument = options.exposeDocument === true;
   const maxBody = options.maxBodyBytes ?? DEFAULT_MAX_BODY;
   const secretText = typeof sessionSecret === "string" ? sessionSecret : null;
@@ -330,16 +408,39 @@ export function createFactaHandler(options: FactaHandlerOptions): (req: Request)
           ...(session.display ? { display: session.display } : {}),
         });
       case "issue": {
-        const result = await facta.issue(session.request, { idempotencyKey: session.idempotencyKey });
+        const key = session.idempotencyKey;
+        let result: IssueResult;
+        let archived: ArchiveEmissionResult | null = null;
+        if (useArchive) {
+          archived = await facta.issueAndArchive!(session.request, {
+            operationId: key,
+            idempotencyKey: key,
+            includeTicket: false,
+          });
+          // A recovered operation may omit the emission; the same idempotency key replays it.
+          result = archived.emission ?? await facta.issue(session.request, { idempotencyKey: key });
+        } else {
+          result = await facta.issue(session.request, { idempotencyKey: key });
+        }
+        const storage = summarizeStorage(result, archived);
         emit({
           type: result.estado === "sellado" ? "issued" : "contingency",
-          idempotencyKey: session.idempotencyKey,
+          idempotencyKey: key,
           codigoGeneracion: result.codigoGeneracion,
           numeroControl: result.numeroControl,
           tipoDte: result.tipoDte,
           ambiente: result.ambiente,
+          storage,
         });
-        return json(200, { result: summarizeIssue(result, download, exposeDocument) });
+        if (onIssued) {
+          try {
+            await onIssued(result, { session, archive: archived?.archive ?? null, storage });
+          } catch {
+            // Never hide a fiscal document from the browser because the host's own persistence failed.
+            emit({ type: "error", idempotencyKey: key, code: ON_ISSUED_FAILED, status: 200, retryable: false });
+          }
+        }
+        return json(200, { result: summarizeIssue(result, download, exposeDocument), storage });
       }
       default: {
         const code = body.codigoGeneracion;

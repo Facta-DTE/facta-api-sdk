@@ -1,6 +1,7 @@
 import { assert, assertEquals, assertThrows } from "jsr:@std/assert@1";
 import { Facta } from "../src/client.ts";
 import { FactaError } from "../src/errors.ts";
+import type { ArchiveEmissionResult } from "../src/archive.ts";
 import type { IssueResult } from "../src/types.ts";
 import {
   createFactaHandler,
@@ -452,7 +453,7 @@ async function events(facta: FactaLike, body: (token: string) => unknown) {
 Deno.test("onEvent reports issued, contingency, rejected and error without secrets", async () => {
   const issue = (value: unknown): FactaLike => ({ ...fakeFacta().facta, issue: () => value instanceof Error ? Promise.reject(value) : Promise.resolve(value as IssueResult) });
   const issued = await events(issue(SEALED), (session) => ({ action: "issue", session }));
-  assertEquals(issued, [{ type: "issued", idempotencyKey: "order-1", codigoGeneracion: CG, numeroControl: SEALED.numeroControl, tipoDte: "01", ambiente: "00" }]);
+  assertEquals(issued, [{ type: "issued", idempotencyKey: "order-1", codigoGeneracion: CG, numeroControl: SEALED.numeroControl, tipoDte: "01", ambiente: "00", storage: { managed: null, archive: "off" } }]);
   const cont = await events(issue(CONTINGENCY), (session) => ({ action: "issue", session }));
   assertEquals(cont[0].type, "contingency");
   const rejected = await events(issue(new FactaError("mh_rejected", "no", 422, { observaciones: ["x"], codigoGeneracion: CG, numeroControl: "N" })), (session) => ({ action: "issue", session }));
@@ -471,4 +472,172 @@ Deno.test("a throwing or rejecting onEvent never changes the response", async ()
     const handler = createFactaHandler({ facta: fakeFacta().facta, sessionSecret: SECRET, authorize: "session-only", onEvent });
     assertEquals((await post(handler, { action: "issue", session: await session() })).status, 200);
   }
+});
+
+// --- storage ---------------------------------------------------------------
+
+const RECEIPT = (json: string, pdf: string) => ({
+  destination: "managed",
+  environment: "00",
+  operationId: "op",
+  json: { state: json, sha256: null, bytes: null, storedAt: null, errorCode: null, retryable: false },
+  pdf: { state: pdf, sha256: null, bytes: null, storedAt: null, errorCode: null, retryable: false },
+});
+
+function archiving(overrides: Partial<ArchiveEmissionResult> = {}, emission: unknown = SEALED) {
+  const calls: Array<{ request: unknown; options: Record<string, unknown> }> = [];
+  const issueCalls: unknown[] = [];
+  const facta = {
+    archiveConfigured: true,
+    issue: (_r: unknown, o: unknown) => { issueCalls.push(o); return Promise.resolve(SEALED as unknown as IssueResult); },
+    getDocumentStatus: () => Promise.reject(new Error("unused")),
+    issueAndArchive: (request: unknown, options: Record<string, unknown>) => {
+      calls.push({ request, options });
+      return Promise.resolve({
+        ...(emission === null ? {} : { emission: emission as IssueResult }),
+        archive: { state: "complete", operationId: "order-1", artifacts: [{ kind: "json", sha256: "a" }] },
+        ...overrides,
+      } as ArchiveEmissionResult);
+    },
+  } as unknown as FactaLike;
+  return { facta, calls, issueCalls };
+}
+
+Deno.test("auto with an archive uses issueAndArchive with the idempotency key as operationId", async () => {
+  const { facta, calls, issueCalls } = archiving();
+  const handler = createFactaHandler({ facta, sessionSecret: SECRET, authorize: "session-only" });
+  const res = await post(handler, { action: "issue", session: await session() });
+  assertEquals(res.status, 200);
+  assertEquals(calls.length, 1);
+  assertEquals(calls[0].request, REQUEST);
+  assertEquals(calls[0].options, { operationId: "order-1", idempotencyKey: "order-1", includeTicket: false });
+  assertEquals(issueCalls.length, 0);
+  const body = await res.json();
+  assertEquals(body.result.estado, "sellado");
+  assertEquals(body.storage, { managed: null, archive: "complete" });
+});
+
+Deno.test("auto without an archive, and archive off, use plain issue", async () => {
+  const none = make();
+  await post(none.handler, { action: "issue", session: await session() });
+  assertEquals(none.calls[0].method, "issue");
+  const { facta, calls, issueCalls } = archiving();
+  const off = createFactaHandler({ facta, sessionSecret: SECRET, authorize: "session-only", archive: "off" });
+  const body = await (await post(off, { action: "issue", session: await session() })).json();
+  assertEquals(calls.length, 0);
+  assertEquals(issueCalls.length, 1);
+  assertEquals(body.storage.archive, "off");
+});
+
+Deno.test("archive required without a configured archive throws at construction", () => {
+  assertThrows(() => createFactaHandler({ facta: fakeFacta().facta, sessionSecret: SECRET, authorize: "session-only", archive: "required" }), TypeError, "runtime.archive");
+  assertThrows(() => createFactaHandler({ facta: fakeFacta().facta, sessionSecret: SECRET, authorize: "session-only", archive: "sometimes" as never }), TypeError);
+  createFactaHandler({ facta: archiving().facta, sessionSecret: SECRET, authorize: "session-only", archive: "required" });
+});
+
+Deno.test("a recovered operation without an emission replays the same idempotency key", async () => {
+  const { facta, issueCalls } = archiving({}, null);
+  const handler = createFactaHandler({ facta, sessionSecret: SECRET, authorize: "session-only" });
+  const res = await post(handler, { action: "issue", session: await session() });
+  assertEquals(res.status, 200);
+  assertEquals(issueCalls, [{ idempotencyKey: "order-1" }]);
+});
+
+Deno.test("storage summary: managed is the worst of json and pdf", async () => {
+  const cases: Array<[string, string, string | null]> = [
+    ["stored", "stored", "stored"],
+    ["stored", "pending", "pending"],
+    ["pending", "failed", "failed"],
+    ["stored", "not_configured", "not_configured"],
+    ["stored", "unsupported", "unsupported"],
+  ];
+  for (const [json, pdf, expected] of cases) {
+    const { handler } = make({}, { issue: { ...SEALED, storage: RECEIPT(json, pdf) } });
+    const body = await (await post(handler, { action: "issue", session: await session() })).json();
+    assertEquals(body.storage.managed, expected, `${json}/${pdf}`);
+  }
+  const { handler } = make({}, { issue: { ...SEALED, storageErrorCode: "storage_contract_invalid" } });
+  assertEquals((await (await post(handler, { action: "issue", session: await session() })).json()).storage.managed, "failed");
+});
+
+Deno.test("storage summary: archive state and copy counts", async () => {
+  const copy = (state: string, id: string) => ({ destinationId: id, kind: "json", label: "L", state, sha256: "s", updatedAt: "t" });
+  const run = async (overrides: Partial<ArchiveEmissionResult>) => {
+    const handler = createFactaHandler({ facta: archiving(overrides).facta, sessionSecret: SECRET, authorize: "session-only" });
+    return (await (await post(handler, { action: "issue", session: await session() })).json()).storage;
+  };
+  const archive = (state: string, n: number) => ({ state, operationId: "o", artifacts: Array(n).fill({ kind: "json", sha256: "a" }) });
+  assertEquals(await run({ archive: archive("complete", 2) as never, remoteCopies: undefined } as never), { managed: null, archive: "complete" });
+  assertEquals(
+    await run({ archive: { ...archive("complete", 2), remoteCopies: [copy("stored", "a"), copy("stored", "b")] } } as never),
+    { managed: null, archive: "complete", copies: { complete: 2, pending: 0, failed: 0 } },
+  );
+  assertEquals(
+    await run({ archive: { ...archive("complete", 2), remoteCopies: [copy("stored", "a"), copy("unknown", "b"), copy("failed", "c"), copy("unavailable", "d")] } } as never),
+    { managed: null, archive: "partial", copies: { complete: 1, pending: 2, failed: 1 } },
+  );
+  assertEquals((await run({ archive: archive("needs_attention", 1) } as never)).archive, "partial");
+  assertEquals((await run({ archive: archive("needs_attention", 0) } as never)).archive, "failed");
+});
+
+Deno.test("storage failure never turns a sealed document into an error", async () => {
+  const { facta } = archiving({ archive: { state: "needs_attention", operationId: "o", artifacts: [], detail: "disk full" } as never, managedStorage: RECEIPT("failed", "failed") as never });
+  const handler = createFactaHandler({ facta, sessionSecret: SECRET, authorize: "session-only" });
+  const res = await post(handler, { action: "issue", session: await session() });
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.result.estado, "sellado");
+  assertEquals(body.storage, { managed: "failed", archive: "failed" });
+  assertEquals(JSON.stringify(body).includes("disk full"), false);
+});
+
+Deno.test("onIssued receives the full result and context; its failure is logged, never fatal", async () => {
+  const seen: unknown[] = [];
+  const events: FactaHandlerEvent[] = [];
+  const { facta } = archiving();
+  const handler = createFactaHandler({
+    facta,
+    sessionSecret: SECRET,
+    authorize: "session-only",
+    onIssued: (result, ctx) => { seen.push([result.jws, ctx.session.idempotencyKey, ctx.archive?.state, ctx.storage.archive]); },
+    onEvent: (e) => { events.push(e); },
+  });
+  assertEquals((await post(handler, { action: "issue", session: await session() })).status, 200);
+  assertEquals(seen, [["header.payload.sig", "order-1", "complete", "complete"]]);
+
+  const failing = createFactaHandler({
+    facta: fakeFacta({ issue: CONTINGENCY }).facta,
+    sessionSecret: SECRET,
+    authorize: "session-only",
+    onIssued: () => Promise.reject(new Error("db down " + API_KEY)),
+    onEvent: (e) => { events.push(e); },
+  });
+  const res = await post(failing, { action: "issue", session: await session() });
+  assertEquals(res.status, 200);
+  assertEquals((await res.json()).result.estado, "contingencia");
+  await new Promise((r) => setTimeout(r, 0));
+  const failure = events.find((e) => e.type === "error");
+  assertEquals(failure, { type: "error", idempotencyKey: "order-1", code: "on_issued_failed", status: 200, retryable: false });
+  assertEquals(JSON.stringify(events).includes("db down"), false);
+});
+
+Deno.test("no destination name, id, key or detail reaches the browser", async () => {
+  const leaky = {
+    destinationId: "s3-prod-bucket-secret-id",
+    kind: "json",
+    label: "Acme Private Bucket",
+    state: "failed",
+    sha256: "s",
+    updatedAt: "t",
+    detail: "AccessDenied AKIAEXAMPLEKEY arn:aws:s3:::acme-private",
+  };
+  const { facta } = archiving({
+    archive: { state: "complete", operationId: "o", artifacts: [{ kind: "json", sha256: "a" }], remoteCopies: [leaky], detail: "path /var/archive/secret" } as never,
+  });
+  const handler = createFactaHandler({ facta, sessionSecret: SECRET, authorize: "session-only" });
+  const text = await (await post(handler, { action: "issue", session: await session() })).text();
+  for (const needle of ["s3-prod-bucket-secret-id", "Acme Private Bucket", "AKIAEXAMPLEKEY", "acme-private", "/var/archive"]) {
+    assertEquals(text.includes(needle), false, needle);
+  }
+  assertEquals(JSON.parse(text).storage, { managed: null, archive: "partial", copies: { complete: 0, pending: 0, failed: 1 } });
 });

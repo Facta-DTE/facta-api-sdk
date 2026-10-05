@@ -384,6 +384,13 @@ export class Facta {
     this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
   }
 
+  /**
+   * True when `runtime.archive` is configured, so `issueAndArchive` needs no
+   * per-call archive. Lets a wrapper (the signing window's handler) decide
+   * between `issue` and `issueAndArchive` without reaching into runtime config.
+   */
+  get archiveConfigured(): boolean { return this.#runtime.archive !== undefined; }
+
   /** Health, environment and the ceilings left on this key. */
   status(options: CallOptions = {}): Promise<Status> {
     return this.#request<Status>("GET", "/v1/status", undefined, options);
