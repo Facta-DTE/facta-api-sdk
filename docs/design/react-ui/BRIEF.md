@@ -71,5 +71,5 @@ Calm fintech, trustworthy, quiet. Clear hierarchy: one primary action per
 screen. The total is the hero number. Identifiers in mono, small, copyable.
 Status by colour AND icon AND words. No gradients, no emoji, no heavy
 borders on every block; use surface tint to group. Branding footer
-«Emitido con Facta DTE» with a tiny seal glyph, 12px muted — and every board
+«Powered by factadte.com» with a tiny seal glyph, 12px muted — and every board
 must also show the white-label version (host logo/name in header, no footer).

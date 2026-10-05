@@ -418,7 +418,7 @@ figcaption.cap b{color:var(--board-ink);font-weight:500}
 
 <div class="decisions">
   <div><b>D-6 · Receptor oculto por defecto</b>La columna «Receptor» muestra «Oculto» con ícono de ojo tachado mientras el servidor no active <span class="mono">exposeRecipient</span>. El diseño con nombres existe, pero es opt-in del integrador.</div>
-  <div><b>D-5 · Atribución</b>Cada componente con pie muestra «Emitido con Facta DTE». La versión marca blanca (nombre del cliente, sin pie, acento propio) aparece en lista, detalle y diálogo.</div>
+  <div><b>D-5 · Atribución</b>Cada componente con pie muestra «Powered by factadte.com». La versión marca blanca (nombre del cliente, sin pie, acento propio) aparece en lista, detalle y diálogo.</div>
   <div><b>D-7 · Anular desde el navegador</b>Dibujado como «solo sesión»: el diálogo confirma, nunca redacta. Si D-7 se decide «solo servidor», el ítem «Anular documento» simplemente no se ofrece.</div>
   <div><b>Estados y color</b>Siempre color + ícono + palabra. «Rechazado» solo aparece en filas que el integrador conserva localmente; <span class="mono">ListedDte</span> no lo devuelve.</div>
 </div>
@@ -494,7 +494,7 @@ var B={
   sellado:['Sellado','check'],contingencia:['Contingencia','clock'],invalidado:['Invalidado','ban'],rechazado:['Rechazado','x']
 };
 function badge(e){return '<span class="f-badge '+e+'">'+ic(B[e][1])+B[e][0]+'</span>'}
-function attr(){return '<span class="f-attr">'+ic('seal')+'Emitido con Facta DTE</span>'}
+function attr(){return '<span class="f-attr">'+ic('seal')+'Powered by factadte.com</span>'}
 function hostName(){return '<span class="f-hostname"><i></i>Ferretería San Miguel</span>'}
 function Fc(theme,inner,cls,style){return '<div class="facta '+(cls||'')+'" data-facta-theme="'+theme+'"'+(style?' style="'+style+'"':'')+'>'+inner+'</div>'}
 function fig(cap,body,w,theme){

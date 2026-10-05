@@ -350,7 +350,7 @@ table.tk .key{color:var(--board-accent)}
       </div>
       <div class="grp">
         <h3>Branding</h3>
-        <div class="row"><label for="attr">Attribution «Emitido con Facta DTE»</label><span class="switch"><input type="checkbox" id="attr"><i></i></span></div>
+        <div class="row"><label for="attr">Attribution «Powered by factadte.com»</label><span class="switch"><input type="checkbox" id="attr"><i></i></span></div>
         <div><label class="lbl" for="host" style="display:block;margin-bottom:6px">Host name</label><input type="text" class="wide" id="host" maxlength="40" placeholder="Name shown in the header"></div>
         <div class="row"><label for="logo">Host logo (inline SVG monogram)</label><span class="switch"><input type="checkbox" id="logo"><i></i></span></div>
       </div>
@@ -406,7 +406,7 @@ table.tk .key{color:var(--board-accent)}
             <div class="sl leaf"><span class="nm">storageRow</span>«Copia guardada en su archivo · 2 de 2 destinos»</div>
           </div>
           <div class="sl l1"><span class="nm">footer</span>
-            <div class="sl leaf"><span class="nm">attribution</span>◉ Emitido con Facta DTE</div>
+            <div class="sl leaf"><span class="nm">attribution</span>◉ Powered by factadte.com</div>
             <div class="inl">
               <div class="sl leaf" style="flex:1;min-width:130px"><span class="nm">secondaryButton</span>Descargar PDF</div>
               <div class="sl leaf" style="flex:1;min-width:130px"><span class="nm">primaryButton</span>Listo</div>
@@ -469,12 +469,12 @@ table.tk .key{color:var(--board-accent)}
 <!-- ============ 6 ============ -->
 <section class="b" id="attribution">
   <h2><span class="n">06</span>Attribution rules</h2>
-  <p class="lede">«Emitido con Facta DTE» is attribution, never advertising. White-label is a supported, plain switch.</p>
+  <p class="lede">«Powered by factadte.com» is attribution, never advertising. White-label is a supported, plain switch.</p>
   <div class="at">
     <div class="card">
       <h3><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="var(--board-warn-soft)" stroke="var(--board-warn)"/><path d="M5 8h6" stroke="var(--board-warn)" stroke-width="1.6" stroke-linecap="round"/></svg>attribution: false hides</h3>
       <ul>
-        <li><svg width="14" height="14" viewBox="0 0 14 14"><path d="M3 7h8" stroke="var(--board-warn)" stroke-width="1.6" stroke-linecap="round"/></svg><span>The footer line «Emitido con Facta DTE» (the <code>attribution</code> slot is not rendered).</span></li>
+        <li><svg width="14" height="14" viewBox="0 0 14 14"><path d="M3 7h8" stroke="var(--board-warn)" stroke-width="1.6" stroke-linecap="round"/></svg><span>The footer line «Powered by factadte.com» (the <code>attribution</code> slot is not rendered).</span></li>
         <li><svg width="14" height="14" viewBox="0 0 14 14"><path d="M3 7h8" stroke="var(--board-warn)" stroke-width="1.6" stroke-linecap="round"/></svg><span>The small seal glyph beside it. The footer keeps only the actions, right-aligned.</span></li>
         <li><svg width="14" height="14" viewBox="0 0 14 14"><path d="M3 7h8" stroke="var(--board-warn)" stroke-width="1.6" stroke-linecap="round"/></svg><span>The host name and logo stay: they are yours, set via <code>branding.name</code> / <code>branding.logo</code>.</span></li>
       </ul>
@@ -564,7 +564,7 @@ function dialogHTML(c,state,o={}){
     <div><dt>Fecha y hora</dt><dd>05/10/2026 14:32</dd></div></dl></div>
    <div class="${cls('storageRow',o)}" data-slot="storageRow">${ICON.checkSm}<span>Copia guardada en su archivo · 2 de 2 destinos</span></div></div>`;
  }
- const attr=c.attr?`<span class="${cls('attribution',o)}" data-slot="attribution">${ICON.seal}Emitido con Facta DTE</span>`:'';
+ const attr=c.attr?`<span class="${cls('attribution',o)}" data-slot="attribution">${ICON.seal}Powered by factadte.com</span>`:'';
  const foot=`<div class="${cls('footer',o)}" data-slot="footer">${attr}<div class="facta-actions"><button class="${cls('secondaryButton',o)}" data-slot="secondaryButton">${sealed?'Descargar PDF':'Cancelar'}</button><button class="${cls('primaryButton',o)}" data-slot="primaryButton">${sealed?'Listo':'Emitir factura'}</button></div></div>`;
  return `<div class="${cls('overlay',o)}${o.inline?' inline-frame':''}" data-slot="overlay" data-facta-theme="${c.theme}" data-facta-density="${c.density}" data-facta-motion="${c.motion}" style="${resolveStyle(c)}"><div class="${cls('root',o)}" data-slot="root" role="dialog" aria-label="${sealed?'Factura emitida':'Revise su factura'}">${head}${body}${foot}</div></div>`;
 }
@@ -711,10 +711,10 @@ const TOK=[
  tb.innerHTML=h})();
 
 /* ============ 4 · Slot table + bare + skin ============ */
-const SLOTS=[['root','The card itself','radius, shadow, width cap'],['overlay','Scrim + positioning wrapper; carries data-facta-theme and tokens','z-index, backdrop blur'],['header','Logo, title, environment chip, close','sticky tint, bottom border'],['title','Step title (h2)','heading font, tracking'],['body','Scrolling content area','padding, gap'],['footer','Attribution + actions','border, background'],['primaryButton','The single primary action','shape, shadow, brand colours'],['secondaryButton','Cancel / download','outline style'],['statusIcon','Seal / warning / rejected disc','size, animation'],['total','The hero amount','size, weight, colour'],['identifiers','dl of control no., generation code, seal','mono size, wrapping'],['storageRow','Archive summary line','tone, density'],['attribution','«Emitido con Facta DTE» + glyph','hide with branding.attribution']];
+const SLOTS=[['root','The card itself','radius, shadow, width cap'],['overlay','Scrim + positioning wrapper; carries data-facta-theme and tokens','z-index, backdrop blur'],['header','Logo, title, environment chip, close','sticky tint, bottom border'],['title','Step title (h2)','heading font, tracking'],['body','Scrolling content area','padding, gap'],['footer','Attribution + actions','border, background'],['primaryButton','The single primary action','shape, shadow, brand colours'],['secondaryButton','Cancel / download','outline style'],['statusIcon','Seal / warning / rejected disc','size, animation'],['total','The hero amount','size, weight, colour'],['identifiers','dl of control no., generation code, seal','mono size, wrapping'],['storageRow','Archive summary line','tone, density'],['attribution','«Powered by factadte.com» + glyph','hide with branding.attribution']];
 document.querySelector('#slotTbl tbody').innerHTML=SLOTS.map(s=>`<tr><td><code class="sn">${s[0]}</code></td><td><code>facta-${s[0]}</code><div class="cap" style="margin-top:2px">${s[1]}</div></td><td>${s[2]}</td></tr>`).join('');
-function bareHTML(){return `<div class="bare" role="dialog" aria-label="Factura emitida"><div><h2 style="margin:0 0 4px;font-size:20px">Factura emitida</h2><span>Sellada por Hacienda</span></div><p style="font-size:28px;font-weight:700;margin:10px 0">$45.50</p><dl><dt>Número de control</dt><dd>DTE-01-M001P001-000000000000042</dd><dt>Código de generación</dt><dd>9F2C41AB-7D3E-4C58-9B1A-0E6D5A83C2F7 <button>Copiar</button></dd></dl><p style="margin:6px 0">✓ Copia guardada en su archivo · 2 de 2 destinos</p><footer style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><small>Emitido con Facta DTE</small><span style="margin-left:auto"><button>Descargar PDF</button> <button>Listo</button></span></footer></div>`}
-function skinHTML(){return `<div class="tw-root" role="dialog" aria-label="Factura emitida"><div class="tw-header"><h2 class="tw-title">Factura emitida</h2><span style="font-size:12px;opacity:.7">Grupo Altamira</span></div><div class="tw-body"><div style="display:flex;gap:12px;align-items:center"><span class="tw-icon"><svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.4l3 3 6-6.6"/></svg></span><p class="tw-total">$45.50</p></div><dl class="tw-ids"><dt>Número de control</dt><dd>DTE-01-M001P001-000000000000042</dd><dt>Código de generación</dt><dd>9F2C41AB-7D3E-4C58-9B1A-0E6D5A83C2F7</dd></dl><p class="tw-store">✓ Copia guardada · 2 de 2 destinos</p></div><div class="tw-footer"><span class="tw-attr">Emitido con Facta DTE</span><span style="display:flex;gap:8px"><button class="tw-btn2">Descargar PDF</button><button class="tw-btn1">Listo</button></span></div></div>`}
+function bareHTML(){return `<div class="bare" role="dialog" aria-label="Factura emitida"><div><h2 style="margin:0 0 4px;font-size:20px">Factura emitida</h2><span>Sellada por Hacienda</span></div><p style="font-size:28px;font-weight:700;margin:10px 0">$45.50</p><dl><dt>Número de control</dt><dd>DTE-01-M001P001-000000000000042</dd><dt>Código de generación</dt><dd>9F2C41AB-7D3E-4C58-9B1A-0E6D5A83C2F7 <button>Copiar</button></dd></dl><p style="margin:6px 0">✓ Copia guardada en su archivo · 2 de 2 destinos</p><footer style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><small>Powered by factadte.com</small><span style="margin-left:auto"><button>Descargar PDF</button> <button>Listo</button></span></footer></div>`}
+function skinHTML(){return `<div class="tw-root" role="dialog" aria-label="Factura emitida"><div class="tw-header"><h2 class="tw-title">Factura emitida</h2><span style="font-size:12px;opacity:.7">Grupo Altamira</span></div><div class="tw-body"><div style="display:flex;gap:12px;align-items:center"><span class="tw-icon"><svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.4l3 3 6-6.6"/></svg></span><p class="tw-total">$45.50</p></div><dl class="tw-ids"><dt>Número de control</dt><dd>DTE-01-M001P001-000000000000042</dd><dt>Código de generación</dt><dd>9F2C41AB-7D3E-4C58-9B1A-0E6D5A83C2F7</dd></dl><p class="tw-store">✓ Copia guardada · 2 de 2 destinos</p></div><div class="tw-footer"><span class="tw-attr">Powered by factadte.com</span><span style="display:flex;gap:8px"><button class="tw-btn2">Descargar PDF</button><button class="tw-btn1">Listo</button></span></div></div>`}
 $('bare').innerHTML=bareHTML();$('skin').innerHTML=skinHTML();
 
 /* ============ 6 · Mini attribution ============ */

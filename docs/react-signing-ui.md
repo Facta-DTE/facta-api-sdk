@@ -147,7 +147,7 @@ sealed | contingency | rejected | failed | expired`, plus
 
 **Identity.** It is a Facta DTE window embedded in someone else's product: it
 must look trustworthy and neutral, adopt the host's font (`font: inherit`),
-and carry Facta DTE only as a quiet footer «Emitido con Facta DTE» + seal
+and carry Facta DTE only as a quiet footer «Powered by factadte.com» + seal
 glyph (attribution, never advertising). Accent defaults to Torogoz
 `oklch(0.55 0.13 225)` (sRGB fallback `#007faa`), dark `oklch(0.7 0.12 225)`.
 
@@ -206,7 +206,7 @@ nothing in production. Close «×» hidden while submitting.
     pedido.» «Cerrar».
 11. *Cargando* — skeleton of screen 1.
 
-**Footer** (all screens): left «Emitido con Facta DTE» (12px, muted), right
+**Footer** (all screens): left «Powered by factadte.com» (12px, muted), right
 the actions.
 
 ## 8. Deliverables of the first batch
@@ -343,3 +343,33 @@ Ready components (same appearance/branding system, all optional):
 * D-7: is invalidation from the browser in scope at all, or server-only?
 * D-8: printing (`print`) uses a local transport on the integrator's machine;
   keep it out of the browser components?
+
+## 12. Attribution text and run modes (5-Oct-2026)
+
+Original prompt (Marvin, verbatim):
+
+> me gusta, cambia el emitido con Facta por, Power by factadte.com, permite que
+> se ejecute en automatico sin ningun click mas necesario, solo de abrir y dejar
+> abierto el resultado, o incluso abrir y cerrar automaticamente para que el
+> usuario muestre en su sistema el resultado ambos casos y claro el totalmente
+> manual
+
+* Attribution line is «Powered by factadte.com» (English on purpose, the
+  domain as the name), rendered as text plus seal glyph; `attribution: false`
+  still hides it.
+* `run` prop replaces the boolean `confirm`:
+  * `"manual"` (default): review → «Emitir factura» → result → «Listo».
+  * `"auto"`: opens straight into issuing, no click; the result stays open
+    until the person closes it.
+  * `"auto-close"`: opens, issues, and closes itself; the host shows the result
+    from `onIssued` / the `open()` promise. Options:
+    `autoCloseDelay` (ms the result is visible before closing, default 1200,
+    0 = immediately after the seal animation is skipped) and
+    `autoCloseOn` (`"success"` default = sealed and contingency close, a
+    rejection or failure stays open so the person can read it; `"any"` = close
+    on every final state and let the host render the error from `onError`).
+  * While closing in `auto-close`, a thin countdown bar under the header shows
+    the remaining delay; any pointer/keyboard interaction inside the window
+    cancels the auto-close (the person wanted to read it).
+* `FactaIssueButton` keeps its own morph flow and accepts the same `run`
+  values; `auto-close` there means the success popover is not shown.
