@@ -230,3 +230,116 @@ the actions.
 * D-3: whether `review-prepared` should exist publicly at all given gaps.
 * D-4: whether the buyer-facing recipient step should offer the Facta
   customer catalog search (requires `unlockKey` on the server, never browser).
+
+## 10. Scope changes after review (5-Oct-2026)
+
+Original prompts (Marvin, verbatim):
+
+> pensaria que fuera mas simple, pensando en que los datos vengan bien desde el
+> otro sistema, si, podemos mostrar errores y eso, pero permitir editarlos en
+> caso de errores se siente muy drastico […] permitir que el modal se pueda
+> integrar con el sistema, permitiendo cambiar algunos colores, tener como
+> varias implementaciones disponibles, incluso ocultar que se emite con FactaDTE
+
+> que pasa con los datos, estos componentens siguen manejando todo deal lado
+> del server? que pasa con las sync de almacenamiento?
+
+These supersede parts of §3–§7:
+
+* The session request is final. No recipient step, no type switch, no
+  `review-prepared` mode, no `prepare`/`sign` actions. Handler actions:
+  `session.describe`, `issue`, `status` (status bound to the session with a
+  `statusToken`). Errors are read-only and carry `fields: [{ path, message }]`
+  when a path is literally present, so the host fixes data in its own form.
+* `confirm={false}` issues on open (POS).
+* Variants: `FactaInvoiceDialog`, `FactaInvoiceDrawer`, `FactaInvoiceInline`,
+  `FactaIssueButton` (morphing), `FactaReceipt`, `useFactaWindow().open()`,
+  headless `useFactaIssue`.
+* `appearance` (theme, variables, density, motion), `classNames`, `unstyled`,
+  `branding: { name, logo, attribution }`; `attribution: false` hides «Emitido
+  con Facta DTE» (D-5 below).
+* Storage: the handler uses `issueAndArchive` when the client has a runtime
+  archive (`archive: "auto" | "required" | "off"`), so the integrator's
+  encrypted archive and BYOS copies happen server-side; Facta-managed storage
+  happens in the API. The browser gets only a `storage` summary; pending copies
+  are recovered with `recoverOperation(operationId)` from a server job.
+  `onIssued(result)` lets the integrator persist the full result.
+
+## 11. Batch 2 — data providers and simple actions
+
+Original prompt (Marvin, verbatim):
+
+> agrega al plan, poder tener providers que nos brinden listados, y acciones
+> que brinde el sdk para poder usarlas mas simples, que funciones podriamos?
+
+### 11.1 Principle: two kinds of browser call
+
+| Kind | Examples | Authorization |
+| --- | --- | --- |
+| **Reads** | lists, detail, downloads, catalog search, status | `authorize(req, { action })` + a server-declared `capabilities` allow-list. No session token. |
+| **Fiscal writes** | issue, invalidate | Always a signed session created by the integrator's server from its own data. The browser never authors a fiscal payload. |
+
+`capabilities` is declared once on the handler, e.g.
+`{ documents: "read", downloads: true, catalog: "read", status: true,
+invalidate: "session", storage: "read" }`. Anything not declared is
+`action_not_allowed`. `authorize` receives the action name, so the host can
+allow a cashier to list but not to invalidate.
+
+### 11.2 Server: one handler, more actions (all wrap existing SDK methods)
+
+| Action | SDK method | Notes |
+| --- | --- | --- |
+| `documents.list` | `listDocuments({ desde, hasta, estado, tipoDte, limit, cursor })` | cursor pagination; server-side `scope(req)` hook can force filters (e.g. only this branch) |
+| `documents.get` | `getDocumentStatus(code)` | summary; receptor only if `exposeRecipient` |
+| `documents.download` | `downloadDocument(code, "pdf" \| "json" \| "ticket")` | streamed bytes with filename; ticket width option |
+| `documents.copies` / `documents.retryStorage` | `getDocumentCopies`, `retryDocumentStorage` | retry is idempotent, reads-tier but opt-in |
+| `documents.holding` | `listHolding` | contingency queue |
+| `catalog.customers.search` / `.get` | `searchCustomers`, `getCustomer` | needs `unlockKey` on the server; returns a display projection only |
+| `catalog.products.search` / `.get` | `searchProducts`, `getProduct` | same |
+| `service.status` | `status`, `diagnose` (reduced) | «Hacienda en línea / en contingencia» indicator |
+| `storage.status` | `getStorageStatus` | quota bar |
+| `invalidate` | `invalidateAndArchive` (or `invalidate`) | **session only**: `createFactaInvalidationSession({ generationCode, tipoAnulacion, motivo, codigoGeneracionReemplazo, responsable, solicita })`; the window only confirms |
+
+Server conveniences (no fiscal logic added):
+`createFactaSession.fromOrder(order, mapper)` typed mapper helper;
+`createFactaInvalidationSession`; `facta.react.nextHandler()` /
+`honoHandler()` / `expressHandler()` thin adapters.
+
+### 11.3 Browser / React
+
+Providers and hooks (cache + revalidation built in, no React Query dependency;
+an adapter for TanStack Query is optional):
+
+* `useFactaDocuments(filters)` → `{ items, loadMore, hasMore, loading, error, refresh }`
+* `useFactaDocument(code)` → summary + `refresh`; polls while `contingencia`
+* `useFactaCustomers(query)`, `useFactaProducts(query)` → debounced search
+* `useFactaServiceStatus()` → `online | contingency | degraded`, polled gently
+* `useFactaStorage()` → quota and state
+* `useFactaActions()` → `download(code, kind)`, `retryStorage(code)`,
+  `invalidate(sessionToken)` (opens the invalidation window), `copyCode`
+
+Ready components (same appearance/branding system, all optional):
+
+* `FactaDocumentList` — table on desktop, cards on phone; filters by date,
+  type and state; status badges; row actions (PDF, JSON, ticket, copy code,
+  anular when allowed); empty and loading states; infinite scroll or pages.
+* `FactaDocumentDetail` — drawer with identifiers, totals, seal, copies,
+  event history (contingency → sealed, invalidated).
+* `FactaInvalidateDialog` — confirms a server-made invalidation session,
+  shows the event seal on success.
+* `FactaCustomerPicker`, `FactaProductPicker` — comboboxes over the catalog
+  for host forms (they return the catalog id; the host's server builds the
+  session with `customerId` / `productId`).
+* `FactaServiceStatus` — small pill «Hacienda en línea» / «Contingencia».
+* `FactaStorageMeter` — quota bar.
+* `FactaDownloadButton` — PDF/JSON/ticket in one menu.
+
+### 11.4 Open decisions for batch 2
+
+* D-5: may attribution be hidden on every plan in the browser window (the PDF
+  stays governed by the server and the plan)?
+* D-6: does `documents.list` expose receptor names to the browser? They are
+  personal data; default off, host opts in per handler.
+* D-7: is invalidation from the browser in scope at all, or server-only?
+* D-8: printing (`print`) uses a local transport on the integrator's machine;
+  keep it out of the browser components?
