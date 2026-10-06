@@ -1,5 +1,6 @@
 export {
   type CallOptions,
+  type DebugOptions,
   type DestinationSnapshot,
   Facta,
   type FactaArchiveEmissionOptions,

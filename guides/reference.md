@@ -44,6 +44,23 @@ business order when recovery must survive a process restart. Aborting a
 request stops retries, but it does not prove that a request already accepted
 by the server was cancelled.
 
+### Debug timings (a debugging aid)
+
+`new Facta({ debug: { timings: true } })`, or `{ debug: { timings: true } }` in
+the options of one call, sends `X-Facta-Debug: timings`. The API then answers
+with `debug: { timings: [{ step, ms, startedAtMs }], totalMs }` (and a
+`Server-Timing` header), and the SDK exposes it as `result.debug`; when the body
+has no `debug` member the SDK reads the `Server-Timing` header instead
+(`debug.source` says which). It is off by default, the API adds nothing without
+the flag, and a per-call `debug: { timings: false }` turns a client-wide flag
+off. Use it to find where a slow call spends its time; do not leave it on in
+production code.
+
+```ts
+const result = await facta.issue(request, { idempotencyKey: order.id, debug: { timings: true } });
+for (const { step, ms } of result.debug?.timings ?? []) console.log(step, ms);
+```
+
 The common authenticated failure type is `FactaError`, with `code`, `status`,
 `details`, `isRejection`, and `spent`. Classify by `code`, not localized
 message text. Local validation and adapter/archive failures can also throw
