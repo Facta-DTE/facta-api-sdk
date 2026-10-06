@@ -189,7 +189,7 @@ Deno.test("stale catalog reads require opt-in and never change issuance resoluti
       sincronizacion: { catalog: { status: "pending", desiredRevision: 18, publishedRevision: 17 } },
     }), { status: 200 }));
   }) as typeof globalThis.fetch;
-  const facta = new Facta({
+  const facta = new Facta({ region: false,
     apiKey: "key-1.secret",
     unlockKey: "factauk_test",
     fetch,

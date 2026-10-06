@@ -25,6 +25,10 @@ export interface DiagnosticsReport {
   storageReady?: boolean | null;
   /** Null when no archive was supplied or its journal could not be read. */
   pendingArchiveOperations: number | null;
+  /** Region the client pins requests to (`x-region`); null when disabled or unknown. */
+  region?: string | null;
+  /** Region that actually served the latest response (`x-sb-edge-region`). */
+  servedRegion?: string | null;
   /** Public revision numbers only; no encrypted vault data. */
   revisions: DiagnosticRevisions | null;
   checks: DiagnosticCheck[];

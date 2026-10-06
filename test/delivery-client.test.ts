@@ -31,7 +31,7 @@ function fakeFetch(answers: Array<{ status: number; body: unknown }>) {
   return { fetch, calls };
 }
 
-const client = (fetch: typeof globalThis.fetch) => new Facta({ apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch, maxRetries: 0 });
+const client = (fetch: typeof globalThis.fetch) => new Facta({ region: false, apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch, maxRetries: 0 });
 const VENTA = { tipoDte: "01" as const, items: [{ descripcion: "x", cantidad: 1, precioUni: 10 }] };
 const SEALED = {
   estado: "sellado",

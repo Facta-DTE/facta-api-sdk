@@ -579,6 +579,10 @@ export interface Status {
   ok: boolean;
   version: string;
   ambiente: string;
+  /** Functions region the API runs in (e.g. `us-west-2`); absent on older APIs. */
+  region?: string;
+  /** Region that served this very call, when the API reports it. */
+  servedRegion?: string;
   emisor: { nit: string; nombre: string; ambiente: string } | null;
   llave: {
     keyId: string;
