@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { FactaWindowError, useFactaActions } from "../../../../react.ts";
 import { requestInvalidation, type RegistryDocument } from "../../api.ts";
+import { Busy } from "../../components/busy.tsx";
 import { TurnstileBox } from "../../components/turnstile.tsx";
 import { useTurnstileReady } from "../../turnstile.ts";
 import { TYPE_NAMES, tail } from "./registry-data.ts";
@@ -51,7 +52,7 @@ export function InvalidateDialog({ doc, onClose, onDone }: { doc: RegistryDocume
         {problem !== null && <p role="alert" className="pg-error">{problem}</p>}
         <div className="reg-dialog-actions">
           <button type="button" ref={cancel} className="pg-secondary" disabled={busy} onClick={onClose}>Cancelar</button>
-          <button type="button" className="pg-primary reg-danger" disabled={busy || !ready} onClick={() => void confirm()}>{busy ? "Anulando…" : "Anular documento"}</button>
+          <button type="button" className="pg-primary reg-danger" disabled={busy || !ready} onClick={() => void confirm()}>{busy ? <Busy>Anulando…</Busy> : "Anular documento"}</button>
         </div>
       </div>
     </div>

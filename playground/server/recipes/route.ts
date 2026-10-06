@@ -15,12 +15,15 @@ import { readStashedToken, type MailCheck } from "../gates.ts";
 import { RECIPES, RecipeError } from "./index.ts";
 import { listIssued, ownsDocument, recordIssued, updateIssuedState } from "../issued-codes.ts";
 import { execute } from "./runner.ts";
+import { apiCacheOf } from "../api-cache.ts";
+import { documentKey } from "../api-budget.ts";
 
 export interface RecipeRouteDeps {
   env: PlaygroundEnv;
   visitor: Visitor | null;
   fixtures(): Promise<PlaygroundFixtures>;
-  consume(email: string, key: string): Promise<QuotaDecision | null>;
+  /** Counts (or, with `commit: false`, only checks) one issue under `key`. */
+  consume(email: string, key: string, commit?: boolean): Promise<QuotaDecision | null>;
   /** Turnstile for a run that issues, invalidates or sends. Null when it passed. */
   turnstile?(): Promise<Response | null>;
   /** E-mail limits for a run that sends (the router adds the caller). */
@@ -88,6 +91,7 @@ export async function handleRecipeRun(request: Request, deps: RecipeRouteDeps): 
       owns: (code) => ownsDocument(env, visitor.id, code),
       stash: async (code) => (await readStashedToken(env, visitor.id, code.toUpperCase())),
       mine: async () => (await listIssued(env, visitor.id)).map((entry) => entry.codigoGeneracion),
+      ownedDocs: async () => (await listIssued(env, visitor.id)).map((entry) => ({ codigoGeneracion: entry.codigoGeneracion, tipoDte: entry.tipoDte })),
       now: deps.now?.() ?? Date.now(),
     });
   } catch (error) {
@@ -111,9 +115,9 @@ export async function handleRecipeRun(request: Request, deps: RecipeRouteDeps): 
     if (decision === null) return failure(503, "playground_quota_unavailable", "No se pudo comprobar el límite de envíos. Intente de nuevo.");
     if (!decision.allowed) return failure(429, "mail_quota_exceeded", mailMessage(decision), { "retry-after": String(decision.retryAfterSeconds ?? 60) });
   }
-  // Count only what issues or invalidates. A key already counted (a retry of the same run) is free.
-  for (const key of bound.quotaKeys) {
-    const decision = await deps.consume(visitor.id, key);
+  // The gate: is there room for this run? Nothing is counted yet. A key already counted (a retry of the same run) is free.
+  for (const key of [...(bound.gateKeys ?? []), ...bound.quotaKeys]) {
+    const decision = await deps.consume(visitor.id, key, false);
     if (decision === null) return failure(503, "playground_quota_unavailable", "No se pudo comprobar el límite de emisiones. Intente de nuevo.");
     if (!decision.allowed) {
       return failure(429, "quota_exceeded", quotaMessage(decision), { "retry-after": String(decision.retryAfterSeconds ?? 60) });
@@ -121,6 +125,11 @@ export async function handleRecipeRun(request: Request, deps: RecipeRouteDeps): 
   }
 
   const { output, outcome } = await execute(env, deps.fetch, bound.exec);
+  // The count: once, and only for a run that sealed (or put in contingency) a document or invalidated one.
+  // A rejection, a rate limit or any failure before or at the API costs the visitor nothing.
+  if (output.ok && ((outcome?.issued?.length ?? 0) > 0 || (outcome?.invalidated?.length ?? 0) > 0)) {
+    for (const key of bound.quotaKeys) await deps.consume(visitor.id, key, true);
+  }
   // Record what this run issued or invalidated in the visitor's own ledger (issued-codes.ts).
   const issued: Array<{ codigoGeneracion: string; tipoDte?: string }> = [];
   for (const document of outcome?.issued ?? []) {
@@ -132,7 +141,11 @@ export async function handleRecipeRun(request: Request, deps: RecipeRouteDeps): 
       issued.push({ codigoGeneracion: document.codigoGeneracion, ...(document.tipoDte === undefined ? {} : { tipoDte: document.tipoDte }) });
     }
   }
-  for (const code of outcome?.invalidated ?? []) await updateIssuedState(env, visitor.id, code, "invalidado").catch(() => undefined);
+  for (const code of outcome?.invalidated ?? []) {
+    await updateIssuedState(env, visitor.id, code, "invalidado").catch(() => undefined);
+    // The cached «sellado» must not outlive the invalidation.
+    await apiCacheOf(env.QUOTA).del(documentKey(code)).catch(() => undefined);
+  }
   return reply(200, {
     recipe: input.recipe,
     stage,

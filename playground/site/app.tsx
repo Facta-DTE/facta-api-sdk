@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { FactaProvider } from "../../react.ts";
 import { Link, Router, useRoute } from "./router.tsx";
 import { SECTIONS } from "./sections/registry.ts";
-import { mockFetch } from "./api.ts";
+import { playgroundFetch } from "./api.ts";
+import { clearRateLimit, RATE_LIMIT_BANNER, useRateLimited } from "./rate-limit.ts";
 import { StateProvider, usePlayground } from "./state.tsx";
 import { QuotaMeter, Wordmark, initials, useQuotaView } from "./components/ui.tsx";
 
@@ -96,6 +97,15 @@ function Header() {
 
 function Banner() {
   const { view } = usePlayground();
+  const limited = useRateLimited();
+  if (limited) {
+    return (
+      <div role="status" className="pg-banner pg-banner--limit" data-testid="rate-limit-banner">
+        <span>{RATE_LIMIT_BANNER}</span>
+        <button type="button" onClick={clearRateLimit}>Entendido</button>
+      </div>
+    );
+  }
   if (view.status === "blocked") {
     return (
       <div role="alert" className="pg-banner pg-banner--blocked">
@@ -134,7 +144,7 @@ export function App() {
   return (
     <Router>
       <StateProvider>
-        <FactaProvider endpoint="/api/facta" fetch={mockFetch()} appearance={{ theme: "light", variables: { accent: "#1677a8", accentInk: "#ffffff", accentSoft: "#e3f1f8" } }} branding={{ name: "Playground Facta DTE" }}>
+        <FactaProvider endpoint="/api/facta" fetch={playgroundFetch} appearance={{ theme: "light", variables: { accent: "#1677a8", accentInk: "#ffffff", accentSoft: "#e3f1f8" } }} branding={{ name: "Playground Facta DTE" }}>
           <a className="pg-skip" href="#contenido">Saltar al contenido</a>
           <Header />
           <Banner />

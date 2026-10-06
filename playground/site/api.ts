@@ -1,5 +1,6 @@
 // The page's calls to the playground Worker. Everything is same-origin.
 
+import { isApiRateLimit, reportRateLimit } from "./rate-limit.ts";
 import { turnstileHeaders } from "./turnstile.ts";
 
 export interface PlaygroundState {
@@ -38,6 +39,8 @@ export interface IssuedDocument {
   numeroControl: string;
   issuedAt: string;
   estado: string;
+  /** Total of the document, stored when it was issued. */
+  total?: number;
 }
 
 /**
@@ -47,7 +50,7 @@ export interface IssuedDocument {
 export interface MockBackend {
   fetch: typeof fetch;
   state(): PlaygroundState;
-  session(sale: SaleDescription): CreatedSession;
+  session(sale: SaleDescription): CreatedSession | Promise<CreatedSession>;
   issued(): IssuedDocument[];
   invalidation(code: string): string;
   /** Delivery demo: answers or throws an `ApiError` (limit states). */
@@ -64,8 +67,23 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * The `fetch` the SDK provider uses: the network (or, in `?mock=1`, the in-browser fake), watching for the
+ * API's rate limit so the page can show one banner whichever component hit it.
+ */
+export const playgroundFetch: typeof fetch = async (input, init) => {
+  const response = await (mock?.fetch ?? fetch)(input, init);
+  if (response.status === 429) {
+    void response.clone().json().then((body: { error?: { code?: string } } | null) => {
+      if (isApiRateLimit(body?.error?.code)) reportRateLimit();
+    }).catch(() => undefined);
+  }
+  return response;
+};
+
 async function readError(response: Response): Promise<ApiError> {
   const body = (await response.json().catch(() => null)) as { error?: { code?: string; message?: string; field?: string } } | null;
+  if (response.status === 429 && isApiRateLimit(body?.error?.code)) reportRateLimit();
   return new ApiError(
     body?.error?.code ?? "request_failed",
     body?.error?.message ?? "No se pudo completar la solicitud.",
@@ -114,7 +132,7 @@ export interface CreatedSession {
 }
 
 export async function createSession(sale: SaleDescription): Promise<CreatedSession> {
-  if (mock) return mock.session(sale);
+  if (mock) return await mock.session(sale);
   const response = await fetch("/api/session", {
     method: "POST",
     headers: { "content-type": "application/json", "x-facta-ui": "1", ...turnstileHeaders() },
@@ -153,6 +171,8 @@ export interface RegistryDocument {
   numeroControl: string;
   issuedAt: string;
   estado: string;
+  /** Stored at issue time (and filled from the API once for older rows). */
+  total?: number;
   /** The API's current view of the document, when the server could read it. */
   current: { estado: string; fecEmi?: string; horEmi?: string | null; selloRecibido?: string | null } | null;
 }
@@ -160,6 +180,16 @@ export interface RegistryDocument {
 /** The visitor's own documents, newest first (server/issued-codes.ts). */
 export async function loadRegistry(): Promise<RegistryDocument[]> {
   const response = await fetch("/api/registro", { headers: { accept: "application/json" } });
+  if (!response.ok) throw await readError(response);
+  return ((await response.json()) as { documents: RegistryDocument[] }).documents;
+}
+
+/**
+ * What the API says about a few of the visitor's documents (at most ten): the rows on screen ask for
+ * this, never the whole list. The server answers from its cache whenever it can.
+ */
+export async function enrichRegistry(codes: string[]): Promise<RegistryDocument[]> {
+  const response = await fetch(`/api/registro/enrich?codes=${encodeURIComponent(codes.slice(0, 10).join(","))}`, { headers: { accept: "application/json" } });
   if (!response.ok) throw await readError(response);
   return ((await response.json()) as { documents: RegistryDocument[] }).documents;
 }

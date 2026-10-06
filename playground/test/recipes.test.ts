@@ -42,7 +42,7 @@ const sealed = (code = CODE) => ({
 
 interface Call { method: string; path: string; headers: Headers; body: unknown }
 
-function fakeApi(calls: Call[] = [], options: { hangFirstIssue?: boolean } = {}): typeof fetch {
+function fakeApi(calls: Call[] = [], options: { hangFirstIssue?: boolean; failIssue?: 422 | 429 } = {}): typeof fetch {
   let issues = 0;
   return (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -50,6 +50,12 @@ function fakeApi(calls: Call[] = [], options: { hangFirstIssue?: boolean } = {})
     const method = (init?.method ?? "GET").toUpperCase();
     calls.push({ method, path, headers: new Headers(init?.headers), body: typeof init?.body === "string" ? JSON.parse(init.body) : undefined });
     const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+    if (method === "POST" && path === "/v1/dte" && options.failIssue === 429) {
+      return json({ error: { code: "rate_limited", message: "Demasiadas solicitudes" } }, 429);
+    }
+    if (method === "POST" && path === "/v1/dte" && options.failIssue === 422) {
+      return json({ error: { code: "mh_rejected", message: "Hacienda rechazó el documento", details: { observaciones: ["[incoterms] debe ser un código de CAT-031"], codigoGeneracion: CODE, numeroControl: "DTE-11-M001P001-000000000000001" } } }, 422);
+    }
     if (method === "POST" && path === "/v1/dte") {
       issues++;
       if (options.hangFirstIssue && issues === 1) {
@@ -83,7 +89,7 @@ function fakeApi(calls: Call[] = [], options: { hangFirstIssue?: boolean } = {})
   }) as typeof fetch;
 }
 
-async function world(options: { hangFirstIssue?: boolean; unlock?: boolean } = {}) {
+async function world(options: { hangFirstIssue?: boolean; unlock?: boolean; failIssue?: 422 | 429 } = {}) {
   const keys = await makeKeys();
   const quota = fakeQuotaNamespace(() => NOW);
   const env = goodEnv({
@@ -154,6 +160,28 @@ describe("recipes API", () => {
     expect(await peek("ana@example.com")).toBe(before - 1);
     await run({ recipe: "issue-idempotent", params: { type: "01" } });
     expect(await peek("ana@example.com")).toBe(before - 2);
+  });
+
+  it("counts nothing for a rejection or an API rate limit, and counts a later success once", async () => {
+    for (const failIssue of [422, 429] as const) {
+      const { run, peek } = await world({ failIssue });
+      const before = await peek("ana@example.com");
+      const failed = await (await run({ recipe: "issue-idempotent", params: { type: "01" } })).json() as { ok: boolean };
+      expect(failed.ok).toBe(false);
+      expect(await peek("ana@example.com")).toBe(before);
+    }
+    const { run, peek } = await world();
+    const before = await peek("ana@example.com");
+    await run({ recipe: "issue-idempotent", params: { type: "01" } });
+    expect(await peek("ana@example.com")).toBe(before - 1);
+  });
+
+  it("a note only relates a Crédito fiscal: a Factura of the visitor is refused with the reason", async () => {
+    const { run } = await world();
+    const issued = await (await run({ recipe: "issue-idempotent", params: { type: "01" } })).json() as { issued: Array<{ codigoGeneracion: string }> };
+    const refused = await run({ recipe: "issue-idempotent", params: { type: "05", related: issued.issued[0]!.codigoGeneracion } });
+    expect(refused.status).toBe(400);
+    expect(((await refused.json()) as { error: { code: string; message: string } }).error).toMatchObject({ code: "related_not_ccf", message: expect.stringContaining("Comprobante de crédito fiscal (03)") });
   });
 
   it("answers 429 with Retry-After when the quota is spent", async () => {

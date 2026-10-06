@@ -93,7 +93,7 @@ function ReviewBody({ info }: { info: SessionInfo }) {
               )}
             </>
           )
-          : <div className="facta-rname">{m.finalConsumer}</div>}
+          : <div className="facta-rname">{display?.recipient ?? m.finalConsumer}</div>}
       </div>
       <ul className="facta-lines" aria-label={m.linesHeading}>
         {draft.items.map((item, i) => {

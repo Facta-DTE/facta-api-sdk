@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Skeleton, useElapsed } from "../../components/busy.tsx";
 import type { RunFile, RunResponse, RunStep } from "./recipes-api.ts";
 
 function blobOf(file: RunFile): Blob | null {
@@ -45,15 +46,37 @@ export interface TimelineRun { retry: boolean; steps: RunStep[]; issuedLabel: st
 
 const seconds = (ms: number) => `${(ms / 1000).toFixed(2)} s`;
 
-export function Timeline({ runs, sameDocument }: { runs: TimelineRun[]; sameDocument: { code: string } | null }) {
+/** The row of the call in flight: a pulsing dot, what is running and how long it has been. */
+function PendingStep({ label }: { label: string }) {
+  const elapsed = useElapsed(true);
+  return (
+    <li className="srv-step srv-step--pending" role="status" aria-live="polite">
+      <span className="srv-dot srv-dot--pending" aria-hidden />
+      <div>
+        <div className="srv-step-head">
+          <span className="mono">{label}</span>
+          <span data-testid="pending-elapsed">{seconds(elapsed)}</span>
+        </div>
+        <div className="srv-step-detail">Esperando la respuesta de staging…</div>
+      </div>
+    </li>
+  );
+}
+
+/** What the results area shows while a run is in flight: placeholders where the response, PDF and JSON will be. */
+export function ResultSkeleton() {
+  return <Skeleton lines={4} label="Esperando el resultado de la ejecución" />;
+}
+
+export function Timeline({ runs, sameDocument, pending }: { runs: TimelineRun[]; sameDocument: { code: string } | null; /** Label of the call in flight, when there is one. */ pending?: string | null }) {
   const rows = runs.flatMap((run, runIndex) => run.steps.map((step, i) => ({ run, step, runIndex, last: i === run.steps.length - 1 })));
-  if (rows.length === 0) return null;
+  if (rows.length === 0 && !pending) return null;
   return (
     <ol className="srv-timeline" aria-label="Llamadas al API">
       {rows.map(({ run, step, last, runIndex }, index) => {
         const failed = step.status === null || step.status >= 400;
         const tone = failed ? "bad" : run.retry ? "retry" : "ok";
-        const isLastRow = index === rows.length - 1;
+        const isLastRow = index === rows.length - 1 && !pending;
         return (
           <li key={index} className="srv-step">
             <span className={`srv-dot srv-dot--${tone}`} aria-hidden />
@@ -70,6 +93,7 @@ export function Timeline({ runs, sameDocument }: { runs: TimelineRun[]; sameDocu
           </li>
         );
       })}
+      {pending ? <PendingStep label={pending} /> : null}
     </ol>
   );
 }

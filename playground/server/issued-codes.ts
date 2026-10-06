@@ -27,6 +27,8 @@ export interface IssuedEntry {
   issuedAt: string;
   /** Last known state: `sellado`, `contingencia`, `invalidado`… */
   estado: string;
+  /** Total of the document (`montoTotalOperacion`), stored at issue time; backfilled from the API when missing. */
+  total?: number;
 }
 
 const CODE = /^[0-9A-Fa-f-]{36}$/;
@@ -52,9 +54,9 @@ export function ownsCode(list: IssuedEntry[], code: string): boolean {
   return list.some((e) => e.codigoGeneracion === wanted);
 }
 
-export function withState(list: IssuedEntry[], code: string, estado: string): IssuedEntry[] {
+export function withState(list: IssuedEntry[], code: string, estado: string, total?: number): IssuedEntry[] {
   const wanted = normalizeCode(code);
-  return list.map((e) => (e.codigoGeneracion === wanted ? { ...e, estado } : e));
+  return list.map((e) => (e.codigoGeneracion === wanted ? { ...e, estado, ...(total !== undefined && e.total === undefined ? { total } : {}) } : e));
 }
 
 const text = (value: unknown, max: number): string | null =>
@@ -69,7 +71,8 @@ export function parseEntry(value: unknown, now: number): IssuedEntry | null {
   const numeroControl = text(v.numeroControl, 60);
   const estado = text(v.estado, 30);
   if (code === null || !isGenerationCode(code) || tipoDte === null || numeroControl === null || estado === null) return null;
-  return { codigoGeneracion: normalizeCode(code), tipoDte, numeroControl, estado, issuedAt: new Date(now).toISOString() };
+  const total = typeof v.total === "number" && Number.isFinite(v.total) && v.total >= 0 && v.total < 1e9 ? v.total : undefined;
+  return { codigoGeneracion: normalizeCode(code), tipoDte, numeroControl, estado, issuedAt: new Date(now).toISOString(), ...(total === undefined ? {} : { total }) };
 }
 
 // --- Durable Object side ----------------------------------------------------------
@@ -105,7 +108,8 @@ export async function handleIssuedRequest(storage: IssuedStorage, request: Reque
     const code = body?.codigoGeneracion;
     const estado = text(body?.estado, 30);
     if (!isGenerationCode(code) || estado === null) return Response.json({ error: "bad_state" }, { status: 400 });
-    await storage.put(STORAGE_KEY, withState(list, code, estado));
+    const total = typeof body?.total === "number" && Number.isFinite(body.total) && body.total >= 0 && body.total < 1e9 ? body.total : undefined;
+    await storage.put(STORAGE_KEY, withState(list, code, estado, total));
     return Response.json({ ok: true });
   }
   return new Response("Not found", { status: 404 });
@@ -123,7 +127,7 @@ type WithQuota = { QUOTA?: DurableObjectNamespaceLike };
 export async function recordIssued(
   env: WithQuota,
   email: string,
-  entry: Pick<IssuedEntry, "codigoGeneracion" | "tipoDte" | "numeroControl" | "estado">,
+  entry: Pick<IssuedEntry, "codigoGeneracion" | "tipoDte" | "numeroControl" | "estado"> & { total?: number },
 ): Promise<void> {
   const response = await stubFor(env, email).fetch(new Request("https://quota/issued/record", {
     method: "POST",
@@ -151,10 +155,11 @@ export async function ownsDocument(env: WithQuota, email: string, code: string):
   }
 }
 
-export async function updateIssuedState(env: WithQuota, email: string, code: string, estado: string): Promise<void> {
+/** Keeps the last known state; `total` fills the document's total only when none was stored. */
+export async function updateIssuedState(env: WithQuota, email: string, code: string, estado: string, total?: number): Promise<void> {
   await stubFor(env, email).fetch(new Request("https://quota/issued/state", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ codigoGeneracion: code, estado }),
+    body: JSON.stringify({ codigoGeneracion: code, estado, ...(total === undefined ? {} : { total }) }),
   }));
 }

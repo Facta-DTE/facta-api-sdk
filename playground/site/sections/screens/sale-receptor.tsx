@@ -1,6 +1,7 @@
 import { FactaCustomerPicker, type CustomerOption } from "../../../../react.ts";
 import { Segmented } from "../../components/ui.tsx";
 import type { PlaygroundState, SaleDescription, SaleSource } from "../../api.ts";
+import { CATALOG_SEARCH } from "../../catalog-search.ts";
 
 /** What the visitor chose for the receiver. The browser keeps ids and typed text only. */
 export interface ReceptorChoice {
@@ -145,7 +146,7 @@ export function ReceptorSection({ state, tipoDte, choice, onChange, error }: {
   const labels: [SaleSource, string][] = [["catalog", "Catálogo de la llave"], ["demo", "Demostración"], ["custom", "Personalizado"]];
 
   return (
-    <div className="pg-sale-receptor" style={{ display: "grid", gap: 12 }}>
+    <div className="pg-sale-receptor" style={{ display: "grid", gap: 12, gridTemplateColumns: "minmax(0, 1fr)", minWidth: 0 }}>
       <div className="pg-field">
         <span>Receptor</span>
         <Segmented
@@ -159,8 +160,8 @@ export function ReceptorSection({ state, tipoDte, choice, onChange, error }: {
       </div>
 
       {source === "catalog" && (
-        <div style={{ display: "grid", gap: 8 }}>
-          <FactaCustomerPicker value={choice.catalog} onChange={(customer) => onChange({ ...choice, catalog: customer })} />
+        <div style={{ display: "grid", gap: 8, gridTemplateColumns: "minmax(0, 1fr)", minWidth: 0 }}>
+          <FactaCustomerPicker {...CATALOG_SEARCH} value={choice.catalog} onChange={(customer) => onChange({ ...choice, catalog: customer })} />
           <p className="pg-hint">El navegador solo recibe el identificador. Su servidor confirma que existe en el catálogo y el API completa los datos al emitir.</p>
         </div>
       )}

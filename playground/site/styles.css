@@ -203,3 +203,21 @@ main { min-width: 0; }
 @media (max-width: 899px) { .pg-footer { padding: 16px; } .pg-footer a { min-height: 44px; } }
 
 @media (min-width: 900px) and (max-width: 1500px) { .pg-header .pg-meter-bar { display: none; } }
+
+/* ---------- Loading states: a spinner on the busy button, a skeleton where the result will be ---------- */
+.pg-spin { display: inline-block; flex: none; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: pg-spin .7s linear infinite; vertical-align: -0.15em; }
+@keyframes pg-spin { to { transform: rotate(360deg); } }
+.pg-skeleton { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--pg-border); border-radius: var(--pg-radius-md); background: var(--pg-surface); }
+.pg-skeleton-line { display: block; height: 12px; border-radius: 6px; background: linear-gradient(90deg, var(--pg-track) 25%, var(--pg-surface-2) 50%, var(--pg-track) 75%); background-size: 200% 100%; animation: pg-shimmer 1.2s ease-in-out infinite; }
+@keyframes pg-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+.pg-row-skeleton td { padding: 16px 8px; }
+@media (prefers-reduced-motion: reduce) {
+  /* No rotation: the ring stays as a static "working" mark and the words carry the state. */
+  .pg-spin { animation: none; border-right-color: currentColor; opacity: .55; }
+  .pg-skeleton-line { animation: none; background: var(--pg-track); }
+}
+
+/* The API's own rate limit: one banner, whichever component hit it. */
+.pg-banner--limit { background: var(--pg-warn-soft); color: var(--pg-warn); font-size: 15px; display: flex; gap: 12px; align-items: center; justify-content: space-between; }
+.pg-banner--limit button { min-height: 36px; border: 1px solid currentColor; background: transparent; color: inherit; border-radius: 8px; padding: 0 12px; font: inherit; font-weight: 600; cursor: pointer; }
+@media (max-width: 899px) { .pg-banner { padding: 10px var(--pg-gutter); } .pg-banner--limit button { min-height: 44px; } }

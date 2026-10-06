@@ -8,6 +8,8 @@ import { visitorTag } from "./hash.ts";
 import { recordIssued } from "./issued-codes.ts";
 import { maskAddress, recipientKey } from "./delivery.ts";
 import { stashToken } from "./gates.ts";
+import { documentKey, withApiBudget } from "./api-budget.ts";
+import { apiCacheOf, FINAL_TTL_MS } from "./api-cache.ts";
 
 export interface FactaParts {
   facta: FactaLike;
@@ -23,12 +25,14 @@ export type VisitorOf = (req: Request) => Promise<{ id: string } | null>;
 export { visitorTag };
 
 export function createFactaParts(env: PlaygroundEnv, visitorOf: VisitorOf, factaOverride?: FactaLike): FactaParts {
-  const facta: FactaLike = factaOverride ?? new Facta({
+  // Reads go through the API budget (api-budget.ts): the key's own rate limit is shared by all visitors.
+  const cache = apiCacheOf(env.QUOTA);
+  const facta: FactaLike = withApiBudget(factaOverride ?? new Facta({
     apiKey: env.FACTA_API_KEY!,
     signKey: env.FACTA_SIGN_KEY!,
     ...(env.FACTA_UNLOCK_KEY ? { unlockKey: env.FACTA_UNLOCK_KEY } : {}),
     baseUrl: env.FACTA_API_BASE_URL!,
-  });
+  }), { cache });
 
   const capabilities: FactaCapabilities = {
     documents: "read",
@@ -68,11 +72,32 @@ export function createFactaParts(env: PlaygroundEnv, visitorOf: VisitorOf, facta
           rcpt: await recipientKey(env.FACTA_SESSION_SECRET ?? "", address),
         }).catch(() => undefined);
       }
+      // The total is stored now, so no list ever has to ask the API for it. A contingency has no
+      // sealed totals yet: the figure the visitor reviewed is the one shown.
+      const sealedTotal = result.estado === "sellado" ? result.totales?.montoTotalOperacion : undefined;
+      const total = typeof sealedTotal === "number" ? sealedTotal : session.display?.total;
+      // A sealed document is already a complete answer to «what does the API say about it?»: keep it, so
+      // Registro and Inicio never spend an API request to read what was just issued.
+      if (result.estado === "sellado") {
+        await cache.put(documentKey(result.codigoGeneracion), {
+          estado: "sellado",
+          codigoGeneracion: result.codigoGeneracion.toUpperCase(),
+          numeroControl: result.numeroControl,
+          tipoDte: result.tipoDte,
+          ambiente: result.ambiente,
+          fecEmi: result.fecEmi,
+          horEmi: result.horEmi ?? null,
+          selloRecibido: result.selloRecibido,
+          observaciones: result.observaciones ?? [],
+          totales: result.totales,
+        }, FINAL_TTL_MS).catch(() => undefined);
+      }
       await recordIssued(env, owner, {
         codigoGeneracion: result.codigoGeneracion,
         tipoDte: result.tipoDte,
         numeroControl: result.numeroControl,
         estado: result.estado,
+        ...(typeof total === "number" && Number.isFinite(total) ? { total } : {}),
       });
     },
     authorize: async (req, ctx) => {

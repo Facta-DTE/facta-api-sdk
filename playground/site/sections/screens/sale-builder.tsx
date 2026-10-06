@@ -1,10 +1,12 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FactaProductPicker, type ProductOption } from "../../../../react.ts";
 import { ApiError, createSession, type CreatedSession, type IssuedDocument, type PlaygroundState, type SaleDescription, type SaleSource } from "../../api.ts";
 import { Segmented } from "../../components/ui.tsx";
 import { TurnstileBox } from "../../components/turnstile.tsx";
 import { EMPTY_EMAIL, EmailChoice, emailReady, type EmailChoiceValue } from "../../components/email-choice.tsx";
 import { useTurnstileReady } from "../../turnstile.ts";
+import { Busy } from "../../components/busy.tsx";
+import { CATALOG_SEARCH } from "../../catalog-search.ts";
 import { EMPTY_CHOICE, ReceptorSection, receptorForSale, type ReceptorChoice } from "./sale-receptor.tsx";
 
 export const TYPE_LABELS: Record<string, string> = {
@@ -42,15 +44,20 @@ const SOURCE_LABELS: [SaleSource, string][] = [["catalog", "Catálogo"], ["demo"
 export const TYPE_CHIPS: { value: string; name: string; needs: string }[] = [
   { value: "01", name: "Factura", needs: "Consumidor final: el receptor es opcional." },
   { value: "03", name: "Crédito fiscal", needs: "Necesita un receptor contribuyente: NIT o DUI y NRC." },
-  { value: "05", name: "Nota de crédito", needs: "Corrige un documento que usted emitió aquí." },
-  { value: "06", name: "Nota de débito", needs: "Corrige un documento que usted emitió aquí." },
+  { value: "05", name: "Nota de crédito", needs: "Corrige un Comprobante de crédito fiscal (03) que usted emitió aquí." },
+  { value: "06", name: "Nota de débito", needs: "Corrige un Comprobante de crédito fiscal (03) que usted emitió aquí." },
   { value: "11", name: "Exportación", needs: "Necesita un receptor extranjero con su país." },
   { value: "14", name: "Sujeto excluido", needs: "Necesita un receptor con documento y dirección." },
 ];
 
+/** The documents a note may correct: the visitor's own Créditos fiscales (03), nothing else. */
+export const correctableDocuments = (issued: IssuedDocument[]): IssuedDocument[] => issued.filter((d) => d.tipoDte === "03");
+
 /** What blocks a type right now, in words. `null` when nothing does. */
 export function typeBlocker(type: string, issued: IssuedDocument[]): string | null {
-  if ((type === "05" || type === "06") && issued.length === 0) return "Primero emita un documento aquí: las notas corrigen uno suyo.";
+  if ((type === "05" || type === "06") && correctableDocuments(issued).length === 0) {
+    return "Las notas solo corrigen un Comprobante de crédito fiscal (03). Primero emita uno aquí; una Factura no se corrige con una nota.";
+  }
   return null;
 }
 
@@ -60,10 +67,12 @@ export function typeBlocker(type: string, issued: IssuedDocument[]): string | nu
  * (`POST /api/session`). Receiver and lines each come from the key's catalog, the demo data
  * or what the visitor types.
  */
-export function SaleBuilder({ state, issued, onPrepared }: {
+export function SaleBuilder({ state, issued, onPrepared, onStale }: {
   state: PlaygroundState;
   issued: IssuedDocument[];
   onPrepared(prepared: CreatedSession & { tipoDte: string }): void;
+  /** Any change to the sale after it was prepared: the prepared session no longer matches what is on screen. */
+  onStale(): void;
 }) {
   const [tipoDte, setTipoDte] = useState("01");
   const [receptor, setReceptor] = useState<ReceptorChoice>(EMPTY_CHOICE);
@@ -77,6 +86,26 @@ export function SaleBuilder({ state, issued, onPrepared }: {
 
   const { demo } = state;
   const isNote = tipoDte === "05" || tipoDte === "06";
+  const correctable = correctableDocuments(issued);
+
+  // The prepared sale belongs to exactly what was on screen when it was prepared. Any later change (type,
+  // receiver, lines, related document, e-mail) invalidates it, so «Abrir…» can never open an old session.
+  const signature = JSON.stringify({ tipoDte, receptor, relatedCode, mail, lines: lines.map((l) => ({ ...l, key: 0 })) });
+  const preparedFor = useRef<string | null>(null);
+  const latest = useRef(signature);
+  latest.current = signature;
+  const stale = useRef(onStale);
+  stale.current = onStale;
+  useEffect(() => {
+    if (preparedFor.current !== null && preparedFor.current !== signature) {
+      preparedFor.current = null;
+      stale.current();
+    }
+  }, [signature]);
+  // A related document that stopped being a Crédito fiscal choice is cleared rather than kept invisible.
+  useEffect(() => {
+    if (relatedCode !== "" && !correctable.some((d) => d.codigoGeneracion === relatedCode)) setRelatedCode("");
+  }, [correctable, relatedCode]);
   const linePrice = (l: Line) => l.source === "custom" ? l.precioUni : l.source === "demo" ? demo.products.find((p) => p.id === l.productId)?.precioUni ?? 0 : l.picked?.price ?? 0;
   const total = lines.reduce((sum, l) => sum + l.cantidad * linePrice(l), 0);
   const unknownPrice = lines.some((l) => l.source === "catalog" && l.picked !== null && l.picked.price === null);
@@ -107,6 +136,7 @@ export function SaleBuilder({ state, issued, onPrepared }: {
     setBusy(true);
     setProblem(null);
     setField(undefined);
+    const askedFor = signature;
     const sale: SaleDescription = {
       tipoDte,
       lines: lines.map((l) => {
@@ -125,7 +155,14 @@ export function SaleBuilder({ state, issued, onPrepared }: {
       ...(isNote && relatedCode !== "" ? { relatedCode } : {}),
     };
     try {
-      onPrepared({ ...(await createSession(sale)), tipoDte });
+      const created = await createSession(sale);
+      if (latest.current !== askedFor) {
+        // The sale changed while the server was preparing it: that session is for something no longer on screen.
+        setProblem("La venta cambió mientras se preparaba. Vuelva a preparar la venta.");
+        return;
+      }
+      preparedFor.current = askedFor;
+      onPrepared({ ...created, tipoDte });
     } catch (error) {
       setProblem(error instanceof ApiError ? error.message : "No se pudo preparar la venta.");
       if (error instanceof ApiError) setField(error.field);
@@ -168,9 +205,10 @@ export function SaleBuilder({ state, issued, onPrepared }: {
           <label className="pg-field">
             <span>Documento que corrige</span>
             <select value={relatedCode} onChange={(event) => setRelatedCode(event.target.value)}>
-              <option value="">Elija un documento que usted emitió</option>
-              {issued.map((d) => <option key={d.codigoGeneracion} value={d.codigoGeneracion}>{d.numeroControl}</option>)}
+              <option value="">{correctable.length === 0 ? "Aún no tiene un Crédito fiscal (03)" : "Elija un Crédito fiscal (03) que usted emitió"}</option>
+              {correctable.map((d) => <option key={d.codigoGeneracion} value={d.codigoGeneracion}>{d.numeroControl}</option>)}
             </select>
+            {correctable.length === 0 && <small className="pg-hint">Una nota solo puede corregir un Comprobante de crédito fiscal (03). Emita uno primero con el tipo «Crédito fiscal».</small>}
           </label>
         </div>
       )}
@@ -224,7 +262,7 @@ export function SaleBuilder({ state, issued, onPrepared }: {
                 {line.source === "catalog" && (
                   <div className="pg-sale-line-extra">
                     {line.picked === null ? (
-                      <FactaProductPicker label={`Producto de la línea ${index + 1}`} onSelect={(product) => update(line.key, { picked: product, productId: product.id })} />
+                      <FactaProductPicker {...CATALOG_SEARCH} label={`Producto de la línea ${index + 1}`} onSelect={(product) => update(line.key, { picked: product, productId: product.id })} />
                     ) : (
                       <button type="button" className="pg-link-button" onClick={() => update(line.key, { picked: null, productId: "" })}>Cambiar producto</button>
                     )}
@@ -262,7 +300,7 @@ export function SaleBuilder({ state, issued, onPrepared }: {
         </p>
         <TurnstileBox />
         <button type="button" className="pg-primary" disabled={busy || !ready || !emailReady(mail) || (isNote && relatedCode === "") || missing.length > 0 || state.visitor === null || (state.quota !== null && !state.quota.allowed)} onClick={prepare}>
-          {busy ? "Preparando…" : "Preparar la venta"}
+          {busy ? <Busy>Preparando…</Busy> : "Preparar la venta"}
         </button>
       </div>
       {missing.length > 0 && <p className="pg-hint">Antes de preparar: {missing.join("; ")}.</p>}

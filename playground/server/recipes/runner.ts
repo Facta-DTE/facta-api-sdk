@@ -27,7 +27,7 @@ export interface FileOut {
 export interface ExecOutcome {
   result: unknown;
   /** Documents sealed (or in contingency) by this stage, to hand proofs for. */
-  issued?: Array<{ codigoGeneracion: string; tipoDte: string; numeroControl: string; estado: string }>;
+  issued?: Array<{ codigoGeneracion: string; tipoDte: string; numeroControl: string; estado: string; total?: number }>;
   invalidated?: string[];
   continuation?: string;
   /** Bulky members to keep in the redacted result (e.g. the canonical `documento`). */

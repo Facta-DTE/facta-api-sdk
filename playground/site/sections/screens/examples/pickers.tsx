@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { FactaCustomerPicker, FactaProductPicker, type CustomerOption, type ProductOption } from "../../../../../react.ts";
 import type { PlaygroundState } from "../../../api.ts";
+import { CATALOG_SEARCH } from "../../../catalog-search.ts";
 
 // Two comboboxes over the account's catalog. The browser only gets the catalog `id`;
 // your server builds the sale with `customerId` / `productId`. They need a key with a
@@ -21,8 +22,8 @@ export function PickersExample({ state }: { state: PlaygroundState }) {
   }
   return (
     <div style={{ display: "grid", gap: 14, width: "100%", maxWidth: 520 }}>
-      <FactaCustomerPicker value={customer} onChange={setCustomer} />
-      <FactaProductPicker onSelect={(product) => setProducts((list) => [...list, product])} />
+      <FactaCustomerPicker {...CATALOG_SEARCH} value={customer} onChange={setCustomer} />
+      <FactaProductPicker {...CATALOG_SEARCH} onSelect={(product) => setProducts((list) => [...list, product])} />
       <p className="pg-note">
         Id del cliente: <code>{customer?.id ?? "—"}</code> · ids de productos: <code>{products.map((p) => p.id).join(", ") || "—"}</code>
       </p>

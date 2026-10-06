@@ -2,6 +2,7 @@ import { useState } from "react";
 import { FactaWindowError, useFactaActions } from "../../../../../react.ts";
 import { requestInvalidation, type IssuedDocument } from "../../../api.ts";
 import { TurnstileBox } from "../../../components/turnstile.tsx";
+import { Busy } from "../../../components/busy.tsx";
 import { useTurnstileReady } from "../../../turnstile.ts";
 
 // Invalidation never starts in the browser: your server seals an invalidation session
@@ -47,7 +48,7 @@ export function InvalidateExample({ issued, canInvalidate, onInvalidated }: { is
       </label>
       <TurnstileBox />
       <button type="button" className="pg-primary" disabled={busy || !canInvalidate || !ready} onClick={invalidate}>
-        {busy ? "Preparando…" : "Anular documento"}
+        {busy ? <Busy>Anulando…</Busy> : "Anular documento"}
       </button>
       {!canInvalidate && <p className="pg-note">Este playground no tiene responsables de demostración configurados, así que no puede anular.</p>}
       {message !== null && <p role="status" className={message.tone === "bad" ? "pg-error" : "pg-note"}>{message.text}</p>}

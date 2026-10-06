@@ -64,10 +64,16 @@ export interface CatalogLookup {
 export const EMPTY_CATALOG: CatalogLookup = { customers: new Map(), products: new Map() };
 
 /** What a builder may read besides the description. */
+/** A document the visitor issued in the playground, as the ledger records it. */
+export interface OwnedDocument {
+  codigoGeneracion: string;
+  tipoDte: string;
+}
+
 export interface SaleContext {
   fixtures: PlaygroundFixtures;
-  /** Generation codes the visitor issued in the playground (upper-case). */
-  ownedCodes: string[];
+  /** Documents the visitor issued in the playground (code and type, from the ledger). */
+  owned: OwnedDocument[];
   catalog: CatalogLookup;
 }
 
@@ -75,6 +81,11 @@ export interface BuiltSale {
   request: DteRequest;
   total: number;
   title: string;
+  /**
+   * Who the document is for, for the review window, when the request names a catalog customer by id only
+   * (the window cannot read the catalog). Name plus a masked document; never the whole number.
+   */
+  recipientLabel?: string;
 }
 
 export class SaleError extends Error {
@@ -125,6 +136,18 @@ function catalogProduct(product: CatalogProduct, type: string): { price: number 
     );
   }
   return { price };
+}
+
+const DOC_NAMES: Record<string, string> = { "13": "DUI", "36": "NIT" };
+
+/** «Ferretería Díaz · NIT ••••123»: the name the picker already showed, and the document masked to its last three characters. */
+export function recipientLabelOf(customer: CatalogCustomer): string | null {
+  const name = typeof customer.name === "string" ? customer.name.trim() : "";
+  const doc = typeof customer.doc_number === "string" ? customer.doc_number.replace(/[^A-Za-z0-9]/g, "") : "";
+  const kind = DOC_NAMES[String(customer.doc_type ?? "")] ?? "Doc.";
+  const masked = doc.length >= 4 ? `${kind} ••••${doc.slice(-3)}` : "";
+  const label = [name, masked].filter((part) => part !== "").join(" · ");
+  return label === "" ? null : label.slice(0, 120);
 }
 
 export function buildLines(input: unknown[], context: Pick<SaleContext, "fixtures"> & Partial<Pick<SaleContext, "catalog">>, type = "01"): { items: LineItem[]; total: number } {
@@ -269,10 +292,15 @@ function resolveReceptor(type: string, input: SaleInput, { fixtures, catalog }: 
   }
 }
 
-function relatedDocument(input: SaleInput, ownedCodes: string[]) {
+/** Notes (05/06) correct a Comprobante de crédito fiscal (03) and nothing else: the Ministry's rule, enforced here. */
+function relatedDocument(input: SaleInput, owned: OwnedDocument[]) {
   const code = typeof input.relatedCode === "string" ? input.relatedCode.toUpperCase() : "";
   if (code === "") throw new SaleError("related_required", "Elija un documento emitido aquí para relacionar la nota.");
-  if (!ownedCodes.includes(code)) throw new SaleError("related_not_owned", "Solo puede relacionar documentos que usted emitió en este playground.");
+  const found = owned.find((d) => d.codigoGeneracion.toUpperCase() === code);
+  if (found === undefined) throw new SaleError("related_not_owned", "Solo puede relacionar documentos que usted emitió en este playground.");
+  if (found.tipoDte !== "03") {
+    throw new SaleError("related_not_ccf", "Las notas de crédito y de débito solo pueden relacionar un Comprobante de crédito fiscal (03). Emita uno primero y úselo aquí.", "relatedCode");
+  }
   return [{ codigoGeneracion: code }];
 }
 
@@ -300,22 +328,24 @@ const BUILDERS: Record<string, Builder> = {
   // Nota de crédito (05) and nota de débito (06) relate to a document the visitor issued here.
   "05": (input, context) => {
     const { items, total } = buildLines(input.lines, context, "05");
-    const documentosRelacionados = relatedDocument(input, context.ownedCodes);
+    const documentosRelacionados = relatedDocument(input, context.owned);
     const receptor = resolveReceptor("05", input, context);
     return { request: { tipoDte: "05", documentosRelacionados, receptor: receptor as Recipient, items }, total, title: "Nota de crédito de prueba" };
   },
   "06": (input, context) => {
     const { items, total } = buildLines(input.lines, context, "06");
-    const documentosRelacionados = relatedDocument(input, context.ownedCodes);
+    const documentosRelacionados = relatedDocument(input, context.owned);
     const receptor = resolveReceptor("06", input, context);
     return { request: { tipoDte: "06", documentosRelacionados, receptor: receptor as Recipient, items }, total, title: "Nota de débito de prueba" };
   },
-  // Factura de exportación (11): foreign receiver; goods, FOB (the SDK's own example).
+  // Factura de exportación (11): foreign receiver; goods, no Incoterm (it is optional).
   "11": (input, context) => {
     const { items, total } = buildLines(input.lines, context, "11");
     const receptor = resolveReceptor("11", input, context);
     return {
-      request: { tipoDte: "11", receptor: receptor as ExportRecipient, exportacion: { tipoItemExpor: 1, incoterms: "FOB" }, items },
+      // `incoterms` is optional in the SDK types and, when sent, must be a CAT-031 code; the SDK ships no
+      // catalogue and a made-up code is rejected, so the block carries only the item type.
+      request: { tipoDte: "11", receptor: receptor as ExportRecipient, exportacion: { tipoItemExpor: 1 }, items },
       total,
       title: "Factura de exportación de prueba",
     };
@@ -364,7 +394,7 @@ function readReceptor(raw: Record<string, unknown>): SaleReceptorInput | undefin
 export function buildSale(
   raw: unknown,
   fixtures: PlaygroundFixtures,
-  options: { ownedCodes?: string[]; catalog?: CatalogLookup } = {},
+  options: { owned?: OwnedDocument[]; catalog?: CatalogLookup } = {},
 ): { sale: BuiltSale; sendEmail: boolean } {
   if (!isRecord(raw)) throw new SaleError("sale_invalid", "La venta no es válida.");
   const type = raw.tipoDte;
@@ -379,6 +409,10 @@ export function buildSale(
     lines: raw.lines as SaleLineInput[],
     ...(raw.relatedCode === undefined ? {} : { relatedCode: raw.relatedCode as string }),
   };
-  const context: SaleContext = { fixtures, ownedCodes: options.ownedCodes ?? [], catalog: options.catalog ?? EMPTY_CATALOG };
-  return { sale: builder(input, context), sendEmail: raw.sendEmail === true };
+  const context: SaleContext = { fixtures, owned: options.owned ?? [], catalog: options.catalog ?? EMPTY_CATALOG };
+  const sale = builder(input, context);
+  // A catalog receiver travels as an id the window cannot resolve: hand it the label the server just confirmed.
+  const customer = input.receptor?.source === "catalog" && input.receptor.customerId !== undefined ? context.catalog.customers.get(input.receptor.customerId) : undefined;
+  const recipientLabel = customer === undefined ? null : recipientLabelOf(customer);
+  return { sale: recipientLabel === null ? sale : { ...sale, recipientLabel }, sendEmail: raw.sendEmail === true };
 }

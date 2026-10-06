@@ -32,7 +32,7 @@ const catalog: CatalogLookup = {
   ]),
 };
 
-const run = (sale: Record<string, unknown>, owned: string[] = [CODE]) => buildSale({ lines: [customLine], ...sale }, fixtures, { ownedCodes: owned, catalog });
+const run = (sale: Record<string, unknown>, owned: string[] = [CODE]) => buildSale({ lines: [customLine], ...sale }, fixtures, { owned: owned.map((codigoGeneracion) => ({ codigoGeneracion, tipoDte: "03" })), catalog });
 const code = (sale: Record<string, unknown>, owned?: string[]) => {
   try {
     run(sale, owned);
@@ -143,7 +143,9 @@ describe("custom receiver, per type", () => {
 
   it("11: the foreign receiver's fields, with tipoPersona chosen", () => {
     const { sale } = run({ tipoDte: "11", ...custom({ ...foreign, codPais: "us" }) });
-    expect(sale.request).toMatchObject({ tipoDte: "11", receptor: { codPais: "US", tipoPersona: 2, nombrePais: "United States" }, exportacion: { tipoItemExpor: 1, incoterms: "FOB" } });
+    expect(sale.request).toMatchObject({ tipoDte: "11", receptor: { codPais: "US", tipoPersona: 2, nombrePais: "United States" }, exportacion: { tipoItemExpor: 1 } });
+    // `incoterms` must be a CAT-031 code and the SDK ships no catalogue: it is left out, never invented.
+    expect(sale.request).not.toHaveProperty("exportacion.incoterms");
     for (const field of ["nombre", "numDocumento", "codPais", "nombrePais", "complemento", "tipoPersona", "descActividad", "correo"]) {
       const { [field]: _removed, ...rest } = foreign as Record<string, unknown>;
       expect(code({ tipoDte: "11", ...custom(rest) }), field).toBe("receptor_field_required");
@@ -228,7 +230,10 @@ describe("POST /api/session: the catalog is confirmed on the Worker", () => {
     expect(lookups).toEqual(["customer:cat-biz", "product:cat-net"]);
     const session = await verifyFactaSession(body.session, env.FACTA_SESSION_SECRET!, NOW);
     expect(session.request).toEqual({ tipoDte: "03", receptor: { customerId: "cat-biz" }, items: [{ productId: "cat-net", cantidad: 1 }] });
-    expect(JSON.stringify(session)).not.toContain("Catálogo SA");
+    // The request carries the id; only the review label (name + masked document) names the customer.
+    expect(JSON.stringify(session.request)).not.toContain("Catálogo SA");
+    expect(session.display?.recipient).toBe("Catálogo SA · Doc. ••••999");
+    expect(JSON.stringify(session)).not.toContain("06149999999999");
     expect(body.total).toBe(20);
   });
 

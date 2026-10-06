@@ -1,4 +1,5 @@
 import { handleIssuedRequest } from "./issued-codes.ts";
+import { handleCacheRequest } from "./api-cache.ts";
 import { consumeMail, emptyMail, peekMail, type MailRequest, type MailState, type StashedToken } from "./mail-quota.ts";
 
 // Per-visitor issue quota (D-5): 20 per hour and 100 per day, sliding windows.
@@ -40,6 +41,8 @@ export function consumeQuota(
   key: string,
   now: number,
   limits: QuotaLimits = { hour: HOUR_LIMIT, day: DAY_LIMIT },
+  /** False: answer what a count WOULD do and change nothing (the check before the call). */
+  commit = true,
 ): { state: QuotaState; decision: QuotaDecision } {
   const stamps = state.stamps.filter((t) => now - t < DAY_MS);
   const keys: Record<string, number> = {};
@@ -67,6 +70,7 @@ export function consumeQuota(
       decision: { allowed: false, window: "day", ...view(), retryAfterSeconds: Math.ceil((oldest + DAY_MS - now) / 1000) },
     };
   }
+  if (!commit) return { state: { stamps, keys }, decision: { allowed: true, ...view() } };
   stamps.push(now);
   keys[key] = now;
   return { state: { stamps, keys }, decision: { allowed: true, ...view(1) } };
@@ -117,17 +121,20 @@ export class QuotaCounter {
     // The visitor's issued-document record lives in this same object (issued-codes.ts).
     if (url.pathname.startsWith("/issued/")) return handleIssuedRequest(this.#storage, request, this.#now());
     if (url.pathname.startsWith("/mail/")) return this.#mail(request, url);
+    // Shared API-answer cache (api-cache.ts), held by the same Durable Object class.
+    if (url.pathname.startsWith("/cache/")) return handleCacheRequest(this.#storage, request, this.#now());
     const stored = (await this.#storage.get<QuotaState>("quota")) ?? emptyQuota();
     if (request.method === "GET" && url.pathname === "/peek") {
       return Response.json(peekQuota(stored, this.#now()));
     }
     if (request.method === "POST" && url.pathname === "/consume") {
-      const body = (await request.json().catch(() => null)) as { key?: unknown } | null;
+      const body = (await request.json().catch(() => null)) as { key?: unknown; commit?: unknown } | null;
       if (!body || typeof body.key !== "string" || body.key === "" || body.key.length > 200) {
         return Response.json({ error: "bad_key" }, { status: 400 });
       }
-      const { state, decision } = consumeQuota(stored, body.key, this.#now());
-      await this.#storage.put("quota", state);
+      const commit = body.commit !== false;
+      const { state, decision } = consumeQuota(stored, body.key, this.#now(), undefined, commit);
+      if (commit) await this.#storage.put("quota", state);
       return Response.json(decision);
     }
     return new Response("Not found", { status: 404 });

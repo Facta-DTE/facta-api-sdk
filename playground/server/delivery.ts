@@ -70,7 +70,7 @@ export function deliveryFor(address: string): { email: string } {
  * token: the browser can neither add nor change them. Only e-mail, only to the address the visitor typed.
  */
 export async function createDeliverySession(
-  input: { request: DteRequest; idempotencyKey: string; display: { total: number; title: string; reference: string }; address: string | null },
+  input: { request: DteRequest; idempotencyKey: string; display: { total: number; title: string; reference: string; recipient?: string }; address: string | null },
   sessionSecret: string,
   now?: number,
 ): Promise<string> {

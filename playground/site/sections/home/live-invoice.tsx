@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { FactaInvoiceDialog } from "../../../../react.ts";
 import { ApiError, createSession } from "../../api.ts";
 import { TurnstileBox } from "../../components/turnstile.tsx";
 import { EMPTY_EMAIL, EmailChoice, emailReady, type EmailChoiceValue } from "../../components/email-choice.tsx";
 import { useTurnstileReady } from "../../turnstile.ts";
+import { Busy } from "../../components/busy.tsx";
 
 // Real component of the playground, shown on the page as-is.
 //
@@ -11,7 +12,7 @@ import { useTurnstileReady } from "../../turnstile.ts";
 // 2. The server builds the fiscal request and answers a session token.
 // 3. FactaInvoiceDialog gets the token and talks to /api/facta; the browser
 //    never holds a credential and never authors the document.
-export function LiveInvoice({ defaultAddress, signedIn, disabled, onIssued }: { defaultAddress: string; signedIn: boolean; disabled: boolean; onIssued: () => void }) {
+export function LiveInvoice({ defaultAddress, signedIn, disabled, onIssued, secondary }: { defaultAddress: string; signedIn: boolean; disabled: boolean; onIssued: () => void; /** The second call to action, kept on the same row as the primary one. */ secondary?: ReactNode }) {
   const [session, setSession] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [mail, setMail] = useState<EmailChoiceValue>({ ...EMPTY_EMAIL, address: defaultAddress });
@@ -39,11 +40,15 @@ export function LiveInvoice({ defaultAddress, signedIn, disabled, onIssued }: { 
 
   return (
     <div className="home-live">
-      <button type="button" className="pg-primary home-live-cta" disabled={disabled || busy || !ready || !emailReady(mail)} onClick={start}>
-        {busy ? "Preparando…" : "Emitir una factura ahora"}
-      </button>
+      {/* Row 1: both calls to action. Row 2: the optional e-mail, right under its checkbox. Row 3: the verification. */}
+      <div className="home-live-actions">
+        <button type="button" className="pg-primary home-live-cta" disabled={disabled || busy || !ready || !emailReady(mail)} onClick={start}>
+          {busy ? <Busy>Preparando…</Busy> : "Emitir una factura ahora"}
+        </button>
+        {secondary}
+      </div>
       {signedIn && <EmailChoice value={mail} onChange={setMail} />}
-      <TurnstileBox />
+      <TurnstileBox className="home-live-turnstile" />
       {problem !== null && <p role="alert" className="pg-error">{problem}</p>}
       {session !== null && (
         <FactaInvoiceDialog

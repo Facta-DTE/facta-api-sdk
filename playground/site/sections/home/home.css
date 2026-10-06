@@ -5,7 +5,7 @@
 .home h1 { font-size: 52px; line-height: 1.05; letter-spacing: -0.025em; margin: 14px 0 18px; font-weight: 700; }
 .home-lead { font-size: 18px; color: var(--pg-text-2); margin: 0 0 28px; max-width: 560px; }
 .home-lead-short { display: none; }
-.home-cta { display: flex; gap: 12px; flex-wrap: wrap; }
+.home-cta { display: block; }
 .home-cta .pg-primary, .home-cta .pg-secondary { padding: 0 22px; min-height: 48px; }
 .home-fine { font-size: 13px; color: var(--pg-muted); margin: 20px 0 0; }
 
@@ -24,10 +24,15 @@
 .home-snippet code { font: inherit; }
 
 .home-quick { margin-top: 28px; }
-.home-live { display: contents; }
-.home-live .pg-check { flex-basis: 100%; order: 3; min-height: 36px; font-size: 14px; color: var(--pg-text-2); }
+/* The hero actions (board Main.dc.html): both buttons on one row, the optional e-mail directly under its
+   checkbox, the verification widget below. Nothing here lets one block push another out of line. */
+.home-live { display: grid; gap: 14px; justify-items: start; min-width: 0; max-width: 560px; }
+.home-live-actions { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+.home-live .pg-check { min-height: 36px; font-size: 14px; color: var(--pg-text-2); }
+.home-live .pg-email-choice { width: 100%; }
+.home-live .pg-field { max-width: 420px; }
+.home-live-turnstile { min-width: 0; max-width: 100%; }
 .home-live-cta { padding: 0 22px; min-height: 48px; }
-.home-live .pg-error { flex-basis: 100%; }
 
 .home-integrations { margin-top: 56px; }
 .home-integrations h2, .home-code h2 { font-size: 30px; margin: 0 0 8px; letter-spacing: -0.02em; }
@@ -82,6 +87,9 @@
   .home-lead-long, .home-hero-visual, .home-cta-2, .home-integrations .home-sub, .home-int-grid, .home-integrations h2, .home-recent, .home-code { display: none; }
   .home-lead-short { display: inline; }
   .home-cta .pg-primary, .home-live-cta { display: flex; width: 100%; border-radius: 12px; padding: 14px; }
+  .home-live { max-width: none; justify-items: stretch; }
+  .home-live-actions { display: block; }
+  .home-live .pg-field { max-width: none; }
   .home-fine { display: none; }
   .home-quick { margin-top: 20px; }
   .home-integrations { margin-top: 22px; }

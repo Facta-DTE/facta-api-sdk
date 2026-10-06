@@ -6,7 +6,6 @@ import { createSession } from "../../api.ts";
 import { usePlayground } from "../../state.tsx";
 import { GROUPS, ITEMS, itemOf, type WorkbenchItem } from "./catalog.ts";
 import { shortName } from "../../shown-files.ts";
-import { TurnstileBox } from "../../components/turnstile.tsx";
 import { DeliveryExample } from "./examples/delivery.tsx";
 import "./screens.css";
 import { AppearanceStudio } from "./examples/appearance-studio.tsx";
@@ -204,7 +203,7 @@ function Workbench() {
 
         <div className="wb-sale" hidden={!showSale} data-pane-show="venta">
           {state !== null ? (
-            <SaleBuilder state={state} issued={s.issued} onPrepared={s.setPrepared} />
+            <SaleBuilder state={state} issued={s.issued} onPrepared={s.setPrepared} onStale={() => s.setPrepared(null)} />
           ) : <p className="pg-note">Esperando al servidor…</p>}
           {s.prepared !== null && (
             <p className="pg-note wb-ready" role="status">
@@ -219,8 +218,8 @@ function Workbench() {
           <div className={`wb-stage${item.window ? " wb-stage--center" : ""}`} data-pane-show="vista">
             <span className="wb-stage-label">Vista en vivo · staging</span>
             <div className="wb-stage-body">
-              {/* Components that issue nothing themselves but call the server (lists, invalidation) need a token too. */}
-              {!item.needsSale && !item.window && <TurnstileBox />}
+              {/* Read-only components (status, pickers, lists, receipt) need no verification; the ones that cost
+                  something render their own widget next to their button. */}
               <Stage item={item} />
             </div>
           </div>

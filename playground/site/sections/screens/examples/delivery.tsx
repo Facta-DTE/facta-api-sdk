@@ -3,6 +3,7 @@ import { FactaInvoiceDialog, FactaReceipt, type DeliveryView, type IssueResult }
 import { ApiError, createSession, resendEmail, type PlaygroundState, type ResendOutcome } from "../../../api.ts";
 import { EMPTY_EMAIL, EmailChoice, emailReady, type EmailChoiceValue } from "../../../components/email-choice.tsx";
 import { TurnstileBox } from "../../../components/turnstile.tsx";
+import { Busy } from "../../../components/busy.tsx";
 import { useTurnstileReady } from "../../../turnstile.ts";
 
 // Delivery by e-mail and WhatsApp. Your server marks the channels when it creates the session
@@ -111,7 +112,7 @@ export function DeliveryExample({ state, onIssued }: { state: PlaygroundState; o
         <div className="dl-actions">
           <TurnstileBox />
           <button type="button" className="pg-primary" disabled={busy || !signedIn || !ready || !mail.send || !emailReady(mail) || mail.address.trim() === "" || (state.quota !== null && !state.quota.allowed)} onClick={() => void start()}>
-            {busy ? "Preparando…" : "Emitir y enviar por correo"}
+            {busy ? <Busy>Preparando…</Busy> : "Emitir y enviar por correo"}
           </button>
           {mailLeft !== null && <span className="pg-hint" data-testid="mail-quota">Correos: {mailLeft.remainingHour} de 5 esta hora · {mailLeft.remainingDay} de 20 hoy</span>}
         </div>
@@ -134,7 +135,7 @@ export function DeliveryExample({ state, onIssued }: { state: PlaygroundState; o
         {last !== null && (
           <div className="dl-resend">
             <TurnstileBox />
-            <button type="button" className="pg-secondary" disabled={busy || !ready} onClick={() => void resend()}>Reenviar por correo</button>
+            <button type="button" className="pg-secondary" disabled={busy || !ready} onClick={() => void resend()}>{busy ? <Busy>Reenviando…</Busy> : "Reenviar por correo"}</button>
             <p className="pg-hint">Va a la dirección marcada al emitir. El API envía una vez por canal y el permiso dura cinco minutos desde la emisión.</p>
             {resent !== null && <p role="status" className={resent.tone === "bad" ? "pg-error" : "pg-note"}>{resent.text}</p>}
           </div>

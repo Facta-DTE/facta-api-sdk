@@ -1,27 +1,30 @@
 import { useMemo, useState } from "react";
 import type { RegistryDocument } from "../../api.ts";
 import { StatusChip } from "../../components/ui.tsx";
+import { Busy, Skeleton } from "../../components/busy.tsx";
 import { Link } from "../../router.tsx";
 import { usePlayground } from "../../state.tsx";
 import { useDownload } from "./downloads.ts";
 import { InvalidateDialog } from "./invalidate-dialog.tsx";
-import { money, observationsOf, TYPE_NAMES, tail, totalOf, useRegistry, whenOf } from "./registry-data.ts";
+import { money, needsEnrich, observationsOf, TYPE_NAMES, tail, totalOf, useRegistry, useVisibleRows, whenOf } from "./registry-data.ts";
 import "./registro.css";
 
 // Section «Registro» (docs/playground.md §5.5). The list is the visitor's own record
-// (server/issued-codes.ts); the server adds each document's current state, total and
-// Hacienda's observations (the newest 25). Files go through the SDK handler, which only
-// serves codes this visitor issued.
+// (server/issued-codes.ts), which already holds each document's total. The API is asked only about
+// the rows on screen that need it (a pending state, a missing total), a few at a time, and the server
+// answers from its cache whenever it can. Files go through the SDK handler, which only serves codes
+// this visitor issued.
 const STATES: [string, string][] = [["sellado", "Sellada"], ["rechazado", "Rechazada"], ["invalidado", "Anulada"], ["contingencia", "Contingencia"]];
 
 export function Registro() {
   const { view } = usePlayground();
-  const { registry, reload, signedIn } = useRegistry();
+  const { registry, reload, enrich, signedIn } = useRegistry();
   const { busy, problem, download } = useDownload();
   const [type, setType] = useState("");
   const [estado, setEstado] = useState("");
   const [reason, setReason] = useState<string | null>(null);
   const [checking, setChecking] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [voiding, setVoiding] = useState<RegistryDocument | null>(null);
   const canInvalidate = view.status === "ready" && view.state.demo.canInvalidate;
 
@@ -31,10 +34,28 @@ export function Registro() {
   // The first rejected document explains itself without a click, as in the board.
   const open = reason ?? documents.find((d) => d.estado === "rechazado")?.codigoGeneracion ?? null;
 
+  // Only the rows that scroll into view and still need the API are asked about.
+  const observe = useVisibleRows((codes) => {
+    const wanted = codes.filter((code) => {
+      const row = documents.find((d) => d.codigoGeneracion === code);
+      return row !== undefined && needsEnrich(row);
+    });
+    if (wanted.length > 0) void enrich(wanted);
+  });
+
   async function check(code: string) {
     setChecking(code);
-    await reload();
+    await enrich([code], { force: true });
     setChecking(null);
+  }
+
+  async function refresh() {
+    setRefreshing(true);
+    await reload();
+    // Pending documents (contingencia) are the ones whose state can have changed.
+    const pending = documents.filter((d) => d.estado === "contingencia").slice(0, 10).map((d) => d.codigoGeneracion);
+    await enrich(pending, { force: true });
+    setRefreshing(false);
   }
 
   return (
@@ -42,7 +63,7 @@ export function Registro() {
       <header className="reg-head">
         <div>
           <h1>Sus documentos de prueba</h1>
-          <p className="reg-lead">Solo los que usted emitió en el playground. El estado se lee del API cada vez que abre esta página.</p>
+          <p className="reg-lead">Solo los que usted emitió en el playground. Cada documento guarda su total al emitirse; el estado solo se consulta al API cuando puede haber cambiado.</p>
         </div>
         {documents.length > 0 && (
           <div className="reg-filters">
@@ -58,13 +79,13 @@ export function Registro() {
                 {STATES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
             </label>
-            <button type="button" className="pg-secondary reg-refresh" onClick={() => void reload()}>Actualizar</button>
+            <button type="button" className="pg-secondary reg-refresh" disabled={refreshing} onClick={() => void refresh()}>{refreshing ? <Busy>Actualizando…</Busy> : "Actualizar"}</button>
           </div>
         )}
       </header>
 
       {view.status === "ready" && !signedIn && <p className="pg-note">Inicie sesión para ver su registro.</p>}
-      {signedIn && registry.status === "loading" && <p className="pg-note" aria-busy="true">Leyendo su registro…</p>}
+      {signedIn && registry.status === "loading" && <div aria-busy="true"><Skeleton lines={4} label="Leyendo su registro" /></div>}
       {signedIn && registry.status === "error" && <p role="alert" className="pg-error">{registry.message}</p>}
       {problem !== null && <p role="alert" className="pg-error">{problem}</p>}
 
@@ -92,7 +113,7 @@ export function Registro() {
                     const label = `${TYPE_NAMES[d.tipoDte] ?? d.tipoDte} ${tail(d.numeroControl, 4)}`;
                     const observations = observationsOf(d);
                     return [
-                      <tr key={d.codigoGeneracion} className={`reg-row reg-row--${d.estado}`}>
+                      <tr key={d.codigoGeneracion} ref={observe(d.codigoGeneracion)} className={`reg-row reg-row--${d.estado}`}>
                         <td className="when">{whenOf(d)}</td>
                         <td className="type">{TYPE_NAMES[d.tipoDte] ?? `Tipo ${d.tipoDte}`}</td>
                         <td className="ctl mono" title={d.numeroControl}><span className="reg-ctl-full">{d.numeroControl}</span><span className="reg-ctl-short">{tail(d.numeroControl, 4)}</span></td>
@@ -112,7 +133,7 @@ export function Registro() {
                           )}
                           {d.estado === "contingencia" && (
                             <button type="button" className="pg-btn pg-btn--sm" aria-label={`Consultar estado de ${label}`} disabled={checking !== null} onClick={() => void check(d.codigoGeneracion)}>
-                              {checking === d.codigoGeneracion ? "Consultando…" : "Consultar estado"}
+                              {checking === d.codigoGeneracion ? <Busy>Consultando…</Busy> : "Consultar estado"}
                             </button>
                           )}
                         </td>

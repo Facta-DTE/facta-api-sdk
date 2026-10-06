@@ -73,7 +73,24 @@ updateIssuedState(env, email, code, estado): Promise<void>
 `documents.download`, `documents.copies` and `documents.retryStorage` (403 `document_not_yours`);
 `documents.list` and `documents.holding` are not filtered by the handler, so screens that show them list
 other visitors' codes (but cannot open them): use `GET /api/registro` for «my documents».
-`GET /api/registro` returns the visitor's entries with the API's current state (the 25 newest are read).
+`GET /api/registro` returns the visitor's entries (including the **total stored at issue time**) plus whatever the shared cache already knows; it
+**never calls the API**. `GET /api/registro/enrich?codes=A,B` (at most ten, only the visitor's own) asks about the rows on screen that still need it, answered
+from the cache when possible; the ledger is updated with the state and, for older rows, the missing total. A successful `invalidate` through the
+handler marks the ledger `invalidado` and evicts the cached state.
+
+## API budget (`server/api-cache.ts`, `server/api-budget.ts`)
+
+The playground key has the API's own rate limit (60 requests/hour and 300/day for every call except `/v1/status`), shared by all visitors, and reads
+count. Everything the handler reads therefore goes through `withApiBudget`:
+
+| Read | Rule |
+| --- | --- |
+| `documents.get` | cached in a Durable Object; a final state (sellado, invalidado, rechazado) never expires (7 days), a pending one is read at most once per 60 s; a sealed issue pre-fills it |
+| catalog search and lookups | cached per query for 5 minutes (the pickers also wait 350 ms and need 2 characters) |
+| `service.status` | answered from `/v1/status` alone, once per 60 s for every visitor (no per-poll diagnosis, no contingency probe) |
+| rate limited | on `rate_limited` the Worker stops reading for a minute, and the page shows «El playground alcanzó el límite de pruebas por hora; intente en unos minutos.» |
+
+Reads need no Turnstile; only issuing, sending/resending, invalidating and costly recipe runs do.
 
 ## Run locally
 
@@ -143,7 +160,9 @@ Bindings: `ASSETS` (the built site) and `QUOTA` (Durable Object `QuotaCounter`, 
   each issue **session** (`POST /api/session`), each e-mail send or **resend** (`POST /api/delivery/resend`), each recipe run that
   issues, invalidates or sends, and each **invalidation**. The page renders the managed widget (Spanish) beside the button.
   The CSP allows `https://challenges.cloudflare.com` for scripts and frames and nothing else external.
-* **Issue quota: 20/hour and 100/day per visitor cookie and the same per IP** (`cf-connecting-ip`, hashed), counted at `issue`.
+* **Issue quota: 20/hour and 100/day per visitor cookie and the same per IP** (`cf-connecting-ip`, hashed). The gate is checked before the
+  call (nothing counted) and the count happens **once, after a sealed or contingency result**: a rejection, an API `429` or any failure costs
+  the visitor nothing, and a replay of the same session (same idempotency key) is free. Recipes follow the same rule; `prepare-sign` counts at `sign`.
 * **E-mail** goes to any valid address the visitor types (syntax, ≤ 254 characters, no spaces, commas or CR/LF), always the
   standard Facta DTE delivery of a test document with no visitor text. Limits (server-side, 429 with `Retry-After`, «Se alcanzó el
   límite de envíos»): **5/hour and 20/day per visitor cookie and per IP**, **2/day per recipient across all visitors** (the address is
@@ -178,8 +197,9 @@ repository, `playground/`, the npm package and the docs (license: MIT). Until th
 ## Screens section (`site/sections/screens/`)
 
 * `sale-builder.tsx` describes a sale (type, demo customer or a typed name for a Factura, lines, e-mail); the server
-  builds the request. API v1 types: 01, 03, 05, 06, 11, 14. Notes (05/06) can only relate documents the visitor
-  issued here. Receivers always come from `FACTA_DTE_FIXTURES_JSON` (`customers`, or the `"03"`/`"05"`/… request's own
+  builds the request. API v1 types: 01, 03, 05, 06, 11, 14. Notes (05/06) can only relate a Crédito fiscal (03) the visitor
+  issued here (`related_not_ccf` otherwise). The Exportación carries no `incoterms` (it is optional and must be a CAT-031 code the SDK does not ship).
+  A catalog receiver travels as an id; the session's `display.recipient` carries its name and masked document for the review window. Receivers always come from `FACTA_DTE_FIXTURES_JSON` (`customers`, or the `"03"`/`"05"`/… request's own
   `receptor`); the API request has no discount field, so there are no discounts.
 * `examples/*.tsx` are the executed examples; each is shown beside its demo through `?raw`.
 * Invalidation: `POST /api/invalidation` seals a session only after `ownsDocument`; the responsible people come from

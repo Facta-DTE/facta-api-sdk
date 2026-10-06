@@ -1,19 +1,37 @@
+import { useEffect } from "react";
 import { FactaDownloadButton, FactaReceipt, FactaStatusBadge, type IssueResult } from "../../../../../react.ts";
+import { Skeleton } from "../../../components/busy.tsx";
+import { lacksCurrent, resultFromRegistry, useRegistry } from "../../registro/registry-data.ts";
 
 // After issuing: the compact receipt (it renders a result you already hold, with no
 // network call), the status badge, and download buttons that ask the server for PDF,
 // JSON or the 80 mm ticket. The «Entrega» row appears when the sale asked for e-mail.
+//
+// Before this page has issued anything, the visitor's newest document from an earlier visit stands in
+// (the server's record of what they issued), so the components are never shown empty to someone who
+// already has documents.
 export function ReceiptExample({ result }: { result: IssueResult | null }) {
-  if (result === null) {
+  const { registry, enrich } = useRegistry();
+  const latest = registry.status === "ready" ? registry.documents[0] : undefined;
+  const needsSeal = result === null && latest !== undefined && lacksCurrent(latest);
+  const latestCode = latest?.codigoGeneracion;
+  useEffect(() => {
+    if (needsSeal && latestCode !== undefined) void enrich([latestCode]);
+  }, [needsSeal, latestCode, enrich]);
+
+  const shown = result ?? (latest === undefined ? null : resultFromRegistry(latest));
+  if (shown === null) {
+    if (registry.status === "loading") return <Skeleton lines={4} label="Buscando su último documento" />;
     return <p className="pg-note">Emita una factura desde «Emitir» (prepare la venta y úsela en cualquier ventana) y aparecerá aquí.</p>;
   }
   return (
     <div style={{ display: "grid", gap: 16, width: "100%", maxWidth: 520 }}>
-      <FactaReceipt result={result} environment="00" reference="Playground" />
+      {result === null && <p className="pg-hint">Su último documento emitido en el playground. Al emitir uno nuevo, aparece aquí.</p>}
+      <FactaReceipt result={shown} environment="00" reference="Playground" />
       <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-        <FactaStatusBadge estado={result.estado} />
-        <FactaDownloadButton codigoGeneracion={result.codigoGeneracion} kinds={["pdf", "json", "ticket"]} />
-        <FactaDownloadButton codigoGeneracion={result.codigoGeneracion} variant="outline" size="sm" kinds={["json"]} />
+        <FactaStatusBadge estado={shown.estado} />
+        <FactaDownloadButton codigoGeneracion={shown.codigoGeneracion} kinds={["pdf", "json", "ticket"]} />
+        <FactaDownloadButton codigoGeneracion={shown.codigoGeneracion} variant="outline" size="sm" kinds={["json"]} />
       </div>
     </div>
   );

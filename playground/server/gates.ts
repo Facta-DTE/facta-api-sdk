@@ -30,12 +30,16 @@ async function ipName(env: PlaygroundEnv, caller: Caller): Promise<string | null
   return caller.ip === null ? null : ipKey(env.FACTA_SESSION_SECRET ?? "", caller.ip);
 }
 
-/** Count one issue under `key` for the IP and the visitor. Null when a counter cannot answer. */
-export async function consumeIssue(env: PlaygroundEnv, caller: Caller, key: string): Promise<QuotaDecision | null> {
+/**
+ * Count one issue under `key` for the IP and the visitor. Null when a counter cannot answer.
+ * `commit: false` only checks (nothing is counted): the gate before the call. The count itself
+ * happens once the document is sealed or in contingency, never for a failure.
+ */
+export async function consumeIssue(env: PlaygroundEnv, caller: Caller, key: string, commit = true): Promise<QuotaDecision | null> {
   const names = [await ipName(env, caller), caller.visitorId].filter((n): n is string => n !== null);
   let last: QuotaDecision | null = null;
   for (const name of names) {
-    const response = await post(stubOf(env.QUOTA, name), "/consume", { key });
+    const response = await post(stubOf(env.QUOTA, name), "/consume", { key, commit });
     if (!response.ok) return null;
     const decision = (await response.json()) as QuotaDecision;
     if (!decision.allowed) return decision;

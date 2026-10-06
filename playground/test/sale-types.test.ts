@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { Facta } from "../../src/client.ts";
 import { parseFixtures, publicFixtures } from "../server/fixtures.ts";
 import { buildSale, customerFits, SaleError, SUPPORTED_SALE_TYPES } from "../server/sale.ts";
 
@@ -17,10 +18,11 @@ const fixtures = parseFixtures(JSON.stringify({
   products: [{ id: "p1", label: "Café", descripcion: "Café", precioUni: 10 }],
 }));
 const lines = [{ productId: "p1", cantidad: 2 }];
-const build = (sale: Record<string, unknown>, ownedCodes: string[] = []) => buildSale({ lines, ...sale }, fixtures, { ownedCodes });
-const code = (sale: Record<string, unknown>, ownedCodes: string[] = []) => {
+const asOwned = (codes: string[], tipoDte = "03") => codes.map((codigoGeneracion) => ({ codigoGeneracion, tipoDte }));
+const build = (sale: Record<string, unknown>, ownedCodes: string[] = [], tipoDte = "03") => buildSale({ lines, ...sale }, fixtures, { owned: asOwned(ownedCodes, tipoDte) });
+const code = (sale: Record<string, unknown>, ownedCodes: string[] = [], tipoDte = "03") => {
   try {
-    build(sale, ownedCodes);
+    build(sale, ownedCodes, tipoDte);
   } catch (error) {
     if (error instanceof SaleError) return error.code;
     throw error;
@@ -49,11 +51,42 @@ describe("sale builder · every type the API v1 supports", () => {
     expect(code({ tipoDte: "06", customerId: "biz" }, [CODE])).toBe("related_required");
   });
 
+  it("05 and 06 may only correct a Crédito fiscal (03), never a Factura or any other type", () => {
+    for (const note of ["05", "06"]) {
+      for (const type of ["01", "11", "14", "05", "06"]) {
+        expect(code({ tipoDte: note, customerId: "biz", relatedCode: CODE }, [CODE], type), `${note} over ${type}`).toBe("related_not_ccf");
+      }
+      expect(code({ tipoDte: note, customerId: "biz", relatedCode: CODE }, [CODE], "03")).toBe("ok");
+    }
+  });
+
   it("11 needs a foreign receiver and carries the SDK example's export block", () => {
     const { sale } = build({ tipoDte: "11", customerId: "abroad" });
-    expect(sale.request).toMatchObject({ tipoDte: "11", receptor: { codPais: "US" }, exportacion: { tipoItemExpor: 1, incoterms: "FOB" } });
+    expect(sale.request).toMatchObject({ tipoDte: "11", receptor: { codPais: "US" }, exportacion: { tipoItemExpor: 1 } });
+    expect(sale.request).not.toHaveProperty("exportacion.incoterms");
     expect(code({ tipoDte: "11", customerId: "biz" })).toBe("customer_unfit");
     expect(code({ tipoDte: "11" })).toBe("customer_required");
+  });
+
+  it("the built Exportación goes through the SDK's own issue path without an Incoterm", async () => {
+    const { sale } = build({ tipoDte: "11", customerId: "abroad" });
+    const bodies: unknown[] = [];
+    const facta = new Facta({
+      apiKey: "facta_test_unit.unit-test-secret",
+      signKey: "factask_unit-test-secret-0000",
+      baseUrl: "https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1",
+      fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/v1/status")) return Response.json({ ok: true, version: "x", ambiente: "00", emisor: null, llave: { keyId: "k", label: null, modo: "custodian", alcances: ["issue"], tiposDte: ["11"] } });
+        if (typeof init?.body === "string") bodies.push(JSON.parse(init.body));
+        return Response.json({ estado: "sellado", codigoGeneracion: CODE, numeroControl: "DTE-11-M001P001-000000000000001", tipoDte: "11", ambiente: "00", fecEmi: "2026-10-06", selloRecibido: "S", totales: {}, observaciones: [] });
+      }) as typeof fetch,
+    });
+    const result = await facta.issue(sale.request, { idempotencyKey: "unit-fex" });
+    expect(result.estado).toBe("sellado");
+    expect(bodies).toHaveLength(1);
+    expect(JSON.stringify(bodies[0])).not.toContain("incoterms");
+    expect(bodies[0]).toMatchObject({ exportacion: { tipoItemExpor: 1 } });
   });
 
   it("14 needs document and address and never withholds income tax on its own", () => {

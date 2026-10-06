@@ -6,7 +6,8 @@
 //   POST /api/session  validated sale description -> session token
 //   POST /api/facta    the SDK handler (issue, status, documents, downloads…);
 //                      per-document reads are limited to documents this visitor issued
-//   GET  /api/registro the visitor's own documents, with their current state
+//   GET  /api/registro the visitor's own documents (ledger + cache; never calls the API)
+//   GET  /api/registro/enrich?codes=  the API's view of a few of them (cached; at most ten)
 //   GET  /api/issued   the generation codes THIS visitor issued here (issued-codes.ts)
 //   POST /api/invalidation  seals an invalidation session for a document the visitor issued here
 //   POST /api/recipes/run  one stage of a fixed server recipe (recipes/)
@@ -16,7 +17,7 @@
 // Extension points for later batches: add a route to ROUTES; add a type to
 // `server/sale.ts`; add recipes under `server/recipes/` and route them here.
 
-import { createFactaInvalidationSession, createFactaSession, verifyFactaSession } from "../../src/server/session.ts";
+import { createFactaInvalidationSession, createFactaSession, verifyFactaInvalidationSession, verifyFactaSession } from "../../src/server/session.ts";
 import type { JwksSource } from "./access.ts";
 import { ensureVisitor, resolveVisitor, type Visitor } from "./visitor.ts";
 import { authModeOf } from "./guard.ts";
@@ -35,6 +36,9 @@ import { buildSale, CATALOG_RECEIVER_TYPES, SaleError, SUPPORTED_SALE_TYPES } fr
 import { loadCatalogLookup } from "./sale-catalog.ts";
 import type { FactaLike } from "../../src/server/handler.ts";
 import { handleRecipeRun } from "./recipes/route.ts";
+import { apiCacheOf } from "./api-cache.ts";
+import { documentKey, RATE_LIMIT_MESSAGE } from "./api-budget.ts";
+import type { DocumentStatus } from "../../src/types.ts";
 
 export interface ApiDeps {
   keys?: JwksSource;
@@ -121,7 +125,9 @@ async function loadFixtures(env: PlaygroundEnv): Promise<PlaygroundFixtures> {
 
 /** Handler actions that name one document: only its issuer's visitor may use them. */
 const PER_DOCUMENT_ACTIONS = new Set(["documents.get", "documents.download", "documents.copies", "documents.retryStorage"]);
-const REGISTRY_ENRICH_LIMIT = 25;
+/** Rows whose cached answer the registry list looks up (one Durable Object call), and rows enriched per request. */
+const REGISTRY_CACHE_LOOKUPS = 60;
+const REGISTRY_ENRICH_BATCH = 10;
 
 export async function handleApi(request: Request, env: PlaygroundEnv, deps: ApiDeps = {}): Promise<Response> {
   const path = new URL(request.url).pathname;
@@ -193,15 +199,15 @@ export async function handleApi(request: Request, env: PlaygroundEnv, deps: ApiD
         const check = await consumeMail(env, { caller: callerOf(request, visitor), key: "preflight", recipient: await recipientKey(env.FACTA_SESSION_SECRET!, address), commit: false });
         if (check !== null && !check.allowed) return mailLimited(check);
       }
-      const owned = (await listIssued(env, visitor.id)).map((e) => e.codigoGeneracion);
+      const owned = (await listIssued(env, visitor.id)).map((e) => ({ codigoGeneracion: e.codigoGeneracion, tipoDte: e.tipoDte }));
       // Catalog ids are confirmed against the key's catalog before anything is built.
       const catalog = await loadCatalogLookup(body, parts.facta, Boolean(env.FACTA_UNLOCK_KEY));
-      const { sale } = buildSale(body, await loadFixtures(env), { ownedCodes: owned, catalog });
+      const { sale } = buildSale(body, await loadFixtures(env), { owned, catalog });
       const idempotencyKey = `${await visitorTag(visitor.id)}.${crypto.randomUUID()}`;
       const session = await createDeliverySession({
         request: sale.request,
         idempotencyKey,
-        display: { total: sale.total, title: sale.title, reference: "Playground" },
+        display: { total: sale.total, title: sale.title, reference: "Playground", ...(sale.recipientLabel === undefined ? {} : { recipient: sale.recipientLabel }) },
         address,
       }, env.FACTA_SESSION_SECRET!, deps.now?.());
       return jsonResponse(200, { session, total: sale.total, title: sale.title, emailTo: address === null ? null : maskAddress(address) });
@@ -301,23 +307,48 @@ export async function handleApi(request: Request, env: PlaygroundEnv, deps: ApiD
     if (request.method !== "GET") return jsonResponse(405, errorBody("method_not_allowed", "Solo se acepta GET."), { allow: "GET" });
     const visitor = await visitorOf(request);
     if (visitor === null) return jsonResponse(401, errorBody("unauthorized", "Inicie sesión para ver su registro."));
+    // The ledger alone, plus whatever the shared cache already knows: this route NEVER calls the API.
+    // The rows on screen ask for the rest through /api/registro/enrich, a few at a time.
     const entries = await listIssued(env, visitor.id);
-    // Current state only for codes the visitor owns (they come from their own record), newest first.
-    const documents = await Promise.all(entries.map(async (entry, index) => {
-      if (index >= REGISTRY_ENRICH_LIMIT || typeof parts.facta.getDocumentStatus !== "function") return { ...entry, current: null };
+    const known = await apiCacheOf(env.QUOTA).getMany<DocumentStatus>(entries.slice(0, REGISTRY_CACHE_LOOKUPS).map((e) => documentKey(e.codigoGeneracion)));
+    const documents = entries.map((entry) => {
+      const hit = known.get(documentKey(entry.codigoGeneracion));
+      return { ...entry, current: hit === undefined ? null : projectDocument(hit.value, { exposeRecipient: false }) };
+    });
+    return jsonResponse(200, { documents });
+  }
+
+  if (path === "/api/registro/enrich") {
+    if (request.method !== "GET") return jsonResponse(405, errorBody("method_not_allowed", "Solo se acepta GET."), { allow: "GET" });
+    const visitor = await visitorOf(request);
+    if (visitor === null) return jsonResponse(401, errorBody("unauthorized", "Inicie sesión para ver su registro."));
+    const asked = (new URL(request.url).searchParams.get("codes") ?? "").split(",").map((c) => c.trim().toUpperCase()).filter((c) => isGenerationCode(c));
+    const codes = [...new Set(asked)].slice(0, REGISTRY_ENRICH_BATCH);
+    if (codes.length === 0 || typeof parts.facta.getDocumentStatus !== "function") return jsonResponse(200, { documents: [] });
+    // Only the visitor's own codes; the answers come from the cache when they can (final states never expire).
+    const mine = new Map((await listIssued(env, visitor.id)).map((e) => [e.codigoGeneracion, e]));
+    const documents: Array<Record<string, unknown>> = [];
+    for (const code of codes) {
+      const entry = mine.get(code);
+      if (entry === undefined) continue;
       try {
-        const status = await parts.facta.getDocumentStatus(entry.codigoGeneracion);
-        const current = projectDocument(status, { exposeRecipient: false });
-        if (typeof current.estado === "string" && current.estado !== entry.estado) {
-          await updateIssuedState(env, visitor.id, entry.codigoGeneracion, current.estado).catch(() => undefined);
-          entry = { ...entry, estado: current.estado };
+        const current = projectDocument(await parts.facta.getDocumentStatus(code), { exposeRecipient: false });
+        const totales = current.totales as { montoTotalOperacion?: unknown } | null;
+        const total = typeof totales?.montoTotalOperacion === "number" ? totales.montoTotalOperacion : undefined;
+        const estado = typeof current.estado === "string" ? current.estado : entry.estado;
+        // Keep the ledger in step: the last known state, and the total when none was stored (older rows).
+        if (estado !== entry.estado || (total !== undefined && entry.total === undefined)) {
+          await updateIssuedState(env, visitor.id, code, estado, total).catch(() => undefined);
         }
-        return { ...entry, current };
-      } catch {
-        return { ...entry, current: null };
+        documents.push({ ...entry, estado, ...(entry.total === undefined && total !== undefined ? { total } : {}), current });
+      } catch (error) {
+        if (error instanceof FactaError && error.code === "rate_limited") {
+          return jsonResponse(429, errorBody("rate_limited", RATE_LIMIT_MESSAGE, true), { "retry-after": "60" });
+        }
+        // One unreadable document does not stop the others: the row keeps what the ledger knows.
       }
-    }));
-    return jsonResponse(200, { documents, enriched: Math.min(entries.length, REGISTRY_ENRICH_LIMIT) });
+    }
+    return jsonResponse(200, { documents });
   }
 
   if (path === "/api/recipes/run") {
@@ -327,7 +358,7 @@ export async function handleApi(request: Request, env: PlaygroundEnv, deps: ApiD
       env,
       visitor: visitor0,
       fixtures: () => loadFixtures(env),
-      consume: (_id, key) => consumeIssue(env, caller0!, key),
+      consume: (_id, key, commit = true) => consumeIssue(env, caller0!, key, commit),
       turnstile: () => requireTurnstile(request, env, deps),
       mail: (check) => consumeMail(env, { ...check, caller: caller0! }),
       ...(deps.fetch === undefined ? {} : { fetch: deps.fetch }),
@@ -369,21 +400,47 @@ export async function handleApi(request: Request, env: PlaygroundEnv, deps: ApiD
         const session = visitor === null ? null : await verifyFactaSession(peeked.session, env.FACTA_SESSION_SECRET!, deps.now?.()).catch(() => null);
         if (visitor !== null && session !== null && session.idempotencyKey.startsWith(`${await visitorTag(visitor.id)}.`)) {
           const caller = callerOf(request, visitor);
-          const decision = await consumeIssue(env, caller, session.idempotencyKey);
+          const key = session.idempotencyKey;
+          // The gate: is there room? Nothing is counted yet. A replay of the same session carries the same
+          // idempotency key, so it is free; and a failure never costs the visitor anything.
+          const decision = await consumeIssue(env, caller, key, false);
           if (decision === null) return jsonResponse(503, errorBody("playground_quota_unavailable", "No se pudo comprobar el límite de emisiones. Intente de nuevo."));
           if (!decision.allowed) {
             return jsonResponse(429, errorBody("quota_exceeded", quotaMessage(decision)), {
               "retry-after": String(decision.retryAfterSeconds ?? 60),
             });
           }
-          // A session that marks the e-mail channel also spends the e-mail limits (a replay is free).
+          // A session that marks the e-mail channel is also checked against the e-mail limits.
           const address = session.deliver?.email;
-          if (typeof address === "string") {
-            const mail = await consumeMail(env, { caller, key: `mail.${session.idempotencyKey}`, recipient: await recipientKey(env.FACTA_SESSION_SECRET!, address) });
+          const recipient = typeof address === "string" ? await recipientKey(env.FACTA_SESSION_SECRET!, address) : null;
+          if (recipient !== null) {
+            const mail = await consumeMail(env, { caller, key: `mail.${key}`, recipient, commit: false });
             if (mail === null) return jsonResponse(503, errorBody("playground_quota_unavailable", "No se pudo comprobar el límite de envíos. Intente de nuevo."));
             if (!mail.allowed) return mailLimited(mail);
           }
+          const answer = await parts.handler(request);
+          // The count, exactly once: only when the document was sealed or went to contingency.
+          if (answer.ok) {
+            const outcome = await answer.clone().json().catch(() => null) as { result?: { estado?: unknown } } | null;
+            const estado = outcome?.result?.estado;
+            if (estado === "sellado" || estado === "contingencia") {
+              await consumeIssue(env, caller, key, true);
+              if (recipient !== null) await consumeMail(env, { caller, key: `mail.${key}`, recipient });
+            }
+          }
+          return answer;
         }
+      }
+    }
+    // An invalidation keeps the visitor's record in step: the registry reads its own ledger, not the API.
+    if (request.method === "POST") {
+      const peeked = await request.clone().json().catch(() => null) as { action?: unknown; session?: unknown } | null;
+      if (peeked?.action === "invalidate") {
+        const answer = await parts.handler(request);
+        const visitor = answer.ok ? await visitorOf(request) : null;
+        const invalidation = visitor === null ? null : await verifyFactaInvalidationSession(peeked.session, env.FACTA_SESSION_SECRET!, deps.now?.()).catch(() => null);
+        if (visitor !== null && invalidation !== null) await updateIssuedState(env, visitor.id, invalidation.generationCode, "invalidado").catch(() => undefined);
+        return answer;
       }
     }
     return parts.handler(request);

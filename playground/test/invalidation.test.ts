@@ -15,6 +15,7 @@ const PEOPLE = {
 
 const facta = {
   environment: "00",
+  invalidate: (async () => ({ estado: "invalidado", codigoGeneracion: CODE, numeroControl: "n", tipoDte: "01", ambiente: "00", evento: { codigoGeneracion: FOREIGN, selloRecibido: "s", tipoAnulacion: 2 }, documento: {}, jws: "j", anotadoEnElIndice: true })) as unknown as FactaLike["invalidate"],
   issue: (async () => ({
     estado: "sellado", codigoGeneracion: CODE, numeroControl: "DTE-01-M001P001-000000000000001", tipoDte: "01",
     ambiente: "00", fecEmi: "2026-10-06", horEmi: "10:00:00", selloRecibido: "SELLO", totales: { totalPagar: 1 }, observaciones: [],
@@ -114,6 +115,17 @@ describe("POST /api/invalidation", () => {
     const response = await post("/api/invalidation", { codigoGeneracion: CODE }, "ana@example.com");
     expect(response.status).toBe(503);
     expect(((await response.json()) as { error: { code: string } }).error.code).toBe("invalidation_unavailable");
+  });
+
+  it("a successful invalidation updates the visitor's ledger and evicts the cached state", async () => {
+    const { post, get, issueAs } = await world();
+    await issueAs("ana@example.com");
+    const { session } = await (await post("/api/invalidation", { codigoGeneracion: CODE }, "ana@example.com")).json() as { session: string };
+    const before = await (await get("/api/registro", "ana@example.com")).json() as { documents: Array<{ estado: string; current: { estado: string } | null }> };
+    expect(before.documents[0]).toMatchObject({ estado: "sellado", current: { estado: "sellado" } });
+    expect((await post("/api/facta", { action: "invalidate", session }, "ana@example.com")).status).toBe(200);
+    const after = await (await get("/api/registro", "ana@example.com")).json() as { documents: Array<{ estado: string; current: unknown }> };
+    expect(after.documents[0]).toMatchObject({ estado: "invalidado", current: null });
   });
 
   it("an invalidation token only works for the visitor it was made for", async () => {

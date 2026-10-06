@@ -3,11 +3,12 @@ import { ApiError } from "../../api.ts";
 import { CodeBlock, useCopy } from "../../code-block.tsx";
 import { usePlayground } from "../../state.tsx";
 import { TurnstileBox } from "../../components/turnstile.tsx";
+import { Busy } from "../../components/busy.tsx";
 import { useTurnstileReady } from "../../turnstile.ts";
 import { RECIPE_SPECS, type FieldSpec, type RecipeSpec } from "../../../server/recipes/specs.ts";
 import { denoBunScript, nodeScript, portableSource, projectZip } from "./export.ts";
 import { runRecipe, type MyDocument, type RunResponse } from "./recipes-api.ts";
-import { ResultTabs, RunNotice, Timeline, type TimelineRun } from "./results.tsx";
+import { ResultSkeleton, ResultTabs, RunNotice, Timeline, type TimelineRun } from "./results.tsx";
 import { excerptOf } from "./subtitles.ts";
 import { highlight } from "../../components/highlight.tsx";
 import { recipePath, recipeSource } from "./sources.ts";
@@ -77,6 +78,8 @@ export function RecipePanel({ spec, number, mine, onIssued }: { spec: RecipeSpec
   const [previous, setPrevious] = useState<string | null>(null);
   const [continuation, setContinuation] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** Which button started the call in flight, so only that one shows the spinner. */
+  const [running, setRunning] = useState<"first" | "next" | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [fullCode, setFullCode] = useState(false);
   const { copied, copy } = useCopy();
@@ -97,6 +100,7 @@ export function RecipePanel({ spec, number, mine, onIssued }: { spec: RecipeSpec
 
   async function execute(stage: string | undefined, id: string | null, retry = false) {
     setBusy(true);
+    setRunning(stage !== undefined && stage === nextStage ? "next" : "first");
     setProblem(null);
     const params: Record<string, unknown> = { ...values };
     if (stage === "sign" && continuation !== null) params.continuation = continuation;
@@ -117,6 +121,7 @@ export function RecipePanel({ spec, number, mine, onIssued }: { spec: RecipeSpec
       return null;
     } finally {
       setBusy(false);
+      setRunning(null);
     }
   }
 
@@ -172,10 +177,10 @@ export function RecipePanel({ spec, number, mine, onIssued }: { spec: RecipeSpec
           <TurnstileBox />
           <div className="srv-actions">
             <button type="submit" className="pg-primary" disabled={busy || blocked || needsDocument}>
-              {busy && !continuation ? "Ejecutando…" : spec.stages ? `Ejecutar: ${spec.stages[0]!.label}` : "Ejecutar"}
+              {busy && running !== "next" ? <Busy>Ejecutando…</Busy> : spec.stages ? `Ejecutar: ${spec.stages[0]!.label}` : "Ejecutar"}
             </button>
             {nextStage !== undefined && continuation !== null && run?.ok === true && run.stage === firstStage && (
-              <button type="button" className="pg-primary" disabled={busy} onClick={() => void execute(nextStage, runId)}>{spec.stages![1]!.label}</button>
+              <button type="button" className="pg-primary" disabled={busy} onClick={() => void execute(nextStage, runId)}>{busy && running === "next" ? <Busy>Ejecutando…</Busy> : spec.stages![1]!.label}</button>
             )}
             {spec.retry && (
               <button type="button" className="pg-secondary" disabled={busy || blocked || run === null || !run.ok || runId === null} onClick={() => { setPrevious(code(run)); void execute(firstStage, runId, true); }}>
@@ -190,15 +195,25 @@ export function RecipePanel({ spec, number, mine, onIssued }: { spec: RecipeSpec
         {problem !== null && <p role="alert" className="pg-error">{problem}</p>}
         {sameDocument !== null && !sameDocument && <p className="pg-error" role="status">El documento es distinto.</p>}
 
-        {run !== null && (
-          <div className="srv-results">
+        {(run !== null || busy) && (
+          <div className="srv-results" aria-busy={busy}>
             <hr />
-            <p className="srv-total" role="status">{run.ok ? `Listo en ${(run.totalMs / 1000).toFixed(2)} s.` : "La ejecución falló."}</p>
-            <Timeline runs={runs} sameDocument={sameDocument === true && code(run) !== null ? { code: tail(run.issued[0]!.codigoGeneracion) } : null} />
-            <RunNotice run={run} />
-            {run.ok && <ResultTabs run={run} />}
-            {spec.id === "catalog-refs" && <CatalogPicks run={run} onPick={(name, value) => setValues((c) => ({ ...c, [name]: value }))} />}
-            <p className="srv-redaction">Las llaves, rutas de almacenamiento y tokens nunca aparecen en la respuesta.</p>
+            {busy ? (
+              <>
+                <p className="srv-total srv-total--busy" role="status">Ejecutando en staging…</p>
+                <Timeline runs={runs} sameDocument={null} pending={`${spec.title}${running === "next" ? ` · ${spec.stages![1]!.label}` : ""}`} />
+                <ResultSkeleton />
+              </>
+            ) : run !== null && (
+              <>
+                <p className="srv-total" role="status">{run.ok ? `Listo en ${(run.totalMs / 1000).toFixed(2)} s.` : "La ejecución falló."}</p>
+                <Timeline runs={runs} sameDocument={sameDocument === true && code(run) !== null ? { code: tail(run.issued[0]!.codigoGeneracion) } : null} />
+                <RunNotice run={run} />
+                {run.ok && <ResultTabs run={run} />}
+                {spec.id === "catalog-refs" && <CatalogPicks run={run} onPick={(name, value) => setValues((c) => ({ ...c, [name]: value }))} />}
+                <p className="srv-redaction">Las llaves, rutas de almacenamiento y tokens nunca aparecen en la respuesta.</p>
+              </>
+            )}
           </div>
         )}
       </aside>

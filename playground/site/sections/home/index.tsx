@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { useFactaServiceStatus } from "../../../../react.ts";
 import type { ServiceState } from "../../../../browser.ts";
 import { CodeBlock } from "../../code-block.tsx";
@@ -7,7 +7,7 @@ import { Meter, StatusChip, useQuotaView } from "../../components/ui.tsx";
 import { Link } from "../../router.tsx";
 import { usePlayground } from "../../state.tsx";
 import { useDownload } from "../registro/downloads.ts";
-import { money, TYPE_NAMES, tail, totalOf, useRegistry, whenOf } from "../registro/registry-data.ts";
+import { lacksCurrent, money, needsEnrich, TYPE_NAMES, tail, totalOf, useRegistry, whenOf } from "../registro/registry-data.ts";
 import type { RegistryDocument } from "../../api.ts";
 import { LiveInvoice } from "./live-invoice.tsx";
 import { SOURCES } from "../../shown-files.ts";
@@ -154,13 +154,21 @@ function PhoneLink({ to, icon, title, text }: { to: string; icon: string; title:
 
 export function Home() {
   const { view, refresh } = usePlayground();
-  const { registry, reload } = useRegistry();
+  const { registry, reload, enrich } = useRegistry();
   const state = view.status === "ready" ? view.state : null;
   const visitor = state?.visitor ?? null;
   const quota = state?.quota ?? null;
   const exhausted = quota !== null && !quota.allowed;
   const documents = registry.status === "ready" ? registry.documents : [];
   const latest = documents[0] ?? null;
+
+  // Only what Inicio shows (the newest three) is ever asked about, and only when the ledger lacks it: the
+  // newest one also wants its seal, which the server keeps in its cache once a document is sealed.
+  useEffect(() => {
+    if (registry.status !== "ready") return;
+    const wanted = documents.slice(0, 3).filter((d, index) => needsEnrich(d) || (index === 0 && lacksCurrent(d))).map((d) => d.codigoGeneracion);
+    if (wanted.length > 0) void enrich(wanted);
+  }, [registry.status, documents, enrich]);
 
   return (
     <div className="pg-wrap home">
@@ -178,8 +186,8 @@ export function Home() {
               signedIn={visitor !== null}
               disabled={view.status !== "ready" || visitor === null || exhausted}
               onIssued={() => { void refresh(); void reload(); }}
+              secondary={<Link to="/servidor" className="pg-secondary home-cta-2">Ver recetas de servidor</Link>}
             />
-            <Link to="/servidor" className="pg-secondary home-cta-2">Ver recetas de servidor</Link>
           </div>
           {view.status === "ready" && visitor === null && <p className="pg-note">Inicie sesión para emitir facturas de prueba.</p>}
           {exhausted && <p className="pg-note" data-testid="quota">Límite alcanzado. Intente de nuevo más tarde.</p>}

@@ -41,14 +41,21 @@ export interface BindContext {
   owns(code: string): Promise<boolean>;
   /** Codes this visitor issued, newest first. */
   mine(): Promise<string[]>;
+  /** The same documents with their types (a note may only relate a Crédito fiscal). */
+  ownedDocs(): Promise<Array<{ codigoGeneracion: string; tipoDte: string }>>;
   /** The delivery token the Worker kept for a document this visitor issued (valid five minutes), or null. */
   stash(code: string): Promise<StashedToken | null>;
   now: number;
 }
 
 export interface Bound {
-  /** Idempotency keys that count against the visitor's quota. A key already counted is free. */
+  /**
+   * Idempotency keys that count against the visitor's quota, ONCE the run issued or invalidated something
+   * (a failure counts nothing). A key already counted is free.
+   */
   quotaKeys: string[];
+  /** Keys that are only CHECKED against the quota before the run (a stage that will count later, like `prepare`). */
+  gateKeys?: string[];
   /** Set when the run sends an e-mail: counted on the visitor, IP and recipient (gates.ts). */
   mail?: { key: string; /** `recipientKey(...)`, never the address. */ recipient: string; doc?: string };
   exec(facta: Facta): Promise<ExecOutcome>;
@@ -78,11 +85,12 @@ function oneOf<T extends string>(params: Record<string, unknown>, name: string, 
   return value as T;
 }
 
-function codeOf(result: unknown): Array<{ codigoGeneracion: string; tipoDte: string; numeroControl: string; estado: string }> {
+function codeOf(result: unknown): Array<{ codigoGeneracion: string; tipoDte: string; numeroControl: string; estado: string; total?: number }> {
   if (!isRecord(result)) return [];
   const { codigoGeneracion, tipoDte, numeroControl, estado } = result;
   if ((estado !== "sellado" && estado !== "contingencia") || typeof codigoGeneracion !== "string" || typeof tipoDte !== "string" || typeof numeroControl !== "string") return [];
-  return [{ codigoGeneracion, tipoDte, numeroControl, estado }];
+  const total = isRecord(result.totales) && typeof result.totales.montoTotalOperacion === "number" ? result.totales.montoTotalOperacion : undefined;
+  return [{ codigoGeneracion, tipoDte, numeroControl, estado, ...(total === undefined ? {} : { total }) }];
 }
 
 export const RECIPE_TYPES = ["01", "03", "05", "06", "11", "14"] as const;
@@ -107,10 +115,10 @@ async function requestFor(type: RecipeType, ctx: BindContext): Promise<DteReques
       lines: [{ source: "custom", descripcion: "Servicio de prueba", cantidad: 1, precioUni: 1, tipoItem: type === "11" ? 1 : 2 }],
       ...(customer === undefined ? {} : { receptor: { source: "demo", customerId: customer.id } }),
       ...(relatedCode === undefined ? {} : { relatedCode }),
-    }, ctx.fixtures, { ownedCodes: (await ctx.mine()).map((c) => c.toUpperCase()) }).sale.request;
+    }, ctx.fixtures, { owned: await ctx.ownedDocs() }).sale.request;
   } catch (error) {
     if (error instanceof SaleError) {
-      throw new RecipeError(error.code, note ? "Elija el documento que corrige: la nota debe relacionar uno que usted emitió en este playground." : error.message);
+      throw new RecipeError(error.code, note && error.code !== "related_not_ccf" ? "Elija el documento que corrige: la nota debe relacionar uno que usted emitió en este playground." : error.message);
     }
     throw error;
   }
@@ -148,7 +156,9 @@ const prepareSignDef: RecipeDef = {
       const type = oneOf(ctx.params, "type", RECIPE_TYPES);
       const input: prepareSign.Input = { request: await requestFor(type, ctx), idempotencyKey: `${ctx.baseKey}.${type}` };
       return {
-        quotaKeys: [input.idempotencyKey],
+        // Preparing reserves a number but issues nothing: the count happens when the document is signed.
+        quotaKeys: [],
+        gateKeys: [input.idempotencyKey],
         async exec(facta) {
           const prepared = await prepareSign.prepare(facta, input);
           const continuation = await sealJson(ctx.secret, "prepare-sign", ctx.email, { prepared, key: input.idempotencyKey }, 10 * 60_000, ctx.now);
@@ -160,7 +170,7 @@ const prepareSignDef: RecipeDef = {
     if (held === null) throw new RecipeError("continuation_invalid", "El documento preparado venció o no es suyo. Vuelva a prepararlo.", 410);
     const input: prepareSign.Input = { request: { tipoDte: "01", items: [] }, idempotencyKey: held.key };
     return {
-      quotaKeys: [],
+      quotaKeys: [held.key],
       async exec(facta) {
         const result = await prepareSign.sign(facta, held.prepared, input);
         return { result, issued: codeOf(result) };
