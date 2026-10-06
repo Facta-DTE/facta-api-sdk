@@ -23,7 +23,7 @@ export function CreditSwitch({ disabled }: { disabled: boolean }) {
     try {
       const created = await createSession({
         tipoDte: credit ? "03" : "01",
-        ...(credit ? { customerId: customerId || taxpayers[0]!.id } : {}),
+        ...(credit ? { receptor: { source: "demo" as const, customerId: customerId || taxpayers[0]!.id } } : {}),
         lines: [{ descripcion: "Servicio de consultoría", cantidad: 1, precioUni: 25, tipoItem: 2 }],
       });
       setSession(created.session);
@@ -34,20 +34,24 @@ export function CreditSwitch({ disabled }: { disabled: boolean }) {
 
   return (
     <div className="hl-switch">
-      <label className="hl-toggle">
-        <input type="checkbox" role="switch" checked={credit} disabled={!canCredit || session !== null} onChange={(e) => setCredit(e.target.checked)} />
-        <span>¿Necesita crédito fiscal?</span>
-      </label>
-      {!canCredit && <p className="pg-note">Este ambiente no tiene un cliente contribuyente de demostración; solo se emite Factura.</p>}
+      <h3>¿Necesita crédito fiscal?</h3>
+      <div className="hl-toggle" role="radiogroup" aria-label="¿Necesita crédito fiscal?">
+        {([[false, "No, factura"], [true, "Sí, CCF"]] as const).map(([value, label]) => (
+          <button key={label} type="button" role="radio" aria-checked={credit === value} disabled={(value && !canCredit) || session !== null} onClick={() => setCredit(value)}>{label}</button>
+        ))}
+      </div>
+      {!canCredit && <p className="hl-switch-note">Este ambiente no tiene un cliente contribuyente de demostración; solo se emite Factura.</p>}
       {credit && (
-        <select value={customerId} onChange={(e) => setCustomerId(e.target.value)} aria-label="Cliente contribuyente" disabled={session !== null}>
-          {taxpayers.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
-        </select>
+        <label className="hl-switch-field">Cliente contribuyente
+          <select value={customerId} onChange={(e) => setCustomerId(e.target.value)} disabled={session !== null}>
+            {taxpayers.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+          </select>
+        </label>
       )}
       <p className="hl-switch-kind">Se emitirá: <b>{credit ? "Comprobante de crédito fiscal (03)" : "Factura (01)"}</b></p>
       {session === null
-        ? <button type="button" disabled={disabled} onClick={start}>Emitir</button>
-        : <><Outcome state={issue.state} skin="switch" onRetry={issue.retry} /><button type="button" onClick={() => setSession(null)}>Otra venta</button></>}
+        ? <button type="button" className="hl-switch-go" disabled={disabled} onClick={start}>{credit ? "Emitir crédito fiscal" : "Emitir factura"}</button>
+        : <><Outcome state={issue.state} skin="switch" onRetry={issue.retry} /><button type="button" className="hl-switch-again" onClick={() => setSession(null)}>Otra venta</button></>}
       {problem && <p role="alert" className="pg-error">{problem}</p>}
     </div>
   );

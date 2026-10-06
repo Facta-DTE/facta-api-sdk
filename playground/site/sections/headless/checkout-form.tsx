@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { createFactaClient, createIssueFlow, initialFlowState, type FlowState, type IssueFlow } from "../../../../browser.ts";
+import { createFactaClient, createIssueFlow, formatMoney, initialFlowState, type FlowState, type IssueFlow } from "../../../../browser.ts";
 import { createSession } from "../../api.ts";
 import { Outcome } from "./outcome.tsx";
 
@@ -10,6 +10,8 @@ const client = createFactaClient({ endpoint: "/api/facta" });
 export function CheckoutForm({ disabled }: { disabled: boolean }) {
   const [state, setState] = useState<FlowState | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  const [qty, setQty] = useState(2);
+  const [price, setPrice] = useState(8.5);
   const flow = useRef<IssueFlow | null>(null);
   useEffect(() => () => flow.current?.destroy(), []);
 
@@ -21,7 +23,8 @@ export function CheckoutForm({ disabled }: { disabled: boolean }) {
       // The server builds the fiscal request from this small description.
       const { session } = await createSession({
         tipoDte: "01",
-        lines: [{ descripcion: String(data.get("item")), cantidad: Number(data.get("qty")), precioUni: Number(data.get("price")), tipoItem: 1 }],
+        lines: [{ descripcion: String(data.get("item")), cantidad: qty, precioUni: price, tipoItem: 1 }],
+        sendEmail: data.get("mail") === "on",
       });
       flow.current?.destroy();
       flow.current = createIssueFlow({ client, session, run: "auto" });
@@ -35,10 +38,15 @@ export function CheckoutForm({ disabled }: { disabled: boolean }) {
 
   return (
     <form className="hl-form" onSubmit={pay}>
+      <h3>Café Las Brumas</h3>
       <label>Producto<input name="item" defaultValue="Café de altura, 1 lb" required maxLength={100} /></label>
-      <label>Cantidad<input name="qty" type="number" min={1} defaultValue={2} required /></label>
-      <label>Precio<input name="price" type="number" min={0.01} step="0.01" defaultValue={8.5} required /></label>
-      <button type="submit" disabled={disabled}>Pagar</button>
+      <div className="hl-form-pair">
+        <label>Cantidad<input type="number" min={1} value={qty} onChange={(e) => setQty(Math.max(1, Number(e.target.value) || 1))} required /></label>
+        <label>Precio<input type="number" min={0.01} step="0.01" value={price} onChange={(e) => setPrice(Number(e.target.value))} required /></label>
+      </div>
+      <p className="hl-form-total"><span>Total</span><b>{formatMoney(qty * price)}</b></p>
+      <label className="hl-form-check"><input name="mail" type="checkbox" />Quiero mi factura por correo</label>
+      <button type="submit" disabled={disabled}>Pagar y facturar</button>
       {problem && <p role="alert" className="pg-error">{problem}</p>}
       {state && <Outcome state={state} skin="form" onRetry={() => void flow.current?.retry()} />}
     </form>

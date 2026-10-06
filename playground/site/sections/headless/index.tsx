@@ -1,3 +1,4 @@
+import { useState, type ReactNode } from "react";
 import { CodeBlock } from "../../code-block.tsx";
 import { usePlayground } from "../../state.tsx";
 import { CheckoutForm } from "./checkout-form.tsx";
@@ -11,47 +12,66 @@ import "./headless.css";
 
 // Section «Mi propia implementación» (docs/playground.md §5.3): the issuing flow
 // without the SDK's visual components. Each example runs for real against the
-// handler and shows the file that runs.
+// handler, wears its own identity (the point is that an integrator uses its brand),
+// and shows the file that runs.
+const lines = (source: string) => source.trimEnd().split("\n").length;
+
+interface Example { id: string; title: string; text: string; source: string; file: string; stage: ReactNode; tone: string }
+
 export function Headless() {
   const { view } = usePlayground();
   const state = view.status === "ready" ? view.state : null;
   const exhausted = state?.quota != null && !state.quota.allowed;
   const disabled = state === null || state.visitor === null || exhausted;
+  const [open, setOpen] = useState<string | null>(null);
+
+  const examples: Example[] = [
+    { id: "checkout", tone: "cafe", title: "Checkout de una tienda", text: "createFactaClient y createIssueFlow, sin React.", source: checkoutSource, file: "sections/headless/checkout-form.tsx", stage: <CheckoutForm disabled={disabled} /> },
+    { id: "pos", tone: "pos", title: "Punto de venta", text: "useFactaIssue con su propio teclado y sus propios estados.", source: posSource, file: "sections/headless/pos-keypad.tsx", stage: <PosKeypad disabled={disabled} /> },
+    { id: "ccf", tone: "ccf", title: "Factura o crédito fiscal", text: "El servidor arma una Factura o un CCF según la respuesta.", source: creditSource, file: "sections/headless/credit-switch.tsx", stage: <CreditSwitch disabled={disabled} /> },
+  ];
+  const shown = examples.find((e) => e.id === open) ?? null;
 
   return (
-    <section className="pg-page">
-      <header className="pg-hero">
-        <p className="pg-eyebrow">Su interfaz, el motor del SDK</p>
-        <h1>Mi propia implementación</h1>
-        <p className="pg-lead">
-          Tres ejemplos que no usan ninguna pantalla del SDK. Emiten de verdad en el ambiente de pruebas y
-          cada uno muestra, debajo, el archivo completo que acaba de ejecutar.
+    <div className="pg-wrap hl">
+      <header className="hl-head">
+        <p className="pg-eyebrow">@facta-dte/api/browser · useFactaIssue</p>
+        <h1>Su diseño, el flujo de Facta DTE</h1>
+        <p className="hl-lead">
+          Tres interfaces que no usan ningún componente visual del SDK. Cada una emite de verdad contra staging y cabe en menos de 60 líneas.
         </p>
         {state !== null && state.visitor === null && <p className="pg-note">Inicie sesión para emitir facturas de prueba.</p>}
         {exhausted && <p className="pg-note">Límite alcanzado. Intente de nuevo más tarde.</p>}
       </header>
 
-      <article className="pg-card hl-example">
-        <h2>Formulario de cobro</h2>
-        <p>Solo <code>@facta-dte/api/browser</code>: <code>createFactaClient</code> y <code>createIssueFlow</code>, con HTML y estado propios.</p>
-        <CheckoutForm disabled={disabled} />
-      </article>
-      <CodeBlock title="sections/headless/checkout-form.tsx" code={checkoutSource} />
+      <div className="hl-grid">
+        {examples.map((e) => (
+          <article key={e.id} className="hl-card" aria-labelledby={`hl-${e.id}`}>
+            <div className={`hl-stage hl-stage--${e.tone}`}>{e.stage}</div>
+            <div className="hl-foot">
+              <div className="hl-foot-row">
+                <h2 id={`hl-${e.id}`}>{e.title}</h2>
+                <span className="mono">{lines(e.source)} líneas</span>
+              </div>
+              <p>{e.text}</p>
+              <button type="button" className="hl-code-toggle" aria-expanded={open === e.id} aria-controls="hl-source" onClick={() => setOpen(open === e.id ? null : e.id)}>
+                {open === e.id ? "Ocultar el código" : "Ver el código"} {open === e.id ? "↑" : "→"}
+              </button>
+            </div>
+          </article>
+        ))}
+      </div>
 
-      <article className="pg-card hl-example">
-        <h2>Teclado de punto de venta</h2>
-        <p>Botones propios y el hook <code>useFactaIssue</code> en modo <code>auto</code>: cobrar emite, sin pantalla de revisión.</p>
-        <PosKeypad disabled={disabled} />
-      </article>
-      <CodeBlock title="sections/headless/pos-keypad.tsx" code={posSource} />
+      <p className="hl-note">Los tres ejemplos muestran cada estado del flujo: emitiendo, sellada, contingencia, rechazada y sesión vencida.</p>
 
-      <article className="pg-card hl-example">
-        <h2>¿Necesita crédito fiscal?</h2>
-        <p>Un interruptor decide si el servidor arma una Factura o un Comprobante de crédito fiscal; el navegador no escribe el documento.</p>
-        <CreditSwitch disabled={disabled} />
-      </article>
-      <CodeBlock title="sections/headless/credit-switch.tsx" code={creditSource} />
-      <CodeBlock title="Comparten · sections/headless/outcome.tsx (cada estado, con estilos propios)" code={outcomeSource} />
-    </section>
+      <div id="hl-source" className="hl-source" aria-live="polite">
+        {shown !== null && (
+          <>
+            <CodeBlock title={shown.file} code={shown.source} />
+            <CodeBlock title="Comparten · sections/headless/outcome.tsx (cada estado, con estilos propios)" code={outcomeSource} />
+          </>
+        )}
+      </div>
+    </div>
   );
 }
