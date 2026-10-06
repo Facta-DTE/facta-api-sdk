@@ -178,6 +178,28 @@ export interface Totals {
   totalLetras: string;
 }
 
+// --- Debug timings (a debugging aid, off by default) ----------------------------
+
+/** One measured step of the API's processing. */
+export interface DebugTiming {
+  step: string;
+  /** Duration of the step, milliseconds. */
+  ms: number;
+  /** Milliseconds from the start of the request to the start of the step. Absent when only `Server-Timing` was available. */
+  startedAtMs?: number;
+}
+
+/**
+ * Per-step processing times the API returns when the request carries
+ * `X-Facta-Debug: timings` (client option `debug: { timings: true }`). Never present otherwise.
+ * `source` says where the SDK read it from: the response body or the `Server-Timing` header.
+ */
+export interface DebugInfo {
+  timings: DebugTiming[];
+  totalMs: number;
+  source?: "body" | "server-timing";
+}
+
 export interface SealedDte {
   estado: "sellado";
   codigoGeneracion: string;
@@ -211,6 +233,8 @@ export interface SealedDte {
   storageErrorCode?: "storage_contract_invalid";
   /** Present only when the request marked delivery channels (`deliver`). Carries the delivery token. */
   entrega?: DeliveryOffer;
+  /** Only with `debug: { timings: true }`. */
+  debug?: DebugInfo;
 }
 
 export interface DteInContingency {
@@ -232,6 +256,8 @@ export interface DteInContingency {
   storageErrorCode?: "storage_contract_invalid";
   /** Channels are `esperando_sello` and there is NO token: delivery after contingency is not offered yet. */
   entrega?: DeliveryOffer;
+  /** Only with `debug: { timings: true }`. */
+  debug?: DebugInfo;
 }
 
 export type IssueResult = SealedDte | DteInContingency;
@@ -304,6 +330,8 @@ export interface PreparedDte {
   totales: Totals;
   documento: Record<string, unknown>;
   prepareToken: string;
+  /** Only with `debug: { timings: true }`. */
+  debug?: DebugInfo;
 }
 
 export interface DocumentStatus {
@@ -338,6 +366,8 @@ export interface DocumentStatus {
    * app) or the document is no longer in force.
    */
   disponible?: ReturnAvailability[] | null;
+  /** Only with `debug: { timings: true }`. */
+  debug?: DebugInfo;
 }
 
 export interface ListDocumentsFilters {
@@ -656,6 +686,8 @@ export interface DeliveryChannelStatus {
   motivo?: DeliveryReason | null;
   /** ISO-8601 instant of the last change. */
   actualizado?: string;
+  /** Only with `debug: { timings: true }` (on `deliverEmail`). */
+  debug?: DebugInfo;
 }
 
 export type DeliveryChannels = Partial<Record<DeliveryChannel, DeliveryChannelStatus>>;
@@ -676,6 +708,8 @@ export interface DeliveryStatus {
   /** Token expiry, while the API still reports it. */
   venceEn?: string;
   canales: DeliveryChannels;
+  /** Only with `debug: { timings: true }`. */
+  debug?: DebugInfo;
 }
 
 /** Answer of `POST …/entrega/{canal}`: 200 final, or 202 with `en_proceso`. */
@@ -689,6 +723,8 @@ export interface WaitForDeliveryOptions {
   /** Pause between reads. Default 2 000. */
   intervalMs?: number;
   signal?: AbortSignal;
+  /** Debugging aid: ask the API for its per-step times on each read. */
+  debug?: { timings?: boolean };
 }
 
 /** `waitForDelivery` result: the last status read, and whether every awaited channel is final. */

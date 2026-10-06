@@ -59,6 +59,7 @@ import type {
   RemoteDestinationProbeReport,
   RemoteReplicationReport,
 } from "./archive.ts";
+import { DEBUG_HEADER, DEBUG_TIMINGS, debugFromBody, debugFromServerTiming } from "./debug.ts";
 import { deliveryRequestFor, GENERATION_CODE, isFinalDeliveryState } from "./delivery.ts";
 import type {
   CatalogCustomer,
@@ -125,6 +126,12 @@ export interface FactaOptions {
   clock?: boolean | string;
   /** Fetch used only to calibrate the clock. Defaults to `fetch`. */
   clockFetch?: typeof globalThis.fetch;
+  /**
+   * A debugging aid, off by default: `{ timings: true }` sends `X-Facta-Debug: timings`, and the
+   * API answers with its per-step processing times, exposed as `result.debug` (read from the
+   * `Server-Timing` header when the body carries none). Do not leave it on in production.
+   */
+  debug?: DebugOptions;
   /** Versioned non-secret client behavior. Credentials remain separate above. */
   config?: FactaConfigV1;
   /** Runtime adapters and stores; keep separate from serializable scalar config and credentials. */
@@ -177,7 +184,15 @@ export interface FactaInvalidationArchiveOptions {
   signal?: AbortSignal;
 }
 
+/** What to ask the API to report about a call. Debugging only. */
+export interface DebugOptions {
+  /** Ask for per-step processing times (`X-Facta-Debug: timings`). */
+  timings?: boolean;
+}
+
 export interface CallOptions {
+  /** Per-call override of the client's `debug` option. */
+  debug?: DebugOptions;
   /**
    * Supply your own when your system already has an id for this sale (an order
    * number, a POS ticket). That is strictly better than a random one: it makes
@@ -417,6 +432,7 @@ export class Facta {
   readonly #unlockKey: string | null;
   readonly #baseUrl: string;
   readonly #timeoutMs: number;
+  readonly #debug: DebugOptions;
   readonly #maxRetries: number;
   readonly #fetch: typeof globalThis.fetch;
   readonly #config: FactaConfigV1;
@@ -468,6 +484,7 @@ export class Facta {
     this.#secrets = [this.#apiKey, this.#signKey ?? "", this.#unlockKey ?? ""];
     this.#baseUrl = (options.baseUrl ?? config?.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, "");
     this.#timeoutMs = options.timeoutMs ?? config?.timeoutMs ?? 60_000;
+    this.#debug = { ...(options.debug ?? {}) };
     this.#maxRetries = options.maxRetries ?? config?.maxRetries ?? 3;
     this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
     const clockOption = options.clock ?? true;
@@ -1760,12 +1777,12 @@ export class Facta {
    * without a second message. A channel that cannot be delivered is a state
    * (`fallido`, …), not an error; expiry is `FactaError("entrega_vencida")`.
    */
-  deliverEmail(generationCode: string, token: string, options: { signal?: AbortSignal } = {}): Promise<DeliveryChannelResult> {
+  deliverEmail(generationCode: string, token: string, options: { signal?: AbortSignal; debug?: DebugOptions } = {}): Promise<DeliveryChannelResult> {
     return this.#deliver("correo", generationCode, token, options);
   }
 
   /** WhatsApp counterpart of `deliverEmail`; billed to the company's prepaid wallet. */
-  deliverWhatsApp(generationCode: string, token: string, options: { signal?: AbortSignal } = {}): Promise<DeliveryChannelResult> {
+  deliverWhatsApp(generationCode: string, token: string, options: { signal?: AbortSignal; debug?: DebugOptions } = {}): Promise<DeliveryChannelResult> {
     return this.#deliver("whatsapp", generationCode, token, options);
   }
 
@@ -1773,7 +1790,7 @@ export class Facta {
     channel: DeliveryChannel,
     generationCode: string,
     token: string,
-    options: { signal?: AbortSignal },
+    options: { signal?: AbortSignal; debug?: DebugOptions },
   ): Promise<DeliveryChannelResult> {
     if (!GENERATION_CODE.test(generationCode)) throw new TypeError("generationCode must be a codigoGeneracion.");
     if (typeof token !== "string" || token === "") throw new TypeError("token is required (IssueResult.entrega.token).");
@@ -1784,7 +1801,7 @@ export class Facta {
         { token },
         // The route is idempotent per channel on the server (a second call
         // returns the current state), so the default per-call key is enough.
-        options.signal ? { signal: options.signal } : {},
+        { ...(options.signal ? { signal: options.signal } : {}), ...(options.debug ? { debug: options.debug } : {}) },
       );
     } catch (error) {
       // The token is a bearer secret: strip it from anything the server echoed.
@@ -1801,13 +1818,13 @@ export class Facta {
   }
 
   /** Read every channel's delivery state. Works after the token expired. */
-  getDelivery(generationCode: string, options: { signal?: AbortSignal } = {}): Promise<DeliveryStatus> {
+  getDelivery(generationCode: string, options: { signal?: AbortSignal; debug?: DebugOptions } = {}): Promise<DeliveryStatus> {
     if (!GENERATION_CODE.test(generationCode)) throw new TypeError("generationCode must be a codigoGeneracion.");
     return this.#request<DeliveryStatus>(
       "GET",
       `/v1/dte/${encodeURIComponent(generationCode)}/entrega`,
       undefined,
-      options.signal ? { signal: options.signal } : {},
+      { ...(options.signal ? { signal: options.signal } : {}), ...(options.debug ? { debug: options.debug } : {}) },
     );
   }
 
@@ -1826,7 +1843,7 @@ export class Facta {
     const deadline = Date.now() + timeoutMs;
     for (;;) {
       throwIfAborted(signal);
-      const status = await this.getDelivery(generationCode, signal ? { signal } : {});
+      const status = await this.getDelivery(generationCode, { ...(signal ? { signal } : {}), ...(options.debug ? { debug: options.debug } : {}) });
       const wanted = (options.channels ?? Object.keys(status.canales) as DeliveryChannel[]);
       const settled = wanted.every((c) => {
         const channel = status.canales[c];
@@ -1838,10 +1855,12 @@ export class Facta {
   }
 
   /** Look a document up. Answers for rejected ones too, not just sealed. */
-  getDocumentStatus(generationCode: string): Promise<DocumentStatus> {
+  getDocumentStatus(generationCode: string, options: { debug?: DebugOptions } = {}): Promise<DocumentStatus> {
     return this.#request<DocumentStatus>(
       "GET",
       `/v1/dte/${encodeURIComponent(generationCode)}`,
+      undefined,
+      options,
     );
   }
 
@@ -2112,6 +2131,9 @@ export class Facta {
       headers["X-Facta-Sign-Key"] = this.#signKey;
     }
     if (body !== undefined) headers["Content-Type"] = "application/json";
+    // A debugging aid: asked for per client or per call, never by default.
+    const timings = options.debug?.timings ?? this.#debug.timings ?? false;
+    if (timings) headers[DEBUG_HEADER] = DEBUG_TIMINGS;
     // Minted ONCE, outside the retry loop. Regenerating it per attempt is
     // exactly the failure this header prevents.
     if (method === "POST") {
@@ -2124,7 +2146,7 @@ export class Facta {
       if (attempt > 0) await sleep(Math.min(250 * 2 ** (attempt - 1), 4_000), options.signal);
       throwIfAborted(options.signal);
       try {
-        return await this.#attempt<T>(method, path, headers, body, binary, options.signal);
+        return await this.#attempt<T>(method, path, headers, body, binary, options.signal, timings);
       } catch (cause) {
         if (!(cause instanceof FactaError) || !RETRYABLE.has(cause.code)) throw cause;
         lastError = cause;
@@ -2140,6 +2162,7 @@ export class Facta {
     body: unknown,
     binary: boolean,
     signal?: AbortSignal,
+    timings = false,
   ): Promise<T> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.#timeoutMs);
@@ -2200,6 +2223,14 @@ export class Facta {
     }
 
     if (response.ok || response.status === 202) {
+      if (timings && isRecord(payload)) {
+        // The body's own `debug` wins; the `Server-Timing` header is the fallback.
+        const debug = debugFromBody(payload.debug) ?? debugFromServerTiming(response.headers.get("server-timing"));
+        if (debug === null) delete payload.debug; else payload.debug = debug;
+      } else if (isRecord(payload)) {
+        // Not asked for: never hand a debug member to the caller.
+        delete payload.debug;
+      }
       if (isRecord(payload) && (payload.estado === "sellado" || payload.estado === "contingencia") && "storage" in payload &&
         (!isManagedStorageReceipt(payload.storage) || payload.storage.environment !== this.#environment() ||
           typeof payload.codigoGeneracion !== "string" || payload.storage.operationId.toUpperCase() !== payload.codigoGeneracion.toUpperCase())) {
