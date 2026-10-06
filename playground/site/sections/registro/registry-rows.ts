@@ -24,6 +24,12 @@ const FINAL = new Set(["sellado", "invalidado", "rechazado"]);
 export const needsEnrich = (d: RegistryDocument): boolean => d.total === undefined || (d.current === null && !FINAL.has(d.estado));
 
 /** A registry row that lacks the API's view (used for the seal of the newest document). */
+/** Hacienda's seal as the API last reported it; null while it is unknown (contingency or not read yet). */
+export const sealOf = (d: RegistryDocument): string | null => {
+  const seal = (d.current as { selloRecibido?: unknown } | null)?.selloRecibido;
+  return typeof seal === "string" && seal !== "" ? seal : null;
+};
+
 export const lacksCurrent = (d: RegistryDocument): boolean => d.current === null;
 
 /** Hacienda's literal observations for a document, as the API returned them. */

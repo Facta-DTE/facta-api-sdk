@@ -9,6 +9,7 @@
     "noEmit": true,
     "allowImportingTsExtensions": true,
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
     "types": ["node"]
   },
   "include": ["worker.ts", "server/**/*.ts", "test/**/*.ts"]

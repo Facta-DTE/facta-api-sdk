@@ -5,6 +5,7 @@ import { Busy, Skeleton } from "../../components/busy.tsx";
 import { Link } from "../../router.tsx";
 import { usePlayground } from "../../state.tsx";
 import { useDownload } from "./downloads.ts";
+import { sealOf } from "./registry-rows.ts";
 import { InvalidateDialog } from "./invalidate-dialog.tsx";
 import { money, needsEnrich, observationsOf, TYPE_NAMES, tail, totalOf, useRegistry, useVisibleRows, whenOf } from "./registry-data.ts";
 import "./registro.css";
@@ -120,9 +121,9 @@ export function Registro() {
                         <td className="total r">{total === null ? "—" : money(total)}</td>
                         <td className="state"><StatusChip estado={d.estado} /></td>
                         <td className="act">
-                          {(d.estado === "sellado" || d.estado === "invalidado") && (["pdf", "json"] as const).map((kind) => (
-                            <button key={kind} type="button" className="pg-btn pg-btn--sm" aria-label={`Descargar ${kind.toUpperCase()} de ${label}`} disabled={busy !== null} onClick={() => void download(d.codigoGeneracion, kind)}>
-                              {busy === `${d.codigoGeneracion}.${kind}` ? "…" : kind.toUpperCase()}
+                          {(d.estado === "sellado" || d.estado === "invalidado") && ([["pdf", "PDF", "PDF"], ["json", "JSON DTE", "JSON DTE"], ["raw", "Raw", "JSON original (raw)"]] as const).map(([kind, text, name]) => (
+                            <button key={kind} type="button" className="pg-btn pg-btn--sm" aria-label={`Descargar ${name} de ${label}`} disabled={busy !== null} onClick={() => void download(d.codigoGeneracion, kind, sealOf(d))}>
+                              {busy === `${d.codigoGeneracion}.${kind}` ? "…" : text}
                             </button>
                           ))}
                           {d.estado === "sellado" && canInvalidate && (

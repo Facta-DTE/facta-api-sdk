@@ -3,6 +3,7 @@
 // behind `import.meta.env.DEV`, so it is never part of a production build.
 
 import { createMockFetch, type Outcome } from "../../examples/react-preview/src/mock-handler.ts";
+import { mockHoldingBase64, mockRecipeFiles, MOCK_CODE, MOCK_SEAL } from "./mock-dte.ts";
 import { ApiError, installMock, type CreatedSession, type IssuedDocument, type PlaygroundState } from "./api.ts";
 
 const OUTCOMES: Outcome[] = ["sealed", "sealed-copies-pending", "sealed-delivered", "sealed-delivering", "contingency", "rejected", "uncertain-then-sealed", "failed-retryable", "expired"];
@@ -46,7 +47,7 @@ export function installDevMock(search: string): void {
   };
   let n = 0;
   installMock({
-    fetch: limited(createMockFetch({ outcome, environment: "00", ...(slow > 0 ? { latencyMs: slow } : {}) }), rateLimited),
+    fetch: limited(withStoredJson(createMockFetch({ outcome, environment: "00", ...(slow > 0 ? { latencyMs: slow } : {}) })), rateLimited),
     state: () => state,
     session: async (sale): Promise<CreatedSession> => (await sleep(slow), { session: `tok-${++n}`, total: sale.lines.reduce((sum, l) => sum + l.cantidad * (l.precioUni ?? 8.5), 0), title: "Venta de prueba", emailTo: sale.sendEmail && sale.emailTo ? `${sale.emailTo.slice(0, 1)}•••@${sale.emailTo.split("@")[1] ?? ""}` : null }),
     issued: () => issued,
@@ -58,7 +59,20 @@ export function installDevMock(search: string): void {
       return { estado: "enviado", destino: "c•••@example.com" };
     },
   });
-  mockRegistry(slow, rateLimited);
+  mockRegistry(slow, rateLimited, outcome === "contingency");
+}
+
+/** `documents.download` kind json answers with the stored holding file, as the real handler does. */
+function withStoredJson(inner: typeof fetch): typeof fetch {
+  return (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body ?? "{}")) as { action?: string; kind?: string; codigoGeneracion?: string };
+    if (body.action === "documents.download" && body.kind === "json") {
+      const code = body.codigoGeneracion ?? MOCK_CODE;
+      const file = { codigoGeneracion: code, kind: "json", filename: `${code}.json`, contentType: "application/json", bytes: 1, base64: mockHoldingBase64() };
+      return new Response(JSON.stringify({ file }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    return inner(input, init);
+  }) as typeof fetch;
 }
 
 /** The API's own rate limit, as the handler passes it on: reads answer 429 `rate_limited`, issuing keeps working. */
@@ -72,10 +86,10 @@ function limited(inner: typeof fetch, on: boolean): typeof fetch {
 }
 
 // /api/registro is read with a plain fetch (not the SDK's), so the dev mock answers it here.
-function mockRegistry(slow: number, rateLimited: boolean): void {
+function mockRegistry(slow: number, rateLimited: boolean, contingency: boolean): void {
   const real = window.fetch.bind(window);
   const hours = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
-  const full = (n: number, tipoDte: string, estado: string, total: number, observaciones: string[] = []) => ({ estado, fecEmi: "2026-10-06", horEmi: "10:42:00", selloRecibido: estado === "rechazado" ? null : "2026A1F3C9E0B7D4", observaciones, totales: { montoTotalOperacion: total }, numeroControl: n });
+  const full = (n: number, tipoDte: string, estado: string, total: number, observaciones: string[] = []) => ({ estado, fecEmi: "2026-10-06", horEmi: "10:42:00", selloRecibido: estado === "rechazado" ? null : MOCK_SEAL, observaciones, totales: { montoTotalOperacion: total }, numeroControl: n });
   // Like the real server: the ledger carries the total; `current` comes only from the cache or an enrichment.
   const row = (n: number, tipoDte: string, estado: string, h: number, total: number, observaciones: string[] = [], cached = true) => ({
     codigoGeneracion: `7C1E4B6A-92D3-4F08-A1B7-5E30C9D2F${String(600 + n).padStart(3, "0")}`,
@@ -110,8 +124,8 @@ function mockRegistry(slow: number, rateLimited: boolean): void {
       return json(200, {
         recipe: body.recipe, stage: body.stage ?? "run", runId: "mock-run-0001", ok: true, totalMs: 1180,
         steps: [{ method: "POST", endpoint: "/v1/dte", status: 200, ms: 1.18 * 1000, request: { tipoDte: "01" } }],
-        result: { estado: "sellado", numeroControl: "DTE-01-M001P001-000000000000215", selloRecibido: "2026A1F3C9E0B7D4" },
-        files: [], issued: [], invalidated: [],
+        result: { estado: contingency ? "contingencia" : "sellado", numeroControl: "DTE-01-M001P001-000000000000215", ...(contingency ? { selloRecibido: null } : { selloRecibido: MOCK_SEAL }), documento: "[omitido]", jws: "[omitido: 700 caracteres]" },
+        files: mockRecipeFiles(contingency), issued: [], invalidated: [],
       });
     }
     return real(input, init);

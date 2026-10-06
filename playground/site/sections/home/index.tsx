@@ -95,9 +95,9 @@ function HeroCard({ latest, loading }: { latest: RegistryDocument | null; loadin
           <div><dt>Sello de recepción</dt><dd className="mono">{sello ?? "—"}</dd></div>
         </dl>
         <div className="home-actions">
-          {(["pdf", "json"] as const).map((kind) => (
-            <button key={kind} type="button" className="pg-btn pg-btn--sm" disabled={busy !== null} onClick={() => void download(latest.codigoGeneracion, kind)}>
-              {kind.toUpperCase()}
+          {([["pdf", "PDF"], ["json", "JSON DTE"], ["raw", "Raw"]] as const).map(([kind, text]) => (
+            <button key={kind} type="button" className="pg-btn pg-btn--sm" disabled={busy !== null} onClick={() => void download(latest.codigoGeneracion, kind, sello)}>
+              {text}
             </button>
           ))}
         </div>

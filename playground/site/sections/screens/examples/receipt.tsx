@@ -10,6 +10,10 @@ import { lacksCurrent, resultFromRegistry, useRegistry } from "../../registro/re
 // Before this page has issued anything, the visitor's newest document from an earlier visit stands in
 // (the server's record of what they issued), so the components are never shown empty to someone who
 // already has documents.
+//
+// DISPONIBLE DESDE LA PRÓXIMA VERSIÓN DEL SDK (todavía no corre con la versión publicada): the «json»
+// button will download the Archivo DTE (document + signature + seal), and the stored original will be offered
+// separately (`downloadDocument(code, { kind: "json", raw: true })`). The Registro page already offers both.
 export function ReceiptExample({ result }: { result: IssueResult | null }) {
   const { registry, enrich } = useRegistry();
   const latest = registry.status === "ready" ? registry.documents[0] : undefined;

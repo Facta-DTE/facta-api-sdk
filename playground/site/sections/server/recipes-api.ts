@@ -10,6 +10,8 @@ export interface RunStep {
 }
 
 export interface RunFile {
+  /** `dte`: the Archivo DTE; `raw`: the stored original. Absent for a PDF. */
+  role?: "dte" | "raw";
   name: string;
   contentType: string;
   size: number;

@@ -14,7 +14,7 @@ const SECRET_KEYS = new Set([
 ]);
 
 /** Large or already-attached members: shown as files or omitted, not inlined. */
-const BULKY_KEYS = new Set(["jws", "archivojson", "representaciongrafica", "documento"]);
+const BULKY_KEYS = new Set(["jws", "archivojson", "archivodte", "representaciongrafica", "documento"]);
 
 const SHAPES: Array<[RegExp, string]> = [
   [/facta_(?:test|live)_[A-Za-z0-9_.-]+/g, "[llave omitida]"],
@@ -25,6 +25,18 @@ const SHAPES: Array<[RegExp, string]> = [
   // An e-mail address is shown masked («c•••@ejemplo.com»), never whole.
   [/([A-Za-z0-9._%+-])[A-Za-z0-9._%+-]*@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)/g, "$1•••@$2"],
 ];
+
+/** The shapes of a credential or a storage path (not the e-mail mask: a document is shown whole). */
+const LEAK_SHAPES = SHAPES.filter(([, replacement]) => replacement !== "$1•••@$2").map(([pattern]) => new RegExp(pattern.source, ""));
+
+/**
+ * True when a file's text carries a credential, a secret the Worker knows or a storage path. A document
+ * is the visitor's own and is shown whole, but never with anything that must not leave the Worker.
+ */
+export function leaksSecret(text: string, secrets: readonly (string | undefined)[] = []): boolean {
+  if (secrets.some((s) => typeof s === "string" && s.length >= 8 && text.includes(s))) return true;
+  return LEAK_SHAPES.some((pattern) => pattern.test(text));
+}
 
 export interface RedactOptions {
   /** Exact secret values the Worker holds; any string containing one is scrubbed. */

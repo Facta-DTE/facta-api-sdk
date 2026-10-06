@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Skeleton, useElapsed } from "../../components/busy.tsx";
+import { DteView } from "../../components/dte-view.tsx";
 import type { RunFile, RunResponse, RunStep } from "./recipes-api.ts";
 
 function blobOf(file: RunFile): Blob | null {
@@ -8,25 +9,33 @@ function blobOf(file: RunFile): Blob | null {
   return new Blob([bytes], { type: file.contentType });
 }
 
+/** The text of a file the run returned, exactly as its bytes decode (null when it was too large to send). */
+const textOf = (file: RunFile | undefined): string | null => {
+  const blob = file === undefined ? null : blobOf(file);
+  if (file === undefined || file.base64 === undefined || blob === null) return null;
+  return new TextDecoder().decode(Uint8Array.from(atob(file.base64), (c) => c.charCodeAt(0)));
+};
+
+function save(file: RunFile) {
+  const blob = blobOf(file);
+  if (blob === null) return;
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = file.name;
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function FileView({ file }: { file: RunFile }) {
   const blob = useMemo(() => blobOf(file), [file]);
   const [url, setUrl] = useState<string | null>(null);
-  const [text, setText] = useState<string | null>(null);
   useEffect(() => {
     if (blob === null) return;
     const objectUrl = URL.createObjectURL(blob);
     setUrl(objectUrl);
-    if (file.contentType.includes("json")) {
-      void blob.text().then((raw) => {
-        try {
-          setText(JSON.stringify(JSON.parse(raw), null, 2));
-        } catch {
-          setText(raw);
-        }
-      });
-    }
     return () => URL.revokeObjectURL(objectUrl);
-  }, [blob, file.contentType]);
+  }, [blob]);
 
   return (
     <div className="srv-file">
@@ -36,7 +45,41 @@ function FileView({ file }: { file: RunFile }) {
       </div>
       {blob === null && <p className="pg-note">El archivo es demasiado grande para mostrarlo aquí.</p>}
       {url !== null && file.contentType.includes("pdf") && <iframe className="srv-pdf" title={`Vista previa de ${file.name}`} src={url} />}
-      {text !== null && <pre className="srv-json" tabIndex={0}>{text}</pre>}
+    </div>
+  );
+}
+
+/** One document's JSON files: the Archivo DTE and the stored original, paired by generation code. */
+export interface JsonDoc { code: string; dte: RunFile | undefined; raw: RunFile | undefined }
+
+export function jsonDocsOf(files: RunFile[]): JsonDoc[] {
+  const docs = new Map<string, JsonDoc>();
+  for (const file of files) {
+    if (file.role === undefined) continue;
+    const code = file.name.replace(/(\.raw)?\.json$/, "");
+    const doc = docs.get(code) ?? { code, dte: undefined, raw: undefined };
+    docs.set(code, file.role === "dte" ? { ...doc, dte: file } : { ...doc, raw: file });
+  }
+  return [...docs.values()];
+}
+
+/** PDF, JSON DTE and JSON original side by side, so the three files of a document are one click each. */
+function Downloads({ pdfs, docs }: { pdfs: RunFile[]; docs: JsonDoc[] }) {
+  const many = docs.length > 1 || pdfs.length > 1;
+  const tag = (code: string) => (many ? ` · …${code.slice(-6)}` : "");
+  const items: Array<[string, RunFile]> = [
+    ...pdfs.map((f): [string, RunFile] => [`PDF${tag(f.name.replace(/\.pdf$/, ""))}`, f]),
+    ...docs.flatMap((d): Array<[string, RunFile]> => [
+      ...(d.dte ? [[`JSON DTE${tag(d.code)}`, d.dte] as [string, RunFile]] : []),
+      ...(d.raw ? [[`JSON original (raw)${tag(d.code)}`, d.raw] as [string, RunFile]] : []),
+    ]),
+  ];
+  if (items.length === 0) return null;
+  return (
+    <div className="srv-downloads" role="group" aria-label="Descargas">
+      {items.map(([label, file]) => (
+        <button key={file.name} type="button" className="pg-btn pg-btn--sm" disabled={file.base64 === undefined} onClick={() => save(file)}>{label}</button>
+      ))}
     </div>
   );
 }
@@ -114,12 +157,12 @@ export function RunNotice({ run }: { run: RunResponse }) {
 
 type Tab = "response" | "pdf" | "json";
 
-/** Respuesta / PDF / JSON firmado: the redacted result and the real files of the run. */
+/** Respuesta / PDF / JSON DTE: the redacted result and the real files of the run. */
 export function ResultTabs({ run }: { run: RunResponse }) {
   const [tab, setTab] = useState<Tab>("response");
   const pdfs = run.files.filter((f) => f.contentType.includes("pdf"));
-  const others = run.files.filter((f) => !f.contentType.includes("pdf"));
-  const tabs: Array<[Tab, string]> = [["response", "Respuesta"], ["pdf", "PDF"], ["json", "JSON firmado"]];
+  const docs = jsonDocsOf(run.files);
+  const tabs: Array<[Tab, string]> = [["response", "Respuesta"], ["pdf", "PDF"], ["json", "JSON DTE"]];
   const requests = run.steps.filter((s) => s.request !== undefined);
   return (
     <div className="srv-result" data-testid={run.ok ? "recipe-results" : undefined}>
@@ -128,9 +171,11 @@ export function ResultTabs({ run }: { run: RunResponse }) {
           <button key={id} type="button" role="tab" id={`srv-tab-${id}`} aria-selected={tab === id} aria-controls="srv-tabpanel" onClick={() => setTab(id)}>{label}</button>
         ))}
       </div>
+      <Downloads pdfs={pdfs} docs={docs} />
       <div role="tabpanel" id="srv-tabpanel" aria-labelledby={`srv-tab-${tab}`} className="srv-tabpanel">
         {tab === "response" && (
           <>
+            {docs.length > 0 && <p className="srv-summary-note">Esto es un resumen; el documento completo está en JSON DTE.</p>}
             {run.result !== null ? <pre className="srv-json" tabIndex={0}>{JSON.stringify(run.result, null, 2)}</pre> : <p className="pg-note">Esta receta no devolvió datos.</p>}
             {requests.length > 0 && (
               <details className="srv-requests">
@@ -141,7 +186,9 @@ export function ResultTabs({ run }: { run: RunResponse }) {
           </>
         )}
         {tab === "pdf" && (pdfs.length > 0 ? pdfs.map((f) => <FileView key={f.name} file={f} />) : <p className="pg-note">Esta ejecución no produjo un PDF.</p>)}
-        {tab === "json" && (others.length > 0 ? others.map((f) => <FileView key={f.name} file={f} />) : <p className="pg-note">Esta ejecución no produjo un JSON firmado.</p>)}
+        {tab === "json" && (docs.length > 0
+          ? docs.map((d) => <DteView key={d.code} code={d.code} dte={textOf(d.dte)} raw={textOf(d.raw)} downloads={false} />)
+          : <p className="pg-note">Esta ejecución no produjo un JSON DTE.</p>)}
       </div>
     </div>
   );

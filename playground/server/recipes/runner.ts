@@ -4,7 +4,8 @@
 import { Facta } from "../../../src/client.ts";
 import { FactaError } from "../../../src/errors.ts";
 import type { PlaygroundEnv } from "../env.ts";
-import { redact, redactText, type RedactOptions } from "./redact.ts";
+import { archivoDteFromStored, archivoDteOf, dteFileName, rawFileName } from "../../shared/archivo-dte.ts";
+import { leaksSecret, redact, redactText, type RedactOptions } from "./redact.ts";
 
 export interface Step {
   method: string;
@@ -17,6 +18,8 @@ export interface Step {
 }
 
 export interface FileOut {
+  /** `dte` is the Archivo DTE (what the visitor should see), `raw` the stored original; absent for a PDF. */
+  role?: "dte" | "raw";
   name: string;
   contentType: string;
   size: number;
@@ -65,29 +68,53 @@ function fileOf(name: string, contentType: string, bytes: Uint8Array): FileOut {
 
 const isRecord = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
 
-/** Pull the files out of a result: a sealed document's PDF/JSON and any downloaded bytes. */
-export function collectFiles(result: unknown): FileOut[] {
+/**
+ * Pull the files out of a result: a sealed document's PDF and JSON and any downloaded bytes.
+ *
+ * The JSON comes in two files: `<code>.json`, the Archivo DTE (always, once there is a seal), and
+ * `<code>.raw.json`, the stored original. A document in contingency has no seal yet, so it has no
+ * Archivo DTE: only the raw file is offered. A file that would carry a credential or a storage path
+ * is dropped instead of sent.
+ */
+export function collectFiles(result: unknown, secrets: readonly (string | undefined)[] = []): FileOut[] {
   const files: FileOut[] = [];
   const seen = new Set<unknown>();
-  const visit = (node: unknown, depth: number) => {
+  const add = (file: FileOut, text?: string) => {
+    if (text !== undefined && leaksSecret(text, secrets)) return;
+    files.push(file);
+  };
+  const visit = (node: unknown, depth: number, seal: string | null) => {
     if (!isRecord(node) || depth > 3 || seen.has(node)) return;
     seen.add(node);
+    const here = typeof node.selloRecibido === "string" && node.selloRecibido !== "" ? node.selloRecibido : seal;
     const code = typeof node.codigoGeneracion === "string" ? node.codigoGeneracion : null;
     if (code !== null && typeof node.representacionGrafica === "string" && node.representacionGrafica !== "") {
       const bytes = Uint8Array.from(atob(node.representacionGrafica), (c) => c.charCodeAt(0));
       files.push(fileOf(`${code}.pdf`, "application/pdf", bytes));
     }
+    if (code !== null && (typeof node.jws === "string" || typeof node.archivoDte === "string")) {
+      const dte = archivoDteOf(node);
+      if (dte !== null) add({ role: "dte", ...fileOf(dteFileName(code), "application/json", new TextEncoder().encode(dte)) }, dte);
+    }
     if (code !== null && typeof node.archivoJson === "string" && node.archivoJson !== "") {
-      files.push(fileOf(`${code}.json`, "application/json", new TextEncoder().encode(node.archivoJson)));
+      add({ role: "raw", ...fileOf(rawFileName(code), "application/json", new TextEncoder().encode(node.archivoJson)) }, node.archivoJson);
     }
     if (node.bytes instanceof Uint8Array) {
       const kind = typeof node.kind === "string" ? node.kind : "archivo";
-      const extension = kind === "json" ? "json" : "pdf";
-      files.push(fileOf(`${code ?? "documento"}.${extension}`, typeof node.contentType === "string" ? node.contentType : "application/octet-stream", node.bytes));
+      const type = typeof node.contentType === "string" ? node.contentType : "application/octet-stream";
+      if (kind === "json") {
+        const name = code ?? "documento";
+        const stored = new TextDecoder().decode(node.bytes);
+        const dte = archivoDteFromStored(stored, here);
+        if (dte !== null) add({ role: "dte", ...fileOf(dteFileName(name), type, new TextEncoder().encode(dte)) }, dte);
+        add({ role: "raw", ...fileOf(rawFileName(name), type, node.bytes) }, stored);
+      } else {
+        files.push(fileOf(`${code ?? "documento"}.pdf`, type, node.bytes));
+      }
     }
-    for (const child of Object.values(node)) visit(child, depth + 1);
+    for (const child of Object.values(node)) visit(child, depth + 1, here);
   };
-  visit(result, 0);
+  visit(result, 0, null);
   return files;
 }
 
@@ -173,7 +200,7 @@ export async function execute(
     steps: recorder.steps,
     totalMs: Date.now() - started,
     result: outcome === null ? null : redact(outcome.result, options),
-    files: outcome === null ? [] : collectFiles(outcome.result),
+    files: outcome === null ? [] : collectFiles(outcome.result, redaction.secrets),
     ...(error === undefined ? {} : { error }),
   };
   return { output, outcome };

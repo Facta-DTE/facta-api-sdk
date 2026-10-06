@@ -3,6 +3,12 @@
 // `prepare` reserves the control number and returns the canonical document,
 // unsigned. Review it, then hand the object back to `sign` UNCHANGED: the server
 // checks a MAC over its canonical hash, so one altered cent is refused.
+//
+// DISPONIBLE DESDE LA PRÓXIMA VERSIÓN DEL SDK (todavía no corre con la versión publicada):
+//   the sealed response will carry `result.archivoDte`, the exact text of the Archivo DTE
+//   (document + firmaElectronica + selloRecibido) that your customer receives. In contingency there is
+//   no `archivoDte`: the document has no Hacienda seal yet.
+//   Today the playground builds it from document + jws + selloRecibido; see shared/archivo-dte.ts.
 import type { DteRequest, Facta, IssueResult, PreparedDte } from "../../../mod.ts";
 
 export interface Input {

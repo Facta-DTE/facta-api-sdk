@@ -137,7 +137,7 @@ describe("recipes API", () => {
     const body = JSON.parse(text);
     expect(body.ok).toBe(true);
     expect(body.steps[0]).toMatchObject({ method: "POST", endpoint: "/v1/dte", status: 200 });
-    expect(body.files.map((f: { name: string }) => f.name).sort()).toEqual([`${CODE}.json`, `${CODE}.pdf`]);
+    expect(body.files.map((f: { name: string }) => f.name).sort()).toEqual([`${CODE}.json`, `${CODE}.pdf`, `${CODE}.raw.json`]);
     expect(body.issued).toEqual([{ codigoGeneracion: CODE, tipoDte: "01" }]);
     // The credentials travel to the API, never back to the page.
     expect(calls[0]!.headers.get("x-facta-key")).toBe(API_KEY);

@@ -104,3 +104,6 @@
   .srv-form { gap: 14px; }
   .srv-actions > button { min-height: 52px; flex: 1 1 0; }
 }
+
+.srv-downloads { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--pg-track); }
+.srv-summary-note { margin: 0; padding: 10px 14px 0; font-size: 13px; color: var(--pg-muted); }
