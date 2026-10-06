@@ -100,7 +100,7 @@ export interface FactaClient {
 export interface FactaDataClient {
   listDocuments(filters?: DocumentFilters & { limit?: number; cursor?: string }, signal?: AbortSignal): Promise<DocumentPage>;
   getDocument(codigoGeneracion: string): Promise<DocumentDetail>;
-  downloadDocument(codigoGeneracion: string, kind: DownloadKind, options?: { paperWidthMm?: number }): Promise<DownloadedFile>;
+  downloadDocument(codigoGeneracion: string, kind: DownloadKind, options?: { paperWidthMm?: number; raw?: boolean }): Promise<DownloadedFile>;
   getDocumentCopies(codigoGeneracion: string): Promise<CopyRow[]>;
   retryDocumentStorage(codigoGeneracion: string): Promise<StorageRetryResult>;
   listHolding(): Promise<HoldingRow[]>;

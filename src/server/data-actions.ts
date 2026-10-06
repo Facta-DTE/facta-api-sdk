@@ -162,7 +162,14 @@ export function createDataActions(options: DataActionOptions) {
       throw new DataActionError("action_not_allowed", "This kind of file is not available.", 403);
     }
     const cg = code(body.codigoGeneracion);
-    const callOptions: { paperWidthMm?: number } = {};
+    const callOptions: { paperWidthMm?: number; raw?: boolean } = {};
+    if (body.raw !== undefined) {
+      if (kind !== "json" || typeof body.raw !== "boolean") bad("raw is only valid for json, as a boolean.");
+      if (body.raw && capabilities.rawJson !== true) {
+        throw new DataActionError("action_not_allowed", "The original JSON is not available.", 403);
+      }
+      if (body.raw) callOptions.raw = true;
+    }
     if (body.paperWidthMm !== undefined) {
       if (kind !== "ticket" || typeof body.paperWidthMm !== "number" || !Number.isInteger(body.paperWidthMm) || body.paperWidthMm < 40 || body.paperWidthMm > 120) {
         bad("paperWidthMm is only valid for tickets, from 40 to 120.");
@@ -182,6 +189,7 @@ export function createDataActions(options: DataActionOptions) {
         contentType: CONTENT_TYPES[kind],
         bytes: file.bytes.length,
         base64: toBase64(file.bytes),
+        ...(kind === "json" && file.jsonFormat !== undefined ? { jsonFormat: file.jsonFormat } : {}),
       },
     };
   }

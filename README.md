@@ -156,6 +156,25 @@ The type system helps construct payloads but does not replace server-side tax va
 
 The SDK sends nothing itself: e-mail and WhatsApp delivery is performed by the API after you mark the channels. It does not sign locally, choose a signing certificate, or replace the API's fiscal contract.
 
+## The Archivo DTE (what the receiver gets)
+
+A sealed result carries `archivoDte`: the exact UTF-8 text of the Archivo DTE, which is the signed document plus `firmaElectronica` (the JWS, byte-for-byte) and `selloRecibido`. This is the file to give a customer or an accountant. It is absent in contingency, where there is no seal yet. `archivoJson` is unchanged (the stored original, `{codigoGeneracion, ambiente, jws}`); keep archiving that.
+
+```ts
+import { archivoDteOf } from "@facta-dte/api";
+
+const result = await facta.issue(sale);
+if (result.estado === "sellado") {
+  // `archivoDte` when the API serves it; otherwise built from documento + jws + selloRecibido.
+  const archivo = archivoDteOf(result);
+}
+const file = await facta.downloadDocument(code, "json");               // Archivo DTE (default)
+const original = await facta.downloadDocument(code, "json", { raw: true }); // stored bytes
+console.log(file.jsonFormat, original.jsonFormat);                     // "archivo-dte" "raw"
+```
+
+`downloadDocument(code, "json")` now returns the Archivo DTE by default and reports `jsonFormat` from the `X-Facta-Json-Format` header; `{ raw: true }` returns the stored original and is valid only for `json`. A document without a seal answers `409 not_sealed`; use `raw: true` for its original. The React receipt and download button give the Archivo DTE as «Descargar JSON»; «JSON original (raw)» appears only with the `rawJson` prop, and the server handler honours it only when `capabilities.rawJson` is `true`. Local copies and replication still store exactly what they stored before.
+
 ## Errors
 
 Authenticated API failures use `FactaError`, with a stable `code`, HTTP `status`, safe `details`, `isRejection`, and optional `spent` control-number information. Branch on `code`, not localized message text. Local validation may throw `TypeError` or `RangeError`; archive and storage adapters can throw their own typed errors. Credential-like values are redacted from API error details.

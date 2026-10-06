@@ -166,6 +166,7 @@ const handler = createFactaHandler({
     catalog: "read",            // customers and products (needs `unlockKey`)
     status: true,               // service.status: online | contingency | degraded | offline
     storage: "read",            // storage.status
+    rawJson: false,             // true lets the browser ask documents.download for the stored original JSON (`raw`); default is the Archivo DTE
     retryStorage: true,         // documents.retryStorage (idempotent)
     invalidate: "session",      // invalidate.describe · invalidate, with a server-made session
   },

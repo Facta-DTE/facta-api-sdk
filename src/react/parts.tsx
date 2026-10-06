@@ -5,6 +5,7 @@ import {
   downloadJson,
   downloadPdf,
   fill,
+  archivoDteOf,
   formatDateTime,
   formatMoney,
   storageTone,
@@ -217,20 +218,26 @@ export function Identifiers({ result, showStorage, dateLabel }: { result: IssueR
 type TileState = "idle" | "loading" | "done";
 
 /** A download tile: icon, label, one muted line; spinner while working, check for 1.5 s after. */
-export function DownloadTile({ kind, result }: { kind: "pdf" | "json"; result: IssueResult }) {
+export function DownloadTile({ kind, result }: { kind: "pdf" | "json" | "json-raw"; result: IssueResult }) {
   const { sp, messages } = useCfg();
   const [state, setState] = useState<TileState>("idle");
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
-  const label = kind === "pdf" ? messages.sealed.downloadPdf : messages.sealed.downloadJson;
-  const hint = kind === "pdf" ? messages.downloads.pdfHint : messages.downloads.jsonHint;
+  const label = kind === "pdf" ? messages.sealed.downloadPdf : kind === "json-raw" ? messages.sealed.downloadJsonRaw : messages.sealed.downloadJson;
+  const hint = kind === "pdf" ? messages.downloads.pdfHint : kind === "json-raw" ? messages.downloads.jsonRawHint : messages.downloads.jsonHint;
   const onClick = async () => {
     if (state === "loading") return;
     setState("loading");
     try {
       await Promise.resolve();
       if (kind === "pdf" && result.estado === "sellado" && result.representacionGrafica) downloadPdf(result.representacionGrafica, result.codigoGeneracion);
-      if (kind === "json" && result.archivoJson) downloadJson(result.archivoJson, result.codigoGeneracion);
+      // «Descargar JSON» is the Archivo DTE. A contingency document has no seal,
+      // so its signed JSON is all there is; the raw tile is the stored original.
+      if (kind === "json") {
+        const json = archivoDteOf(result) ?? result.archivoJson;
+        if (json) downloadJson(json, result.codigoGeneracion);
+      }
+      if (kind === "json-raw" && result.archivoJson) downloadJson(result.archivoJson, result.codigoGeneracion);
       setState("done");
       clearTimeout(timer.current);
       timer.current = setTimeout(() => setState("idle"), 1500);
@@ -259,14 +266,17 @@ export function DownloadTile({ kind, result }: { kind: "pdf" | "json"; result: I
   );
 }
 
-export function Downloads({ result }: { result: IssueResult }) {
+export function Downloads({ result, rawJson }: { result: IssueResult; /** Also offers the stored original; off unless the integrator enables it. */ rawJson?: boolean | undefined }) {
   const pdf = result.estado === "sellado" ? result.representacionGrafica : null;
-  const json = result.archivoJson;
+  const json = archivoDteOf(result) ?? result.archivoJson;
   if (!pdf && !json) return null;
+  // The original differs from the Archivo DTE only when there is a seal to add.
+  const raw = rawJson === true && !!result.archivoJson && archivoDteOf(result) !== null;
   return (
     <div className="facta-downloads">
       {pdf && <DownloadTile kind="pdf" result={result} />}
       {json && <DownloadTile kind="json" result={result} />}
+      {raw && <DownloadTile kind="json-raw" result={result} />}
     </div>
   );
 }
