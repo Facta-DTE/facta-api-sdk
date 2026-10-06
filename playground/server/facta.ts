@@ -6,6 +6,8 @@ import type { FactaCapabilities } from "../../src/server/capabilities.ts";
 import type { PlaygroundEnv } from "./env.ts";
 import { visitorTag } from "./hash.ts";
 import { recordIssued } from "./issued-codes.ts";
+import { maskAddress, recipientKey } from "./delivery.ts";
+import { stashToken } from "./gates.ts";
 
 export interface FactaParts {
   facta: FactaLike;
@@ -16,7 +18,7 @@ export interface FactaParts {
  * The visitor of a request, or null. Injected so the handler and the router
  * share one verification per request.
  */
-export type VisitorOf = (req: Request) => Promise<{ email: string } | null>;
+export type VisitorOf = (req: Request) => Promise<{ id: string } | null>;
 
 export { visitorTag };
 
@@ -50,10 +52,23 @@ export function createFactaParts(env: PlaygroundEnv, visitorOf: VisitorOf, facta
     exposeRecipient: false,
     // Per-visitor record (issued-codes.ts): «Registro» and every per-document read use it.
     onIssued: async (result, { session }) => {
-      const email = issuing.get(session.idempotencyKey);
+      const owner = issuing.get(session.idempotencyKey);
       issuing.delete(session.idempotencyKey);
-      if (email === undefined) return;
-      await recordIssued(env, email, {
+      if (owner === undefined) return;
+      // Keep the five-minute delivery token on the server, so «Reenviar» can use it while it lives.
+      const address = session.deliver?.email;
+      const offer = result.entrega;
+      if (typeof address === "string" && offer?.token !== undefined) {
+        const exp = offer.venceEn === undefined ? Date.now() + 5 * 60_000 : Date.parse(offer.venceEn);
+        await stashToken(env, owner, {
+          code: result.codigoGeneracion.toUpperCase(),
+          token: offer.token,
+          exp: Number.isFinite(exp) ? exp : Date.now() + 5 * 60_000,
+          masked: maskAddress(address),
+          rcpt: await recipientKey(env.FACTA_SESSION_SECRET ?? "", address),
+        }).catch(() => undefined);
+      }
+      await recordIssued(env, owner, {
         codigoGeneracion: result.codigoGeneracion,
         tipoDte: result.tipoDte,
         numeroControl: result.numeroControl,
@@ -66,10 +81,10 @@ export function createFactaParts(env: PlaygroundEnv, visitorOf: VisitorOf, facta
       const visitor = await visitorOf(req);
       if (visitor === null) return false;
       if (ctx.idempotencyKey !== undefined) {
-        const mine = ctx.idempotencyKey.startsWith(`${await visitorTag(visitor.email)}.`);
+        const mine = ctx.idempotencyKey.startsWith(`${await visitorTag(visitor.id)}.`);
         if (mine && ctx.action === "issue") {
           if (issuing.size > 500) issuing.clear();
-          issuing.set(ctx.idempotencyKey, visitor.email);
+          issuing.set(ctx.idempotencyKey, visitor.id);
         }
         return mine;
       }

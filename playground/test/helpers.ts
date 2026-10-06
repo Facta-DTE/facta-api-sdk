@@ -5,9 +5,13 @@ import { QuotaCounter } from "../server/quota.ts";
 export const TEAM = "facta-test.cloudflareaccess.com";
 export const AUD = "aud-tag-for-tests";
 
-/** A complete, valid staging environment with the dev bypass off. Test values only. */
+/**
+ * A complete, valid staging environment in ACCESS mode with the dev bypass off. Test values only.
+ * The Access suites keep using it; Turnstile mode is `turnstileEnv()`.
+ */
 export function goodEnv(extra: Partial<PlaygroundEnv> = {}): PlaygroundEnv {
   return {
+    PLAYGROUND_AUTH: "access",
     FACTA_API_KEY: "facta_test_unit.unit-test-secret",
     FACTA_SIGN_KEY: "factask_unit-test-secret-0000",
     FACTA_API_BASE_URL: "https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1",
@@ -16,6 +20,26 @@ export function goodEnv(extra: Partial<PlaygroundEnv> = {}): PlaygroundEnv {
     ACCESS_AUD: AUD,
     ...extra,
   };
+}
+
+/** Turnstile mode (the default of the deployed playground) with Cloudflare's always-pass dummy keys. */
+export function turnstileEnv(extra: Partial<PlaygroundEnv> = {}): PlaygroundEnv {
+  const { ACCESS_TEAM_DOMAIN: _team, ACCESS_AUD: _aud, PLAYGROUND_AUTH: _auth, ...rest } = goodEnv();
+  return { ...rest, TURNSTILE_SITEKEY: "1x00000000000000000000AA", TURNSTILE_SECRET: "1x0000000000000000000000000000000AA", ...extra };
+}
+
+/**
+ * A siteverify stand-in that follows Cloudflare's documented dummy secrets: `1x…` passes, `2x…` fails,
+ * `3x…` answers «timeout-or-duplicate». Records the form it was sent.
+ */
+export function fakeSiteverify(calls: URLSearchParams[] = []): typeof fetch {
+  return (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const form = new URLSearchParams(String(init?.body ?? ""));
+    calls.push(form);
+    const secret = form.get("secret") ?? "";
+    const pass = secret.startsWith("1x") && form.get("response") !== "spent";
+    return Response.json(pass ? { success: true, hostname: "example.com" } : { success: false, "error-codes": ["invalid-input-response"] });
+  }) as typeof fetch;
 }
 
 const enc = new TextEncoder();

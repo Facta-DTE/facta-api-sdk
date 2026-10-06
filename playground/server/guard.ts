@@ -17,6 +17,8 @@ export type GuardCode =
   | "base_url_not_staging"
   | "session_secret_short"
   | "access_not_configured"
+  | "turnstile_not_configured"
+  | "auth_mode_invalid"
   | "bypass_not_local"
   | "fixtures_invalid";
 
@@ -29,8 +31,19 @@ export interface GuardFailure {
 
 export interface GuardSuccess {
   ok: true;
-  /** True when Cloudflare Access is skipped (localhost only). */
+  /** True when Cloudflare Access is skipped (localhost only, access mode). */
   devBypass: boolean;
+  /** How visitors are told apart. */
+  auth: AuthMode;
+}
+
+export type AuthMode = "turnstile" | "access";
+
+/** `turnstile` unless the deployment asks for Cloudflare Access explicitly. */
+export function authModeOf(env: PlaygroundEnv): AuthMode | null {
+  const raw = (env.PLAYGROUND_AUTH ?? "").trim().toLowerCase();
+  if (raw === "" || raw === "turnstile") return "turnstile";
+  return raw === "access" ? "access" : null;
 }
 
 export type GuardResult = GuardSuccess | GuardFailure;
@@ -84,15 +97,22 @@ export function checkGuard(env: PlaygroundEnv, requestUrl: string): GuardResult 
     }
   }
 
-  const bypass = env.PLAYGROUND_DEV_BYPASS === "1";
-  if (bypass) {
+  const auth = authModeOf(env);
+  if (auth === null) return fail("auth_mode_invalid", "PLAYGROUND_AUTH debe ser «turnstile» o «access».");
+  if (auth === "turnstile") {
+    if ((env.TURNSTILE_SECRET ?? "") === "" || (env.TURNSTILE_SITEKEY ?? "") === "") {
+      return fail("turnstile_not_configured", "Falta configurar Cloudflare Turnstile (TURNSTILE_SITEKEY y TURNSTILE_SECRET).");
+    }
+    return { ok: true, devBypass: false, auth };
+  }
+  if (env.PLAYGROUND_DEV_BYPASS === "1") {
     if (!isLocalHostname(new URL(requestUrl).hostname)) {
       return fail("bypass_not_local", "El acceso de desarrollo está activo fuera de localhost. El playground se detuvo.");
     }
-    return { ok: true, devBypass: true };
+    return { ok: true, devBypass: true, auth };
   }
   if ((env.ACCESS_TEAM_DOMAIN ?? "") === "" || (env.ACCESS_AUD ?? "") === "") {
     return fail("access_not_configured", "Falta configurar Cloudflare Access (ACCESS_TEAM_DOMAIN y ACCESS_AUD).");
   }
-  return { ok: true, devBypass: false };
+  return { ok: true, devBypass: false, auth };
 }

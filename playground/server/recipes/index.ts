@@ -4,7 +4,9 @@
 
 import type { DteRequest, InvalidationRequest, PreparedDte, Recipient } from "../../../mod.ts";
 import type { PlaygroundFixtures } from "../fixtures.ts";
-import { buildSale, MAX_LINES, MAX_TOTAL } from "../sale.ts";
+import { buildSale, customerFits, MAX_LINES, MAX_TOTAL, SaleError } from "../sale.ts";
+import { parseAddress, recipientKey, DeliveryError } from "../delivery.ts";
+import type { StashedToken } from "../mail-quota.ts";
 import type { ExecOutcome } from "./runner.ts";
 import { openJson, sealJson } from "./seal.ts";
 import type { Facta } from "../../../src/client.ts";
@@ -15,6 +17,7 @@ import * as invalidate from "./invalidate.ts";
 import * as documentsStorage from "./documents-storage.ts";
 import * as catalogRefs from "./catalog-refs.ts";
 import * as orderWebhook from "./order-webhook.ts";
+import * as deliverEmail from "./deliver-email.ts";
 
 export class RecipeError extends Error {
   override readonly name = "RecipeError";
@@ -38,12 +41,16 @@ export interface BindContext {
   owns(code: string): Promise<boolean>;
   /** Codes this visitor issued, newest first. */
   mine(): Promise<string[]>;
+  /** The delivery token the Worker kept for a document this visitor issued (valid five minutes), or null. */
+  stash(code: string): Promise<StashedToken | null>;
   now: number;
 }
 
 export interface Bound {
   /** Idempotency keys that count against the visitor's quota. A key already counted is free. */
   quotaKeys: string[];
+  /** Set when the run sends an e-mail: counted on the visitor, IP and recipient (gates.ts). */
+  mail?: { key: string; /** `recipientKey(...)`, never the address. */ recipient: string; doc?: string };
   exec(facta: Facta): Promise<ExecOutcome>;
 }
 
@@ -78,18 +85,36 @@ function codeOf(result: unknown): Array<{ codigoGeneracion: string; tipoDte: str
   return [{ codigoGeneracion, tipoDte, numeroControl, estado }];
 }
 
-/** A complete fixture request, or the anonymous FE the sale builder makes without any demo data. */
-function requestFor(type: "01" | "03", fixtures: PlaygroundFixtures): DteRequest {
-  const fixture = fixtures.requests[type];
+export const RECIPE_TYPES = ["01", "03", "05", "06", "11", "14"] as const;
+export type RecipeType = (typeof RECIPE_TYPES)[number];
+
+/**
+ * A request for any of the six types: the fixture's complete request when there is one, otherwise the
+ * sale builder over a demo customer that fits. Notes (05/06) always relate a document this visitor issued.
+ */
+async function requestFor(type: RecipeType, ctx: BindContext): Promise<DteRequest> {
+  const note = type === "05" || type === "06";
+  const fixture = note ? undefined : ctx.fixtures.requests[type];
   if (fixture !== undefined) return fixture;
-  if (type === "01") {
-    return buildSale({ tipoDte: "01", lines: [{ descripcion: "Servicio de prueba", cantidad: 1, precioUni: 1, tipoItem: 2 }] }, fixtures).sale.request;
+  const relatedCode = note ? await ownedCode(ctx, true, "related") : undefined;
+  const customer = type === "01" ? undefined : ctx.fixtures.customers.find((c) => customerFits(c.receptor as Record<string, unknown>).includes(type));
+  try {
+    return buildSale({
+      tipoDte: type,
+      lines: [{ source: "custom", descripcion: "Servicio de prueba", cantidad: 1, precioUni: 1, tipoItem: type === "11" ? 1 : 2 }],
+      ...(customer === undefined ? {} : { receptor: { source: "demo", customerId: customer.id } }),
+      ...(relatedCode === undefined ? {} : { relatedCode }),
+    }, ctx.fixtures, { ownedCodes: (await ctx.mine()).map((c) => c.toUpperCase()) }).sale.request;
+  } catch (error) {
+    if (error instanceof SaleError) {
+      throw new RecipeError(error.code, note ? "Elija el documento que corrige: la nota debe relacionar uno que usted emitió en este playground." : error.message);
+    }
+    throw error;
   }
-  throw new RecipeError("fixture_missing", "Falta el ejemplo de Crédito Fiscal en los datos de demostración del playground.", 503);
 }
 
-async function ownedCode(ctx: BindContext, required: boolean): Promise<string | undefined> {
-  const code = text(ctx.params, "code", 36, required);
+async function ownedCode(ctx: BindContext, required: boolean, name = "code"): Promise<string | undefined> {
+  const code = text(ctx.params, name, 36, required);
   if (code === undefined) return undefined;
   if (!UUID.test(code)) throw new RecipeError("param_invalid", "El código de generación no es válido.");
   if (!(await ctx.owns(code))) {
@@ -101,8 +126,8 @@ async function ownedCode(ctx: BindContext, required: boolean): Promise<string | 
 const issueDef: RecipeDef = {
   stages: ["run"],
   async bind(ctx) {
-    const type = oneOf(ctx.params, "type", ["01", "03"] as const);
-    const input: issueIdempotent.Input = { request: requestFor(type, ctx.fixtures), idempotencyKey: `${ctx.baseKey}.${type}` };
+    const type = oneOf(ctx.params, "type", RECIPE_TYPES);
+    const input: issueIdempotent.Input = { request: await requestFor(type, ctx), idempotencyKey: `${ctx.baseKey}.${type}` };
     return {
       quotaKeys: [input.idempotencyKey],
       async exec(facta) {
@@ -117,8 +142,8 @@ const prepareSignDef: RecipeDef = {
   stages: ["prepare", "sign"],
   async bind(ctx) {
     if (ctx.stage === "prepare") {
-      const type = oneOf(ctx.params, "type", ["01", "03"] as const);
-      const input: prepareSign.Input = { request: requestFor(type, ctx.fixtures), idempotencyKey: `${ctx.baseKey}.${type}` };
+      const type = oneOf(ctx.params, "type", RECIPE_TYPES);
+      const input: prepareSign.Input = { request: await requestFor(type, ctx), idempotencyKey: `${ctx.baseKey}.${type}` };
       return {
         quotaKeys: [input.idempotencyKey],
         async exec(facta) {
@@ -144,9 +169,9 @@ const prepareSignDef: RecipeDef = {
 const statusRecoveryDef: RecipeDef = {
   stages: ["run"],
   async bind(ctx) {
-    const type = oneOf(ctx.params, "type", ["01", "03"] as const);
+    const type = oneOf(ctx.params, "type", RECIPE_TYPES);
     const input: statusRecovery.Input = {
-      request: requestFor(type, ctx.fixtures),
+      request: await requestFor(type, ctx),
       idempotencyKey: `${ctx.baseKey}.${type}`,
       ...(ctx.params.simulateTimeout === true ? { simulateTimeoutMs: 250 } : {}),
     };
@@ -297,6 +322,44 @@ const orderDef: RecipeDef = {
   },
 };
 
+const deliverEmailDef: RecipeDef = {
+  stages: ["run"],
+  async bind(ctx) {
+    const code = await ownedCode(ctx, false);
+    if (code !== undefined) {
+      // A document issued here: its e-mail was marked at issue, and the five-minute token is the one the Worker kept.
+      const kept = await ctx.stash(code);
+      if (kept === null) {
+        throw new RecipeError("delivery_window_closed", "El plazo para entregar ese documento venció (cinco minutos desde que se emitió) o no se marcó el correo. Deje el campo vacío para emitir uno nuevo.", 410);
+      }
+      const input: deliverEmail.Input = { email: kept.masked, code, token: kept.token };
+      return {
+        quotaKeys: [],
+        mail: { key: `${ctx.baseKey}.mail`, recipient: kept.rcpt, doc: code },
+        async exec(facta) {
+          return { result: await deliverEmail.run(facta, input) };
+        },
+      };
+    }
+    let address: string;
+    try {
+      address = parseAddress(ctx.params.email);
+    } catch (error) {
+      if (error instanceof DeliveryError) throw new RecipeError(error.code, error.message);
+      throw error;
+    }
+    const input: deliverEmail.Input = { request: await requestFor("01", ctx), idempotencyKey: `${ctx.baseKey}.deliver`, email: address };
+    return {
+      quotaKeys: [input.idempotencyKey!],
+      mail: { key: `${ctx.baseKey}.mail`, recipient: await recipientKey(ctx.secret, address) },
+      async exec(facta) {
+        const out = await deliverEmail.run(facta, input);
+        return { result: out, issued: codeOf(out.issued) };
+      },
+    };
+  },
+};
+
 export const RECIPES: Readonly<Record<string, RecipeDef>> = {
   "issue-idempotent": issueDef,
   "prepare-sign": prepareSignDef,
@@ -305,4 +368,5 @@ export const RECIPES: Readonly<Record<string, RecipeDef>> = {
   "documents-storage": documentsDef,
   "catalog-refs": catalogDef,
   "order-webhook": orderDef,
+  "deliver-email": deliverEmailDef,
 };

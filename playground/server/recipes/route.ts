@@ -5,11 +5,13 @@
 // quota, execution against staging and the redaction of whatever goes back.
 
 import { visitorTag } from "../facta.ts";
-import type { Visitor } from "../access.ts";
+import type { Visitor } from "../visitor.ts";
 import type { PlaygroundEnv } from "../env.ts";
 import type { PlaygroundFixtures } from "../fixtures.ts";
 import { FixturesError } from "../fixtures.ts";
 import { quotaMessage, type QuotaDecision } from "../quota.ts";
+import { mailMessage, type MailDecision } from "../delivery.ts";
+import { readStashedToken, type MailCheck } from "../gates.ts";
 import { RECIPES, RecipeError } from "./index.ts";
 import { listIssued, ownsDocument, recordIssued, updateIssuedState } from "../issued-codes.ts";
 import { execute } from "./runner.ts";
@@ -19,6 +21,10 @@ export interface RecipeRouteDeps {
   visitor: Visitor | null;
   fixtures(): Promise<PlaygroundFixtures>;
   consume(email: string, key: string): Promise<QuotaDecision | null>;
+  /** Turnstile for a run that issues, invalidates or sends. Null when it passed. */
+  turnstile?(): Promise<Response | null>;
+  /** E-mail limits for a run that sends (the router adds the caller). */
+  mail?(check: Omit<MailCheck, "caller">): Promise<MailDecision | null>;
   fetch?: typeof globalThis.fetch;
   now?: () => number;
 }
@@ -66,7 +72,7 @@ export async function handleRecipeRun(request: Request, deps: RecipeRouteDeps): 
 
   const { env, visitor } = deps;
   const secret = env.FACTA_SESSION_SECRET!;
-  const tag = await visitorTag(visitor.email);
+  const tag = await visitorTag(visitor.id);
 
   let bound;
   try {
@@ -74,13 +80,14 @@ export async function handleRecipeRun(request: Request, deps: RecipeRouteDeps): 
       stage,
       params: params as Record<string, unknown>,
       fixtures: await deps.fixtures(),
-      email: visitor.email,
+      email: visitor.id,
       baseKey: `${tag}.${runId}`,
       tag,
       secret,
       hasCatalog: Boolean(env.FACTA_UNLOCK_KEY),
-      owns: (code) => ownsDocument(env, visitor.email, code),
-      mine: async () => (await listIssued(env, visitor.email)).map((entry) => entry.codigoGeneracion),
+      owns: (code) => ownsDocument(env, visitor.id, code),
+      stash: async (code) => (await readStashedToken(env, visitor.id, code.toUpperCase())),
+      mine: async () => (await listIssued(env, visitor.id)).map((entry) => entry.codigoGeneracion),
       now: deps.now?.() ?? Date.now(),
     });
   } catch (error) {
@@ -89,9 +96,24 @@ export async function handleRecipeRun(request: Request, deps: RecipeRouteDeps): 
     throw error;
   }
 
+  // Anything that costs something (an issue, an invalidation, an e-mail) needs a fresh Turnstile token.
+  if ((bound.quotaKeys.length > 0 || bound.mail !== undefined) && deps.turnstile !== undefined) {
+    const blocked = await deps.turnstile();
+    if (blocked) return blocked;
+  }
+  // E-mail limits first (they also name the document cooldown), then the issue quota.
+  if (bound.mail !== undefined && deps.mail !== undefined) {
+    const decision = await deps.mail({
+      key: bound.mail.key,
+      recipient: bound.mail.recipient,
+      ...(bound.mail.doc === undefined ? {} : { doc: bound.mail.doc }),
+    });
+    if (decision === null) return failure(503, "playground_quota_unavailable", "No se pudo comprobar el límite de envíos. Intente de nuevo.");
+    if (!decision.allowed) return failure(429, "mail_quota_exceeded", mailMessage(decision), { "retry-after": String(decision.retryAfterSeconds ?? 60) });
+  }
   // Count only what issues or invalidates. A key already counted (a retry of the same run) is free.
   for (const key of bound.quotaKeys) {
-    const decision = await deps.consume(visitor.email, key);
+    const decision = await deps.consume(visitor.id, key);
     if (decision === null) return failure(503, "playground_quota_unavailable", "No se pudo comprobar el límite de emisiones. Intente de nuevo.");
     if (!decision.allowed) {
       return failure(429, "quota_exceeded", quotaMessage(decision), { "retry-after": String(decision.retryAfterSeconds ?? 60) });
@@ -103,14 +125,14 @@ export async function handleRecipeRun(request: Request, deps: RecipeRouteDeps): 
   const issued: Array<{ codigoGeneracion: string; tipoDte?: string }> = [];
   for (const document of outcome?.issued ?? []) {
     try {
-      await recordIssued(env, visitor.email, document);
+      await recordIssued(env, visitor.id, document);
       issued.push({ codigoGeneracion: document.codigoGeneracion, ...(document.tipoDte === undefined ? {} : { tipoDte: document.tipoDte }) });
     } catch {
       // The document exists in Hacienda's test service even if the ledger write failed; the page still shows it.
       issued.push({ codigoGeneracion: document.codigoGeneracion, ...(document.tipoDte === undefined ? {} : { tipoDte: document.tipoDte }) });
     }
   }
-  for (const code of outcome?.invalidated ?? []) await updateIssuedState(env, visitor.email, code, "invalidado").catch(() => undefined);
+  for (const code of outcome?.invalidated ?? []) await updateIssuedState(env, visitor.id, code, "invalidado").catch(() => undefined);
   return reply(200, {
     recipe: input.recipe,
     stage,

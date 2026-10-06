@@ -6,7 +6,7 @@ const PROD_URL = "https://playground.factadte.com/api/state";
 
 describe("fail-closed guard", () => {
   it("accepts a complete staging environment", () => {
-    expect(checkGuard(goodEnv(), PROD_URL)).toEqual({ ok: true, devBypass: false });
+    expect(checkGuard(goodEnv(), PROD_URL)).toEqual({ ok: true, devBypass: false, auth: "access" });
   });
 
   it("refuses a production key", () => {
@@ -53,8 +53,8 @@ describe("fail-closed guard", () => {
 
   it("allows the dev bypass on localhost only", () => {
     const env = goodEnv({ PLAYGROUND_DEV_BYPASS: "1", ACCESS_TEAM_DOMAIN: "", ACCESS_AUD: "" });
-    expect(checkGuard(env, "http://localhost:8787/api/state")).toEqual({ ok: true, devBypass: true });
-    expect(checkGuard(env, "http://127.0.0.1:8787/api/state")).toEqual({ ok: true, devBypass: true });
+    expect(checkGuard(env, "http://localhost:8787/api/state")).toEqual({ ok: true, devBypass: true, auth: "access" });
+    expect(checkGuard(env, "http://127.0.0.1:8787/api/state")).toEqual({ ok: true, devBypass: true, auth: "access" });
     expect(checkGuard(env, PROD_URL)).toMatchObject({ ok: false, code: "bypass_not_local" });
     expect(checkGuard(env, "https://facta-playground-dev.example.workers.dev/api/state")).toMatchObject({ code: "bypass_not_local" });
     expect(checkGuard(env, "https://localhost.evil.example/api/state")).toMatchObject({ code: "bypass_not_local" });

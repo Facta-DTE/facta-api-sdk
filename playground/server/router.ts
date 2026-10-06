@@ -11,11 +11,19 @@
 //   POST /api/invalidation  seals an invalidation session for a document the visitor issued here
 //   POST /api/recipes/run  one stage of a fixed server recipe (recipes/)
 //
+//   POST /api/delivery/resend  one more e-mail attempt for a document the visitor issued (5-minute token)
+//
 // Extension points for later batches: add a route to ROUTES; add a type to
 // `server/sale.ts`; add recipes under `server/recipes/` and route them here.
 
 import { createFactaInvalidationSession, createFactaSession, verifyFactaSession } from "../../src/server/session.ts";
-import { visitorFrom, type JwksSource, type Visitor } from "./access.ts";
+import type { JwksSource } from "./access.ts";
+import { ensureVisitor, resolveVisitor, type Visitor } from "./visitor.ts";
+import { authModeOf } from "./guard.ts";
+import { clientIp, verifyTurnstile } from "./turnstile.ts";
+import { consumeIssue, consumeMail, peekMail, readStashedToken, type Caller } from "./gates.ts";
+import { DeliveryError, deliveryFor, maskAddress, mailMessage, mentionsWhatsApp, parseAddress, recipientKey } from "./delivery.ts";
+import { FactaError } from "../../src/errors.ts";
 import type { PlaygroundEnv } from "./env.ts";
 import { createFactaParts, visitorTag, type FactaParts } from "./facta.ts";
 import { FixturesError, parseFixtures, publicFixtures, type PlaygroundFixtures } from "./fixtures.ts";
@@ -35,6 +43,8 @@ export interface ApiDeps {
   facta?: FactaLike;
   /** Recipes: the HTTP client under the SDK (tests inject a fake). */
   fetch?: typeof globalThis.fetch;
+  /** Turnstile siteverify (tests inject a fake that follows Cloudflare's documented dummy keys). */
+  turnstileFetch?: typeof globalThis.fetch;
 }
 
 const SECURITY_HEADERS = {
@@ -52,6 +62,22 @@ export function jsonResponse(status: number, body: unknown, extra: Record<string
 
 const errorBody = (code: string, message: string, retryable = false) => ({ error: { code, message, retryable } });
 
+/** Who is paying for the action: the cookie's visitor and the caller's IP. */
+function callerOf(request: Request, visitor: Visitor): Caller {
+  return { visitorId: visitor.id, ip: clientIp(request) };
+}
+
+/** Turnstile on an action that costs something. Null when it passed (or the deployment uses Access). */
+async function requireTurnstile(request: Request, env: PlaygroundEnv, deps: ApiDeps): Promise<Response | null> {
+  if (authModeOf(env) !== "turnstile") return null;
+  const verdict = await verifyTurnstile(request, env, deps.turnstileFetch);
+  if (verdict.ok) return null;
+  return jsonResponse(verdict.code === "turnstile_unavailable" ? 503 : 403, errorBody(verdict.code, verdict.message, verdict.code === "turnstile_unavailable"));
+}
+
+const mailLimited = (decision: { window?: "hour" | "day" | "recipient" | "document"; retryAfterSeconds?: number }) =>
+  jsonResponse(429, errorBody("mail_quota_exceeded", mailMessage(decision)), { "retry-after": String(decision.retryAfterSeconds ?? 60) });
+
 // One handler per environment object (an isolate keeps the same `env`).
 const partsCache = new WeakMap<object, { parts: FactaParts; visitors: WeakMap<Request, Promise<Visitor | null>> }>();
 
@@ -62,7 +88,7 @@ function partsFor(env: PlaygroundEnv, deps: ApiDeps) {
   const visitorOf = (req: Request) => {
     let pending = visitors.get(req);
     if (pending === undefined) {
-      pending = visitorFrom(req, env, deps.keys, deps.now?.());
+      pending = resolveVisitor(req, env, deps.keys, deps.now?.());
       visitors.set(req, pending);
     }
     return pending;
@@ -73,21 +99,9 @@ function partsFor(env: PlaygroundEnv, deps: ApiDeps) {
   return entry;
 }
 
-async function consumeQuota(env: PlaygroundEnv, email: string, key: string): Promise<QuotaDecision | null> {
+async function peekQuota(env: PlaygroundEnv, id: string): Promise<QuotaDecision | null> {
   if (!env.QUOTA) return null;
-  const stub = env.QUOTA.get(env.QUOTA.idFromName(email.toLowerCase()));
-  const response = await stub.fetch(new Request("https://quota/consume", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ key }),
-  }));
-  if (!response.ok) return null;
-  return (await response.json()) as QuotaDecision;
-}
-
-async function peekQuota(env: PlaygroundEnv, email: string): Promise<QuotaDecision | null> {
-  if (!env.QUOTA) return null;
-  const stub = env.QUOTA.get(env.QUOTA.idFromName(email.toLowerCase()));
+  const stub = env.QUOTA.get(env.QUOTA.idFromName(id.toLowerCase()));
   const response = await stub.fetch(new Request("https://quota/peek"));
   return response.ok ? ((await response.json()) as QuotaDecision) : null;
 }
@@ -125,7 +139,7 @@ export async function handleApi(request: Request, env: PlaygroundEnv, deps: ApiD
   const visitorOf = (req: Request) => {
     let pending = visitors.get(req);
     if (pending === undefined) {
-      pending = visitorFrom(req, env, deps.keys, deps.now?.());
+      pending = resolveVisitor(req, env, deps.keys, deps.now?.());
       visitors.set(req, pending);
     }
     return pending;
@@ -133,7 +147,8 @@ export async function handleApi(request: Request, env: PlaygroundEnv, deps: ApiD
 
   if (path === "/api/state") {
     if (request.method !== "GET") return jsonResponse(405, errorBody("method_not_allowed", "Solo se acepta GET."), { allow: "GET" });
-    const visitor = await visitorOf(request);
+    const ensured = await ensureVisitor(request, env, deps.keys, deps.now?.() ?? Date.now());
+    const visitor = ensured.visitor;
     let fixtures: PlaygroundFixtures;
     try {
       fixtures = await loadFixtures(env);
@@ -144,13 +159,18 @@ export async function handleApi(request: Request, env: PlaygroundEnv, deps: ApiD
     return jsonResponse(200, {
       environment: "00",
       apiHost: STAGING_API_HOST,
-      visitor: visitor === null ? null : { email: visitor.email, via: visitor.via },
-      quota: visitor === null ? null : await peekQuota(env, visitor.email),
+      visitor: visitor === null ? null : { label: visitor.label, email: visitor.email, via: visitor.via },
+      auth: authModeOf(env),
+      turnstileSiteKey: authModeOf(env) === "turnstile" ? env.TURNSTILE_SITEKEY ?? null : null,
+      quota: visitor === null ? null : await peekQuota(env, visitor.id),
+      mail: visitor === null ? null : await peekMail(env, visitor.id),
+      // D-6: e-mail only. The server never requests WhatsApp.
+      whatsapp: false,
       supportedTypes: SUPPORTED_SALE_TYPES,
       catalog: Boolean(env.FACTA_UNLOCK_KEY),
       catalogReceiverTypes: CATALOG_RECEIVER_TYPES,
       demo: publicFixtures(fixtures),
-    });
+    }, ensured.setCookie === undefined ? {} : { "set-cookie": ensured.setCookie });
   }
 
   if (path === "/api/session") {
@@ -159,21 +179,35 @@ export async function handleApi(request: Request, env: PlaygroundEnv, deps: ApiD
     const visitor = await visitorOf(request);
     if (visitor === null) return jsonResponse(401, errorBody("unauthorized", "Inicie sesión para emitir facturas de prueba."));
     const body = await request.json().catch(() => null);
+    // The browser can never name another channel: any mention of WhatsApp is refused outright.
+    if (mentionsWhatsApp(body)) return jsonResponse(400, errorBody("channel_not_allowed", "El playground solo entrega por correo."));
+    const blocked = await requireTurnstile(request, env, deps);
+    if (blocked) return blocked;
     try {
-      const owned = (await listIssued(env, visitor.email)).map((e) => e.codigoGeneracion);
+      const wantsMail = (body as { sendEmail?: unknown } | null)?.sendEmail === true;
+      let address: string | null = null;
+      if (wantsMail) {
+        const typed = (body as { emailTo?: unknown }).emailTo;
+        address = parseAddress(typed === undefined && visitor.email !== null ? visitor.email : typed);
+        // Pre-flight, counting nothing: the real count happens when the document is issued.
+        const check = await consumeMail(env, { caller: callerOf(request, visitor), key: "preflight", recipient: await recipientKey(env.FACTA_SESSION_SECRET!, address), commit: false });
+        if (check !== null && !check.allowed) return mailLimited(check);
+      }
+      const owned = (await listIssued(env, visitor.id)).map((e) => e.codigoGeneracion);
       // Catalog ids are confirmed against the key's catalog before anything is built.
       const catalog = await loadCatalogLookup(body, parts.facta, Boolean(env.FACTA_UNLOCK_KEY));
-      const { sale, sendEmail } = buildSale(body, await loadFixtures(env), { ownedCodes: owned, catalog });
-      const idempotencyKey = `${await visitorTag(visitor.email)}.${crypto.randomUUID()}`;
+      const { sale } = buildSale(body, await loadFixtures(env), { ownedCodes: owned, catalog });
+      const idempotencyKey = `${await visitorTag(visitor.id)}.${crypto.randomUUID()}`;
       const session = await createFactaSession({
         request: sale.request,
         idempotencyKey,
         display: { total: sale.total, title: sale.title, reference: "Playground" },
-        // D-6: e-mail only, only to the verified visitor. WhatsApp is never requested.
-        ...(sendEmail ? { deliver: { email: visitor.email } } : {}),
+        // E-mail only, to the address the visitor typed; limited server-side. WhatsApp is never requested.
+        ...(address === null ? {} : { deliver: deliveryFor(address) }),
       }, env.FACTA_SESSION_SECRET!, deps.now?.());
-      return jsonResponse(200, { session, total: sale.total, title: sale.title, emailTo: sendEmail ? visitor.email : null });
+      return jsonResponse(200, { session, total: sale.total, title: sale.title, emailTo: address === null ? null : maskAddress(address) });
     } catch (error) {
+      if (error instanceof DeliveryError) return jsonResponse(error.status, errorBody(error.code, error.message));
       if (error instanceof SaleError) {
         const status = error.code === "catalog_unreadable" ? 502 : 400;
         return jsonResponse(status, { error: { code: error.code, message: error.message, retryable: status === 502, ...(error.field === undefined ? {} : { field: error.field }) } });
@@ -187,7 +221,7 @@ export async function handleApi(request: Request, env: PlaygroundEnv, deps: ApiD
     if (request.method !== "GET") return jsonResponse(405, errorBody("method_not_allowed", "Solo se acepta GET."), { allow: "GET" });
     const visitor = await visitorOf(request);
     if (visitor === null) return jsonResponse(401, errorBody("unauthorized", "Inicie sesión para ver sus documentos."));
-    return jsonResponse(200, { issued: await listIssued(env, visitor.email) });
+    return jsonResponse(200, { issued: await listIssued(env, visitor.id) });
   }
 
   if (path === "/api/invalidation") {
@@ -199,7 +233,9 @@ export async function handleApi(request: Request, env: PlaygroundEnv, deps: ApiD
     if (body === null || !isGenerationCode(body.codigoGeneracion)) return jsonResponse(400, errorBody("code_invalid", "El código de generación no es válido."));
     const code = body.codigoGeneracion.toUpperCase();
     // Ownership, enforced here: only a document this visitor issued in the playground.
-    if (!(await ownsDocument(env, visitor.email, code))) return jsonResponse(403, errorBody("not_issued_here", "Solo puede anular documentos que usted emitió en este playground."));
+    if (!(await ownsDocument(env, visitor.id, code))) return jsonResponse(403, errorBody("not_issued_here", "Solo puede anular documentos que usted emitió en este playground."));
+    const blocked = await requireTurnstile(request, env, deps);
+    if (blocked) return blocked;
     const tipoAnulacion = body.tipoAnulacion === 3 ? 3 : 2;
     const motivo = typeof body.motivo === "string" ? body.motivo.trim().slice(0, 500) : "";
     if (tipoAnulacion === 3 && motivo === "") return jsonResponse(400, errorBody("motivo_required", "Escriba el motivo de la anulación."));
@@ -221,16 +257,52 @@ export async function handleApi(request: Request, env: PlaygroundEnv, deps: ApiD
       responsable: fixtures.invalidation.responsable,
       solicita: fixtures.invalidation.solicita,
       // Bound to the visitor like an issue session, so the handler's `authorize` checks the tag.
-      idempotencyKey: `${await visitorTag(visitor.email)}.invalidate-${code}`,
+      idempotencyKey: `${await visitorTag(visitor.id)}.invalidate-${code}`,
     }, env.FACTA_SESSION_SECRET!, deps.now?.());
     return jsonResponse(200, { session });
+  }
+
+  if (path === "/api/delivery/resend") {
+    const bad = requireBrowserJson(request);
+    if (bad) return bad;
+    const visitor = await visitorOf(request);
+    if (visitor === null) return jsonResponse(401, errorBody("unauthorized", "Inicie sesión para reenviar documentos."));
+    const body = await request.json().catch(() => null) as Record<string, unknown> | null;
+    if (mentionsWhatsApp(body)) return jsonResponse(400, errorBody("channel_not_allowed", "El playground solo entrega por correo."));
+    // Only the document code travels: the address is the one marked when it was issued, never a new one.
+    if (body === null || typeof body !== "object" || Object.keys(body).some((k) => k !== "codigoGeneracion")) {
+      return jsonResponse(400, errorBody("bad_request", "Solo se acepta el código del documento."));
+    }
+    if (!isGenerationCode(body.codigoGeneracion)) return jsonResponse(400, errorBody("code_invalid", "El código de generación no es válido."));
+    const code = body.codigoGeneracion.toUpperCase();
+    if (!(await ownsDocument(env, visitor.id, code))) return jsonResponse(403, errorBody("not_issued_here", "Solo puede reenviar documentos que usted emitió en este playground."));
+    const blocked = await requireTurnstile(request, env, deps);
+    if (blocked) return blocked;
+    const stashed = await readStashedToken(env, visitor.id, code);
+    if (stashed === null || typeof parts.facta.deliverEmail !== "function") {
+      return jsonResponse(410, errorBody("delivery_window_closed", "El plazo para reenviar este documento venció (cinco minutos desde que se emitió) o no se marcó el correo. Emita uno nuevo."));
+    }
+    const now = deps.now?.() ?? Date.now();
+    const decision = await consumeMail(env, { caller: callerOf(request, visitor), key: `resend.${code}.${now}`, recipient: stashed.rcpt, doc: code });
+    if (decision === null) return jsonResponse(503, errorBody("playground_quota_unavailable", "No se pudo comprobar el límite de envíos. Intente de nuevo."));
+    if (!decision.allowed) return mailLimited(decision);
+    try {
+      const sent = await parts.facta.deliverEmail(code, stashed.token);
+      return jsonResponse(200, { canal: { estado: sent.estado, destino: stashed.masked, ...(sent.motivo ? { motivo: sent.motivo } : {}) } });
+    } catch (error) {
+      if (error instanceof FactaError) {
+        const gone = error.code === "entrega_vencida";
+        return jsonResponse(gone ? 410 : 502, errorBody(gone ? "delivery_window_closed" : "delivery_failed", gone ? "El plazo para reenviar este documento venció. Emita uno nuevo." : "No se pudo enviar el correo. Intente de nuevo más tarde.", !gone));
+      }
+      throw error;
+    }
   }
 
   if (path === "/api/registro") {
     if (request.method !== "GET") return jsonResponse(405, errorBody("method_not_allowed", "Solo se acepta GET."), { allow: "GET" });
     const visitor = await visitorOf(request);
     if (visitor === null) return jsonResponse(401, errorBody("unauthorized", "Inicie sesión para ver su registro."));
-    const entries = await listIssued(env, visitor.email);
+    const entries = await listIssued(env, visitor.id);
     // Current state only for codes the visitor owns (they come from their own record), newest first.
     const documents = await Promise.all(entries.map(async (entry, index) => {
       if (index >= REGISTRY_ENRICH_LIMIT || typeof parts.facta.getDocumentStatus !== "function") return { ...entry, current: null };
@@ -238,7 +310,7 @@ export async function handleApi(request: Request, env: PlaygroundEnv, deps: ApiD
         const status = await parts.facta.getDocumentStatus(entry.codigoGeneracion);
         const current = projectDocument(status, { exposeRecipient: false });
         if (typeof current.estado === "string" && current.estado !== entry.estado) {
-          await updateIssuedState(env, visitor.email, entry.codigoGeneracion, current.estado).catch(() => undefined);
+          await updateIssuedState(env, visitor.id, entry.codigoGeneracion, current.estado).catch(() => undefined);
           entry = { ...entry, estado: current.estado };
         }
         return { ...entry, current };
@@ -250,11 +322,15 @@ export async function handleApi(request: Request, env: PlaygroundEnv, deps: ApiD
   }
 
   if (path === "/api/recipes/run") {
+    const visitor0 = await visitorOf(request);
+    const caller0 = visitor0 === null ? null : callerOf(request, visitor0);
     return handleRecipeRun(request, {
       env,
-      visitor: await visitorOf(request),
+      visitor: visitor0,
       fixtures: () => loadFixtures(env),
-      consume: (email, key) => consumeQuota(env, email, key),
+      consume: (_id, key) => consumeIssue(env, caller0!, key),
+      turnstile: () => requireTurnstile(request, env, deps),
+      mail: (check) => consumeMail(env, { ...check, caller: caller0! }),
       ...(deps.fetch === undefined ? {} : { fetch: deps.fetch }),
       ...(deps.now === undefined ? {} : { now: deps.now }),
     });
@@ -270,7 +346,7 @@ export async function handleApi(request: Request, env: PlaygroundEnv, deps: ApiD
         const visitor = await visitorOf(request);
         if (visitor === null) return jsonResponse(401, errorBody("unauthorized", "Inicie sesión para ver documentos."));
         const code = (peeked as { codigoGeneracion?: unknown }).codigoGeneracion;
-        if (!isGenerationCode(code) || !(await ownsDocument(env, visitor.email, code))) {
+        if (!isGenerationCode(code) || !(await ownsDocument(env, visitor.id, code))) {
           return jsonResponse(403, errorBody("document_not_yours", "Ese documento no fue emitido desde su sesión del playground."));
         }
       }
@@ -285,20 +361,28 @@ export async function handleApi(request: Request, env: PlaygroundEnv, deps: ApiD
         if (!answer.ok) return answer;
         const page = await answer.json().catch(() => null) as { documentos?: { codigoGeneracion?: string }[] } | null;
         if (page === null || !Array.isArray(page.documentos)) return jsonResponse(502, errorBody("bad_gateway", "No se pudo leer la lista."));
-        const mine = new Set((await listIssued(env, visitor.email)).map((e) => e.codigoGeneracion));
+        const mine = new Set((await listIssued(env, visitor.id)).map((e) => e.codigoGeneracion));
         const documentos = page.documentos.filter((d) => typeof d.codigoGeneracion === "string" && mine.has(d.codigoGeneracion.toUpperCase()));
         return jsonResponse(200, { ...page, documentos });
       }
       if (peeked?.action === "issue") {
         const visitor = await visitorOf(request);
         const session = visitor === null ? null : await verifyFactaSession(peeked.session, env.FACTA_SESSION_SECRET!, deps.now?.()).catch(() => null);
-        if (visitor !== null && session !== null && session.idempotencyKey.startsWith(`${await visitorTag(visitor.email)}.`)) {
-          const decision = await consumeQuota(env, visitor.email, session.idempotencyKey);
+        if (visitor !== null && session !== null && session.idempotencyKey.startsWith(`${await visitorTag(visitor.id)}.`)) {
+          const caller = callerOf(request, visitor);
+          const decision = await consumeIssue(env, caller, session.idempotencyKey);
           if (decision === null) return jsonResponse(503, errorBody("playground_quota_unavailable", "No se pudo comprobar el límite de emisiones. Intente de nuevo."));
           if (!decision.allowed) {
             return jsonResponse(429, errorBody("quota_exceeded", quotaMessage(decision)), {
               "retry-after": String(decision.retryAfterSeconds ?? 60),
             });
+          }
+          // A session that marks the e-mail channel also spends the e-mail limits (a replay is free).
+          const address = session.deliver?.email;
+          if (typeof address === "string") {
+            const mail = await consumeMail(env, { caller, key: `mail.${session.idempotencyKey}`, recipient: await recipientKey(env.FACTA_SESSION_SECRET!, address) });
+            if (mail === null) return jsonResponse(503, errorBody("playground_quota_unavailable", "No se pudo comprobar el límite de envíos. Intente de nuevo."));
+            if (!mail.allowed) return mailLimited(mail);
           }
         }
       }

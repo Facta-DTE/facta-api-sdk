@@ -38,10 +38,23 @@ export interface RecipeSpec {
   needsCatalog?: boolean;
 }
 
+// Every type the API issues. Notes need a document issued here; the others use the demo receivers.
 const TYPE_OPTIONS = [
-  { value: "01", label: "Factura (01)" },
-  { value: "03", label: "Comprobante de crédito fiscal (03)" },
+  { value: "01", label: "01 · Factura" },
+  { value: "03", label: "03 · Crédito fiscal (receptor contribuyente)" },
+  { value: "05", label: "05 · Nota de crédito (corrige un documento suyo)" },
+  { value: "06", label: "06 · Nota de débito (corrige un documento suyo)" },
+  { value: "11", label: "11 · Exportación (receptor extranjero)" },
+  { value: "14", label: "14 · Sujeto excluido (receptor con documento)" },
 ];
+
+/** Notes relate a document the visitor issued here. */
+const RELATED_FIELD: FieldSpec = {
+  name: "related",
+  label: "Documento que corrige (solo 05 y 06)",
+  kind: "issued",
+  help: "Las notas de crédito y débito se relacionan con un documento que usted emitió aquí.",
+};
 
 export const RECIPE_SPECS: RecipeSpec[] = [
   {
@@ -49,7 +62,7 @@ export const RECIPE_SPECS: RecipeSpec[] = [
     title: "Emitir con llave de idempotencia",
     summary: "Emite una Factura o un Crédito Fiscal con una llave propia. Repetir la misma llave devuelve el mismo documento.",
     file: "issue-idempotent.ts",
-    fields: [{ name: "type", label: "Tipo de documento", kind: "select", options: TYPE_OPTIONS, default: "01" }],
+    fields: [{ name: "type", label: "Tipo de documento", kind: "select", options: TYPE_OPTIONS, default: "01" }, RELATED_FIELD],
     consumesQuota: true,
     retry: true,
   },
@@ -58,7 +71,7 @@ export const RECIPE_SPECS: RecipeSpec[] = [
     title: "Preparar, revisar y firmar",
     summary: "prepare reserva el correlativo y devuelve el documento canónico sin firmar; sign lo firma sin cambiarlo.",
     file: "prepare-sign.ts",
-    fields: [{ name: "type", label: "Tipo de documento", kind: "select", options: TYPE_OPTIONS, default: "01" }],
+    fields: [{ name: "type", label: "Tipo de documento", kind: "select", options: TYPE_OPTIONS, default: "01" }, RELATED_FIELD],
     stages: [{ id: "prepare", label: "1. Preparar" }, { id: "sign", label: "2. Firmar" }],
     consumesQuota: true,
   },
@@ -69,6 +82,7 @@ export const RECIPE_SPECS: RecipeSpec[] = [
     file: "status-recovery.ts",
     fields: [
       { name: "type", label: "Tipo de documento", kind: "select", options: TYPE_OPTIONS, default: "01" },
+      RELATED_FIELD,
       {
         name: "simulateTimeout", label: "Simular una respuesta que no llega", kind: "checkbox", default: true,
         help: "Solo acorta la espera de este cliente (250 ms). El API no cambia: el documento puede haberse emitido igual.",
@@ -141,6 +155,23 @@ export const RECIPE_SPECS: RecipeSpec[] = [
     ],
     consumesQuota: true,
     retry: true,
+  },
+  {
+    id: "deliver-email",
+    title: "Entregar por correo y seguir el estado",
+    summary: "Emite una Factura marcando el correo, pide la entrega con el token que devuelve el API y espera el estado final. También sigue un documento suyo recién emitido.",
+    file: "deliver-email.ts",
+    fields: [
+      {
+        name: "email", label: "Correo del cliente", kind: "text",
+        help: "Se envía el documento de prueba estándar de Facta DTE, sin texto suyo. Límites: 5 por hora y 20 por día, y 2 por día a una misma dirección.",
+      },
+      {
+        name: "code", label: "O un documento suyo emitido hace menos de 5 minutos con correo (opcional)", kind: "issued",
+        help: "Con un documento elegido se usa el correo marcado al emitirlo y no se emite otro.",
+      },
+    ],
+    consumesQuota: true,
   },
 ];
 

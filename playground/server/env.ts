@@ -8,9 +8,16 @@ export interface PlaygroundEnv {
   FACTA_DTE_FIXTURES_JSON?: string;
   // Variables
   FACTA_API_BASE_URL?: string;
+  /** `turnstile` (default): anonymous visitors behind Cloudflare Turnstile. `access`: Cloudflare Access. */
+  PLAYGROUND_AUTH?: string;
+  /** Turnstile widget site key (public; the page renders the widget with it). */
+  TURNSTILE_SITEKEY?: string;
+  /** Turnstile secret key, used only by the Worker to verify tokens. */
+  TURNSTILE_SECRET?: string;
+  /** Only with `PLAYGROUND_AUTH=access`. */
   ACCESS_TEAM_DOMAIN?: string;
   ACCESS_AUD?: string;
-  /** `1` skips Cloudflare Access on localhost only. The guard refuses it anywhere else. */
+  /** `1` skips Cloudflare Access on localhost only (access mode). The guard refuses it anywhere else. */
   PLAYGROUND_DEV_BYPASS?: string;
   /** E-mail used as the visitor while the bypass is on. */
   PLAYGROUND_DEV_EMAIL?: string;

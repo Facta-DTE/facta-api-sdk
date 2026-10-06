@@ -104,9 +104,12 @@ describe("playground API", () => {
 
   it("delivers by e-mail only to the verified visitor and never by WhatsApp", async () => {
     const { post, env } = await world();
-    const response = await post("/api/session", { ...SALE, sendEmail: true, deliver: { whatsapp: { number: "70000000", consent: true } }, correo: "other@example.com" }, "ana@example.com");
+    // In Access mode a missing address falls back to the verified e-mail; a browser-supplied channel is refused.
+    const refused = await post("/api/session", { ...SALE, sendEmail: true, deliver: { whatsapp: { number: "70000000", consent: true } } }, "ana@example.com");
+    expect(refused.status).toBe(400);
+    const response = await post("/api/session", { ...SALE, sendEmail: true }, "ana@example.com");
     const body = await response.json() as { session: string; emailTo: string };
-    expect(body.emailTo).toBe("ana@example.com");
+    expect(body.emailTo).toBe("a•••@example.com");
     const session = await verifyFactaSession(body.session, env.FACTA_SESSION_SECRET!, NOW);
     expect(session.deliver).toEqual({ email: "ana@example.com" });
   });
