@@ -9,6 +9,7 @@
 //   GET  /api/registro the visitor's own documents, with their current state
 //   GET  /api/issued   the generation codes THIS visitor issued here (issued-codes.ts)
 //   POST /api/invalidation  seals an invalidation session for a document the visitor issued here
+//   POST /api/recipes/run  one stage of a fixed server recipe (recipes/)
 //
 // Extension points for later batches: add a route to ROUTES; add a type to
 // `server/sale.ts`; add recipes under `server/recipes/` and route them here.
@@ -24,12 +25,15 @@ import { projectDocument } from "../../src/server/capabilities.ts";
 import { quotaMessage, type QuotaDecision } from "./quota.ts";
 import { buildSale, SaleError, SUPPORTED_SALE_TYPES } from "./sale.ts";
 import type { FactaLike } from "../../src/server/handler.ts";
+import { handleRecipeRun } from "./recipes/route.ts";
 
 export interface ApiDeps {
   keys?: JwksSource;
   now?: () => number;
   /** Tests inject a fake client; production builds the real `Facta`. */
   facta?: FactaLike;
+  /** Recipes: the HTTP client under the SDK (tests inject a fake). */
+  fetch?: typeof globalThis.fetch;
 }
 
 const SECURITY_HEADERS = {
@@ -236,6 +240,17 @@ export async function handleApi(request: Request, env: PlaygroundEnv, deps: ApiD
       }
     }));
     return jsonResponse(200, { documents, enriched: Math.min(entries.length, REGISTRY_ENRICH_LIMIT) });
+  }
+
+  if (path === "/api/recipes/run") {
+    return handleRecipeRun(request, {
+      env,
+      visitor: await visitorOf(request),
+      fixtures: () => loadFixtures(env),
+      consume: (email, key) => consumeQuota(env, email, key),
+      ...(deps.fetch === undefined ? {} : { fetch: deps.fetch }),
+      ...(deps.now === undefined ? {} : { now: deps.now }),
+    });
   }
 
   if (path === "/api/facta") {

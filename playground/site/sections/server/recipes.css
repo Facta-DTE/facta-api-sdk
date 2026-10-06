@@ -1,0 +1,45 @@
+/* Solo servidor. Tokens come from ../../styles.css. */
+.pg-recipes { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); align-items: start; }
+@media (min-width: 900px) { .pg-recipes { grid-template-columns: 260px minmax(0, 1fr); } }
+.pg-recipe-nav { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
+@media (min-width: 900px) { .pg-recipe-nav { flex-direction: column; overflow: visible; position: sticky; top: 12px; } }
+.pg-recipe-nav button {
+  min-height: 44px; padding: 8px 14px; border: 1px solid var(--pg-border); border-radius: 10px; background: var(--pg-surface);
+  color: var(--pg-text); font: inherit; font-size: 14px; text-align: left; cursor: pointer; white-space: nowrap;
+}
+@media (min-width: 900px) { .pg-recipe-nav button { white-space: normal; } }
+.pg-recipe-nav button[aria-current="true"] { border-color: var(--pg-accent); background: var(--pg-accent-soft); color: var(--pg-accent); font-weight: 700; }
+.pg-recipe-nav button:focus-visible, .pg-btn:focus-visible, .pg-chip:focus-visible { outline: 3px solid var(--pg-accent); outline-offset: 2px; }
+.pg-recipe { min-width: 0; }
+.pg-recipe h3 { font-size: 1rem; margin: 24px 0 8px; }
+.pg-form { display: grid; gap: 12px; margin-top: 12px; }
+.pg-field label { display: block; font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+.pg-field .pg-check { font-weight: 400; }
+.pg-field input[type="text"], .pg-field input[type="number"], .pg-field select, .pg-field textarea {
+  width: 100%; min-height: 44px; padding: 8px 12px; border: 1px solid var(--pg-border); border-radius: 10px;
+  background: var(--pg-bg); color: var(--pg-text); font: inherit; font-size: 16px;
+}
+.pg-field textarea { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 14px; }
+.pg-field .pg-note { margin: 4px 0 0; }
+.pg-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.pg-btn {
+  display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border: 1px solid var(--pg-border); border-radius: 10px;
+  background: var(--pg-surface); color: var(--pg-text); font: inherit; font-weight: 600; text-decoration: none; cursor: pointer;
+}
+.pg-btn:disabled { opacity: .5; cursor: not-allowed; }
+.pg-ok { color: #1a7f4b; font-weight: 600; }
+@media (prefers-color-scheme: dark) { .pg-ok { color: #6fdc9f; } }
+.pg-fail { padding: 12px 16px; border-radius: 10px; background: var(--pg-danger-soft); color: var(--pg-danger); }
+.pg-fail p { margin: 4px 0 0; color: inherit; }
+.pg-table-wrap { overflow-x: auto; }
+.pg-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.pg-table th, .pg-table td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--pg-border); white-space: nowrap; }
+.pg-json { margin: 8px 0; padding: 12px; max-height: 360px; overflow: auto; border-radius: 10px; background: var(--pg-code-bg); color: var(--pg-code-text); font-size: 13px; }
+.pg-file { margin: 8px 0; }
+.pg-file summary { cursor: pointer; font-weight: 600; min-height: 32px; }
+.pg-pdf { width: 100%; height: 480px; margin-top: 8px; border: 1px solid var(--pg-border); border-radius: 10px; background: #fff; }
+.pg-picks h4 { margin: 12px 0 4px; font-size: 14px; }
+.pg-chip {
+  margin: 0 6px 6px 0; min-height: 36px; padding: 0 12px; border: 1px solid var(--pg-border); border-radius: 99px;
+  background: var(--pg-surface); color: var(--pg-text); font: inherit; font-size: 13px; cursor: pointer;
+}

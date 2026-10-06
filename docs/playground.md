@@ -136,8 +136,9 @@ arbitrary code) and shows the request, the response, timings and the files:
 * List and download documents; managed storage copies.
 * Catalog references (`customerId`/`productId`) with a readable key.
 * Webhook-style flow: an order in, a sealed document out.
-Each recipe also offers «Copiar para Node», «Copiar para Deno/Bun» and
-«Abrir en StackBlitz» (own test key).
+Each recipe also offers «Copiar para Node», «Copiar para Deno/Bun» and a downloadable project
+that asks for the developer's own test key. StackBlitz is not offered because `api-v1` sends no CORS
+headers (decision recorded in `playground/README.md`).
 
 ### 5.5 Registro
 A per-visitor log of the documents issued from the playground (code, type,
