@@ -114,7 +114,7 @@ button { font-family: inherit; }
   .pg-header-inner { display: none; }
   .pg-mbar { display: flex; align-items: center; gap: 10px; height: 56px; padding: 0 max(var(--pg-gutter), env(safe-area-inset-left)); }
   .pg-mbar .pg-wordmark { font-size: 20px; }
-  .pg-mbar .pg-brand-name { font-size: 14px; }
+  .pg-mbar .pg-brand-name { display: inline; font-size: 14px; }
   .pg-mbar .pg-env-chip { margin-left: auto; font-size: 11px; padding: 5px 8px; }
   .pg-mtitle { font-weight: 600; font-size: 16px; }
 }
