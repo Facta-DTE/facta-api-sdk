@@ -124,9 +124,9 @@ describe("timings are a flag, off by default", () => {
 
   it("with the flag: the playground's own steps in the session and in the issue", async () => {
     const w = await world();
-    const created = await w.session({ ...SALE, orderNumber: "PED-4" }, { [TIMINGS_HEADER]: "1" }) as { timings: { steps: Array<{ step: string }>; apiBreakdown: boolean } };
+    const created = await w.session({ ...SALE, orderNumber: "PED-4" }, { [TIMINGS_HEADER]: "1" }) as Awaited<ReturnType<typeof w.session>> & { timings: { steps: Array<{ step: string }>; apiBreakdown: boolean } };
     expect(created.timings.steps.map((s) => s.step)).toEqual(expect.arrayContaining(["Verificación de Turnstile", "Armado de la venta", "Firma de la sesión"]));
-    const answer = await w.issue(created.session as unknown as string, { [TIMINGS_HEADER]: "1" });
+    const answer = await w.issue(created.session, { [TIMINGS_HEADER]: "1" });
     const steps = answer.playground.timings!.steps.map((s) => s.step);
     expect(steps).toEqual(expect.arrayContaining(["Límite de emisiones (solo comprobar)", "Handler del SDK (todo lo siguiente)", "API · emitir (facta.issue)"]));
     // The API returned nothing: only the playground's steps, and the page says so.
@@ -136,7 +136,7 @@ describe("timings are a flag, off by default", () => {
 
   it("with the flag and an API that returns its breakdown: those steps are added under the API call", async () => {
     const w = await world({ debug: true });
-    const created = await w.session({ ...SALE, orderNumber: "PED-5" }) as { session: string };
+    const created = await w.session({ ...SALE, orderNumber: "PED-5" });
     const answer = await w.issue(created.session, { [TIMINGS_HEADER]: "1" });
     const timings = answer.playground.timings!;
     expect(timings.apiBreakdown).toBe(true);
