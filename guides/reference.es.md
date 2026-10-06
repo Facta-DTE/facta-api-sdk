@@ -12,7 +12,7 @@ El único cliente oficial. Node 22 y 24, y también Deno y Bun: `fetch` y `crypt
 
 **Paquete y código:** [npm `@facta-dte/api`](https://www.npmjs.com/package/@facta-dte/api) · [repositorio público en GitHub](https://github.com/Facta-DTE/facta-api-sdk).
 
-**Selección de versión:** Esta documentación describe `0.2.1`. El [registro de npm](https://www.npmjs.com/package/@facta-dte/api?activeTab=versions) es la autoridad para las versiones publicadas y sus etiquetas. `latest` elige la versión estable aprobada. Confirme que la versión publicada instalada incluye un método antes de usarlo; valide las capacidades que solo estén en el código fuente con una copia empaquetada.
+**Selección de versión:** Esta documentación describe `0.3.0`. El [registro de npm](https://www.npmjs.com/package/@facta-dte/api?activeTab=versions) es la autoridad para las versiones publicadas y sus etiquetas. `latest` elige la versión estable aprobada. Confirme que la versión publicada instalada incluye un método antes de usarlo; valide las capacidades que solo estén en el código fuente con una copia empaquetada.
 
 El paquete oficial admite TypeScript y JavaScript. Los SDK de otros lenguajes están pendientes; los ejemplos HTTP directos no representan SDK publicados.
 
@@ -20,8 +20,8 @@ El paquete oficial admite TypeScript y JavaScript. Los SDK de otros lenguajes es
 # Verificar versiones y etiquetas, luego instalar la versión estable aprobada:
 npm view @facta-dte/api version dist-tags
 pnpm add @facta-dte/api
-# Opcional: fijar 0.2.1 después de verificar que está publicada:
-pnpm add @facta-dte/api@0.2.1
+# Opcional: fijar 0.3.0 después de verificar que está publicada:
+pnpm add @facta-dte/api@0.3.0
 ```
 
 ## Configuración

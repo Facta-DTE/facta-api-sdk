@@ -1,6 +1,6 @@
 {
   "name": "@facta-dte/api",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "exports": "./mod.ts",
   "tasks": {
     "test": "deno test --allow-read --allow-write --allow-net .",

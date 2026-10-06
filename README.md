@@ -6,7 +6,9 @@ Read the [Spanish README](README.es.md). The full [method reference](guides/refe
 
 **Package and source:** [npm `@facta-dte/api`](https://www.npmjs.com/package/@facta-dte/api) · [public GitHub repository](https://github.com/Facta-DTE/facta-api-sdk).
 
-**Version selection:** This documentation describes `0.2.1`. The [npm registry](https://www.npmjs.com/package/@facta-dte/api?activeTab=versions) is authoritative for published versions and distribution tags. `latest` selects the approved stable release. Confirm that your installed published version includes a method before using it; validate source-only capabilities with a packed checkout.
+**Version selection:** This documentation describes `0.3.0`. The [npm registry](https://www.npmjs.com/package/@facta-dte/api?activeTab=versions) is authoritative for published versions and distribution tags. `latest` selects the approved stable release. Confirm that your installed published version includes a method before using it; validate source-only capabilities with a packed checkout.
+
+**New in 0.3.0:** with an unlock key and a destination snapshot published from the Facta app, `issueAndArchive()` now also replicates to those synced destinations by default, at Facta's canonical paths, and reports each verified copy back to Facta (`replicate: false` opts out). Storage problems on a sealed document are typed warnings (`byos_not_replicated`, `copy_report_failed`), never failures. Keys with a readable catalog let the server resolve `customerId` / `productId` without a local catalog. See the storage adapters guide.
 
 The official package supports TypeScript and JavaScript. SDKs for other languages are pending; direct HTTP examples do not represent published SDKs.
 
@@ -25,8 +27,8 @@ The portable client relies on standard `fetch`, Web Crypto, `AbortSignal`, and `
 # Verify published versions and tags, then install the approved stable release:
 npm view @facta-dte/api version dist-tags
 pnpm add @facta-dte/api
-# Optionally pin 0.2.1 after verifying that version is published:
-pnpm add @facta-dte/api@0.2.1
+# Optionally pin 0.3.0 after verifying that version is published:
+pnpm add @facta-dte/api@0.3.0
 ```
 
 
@@ -138,6 +140,8 @@ The type system helps construct payloads but does not replace server-side tax va
 ## Catalog and destination snapshots
 
 `syncCatalog()` and `syncDestinations()` decrypt their respective published snapshots in memory using `unlockKey`. They do not create or update server records and do not write artifacts to storage destinations. Catalog-backed customer/product lookup uses only a fresh snapshot for fiscal issuance; stale opt-in is limited to non-fiscal reads.
+
+`issue()` never writes to storage. With `unlockKey` and a published snapshot, `issueAndArchive()` and `recoverOperation()` also replicate the legal JSON and PDF to your synced destinations under Facta's canonical `DTE/…/YYYY/MM/<numeroControl>` paths (opt out with `replicate: false`), report verified copies to Facta, and surface problems as non-throwing `warnings`. See [what each mode does](guides/storage-adapters.md#where-documents-go-each-mode).
 
 - [Catalog snapshots and offline reads](guides/catalog.md)
 - [Storage adapters](guides/storage-adapters.md)

@@ -268,6 +268,8 @@ export interface ManagedStorageStatus {
   byos: { ready: boolean };
   supportedKinds: Array<"json" | "pdf">;
   unsupportedKinds: Array<"ticket" | "invalidation">;
+  /** Absent on servers that predate the capability. `byosCopyReport: 1` accepts BYOS copy reports. */
+  capabilities?: { byosCopyReport?: number };
 }
 
 export interface ManagedDocumentCopy {
