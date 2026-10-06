@@ -24,7 +24,7 @@ function harness(catalogMode: "readable" | "encrypted" | undefined, statusFails 
     }
     return Promise.resolve(new Response(JSON.stringify({ ok: true, codigoGeneracion: "CG" }), { status: 200 }));
   }) as typeof globalThis.fetch;
-  return { calls, facta: new Facta({ apiKey: "key-1.secret", fetch, maxRetries: 0 }) };
+  return { calls, facta: new Facta({ region: false, apiKey: "key-1.secret", fetch, maxRetries: 0 }) };
 }
 
 const request = {

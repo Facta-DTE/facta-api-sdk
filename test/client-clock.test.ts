@@ -68,18 +68,18 @@ async function stampedBy(facta: Facta): Promise<number> {
 
 Deno.test("clock is on by default, one instance per client, nothing calibrated at construction", () => {
   const h = harness();
-  const facta = new Facta({ apiKey: "facta_test_x.secret", fetch: h.fetch });
+  const facta = new Facta({ region: false, apiKey: "facta_test_x.secret", fetch: h.fetch });
   assertEquals(facta.clock !== null, true);
   assertEquals(facta.clock, facta.clock);
   assertEquals(h.clockCalls.length, 0);
   assertEquals(facta.clock!.state().status, "device");
-  const other = new Facta({ apiKey: "facta_test_x.secret", fetch: h.fetch });
+  const other = new Facta({ region: false, apiKey: "facta_test_x.secret", fetch: h.fetch });
   assertEquals(other.clock === facta.clock, false);
 });
 
 Deno.test("clock: false disables it and archive records use the device clock", async () => {
   const h = harness();
-  const facta = new Facta({ apiKey: "facta_test_x.secret", fetch: h.fetch, clock: false });
+  const facta = new Facta({ region: false, apiKey: "facta_test_x.secret", fetch: h.fetch, clock: false });
   assertEquals(facta.clock, null);
   const before = Date.now();
   const stamp = await stampedBy(facta);
@@ -89,7 +89,7 @@ Deno.test("clock: false disables it and archive records use the device clock", a
 
 Deno.test("a URL overrides the default endpoint", async () => {
   const h = harness();
-  const facta = new Facta({
+  const facta = new Facta({ region: false,
     apiKey: "facta_test_x.secret",
     fetch: h.fetch,
     clock: "https://clock-staging.factadte.com/",
@@ -100,21 +100,21 @@ Deno.test("a URL overrides the default endpoint", async () => {
 
 Deno.test("the default endpoint is the public Worker", async () => {
   const h = harness();
-  const facta = new Facta({ apiKey: "facta_test_x.secret", fetch: h.fetch });
+  const facta = new Facta({ region: false, apiKey: "facta_test_x.secret", fetch: h.fetch });
   await facta.clock!.calibrate();
   assertEquals(h.clockCalls[0], DEFAULT_CLOCK_URL);
 });
 
 Deno.test("an invalid clock option is refused", () => {
   assertThrows(
-    () => new Facta({ apiKey: "facta_test_x.secret", clock: 5 as unknown as boolean }),
+    () => new Facta({ region: false, apiKey: "facta_test_x.secret", clock: 5 as unknown as boolean }),
     TypeError,
   );
 });
 
 Deno.test("archive timestamps come from the corrected clock, calibrated lazily on the first call", async () => {
   const h = harness();
-  const facta = new Facta({ apiKey: "facta_test_x.secret", fetch: h.fetch });
+  const facta = new Facta({ region: false, apiKey: "facta_test_x.secret", fetch: h.fetch });
   const before = Date.now();
   const stamp = await stampedBy(facta);
   assertEquals(h.clockCalls.length >= 3, true);
@@ -124,7 +124,7 @@ Deno.test("archive timestamps come from the corrected clock, calibrated lazily o
 
 Deno.test("a second operation does not call the Worker again", async () => {
   const h = harness();
-  const facta = new Facta({ apiKey: "facta_test_x.secret", fetch: h.fetch });
+  const facta = new Facta({ region: false, apiKey: "facta_test_x.secret", fetch: h.fetch });
   await stampedBy(facta);
   const calls = h.clockCalls.length;
   await stampedBy(facta);
@@ -134,7 +134,7 @@ Deno.test("a second operation does not call the Worker again", async () => {
 
 Deno.test("an unreachable clock never fails the operation and falls back to the device clock", async () => {
   const h = harness({ clockDown: true });
-  const facta = new Facta({ apiKey: "facta_test_x.secret", fetch: h.fetch });
+  const facta = new Facta({ region: false, apiKey: "facta_test_x.secret", fetch: h.fetch });
   const before = Date.now();
   const stamp = await stampedBy(facta); // still reaches `begin`
   assertEquals(stamp >= before && stamp <= Date.now() + 1000, true);
@@ -144,7 +144,7 @@ Deno.test("an unreachable clock never fails the operation and falls back to the 
 Deno.test("clockFetch carries only the calibration", async () => {
   const h = harness();
   const clockOnly: string[] = [];
-  const facta = new Facta({
+  const facta = new Facta({ region: false,
     apiKey: "facta_test_x.secret",
     fetch: h.fetch,
     clockFetch: (async (input: string | URL | Request, init?: RequestInit) => {

@@ -110,6 +110,13 @@ export interface FactaOptions {
   baseUrl?: string;
   /** Whole-request deadline, milliseconds. The MH can take ~40 s to answer. */
   timeoutMs?: number;
+  /**
+   * Functions region to pin every request to, sent as `x-region`. By default the client reads
+   * `/v1/status` once, learns the API's region and uses it (falling back to a built-in default
+   * for older APIs). A string overrides discovery; `false` disables the header. Also read from
+   * `config.region` and the `FACTA_API_REGION` environment variable (in that order after this option).
+   */
+  region?: string | false;
   /** How many times to retry the two retryable conditions. */
   maxRetries?: number;
   /** Injected in tests. */
@@ -155,6 +162,8 @@ export interface FactaConfigV1 {
   maxRetries?: number;
   /** API base URL. */
   baseUrl?: string;
+  /** Functions region to send as `x-region`; `false` disables discovery. */
+  region?: string | false;
 }
 
 /** Runtime-only defaults for capabilities implemented by the integrator. */
@@ -426,6 +435,26 @@ function catalogSearchLimit(value: number | undefined): number {
 /** How long the key's advertised catalog mode is trusted before status is asked again. */
 const CATALOG_MODE_TTL_MS = 60_000;
 
+/**
+ * Supabase Edge Functions run near the caller, but the Facta database lives in one region, so every
+ * extra hop across the country costs seconds. Used only when `/v1/status` does not advertise a
+ * `region`. UPDATE THESE if a database moves.
+ */
+const DEFAULT_REGIONS = { test: "us-west-2", live: "us-west-2" } as const;
+const REGION_PATTERN = /^[a-z]{2}(?:-[a-z]+)+-\d+$/;
+const REGION_DISCOVERY_TIMEOUT_MS = 5_000;
+const REGION_RETRY_MS = 60_000;
+
+function envRegion(): string | false | undefined {
+  try {
+    const value = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.FACTA_API_REGION ??
+      (globalThis as { Deno?: { env: { get(name: string): string | undefined } } }).Deno?.env.get("FACTA_API_REGION");
+    const trimmed = value?.trim().toLowerCase();
+    if (trimmed === undefined || trimmed === "") return undefined;
+    return trimmed === "false" || trimmed === "off" ? false : trimmed;
+  } catch { return undefined; }
+}
+
 export class Facta {
   readonly #apiKey: string;
   readonly #signKey: string | null;
@@ -441,6 +470,10 @@ export class Facta {
   readonly #clock: ReferenceClock | null;
   #catalogCache: { revision: number; snapshot: CatalogSnapshot; fetchedAt: string } | null = null;
   #catalogModeCache: { readable: boolean; at: number } | null = null;
+  readonly #regionSetting: string | false | undefined;
+  #region: { value: string | null; at: number; failed: boolean } | null = null;
+  #regionInFlight: Promise<string | null> | null = null;
+  #servedRegion: string | null = null;
 
   constructor(options: FactaOptions) {
     const config = options.config;
@@ -484,6 +517,11 @@ export class Facta {
     this.#secrets = [this.#apiKey, this.#signKey ?? "", this.#unlockKey ?? ""];
     this.#baseUrl = (options.baseUrl ?? config?.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, "");
     this.#timeoutMs = options.timeoutMs ?? config?.timeoutMs ?? 60_000;
+    const regionSetting = options.region ?? config?.region ?? envRegion();
+    if (regionSetting !== undefined && regionSetting !== false && !REGION_PATTERN.test(regionSetting)) {
+      throw new TypeError("region must be a Supabase region such as 'us-west-2', or false.");
+    }
+    this.#regionSetting = regionSetting;
     this.#debug = { ...(options.debug ?? {}) };
     this.#maxRetries = options.maxRetries ?? config?.maxRetries ?? 3;
     this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
@@ -536,6 +574,43 @@ export class Facta {
     return null;
   }
 
+  /**
+   * The functions region sent as `x-region`: the `region` option when set, otherwise what
+   * `/v1/status` advertises (one lazy read per client, shared by concurrent callers), otherwise the
+   * built-in default for this key's environment. `null` when disabled or when discovery failed;
+   * this never throws.
+   */
+  async region(): Promise<string | null> {
+    if (this.#regionSetting === false) return null;
+    if (typeof this.#regionSetting === "string") return this.#regionSetting;
+    const known = this.#region;
+    if (known !== null && (!known.failed || Date.now() - known.at < REGION_RETRY_MS)) return known.value;
+    this.#regionInFlight ??= this.#discoverRegion().finally(() => { this.#regionInFlight = null; });
+    return await this.#regionInFlight;
+  }
+
+  /** The region that actually served the latest response (`x-sb-edge-region`), or null before any/when absent. */
+  get servedRegion(): string | null { return this.#servedRegion; }
+
+  async #discoverRegion(): Promise<string | null> {
+    const fallback = DEFAULT_REGIONS[this.environment === "00" ? "test" : "live"];
+    try {
+      // One attempt, short deadline, and no `#request`: it would wait for this very promise.
+      const status = await this.#attempt<Status>("GET", "/v1/status", {
+        "X-Facta-Key": this.#apiKey,
+        "x-region": fallback,
+      }, undefined, false, undefined, false, Math.min(this.#timeoutMs, REGION_DISCOVERY_TIMEOUT_MS));
+      const advertised = (status as { region?: unknown }).region;
+      const value = typeof advertised === "string" && REGION_PATTERN.test(advertised) ? advertised : fallback;
+      this.#region = { value, at: Date.now(), failed: false };
+      return value;
+    } catch {
+      // Never fail an operation over an optimisation: send no header for a while, then try again.
+      this.#region = { value: null, at: Date.now(), failed: true };
+      return null;
+    }
+  }
+
   /** Health, environment and the ceilings left on this key. */
   status(options: CallOptions = {}): Promise<Status> {
     return this.#request<Status>("GET", "/v1/status", undefined, options);
@@ -556,6 +631,7 @@ export class Facta {
         canIssueAndArchive: false,
         pendingArchiveOperations: null,
         revisions: null,
+        servedRegion: this.#servedRegion,
         checks: [{
           id: "api",
           state: "blocked",
@@ -608,6 +684,8 @@ export class Facta {
       } else if (report.overall === "ready") report.overall = "attention";
     }
     report.storageReady = storageReady;
+    report.region = this.#regionSetting === false ? null : (typeof this.#regionSetting === "string" ? this.#regionSetting : this.#region?.value ?? null);
+    report.servedRegion = this.#servedRegion;
     return report;
   }
 
@@ -2134,6 +2212,9 @@ export class Facta {
     // A debugging aid: asked for per client or per call, never by default.
     const timings = options.debug?.timings ?? this.#debug.timings ?? false;
     if (timings) headers[DEBUG_HEADER] = DEBUG_TIMINGS;
+    const region = await this.region();
+    if (region !== null) headers["x-region"] = region;
+    throwIfAborted(options.signal);
     // Minted ONCE, outside the retry loop. Regenerating it per attempt is
     // exactly the failure this header prevents.
     if (method === "POST") {
@@ -2163,9 +2244,10 @@ export class Facta {
     binary: boolean,
     signal?: AbortSignal,
     timings = false,
+    timeoutMs = this.#timeoutMs,
   ): Promise<T> {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.#timeoutMs);
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     const abort = () => controller.abort();
     signal?.addEventListener("abort", abort, { once: true });
     if (signal?.aborted) {
@@ -2191,6 +2273,8 @@ export class Facta {
         0,
       );
     }
+    const served = response.headers.get("x-sb-edge-region");
+    if (served !== null && REGION_PATTERN.test(served)) this.#servedRegion = served;
 
     if (binary) {
       try {

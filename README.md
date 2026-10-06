@@ -60,6 +60,7 @@ An `IssueResult` is a discriminated union. Check `result.estado`: `"sellado"` me
 | `unlockKey` | Optional `factauk_…` key used locally to decrypt synchronized catalog and destination bundles. Never sent to the API. |
 | `baseUrl` | Optional API host. Defaults to Facta's public API URL. |
 | `timeoutMs` | Request timeout, default 60,000 ms, including response-body reading. |
+| `region` | Functions region sent as `x-region` so requests run next to the database. Default: read once from `/v1/status` (fallback `us-west-2` for older APIs). A string overrides, `false` disables; also `config.region` and the `FACTA_API_REGION` environment variable. `await facta.region()` returns it; `diagnose()` reports the served region. |
 | `maxRetries` | Retry limit for explicitly retryable transport/service failures; defaults to 3. |
 | `fetch` | Optional fetch implementation for an owning runtime or tests. |
 | `clock` | Reference clock for archive timestamps and S3 signing: `true` (default, the public `https://clock.factadte.com/`), a URL, or `false` for the device clock. Calibrated lazily, never blocks and never fails an operation. |

@@ -104,6 +104,15 @@ try {
   assert.equal(health.ok, true, "API status must report healthy");
   assert.equal(health.ambiente, "00", "API status must confirm the test environment");
   assert.equal(health.emisor?.ambiente, "00", "issuer must also be in the test environment");
+  // The API advertises its functions region once the monorepo change is deployed; warn until then.
+  const pinned = await facta.region();
+  console.log(`INFO region: pinned=${pinned ?? "none"} served=${facta.servedRegion ?? "unknown"}`);
+  if (typeof health.region === "string") {
+    assert.equal(health.region, "us-west-2", "API status must advertise the database region");
+    assert.equal(facta.servedRegion, "us-west-2", "requests must be served from the database region");
+  } else {
+    console.warn("WARN region: the API does not advertise a region yet; the built-in default was used");
+  }
   checks.status = "Passed";
   currentCheck = "preflight";
   console.log("PASS status: healthy test environment confirmed");

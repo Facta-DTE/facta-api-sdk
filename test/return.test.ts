@@ -49,7 +49,7 @@ const SEALED = { estado: "sellado", ...base, selloRecibido: "SEAL", representaci
 const REQUEST: ReturnRequest = { items: [{ linea: 1, cantidad: 1 }] };
 
 function client(fetch: typeof globalThis.fetch) {
-  return new Facta({ apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", signKey: SIGN_KEY, fetch });
+  return new Facta({ region: false, apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", signKey: SIGN_KEY, fetch });
 }
 
 Deno.test("registerReturn posts to the document's /return with the sign key and an idempotency key", async () => {

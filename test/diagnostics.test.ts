@@ -212,7 +212,7 @@ Deno.test("missing legacy certificate metadata warns but does not disable an oth
 
 Deno.test("diagnose turns an API status failure into a safe blocked report", async () => {
   const calls: RequestInit[] = [];
-  const facta = new Facta({
+  const facta = new Facta({ region: false,
     apiKey: "facta_test_key.secret",
     fetch: (async (_input: RequestInfo | URL, init?: RequestInit) => {
       calls.push(init ?? {});
@@ -290,7 +290,7 @@ const managedCapability = {
 
 Deno.test("managed-only readiness replaces optional BYOS synchronization without bypassing signing", async () => {
   const health = status({ sincronizacion: { sign: { status: "ready", desiredRevision: 1, publishedRevision: 1 } } });
-  const facta = new Facta({ apiKey: "facta_test_key.secret", fetch: ((url: string) => Promise.resolve(Response.json(url.endsWith('/storage/status') ? managedCapability : health))) as typeof fetch });
+  const facta = new Facta({ region: false, apiKey: "facta_test_key.secret", fetch: ((url: string) => Promise.resolve(Response.json(url.endsWith('/storage/status') ? managedCapability : health))) as typeof fetch });
   assertEquals((await facta.diagnose({ archive: readyArchive })).canIssueAndArchive, true);
   health.sincronizacion!.sign = { status: "pending", desiredRevision: 2, publishedRevision: 1 };
   assertEquals((await facta.diagnose({ archive: readyArchive })).canIssue, false);
@@ -303,7 +303,7 @@ for (const capability of [null, { ...managedCapability, capabilityVersion: 2 },
   { ...managedCapability, supportedKinds: [] },
 ]) {
   Deno.test(`present invalid storage capability blocks issuance: ${JSON.stringify(capability)?.length}`, async () => {
-    const facta = new Facta({ apiKey: "facta_test_key.secret", fetch: ((url: string) => Promise.resolve(Response.json(url.endsWith('/storage/status') ? capability : status()))) as typeof fetch });
+    const facta = new Facta({ region: false, apiKey: "facta_test_key.secret", fetch: ((url: string) => Promise.resolve(Response.json(url.endsWith('/storage/status') ? capability : status()))) as typeof fetch });
     const report = await facta.diagnose({ archive: readyArchive });
     assertEquals(report.canIssue, false);
     assertEquals(report.canIssueAndArchive, false);

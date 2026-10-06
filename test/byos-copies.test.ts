@@ -94,7 +94,7 @@ const SNAPSHOT = {
 async function setup(w: World, snapshot: unknown = SNAPSHOT, runtime: Record<string, unknown> = {}) {
   const directory = await Deno.makeTempDir();
   const archive = await FileInvoiceArchive.open({ directory, passphrase: "correct horse battery staple 1234" });
-  const facta = new Facta({
+  const facta = new Facta({ region: false,
     apiKey: "facta_test_x.secret",
     unlockKey: "factauk_test",
     fetch: w.fetch,
@@ -251,7 +251,7 @@ Deno.test("no unlock key or no published snapshot means no replication and no wa
   assertEquals(result.archive.remoteCopies, undefined);
 
   const archive = await FileInvoiceArchive.open({ directory: await Deno.makeTempDir(), passphrase: "correct horse battery staple 1234" });
-  const noKey = new Facta({ apiKey: "facta_test_x.secret", fetch: w.fetch, runtime: { version: 1, archive } });
+  const noKey = new Facta({ region: false, apiKey: "facta_test_x.secret", fetch: w.fetch, runtime: { version: 1, archive } });
   const plain = await noKey.issueAndArchive(request, opts("sale-no-unlock"));
   assertEquals(plain.warnings, undefined);
   assertEquals(w.bucket.size, 0);
