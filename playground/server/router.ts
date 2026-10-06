@@ -5,16 +5,19 @@
 //   GET  /api/state    visitor, quota and demo data for the page
 //   POST /api/session  validated sale description -> session token
 //   POST /api/facta    the SDK handler (issue, status, documents, downloads…)
+//   GET  /api/issued   the generation codes THIS visitor issued here (ledger in server/issued.ts)
+//   POST /api/invalidation  seals an invalidation session for a document the visitor issued here
 //
 // Extension points for later batches: add a route to ROUTES; add a type to
 // `server/sale.ts`; add recipes under `server/recipes/` and route them here.
 
-import { createFactaSession, verifyFactaSession } from "../../src/server/session.ts";
+import { createFactaInvalidationSession, createFactaSession, verifyFactaSession } from "../../src/server/session.ts";
 import { visitorFrom, type JwksSource, type Visitor } from "./access.ts";
 import type { PlaygroundEnv } from "./env.ts";
 import { createFactaParts, visitorTag, type FactaParts } from "./facta.ts";
 import { FixturesError, parseFixtures, publicFixtures, type PlaygroundFixtures } from "./fixtures.ts";
 import { checkGuard, STAGING_API_HOST } from "./guard.ts";
+import { isGenerationCode, listIssued } from "./issued.ts";
 import { quotaMessage, type QuotaDecision } from "./quota.ts";
 import { buildSale, SaleError, SUPPORTED_SALE_TYPES } from "./sale.ts";
 import type { FactaLike } from "../../src/server/handler.ts";
@@ -144,7 +147,8 @@ export async function handleApi(request: Request, env: PlaygroundEnv, deps: ApiD
     if (visitor === null) return jsonResponse(401, errorBody("unauthorized", "Inicie sesión para emitir facturas de prueba."));
     const body = await request.json().catch(() => null);
     try {
-      const { sale, sendEmail } = buildSale(body, await loadFixtures(env));
+      const owned = (await listIssued(env.QUOTA, visitor.email)).map((e) => e.codigoGeneracion);
+      const { sale, sendEmail } = buildSale(body, await loadFixtures(env), { ownedCodes: owned });
       const idempotencyKey = `${await visitorTag(visitor.email)}.${crypto.randomUUID()}`;
       const session = await createFactaSession({
         request: sale.request,
@@ -159,6 +163,50 @@ export async function handleApi(request: Request, env: PlaygroundEnv, deps: ApiD
       if (error instanceof FixturesError) return jsonResponse(503, errorBody("playground_fixtures_invalid", "Los datos de demostración no son válidos."));
       throw error;
     }
+  }
+
+  if (path === "/api/issued") {
+    if (request.method !== "GET") return jsonResponse(405, errorBody("method_not_allowed", "Solo se acepta GET."), { allow: "GET" });
+    const visitor = await visitorOf(request);
+    if (visitor === null) return jsonResponse(401, errorBody("unauthorized", "Inicie sesión para ver sus documentos."));
+    return jsonResponse(200, { issued: await listIssued(env.QUOTA, visitor.email) });
+  }
+
+  if (path === "/api/invalidation") {
+    const bad = requireBrowserJson(request);
+    if (bad) return bad;
+    const visitor = await visitorOf(request);
+    if (visitor === null) return jsonResponse(401, errorBody("unauthorized", "Inicie sesión para anular documentos de prueba."));
+    const body = await request.json().catch(() => null) as { codigoGeneracion?: unknown; tipoAnulacion?: unknown; motivo?: unknown } | null;
+    if (body === null || !isGenerationCode(body.codigoGeneracion)) return jsonResponse(400, errorBody("code_invalid", "El código de generación no es válido."));
+    const code = body.codigoGeneracion.toUpperCase();
+    // Ownership, enforced here: only a document this visitor issued in the playground.
+    const owned = (await listIssued(env.QUOTA, visitor.email)).some((e) => e.codigoGeneracion === code);
+    if (!owned) return jsonResponse(403, errorBody("not_issued_here", "Solo puede anular documentos que usted emitió en este playground."));
+    const tipoAnulacion = body.tipoAnulacion === 3 ? 3 : 2;
+    const motivo = typeof body.motivo === "string" ? body.motivo.trim().slice(0, 500) : "";
+    if (tipoAnulacion === 3 && motivo === "") return jsonResponse(400, errorBody("motivo_required", "Escriba el motivo de la anulación."));
+    let fixtures: PlaygroundFixtures;
+    try {
+      fixtures = await loadFixtures(env);
+    } catch (error) {
+      if (error instanceof FixturesError) return jsonResponse(503, errorBody("playground_fixtures_invalid", "Los datos de demostración no son válidos."));
+      throw error;
+    }
+    if (fixtures.invalidation === null) {
+      return jsonResponse(503, errorBody("invalidation_unavailable", "El playground no tiene responsables de demostración para anular."));
+    }
+    const session = await createFactaInvalidationSession({
+      generationCode: code,
+      tipoAnulacion,
+      ...(tipoAnulacion === 3 ? { motivo } : {}),
+      // People named on the event come from the fixtures, never from the browser.
+      responsable: fixtures.invalidation.responsable,
+      solicita: fixtures.invalidation.solicita,
+      // Bound to the visitor like an issue session, so the handler's `authorize` checks the tag.
+      idempotencyKey: `${await visitorTag(visitor.email)}.invalidate-${code}`,
+    }, env.FACTA_SESSION_SECRET!, deps.now?.());
+    return jsonResponse(200, { session });
   }
 
   if (path === "/api/facta") {

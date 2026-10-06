@@ -1,0 +1,12 @@
+.pg-example { background: var(--pg-surface); border: 1px solid var(--pg-border); border-radius: var(--pg-radius); padding: 20px; margin: 0 0 20px; }
+.pg-example h3 { margin: 0 0 6px; font-size: 1.05rem; }
+.pg-example-intro { margin: 0 0 14px; color: var(--pg-muted); max-width: 70ch; }
+.pg-example-body { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); align-items: start; }
+.pg-example-demo { display: grid; gap: 12px; justify-items: start; min-width: 0; }
+.pg-example-demo > * { max-width: 100%; }
+.pg-example-code { min-width: 0; }
+.pg-example-code .pg-code { margin: 0; }
+.pg-example-code .pg-code pre { max-height: 360px; }
+@media (min-width: 1100px) {
+  .pg-example-body { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); }
+}

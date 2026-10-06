@@ -1,6 +1,7 @@
 import { FactaProvider } from "../../react.ts";
 import { Link, Router, useRoute } from "./router.tsx";
 import { SECTIONS } from "./sections/registry.ts";
+import { mockFetch } from "./api.ts";
 import { StateProvider, usePlayground } from "./state.tsx";
 
 function Nav() {
@@ -41,7 +42,7 @@ export function App() {
   return (
     <Router>
       <StateProvider>
-        <FactaProvider endpoint="/api/facta" appearance={{ theme: "auto" }} branding={{ name: "Playground Facta DTE" }}>
+        <FactaProvider endpoint="/api/facta" fetch={mockFetch()} appearance={{ theme: "auto" }} branding={{ name: "Playground Facta DTE" }}>
           <a className="pg-skip" href="#contenido">Saltar al contenido</a>
           <header className="pg-header">
             <Link to="/" className="pg-brand" aria-label="Playground de Facta DTE, inicio">

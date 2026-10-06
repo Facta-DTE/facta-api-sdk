@@ -4,7 +4,8 @@ import { Facta } from "../../src/client.ts";
 import { createFactaHandler, type FactaLike } from "../../src/server/handler.ts";
 import type { FactaCapabilities } from "../../src/server/capabilities.ts";
 import type { PlaygroundEnv } from "./env.ts";
-import { sha256Hex } from "./hash.ts";
+import { visitorTag } from "./hash.ts";
+import { recordIssued, tagOfKey } from "./issued.ts";
 
 export interface FactaParts {
   facta: FactaLike;
@@ -17,10 +18,7 @@ export interface FactaParts {
  */
 export type VisitorOf = (req: Request) => Promise<{ email: string } | null>;
 
-/** Idempotency keys are `<visitorTag>.<uuid>`: a session can only be used by the visitor it was made for. */
-export async function visitorTag(email: string): Promise<string> {
-  return (await sha256Hex(email.toLowerCase())).slice(0, 16);
-}
+export { visitorTag };
 
 export function createFactaParts(env: PlaygroundEnv, visitorOf: VisitorOf, factaOverride?: FactaLike): FactaParts {
   const facta: FactaLike = factaOverride ?? new Facta({
@@ -32,9 +30,11 @@ export function createFactaParts(env: PlaygroundEnv, visitorOf: VisitorOf, facta
 
   const capabilities: FactaCapabilities = {
     documents: "read",
-    downloads: ["pdf", "json"],
+    downloads: true, // pdf, json and ticket
     status: true,
     storage: "read",
+    // Invalidation only with a session sealed by `POST /api/invalidation`, which checks ownership.
+    invalidate: "session",
     ...(env.FACTA_UNLOCK_KEY ? { catalog: "read" as const } : {}),
   };
 
@@ -44,6 +44,11 @@ export function createFactaParts(env: PlaygroundEnv, visitorOf: VisitorOf, facta
     capabilities,
     // Receivers of playground documents are demo data; still, keep the SDK default.
     exposeRecipient: false,
+    // Remember what each visitor issued, so only they can invalidate it from here.
+    onIssued: async (result, { session }) => {
+      const tag = tagOfKey(session.idempotencyKey);
+      if (tag !== null) await recordIssued(env.QUOTA, tag, { codigoGeneracion: result.codigoGeneracion, tipoDte: result.tipoDte, numeroControl: result.numeroControl });
+    },
     authorize: async (req, ctx) => {
       // The service status is public so the page can show it before sign-in.
       if (ctx.action === "service.status") return true;

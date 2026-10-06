@@ -1,0 +1,58 @@
+/* Screens section: page chrome around the SDK components. The SDK's own look is src/react/styles.css. */
+
+.pg-subnav { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 24px; padding: 0; list-style: none; position: sticky; top: 0; z-index: 3; background: var(--pg-bg); padding-block: 8px; }
+.pg-subnav a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 14px; border-radius: 99px; border: 1px solid var(--pg-border); background: var(--pg-surface); color: var(--pg-text); text-decoration: none; font-weight: 600; font-size: 14px; }
+.pg-subnav a:hover { border-color: var(--pg-accent); color: var(--pg-accent); }
+@media (max-width: 899px) { .pg-subnav { flex-wrap: nowrap; overflow-x: auto; margin-inline: calc(-1 * var(--pg-gutter)); padding-inline: var(--pg-gutter); scrollbar-width: none; } .pg-subnav a { white-space: nowrap; } }
+
+.pg-band { margin: 40px 0 12px; scroll-margin-top: 72px; }
+.pg-band h2 { font-size: 1.3rem; margin: 0 0 4px; }
+.pg-band p { margin: 0; color: var(--pg-muted); max-width: 70ch; }
+
+.pg-field { display: grid; gap: 6px; font-size: 14px; font-weight: 600; min-width: 0; }
+.pg-field > span { color: var(--pg-muted); font-weight: 600; }
+.pg-field select, .pg-field input[type="text"], .pg-field input[type="number"] {
+  min-height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--pg-border); background: var(--pg-surface); color: var(--pg-text); font: inherit; width: 100%;
+}
+.pg-field input[type="color"] { min-height: 44px; width: 100%; padding: 4px; border-radius: 10px; border: 1px solid var(--pg-border); background: var(--pg-surface); }
+.pg-field input[type="range"] { min-height: 44px; width: 100%; accent-color: var(--pg-accent); }
+.pg-field select:focus-visible, .pg-field input:focus-visible { outline: 3px solid var(--pg-accent); outline-offset: 1px; }
+.pg-form-grid { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); width: 100%; }
+@media (min-width: 640px) { .pg-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .pg-form-grid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.pg-secondary { min-height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--pg-border); background: var(--pg-surface); color: var(--pg-text); font: inherit; font-weight: 600; cursor: pointer; }
+.pg-secondary:hover:not(:disabled) { border-color: var(--pg-accent); }
+.pg-secondary:disabled { opacity: .5; cursor: not-allowed; }
+.pg-secondary:focus-visible { outline: 3px solid var(--pg-accent); outline-offset: 2px; }
+.pg-callout { background: var(--pg-accent-soft); border-radius: 10px; padding: 12px 16px; font-size: 14px; }
+.pg-callout p { margin: 0 0 8px; }
+
+/* Sale builder */
+.pg-sale { display: grid; gap: 16px; }
+.pg-sale-lines { display: grid; gap: 10px; }
+.pg-sale-line { display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr) 84px 104px 44px; align-items: end; }
+.pg-sale-line--free { grid-template-columns: minmax(0, 1fr) 84px 104px 44px; }
+.pg-sale-line .pg-icon { min-height: 44px; min-width: 44px; border-radius: 10px; border: 1px solid var(--pg-border); background: var(--pg-surface); color: var(--pg-text); font-size: 20px; cursor: pointer; }
+@media (max-width: 639px) {
+  .pg-sale-line { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 44px; }
+  .pg-sale-line > :first-child { grid-column: 1 / -1; }
+}
+.pg-sale-total { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: center; padding-top: 12px; border-top: 1px solid var(--pg-border); }
+.pg-sale-total b { font-size: 1.3rem; }
+
+/* Run modes */
+.pg-runbar { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 640px) { .pg-runbar { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+/* Studio */
+.pg-studio { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 1000px) { .pg-studio { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); align-items: start; } }
+.pg-studio-controls { display: grid; gap: 12px; }
+.pg-studio-controls fieldset { border: 1px solid var(--pg-border); border-radius: 10px; padding: 12px; margin: 0; display: grid; gap: 12px; min-width: 0; }
+.pg-studio-controls legend { padding: 0 6px; font-weight: 700; font-size: 14px; }
+.pg-studio-preview { display: grid; gap: 16px; min-width: 0; }
+.pg-studio-sample { border: 1px dashed var(--pg-border); border-radius: 10px; padding: 12px; min-width: 0; overflow: hidden; }
+
+/* The demo `classNames` the studio can switch on: a host brings its own CSS like this. */
+.my-primary { box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 25%, transparent); font-weight: 800; letter-spacing: .02em; }
+.my-card { outline: 2px dashed var(--facta-accent, #007faa); outline-offset: -6px; }
+.my-total { text-decoration: underline wavy; text-underline-offset: 6px; }

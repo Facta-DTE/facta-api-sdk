@@ -7,6 +7,8 @@
 // builder. Everything is test data; nothing here is secret.
 
 import type { DteRequest, Recipient } from "../../src/types.ts";
+import type { InvalidationPerson } from "../../src/types.ts";
+import { customerFits } from "./sale.ts";
 
 export interface DemoCustomer {
   id: string;
@@ -28,9 +30,11 @@ export interface PlaygroundFixtures {
   products: DemoProduct[];
   /** Complete test requests by DTE type, kept for the recipes of later batches. */
   requests: Partial<Record<string, DteRequest>>;
+  /** The people named on an invalidation event; absent means the playground cannot invalidate. */
+  invalidation: { responsable: InvalidationPerson; solicita: InvalidationPerson } | null;
 }
 
-export const NO_FIXTURES: PlaygroundFixtures = Object.freeze({ customers: [], products: [], requests: {} }) as PlaygroundFixtures;
+export const NO_FIXTURES: PlaygroundFixtures = Object.freeze({ customers: [], products: [], requests: {}, invalidation: null }) as PlaygroundFixtures;
 
 const REQUEST_TYPES = ["01", "03", "05", "06", "11", "14"];
 
@@ -93,13 +97,31 @@ export function parseFixtures(raw: string | undefined): PlaygroundFixtures {
       products.push({ id, label, descripcion, precioUni: price, ...(productId === undefined ? {} : { productId }) });
     }
   }
-  return { customers, products, requests };
+
+  let invalidation: PlaygroundFixtures["invalidation"] = null;
+  if (value.invalidation !== undefined) {
+    const inv = value.invalidation;
+    const read = (entry: unknown): InvalidationPerson => {
+      const nombre = isRecord(entry) ? str(entry.nombre, 120) : null;
+      const tipoDocumento = isRecord(entry) ? str(entry.tipoDocumento, 10) : null;
+      const numDocumento = isRecord(entry) ? str(entry.numDocumento, 40) : null;
+      if (nombre === null || tipoDocumento === null || numDocumento === null) throw new FixturesError("fixtures_invalid");
+      return { nombre, tipoDocumento, numDocumento };
+    };
+    if (!isRecord(inv)) throw new FixturesError("fixtures_invalid");
+    invalidation = { responsable: read(inv.responsable), solicita: read(inv.solicita) };
+  }
+  return { customers, products, requests, invalidation };
 }
 
 /** What the browser may know about the demo data: labels and prices, never receptor fields. */
 export function publicFixtures(fixtures: PlaygroundFixtures) {
   return {
-    customers: fixtures.customers.map(({ id, label }) => ({ id, label })),
+    // `fits` lists the DTE types the customer's receiver can serve; the receiver itself stays here.
+    customers: fixtures.customers.map(({ id, label, receptor }) => ({ id, label, fits: customerFits(receptor as Record<string, unknown>) })),
+    /** Types that have a built-in demo receiver, so no customer needs to be picked for them. */
+    builtInReceivers: Object.keys(fixtures.requests).filter((t) => fixtures.requests[t]?.receptor),
+    canInvalidate: fixtures.invalidation !== null,
     products: fixtures.products.map(({ id, label, descripcion, precioUni }) => ({ id, label, descripcion, precioUni })),
   };
 }
