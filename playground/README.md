@@ -21,8 +21,11 @@ playground/
     fixtures.ts           demo customers/products from FACTA_DTE_FIXTURES_JSON
     sale.ts               validated sale description -> fiscal request (BUILDERS per DTE type)
     facta.ts              Facta client + createFactaHandler (capabilities, authorize)
-    router.ts             GET /api/state · POST /api/session · POST /api/facta
+    router.ts             GET /api/state · POST /api/session · POST /api/facta · POST /api/recipes/run
+    issued-codes.ts       per-visitor record of issued documents (ownership checks)
+    recipes/              fixed server recipes: one portable file each + redact/seal/runner/route/specs
   site/
+    sections/server/      «Solo servidor»: recipe panel, results, copy for Node/Deno, project zip
     sections/registry.ts  the five routes; one folder per section (home, screens, headless, server, log)
     sections/home/        live invoice (FactaInvoiceDialog) + the code shown with ?raw
   test/                   vitest (node): guard, Access, quota, sale builder, router, packaging
@@ -103,3 +106,26 @@ Bindings: `ASSETS` (the built site) and `QUOTA` (Durable Object `QuotaCounter`, 
 * Quota (20/hour, 100/day) is counted per visitor in a Durable Object when an `issue` arrives; replaying
   the same session is free.
 * The static CSP (`site/public/_headers`) allows only same-origin resources.
+
+## Server recipes («Solo servidor»)
+
+Each recipe is one file in `server/recipes/` that exports `run(facta, input)` and a `sample`. The Worker
+executes that exact file; the page shows it with `?raw`. A visitor sends only form parameters to
+`POST /api/recipes/run` (`{recipe, stage?, runId?, params}`); `recipes/index.ts` validates them and builds the input
+from the demo data, so no visitor code ever runs.
+
+* **Quota:** only recipes that issue or invalidate count, by idempotency key (`<visitorTag>.<runId>…`). «Reintentar con la
+  misma llave» reuses the `runId`, so it is free. A webhook order uses `<visitorTag>.order-<orderId>`.
+* **Ownership:** invalidation, download, copies and the document list use `issued-codes.ts` (`ownsDocument`,
+  `listIssued`); issuing records through `recordIssued`, invalidating through `updateIssuedState`.
+* **Two-stage recipe** (`prepare-sign`): the prepared document travels as an AES-GCM blob (`seal.ts`) bound to the
+  visitor, valid 10 minutes. The `prepareToken` never reaches the page.
+* **Redaction** (`redact.ts`) removes credential and storage keys, scrubs known secret values and credential/path shapes,
+  and omits bulky members (`jws`, `archivoJson`, `representacionGrafica`, `documento` unless kept). PDF/JSON become files.
+* **Copy for Node / Deno / Bun and the project zip** are generated from the same file (`site/sections/server/export.ts`):
+  the import is pointed at `@facta-dte/api` and keys are read from environment variables.
+* **«Abrir en StackBlitz» is not offered.** Its POST-form method needs no script, but `api-v1` answers the CORS preflight
+  (checked 6-Oct-2026) without `Access-Control-Allow-Origin`, so WebContainers could not call it from the browser. The
+  button is a download of a ready-to-run project that asks for the developer's own test key in `.env`.
+* **Add a recipe:** a file under `recipes/`, an entry in `specs.ts`, a binder in `recipes/index.ts`, its `?raw` import in
+  `site/sections/server/sources.ts`, and tests in `test/recipes.test.ts`.
