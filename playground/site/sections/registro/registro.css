@@ -1,0 +1,27 @@
+.rg-empty { max-width: 520px; }
+.rg-link { display: inline-flex; align-items: center; text-decoration: none; }
+.rg-bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
+.rg-refresh, .rg-actions button {
+  min-height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--pg-border);
+  background: var(--pg-surface); color: var(--pg-text); font: inherit; cursor: pointer;
+}
+.rg-actions button:disabled { opacity: .6; cursor: wait; }
+.rg-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.rg-row { display: grid; gap: 10px; }
+.rg-main { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.rg-state { padding: 2px 10px; border-radius: 99px; font-size: 13px; font-weight: 700; background: var(--pg-accent-soft); color: var(--pg-accent); }
+.rg-state--sellado { background: #e4f5ea; color: #14532d; }
+.rg-state--contingencia { background: #fff4d6; color: #6b4a00; }
+.rg-state--invalidado, .rg-state--rechazado { background: var(--pg-danger-soft); color: var(--pg-danger); }
+@media (prefers-color-scheme: dark) {
+  .rg-state--sellado { background: #123222; color: #a7e5bd; }
+  .rg-state--contingencia { background: #3a2f0f; color: #f0d27a; }
+}
+.rg-meta { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 14px; margin: 0; font-size: 14px; }
+.rg-meta dt { color: var(--pg-muted); }
+.rg-meta dd { margin: 0; font-family: ui-monospace, Menlo, monospace; overflow-wrap: anywhere; }
+.rg-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+@media (min-width: 900px) {
+  .rg-row { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto; align-items: center; }
+  .rg-main { flex-direction: column; align-items: flex-start; }
+}

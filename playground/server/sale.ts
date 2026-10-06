@@ -6,6 +6,7 @@
 
 import type { DteRequest, LineItem } from "../../src/types.ts";
 import type { PlaygroundFixtures } from "./fixtures.ts";
+import { buildCreditoFiscal } from "./sale-credito-fiscal.ts";
 
 export const MAX_LINES = 10;
 export const MAX_TOTAL = 500;
@@ -46,7 +47,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 const cents = (value: number) => Math.round(value * 100) / 100;
 
-function buildLines(input: unknown[], fixtures: PlaygroundFixtures): { items: LineItem[]; total: number } {
+export function buildLines(input: unknown[], fixtures: PlaygroundFixtures): { items: LineItem[]; total: number } {
   if (input.length < 1 || input.length > MAX_LINES) {
     throw new SaleError("lines_invalid", `Agregue entre 1 y ${MAX_LINES} líneas.`);
   }
@@ -104,13 +105,20 @@ const BUILDERS: Record<string, Builder> = {
 };
 
 /** Types the playground can build today. */
-export const SUPPORTED_SALE_TYPES = Object.keys(BUILDERS);
+// Fallbacks used only for types BUILDERS does not have (batch D: the credit-fiscal switch).
+const FALLBACK_BUILDERS: Record<string, Builder> = {
+  "03": (input, fixtures) => buildCreditoFiscal(input, fixtures, buildLines),
+};
+
+const builderFor = (type: string): Builder | undefined => BUILDERS[type] ?? FALLBACK_BUILDERS[type];
+
+export const SUPPORTED_SALE_TYPES = [...new Set([...Object.keys(BUILDERS), ...Object.keys(FALLBACK_BUILDERS)])];
 
 /** Validate the description and build the request. Throws `SaleError`. */
 export function buildSale(raw: unknown, fixtures: PlaygroundFixtures): { sale: BuiltSale; sendEmail: boolean } {
   if (!isRecord(raw)) throw new SaleError("sale_invalid", "La venta no es válida.");
   const type = raw.tipoDte;
-  const builder = typeof type === "string" ? BUILDERS[type] : undefined;
+  const builder = typeof type === "string" ? builderFor(type) : undefined;
   if (builder === undefined) throw new SaleError("type_unsupported", "Ese tipo de documento todavía no está disponible en el playground.");
   if (!Array.isArray(raw.lines)) throw new SaleError("lines_invalid", "Agregue al menos una línea.");
   if (raw.customerId !== undefined && typeof raw.customerId !== "string") throw new SaleError("customer_unknown", "Ese cliente de demostración no existe.");

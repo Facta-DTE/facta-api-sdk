@@ -41,7 +41,7 @@ describe("sale builder", () => {
 
   it("refuses what it cannot build", () => {
     expect(fail(null)).toBe("sale_invalid");
-    expect(fail({ tipoDte: "03", lines: [] })).toBe("type_unsupported");
+    expect(fail({ tipoDte: "99", lines: [] })).toBe("type_unsupported");
     expect(fail({ tipoDte: "01" })).toBe("lines_invalid");
     expect(fail({ tipoDte: "01", lines: [] })).toBe("lines_invalid");
     expect(fail({ tipoDte: "01", lines: Array(11).fill({ descripcion: "a", cantidad: 1, precioUni: 1 }) })).toBe("lines_invalid");

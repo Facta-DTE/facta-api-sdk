@@ -96,10 +96,10 @@ export function parseFixtures(raw: string | undefined): PlaygroundFixtures {
   return { customers, products, requests };
 }
 
-/** What the browser may know about the demo data: labels and prices, never receptor fields. */
+/** What the browser may know about the demo data: labels, prices and whether a customer is a taxpayer (has an NRC), never receptor fields. */
 export function publicFixtures(fixtures: PlaygroundFixtures) {
   return {
-    customers: fixtures.customers.map(({ id, label }) => ({ id, label })),
+    customers: fixtures.customers.map(({ id, label, receptor }) => ({ id, label, contributor: typeof receptor.nrc === "string" && receptor.nrc.trim() !== "" })),
     products: fixtures.products.map(({ id, label, descripcion, precioUni }) => ({ id, label, descripcion, precioUni })),
   };
 }

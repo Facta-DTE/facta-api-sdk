@@ -8,7 +8,7 @@ export interface PlaygroundState {
   supportedTypes: string[];
   catalog: boolean;
   demo: {
-    customers: { id: string; label: string }[];
+    customers: { id: string; label: string; contributor: boolean }[];
     products: { id: string; label: string; descripcion: string; precioUni: number }[];
   };
 }
@@ -56,4 +56,21 @@ export async function createSession(sale: SaleDescription): Promise<CreatedSessi
   });
   if (!response.ok) throw await readError(response);
   return (await response.json()) as CreatedSession;
+}
+
+export interface RegistryDocument {
+  codigoGeneracion: string;
+  tipoDte: string;
+  numeroControl: string;
+  issuedAt: string;
+  estado: string;
+  /** The API's current view of the document, when the server could read it. */
+  current: { estado: string; fecEmi?: string; horEmi?: string | null; selloRecibido?: string | null } | null;
+}
+
+/** The visitor's own documents, newest first (server/issued-codes.ts). */
+export async function loadRegistry(): Promise<RegistryDocument[]> {
+  const response = await fetch("/api/registro", { headers: { accept: "application/json" } });
+  if (!response.ok) throw await readError(response);
+  return ((await response.json()) as { documents: RegistryDocument[] }).documents;
 }

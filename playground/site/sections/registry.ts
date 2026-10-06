@@ -7,7 +7,7 @@ import { Home } from "./home/index.tsx";
 import { Screens } from "./screens/index.tsx";
 import { Headless } from "./headless/index.tsx";
 import { ServerRecipes } from "./server/index.tsx";
-import { Log } from "./log/index.tsx";
+import { Registro } from "./registro/index.tsx";
 
 export interface Section {
   path: string;
@@ -20,5 +20,5 @@ export const SECTIONS: Section[] = [
   { path: "/pantallas", label: "Pantallas React", Component: Screens },
   { path: "/implementacion", label: "Mi propia implementación", Component: Headless },
   { path: "/servidor", label: "Solo servidor", Component: ServerRecipes },
-  { path: "/registro", label: "Registro", Component: Log },
+  { path: "/registro", label: "Registro", Component: Registro },
 ];
