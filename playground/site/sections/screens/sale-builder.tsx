@@ -2,6 +2,9 @@ import { useMemo, useState } from "react";
 import { FactaProductPicker, type ProductOption } from "../../../../react.ts";
 import { ApiError, createSession, type CreatedSession, type IssuedDocument, type PlaygroundState, type SaleDescription, type SaleSource } from "../../api.ts";
 import { Segmented } from "../../components/ui.tsx";
+import { TurnstileBox } from "../../components/turnstile.tsx";
+import { EMPTY_EMAIL, EmailChoice, emailReady, type EmailChoiceValue } from "../../components/email-choice.tsx";
+import { useTurnstileReady } from "../../turnstile.ts";
 import { EMPTY_CHOICE, ReceptorSection, receptorForSale, type ReceptorChoice } from "./sale-receptor.tsx";
 
 export const TYPE_LABELS: Record<string, string> = {
@@ -35,9 +38,21 @@ const newLine = (patch: Partial<Line> = {}): Line => ({ key: nextKey++, source: 
 
 const SOURCE_LABELS: [SaleSource, string][] = [["catalog", "Catálogo"], ["demo", "Demostración"], ["custom", "Personalizado"]];
 
-/** The two types always on the segmented control; every other supported type sits behind «Más tipos». */
-const PRIMARY_TYPES = ["01", "03"];
-const SHORT_LABELS: Record<string, string> = { "01": "Factura 01", "03": "Crédito fiscal 03" };
+/** The six chips: code, name and what the type needs from the sale (shown as a short inline reason). */
+export const TYPE_CHIPS: { value: string; name: string; needs: string }[] = [
+  { value: "01", name: "Factura", needs: "Consumidor final: el receptor es opcional." },
+  { value: "03", name: "Crédito fiscal", needs: "Necesita un receptor contribuyente: NIT o DUI y NRC." },
+  { value: "05", name: "Nota de crédito", needs: "Corrige un documento que usted emitió aquí." },
+  { value: "06", name: "Nota de débito", needs: "Corrige un documento que usted emitió aquí." },
+  { value: "11", name: "Exportación", needs: "Necesita un receptor extranjero con su país." },
+  { value: "14", name: "Sujeto excluido", needs: "Necesita un receptor con documento y dirección." },
+];
+
+/** What blocks a type right now, in words. `null` when nothing does. */
+export function typeBlocker(type: string, issued: IssuedDocument[]): string | null {
+  if ((type === "05" || type === "06") && issued.length === 0) return "Primero emita un documento aquí: las notas corrigen uno suyo.";
+  return null;
+}
 
 /**
  * The sale description. The browser sends only this small object; the server validates it,
@@ -53,7 +68,8 @@ export function SaleBuilder({ state, issued, onPrepared }: {
   const [tipoDte, setTipoDte] = useState("01");
   const [receptor, setReceptor] = useState<ReceptorChoice>(EMPTY_CHOICE);
   const [relatedCode, setRelatedCode] = useState("");
-  const [sendEmail, setSendEmail] = useState(false);
+  const [mail, setMail] = useState<EmailChoiceValue>({ ...EMPTY_EMAIL, address: state.visitor?.email ?? "" });
+  const ready = useTurnstileReady();
   const [lines, setLines] = useState<Line[]>(() => [newLine({ descripcion: "Café de altura, bolsa de 1 lb", precioUni: 8.5 })]);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -104,7 +120,7 @@ export function SaleBuilder({ state, issued, onPrepared }: {
           ...(l.codigo.trim() === "" ? {} : { codigo: l.codigo.trim() }),
         };
       }),
-      sendEmail,
+      ...(mail.send ? { sendEmail: true, emailTo: mail.address.trim() } : {}),
       ...(receptorForSale(tipoDte, receptor) === undefined ? {} : { receptor: receptorForSale(tipoDte, receptor)! }),
       ...(isNote && relatedCode !== "" ? { relatedCode } : {}),
     };
@@ -118,38 +134,44 @@ export function SaleBuilder({ state, issued, onPrepared }: {
     }
   }
 
-  const others = state.supportedTypes.filter((t) => !PRIMARY_TYPES.includes(t));
-  const typeValue = PRIMARY_TYPES.includes(tipoDte) ? tipoDte : "more";
-  const typeChoices = [
-    ...PRIMARY_TYPES.filter((t) => state.supportedTypes.includes(t)).map((t) => ({ value: t, label: SHORT_LABELS[t] ?? t })),
-    ...(others.length > 0 ? [{ value: "more", label: typeValue === "more" ? (TYPE_LABELS[tipoDte] ?? tipoDte).replace(/^(.)/, (c) => c.toUpperCase()) : "Más tipos" }] : []),
-  ];
+  const chips = TYPE_CHIPS.filter((chip) => state.supportedTypes.includes(chip.value));
+  const blocker = typeBlocker(tipoDte, issued);
+  const need = TYPE_CHIPS.find((chip) => chip.value === tipoDte)?.needs ?? "";
 
   return (
     <div className="pg-sale">
       <div className="pg-sale-head">
         <h2>La venta</h2>
-        <Segmented label="Tipo de documento" value={typeValue} choices={typeChoices} onChange={(value) => changeType(value === "more" ? (others[0] ?? tipoDte) : value)} />
       </div>
-      {(typeValue === "more" || isNote) && (
+      <div role="radiogroup" aria-label="Tipo de documento" className="pg-type-chips">
+        {chips.map((chip) => {
+          const reason = typeBlocker(chip.value, issued);
+          return (
+            <button
+              key={chip.value}
+              type="button"
+              role="radio"
+              aria-checked={chip.value === tipoDte}
+              data-type={chip.value}
+              className={`pg-type-chip${reason !== null ? " pg-type-chip--needs" : ""}`}
+              onClick={() => changeType(chip.value)}
+            >
+              <span className="mono">{chip.value}</span> {chip.name}
+              {reason !== null && <small>Requiere un documento suyo</small>}
+            </button>
+          );
+        })}
+      </div>
+      <p className="pg-hint pg-type-need" role="status">{blocker ?? need}</p>
+      {isNote && (
         <div className="pg-form-grid">
-          {typeValue === "more" && (
-            <label className="pg-field">
-              <span>Otro tipo de documento</span>
-              <select value={tipoDte} onChange={(event) => changeType(event.target.value)}>
-                {others.map((type) => <option key={type} value={type}>{TYPE_LABELS[type] ?? type}</option>)}
-              </select>
-            </label>
-          )}
-          {isNote && (
-            <label className="pg-field">
-              <span>Documento que corrige</span>
-              <select value={relatedCode} onChange={(event) => setRelatedCode(event.target.value)}>
-                <option value="">Elija un documento que usted emitió</option>
-                {issued.map((d) => <option key={d.codigoGeneracion} value={d.codigoGeneracion}>{d.numeroControl}</option>)}
-              </select>
-            </label>
-          )}
+          <label className="pg-field">
+            <span>Documento que corrige</span>
+            <select value={relatedCode} onChange={(event) => setRelatedCode(event.target.value)}>
+              <option value="">Elija un documento que usted emitió</option>
+              {issued.map((d) => <option key={d.codigoGeneracion} value={d.codigoGeneracion}>{d.numeroControl}</option>)}
+            </select>
+          </label>
         </div>
       )}
 
@@ -233,17 +255,13 @@ export function SaleBuilder({ state, issued, onPrepared }: {
       </div>
 
       <div className="pg-sale-foot">
-        {state.visitor !== null && (
-          <label className="pg-check">
-            <input type="checkbox" checked={sendEmail} onChange={(event) => setSendEmail(event.target.checked)} />
-            Enviarme el documento por correo a {state.visitor.email}
-          </label>
-        )}
+        {state.visitor !== null && <EmailChoice value={mail} onChange={setMail} />}
         <p className="pg-hint">
           Subtotal {WITHOUT_VAT.has(tipoDte) ? "(precios sin IVA; Hacienda calcula el IVA al sellar)" : "(Hacienda calcula los totales al sellar)"}: <b>${total.toFixed(2)}</b>
           {unknownPrice && <small> Algún producto del catálogo no trae precio; el API lo resuelve al emitir.</small>}
         </p>
-        <button type="button" className="pg-primary" disabled={busy || missing.length > 0 || state.visitor === null || (state.quota !== null && !state.quota.allowed)} onClick={prepare}>
+        <TurnstileBox />
+        <button type="button" className="pg-primary" disabled={busy || !ready || !emailReady(mail) || (isNote && relatedCode === "") || missing.length > 0 || state.visitor === null || (state.quota !== null && !state.quota.allowed)} onClick={prepare}>
           {busy ? "Preparando…" : "Preparar la venta"}
         </button>
       </div>

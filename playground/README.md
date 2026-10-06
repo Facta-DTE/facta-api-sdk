@@ -15,9 +15,14 @@ playground/
   wrangler.jsonc          Worker + assets + Durable Object (dev worker; `--env production` for main)
   worker.ts               entry: /api/* -> server/router.ts, everything else -> static assets
   server/
-    guard.ts              fail-closed checks (key, host, secrets, dev bypass only on localhost)
-    access.ts             Cloudflare Access JWT (RS256, JWKS) -> verified visitor e-mail
-    quota.ts              20/hour and 100/day per visitor; QuotaCounter Durable Object
+    guard.ts              fail-closed checks (key, host, secrets, auth mode, dev bypass only on localhost)
+    visitor.ts            who is calling: signed HttpOnly cookie (Turnstile mode, default) or Access (below)
+    turnstile.ts          siteverify of one single-use Turnstile token per costly action
+    access.ts             Cloudflare Access JWT (RS256, JWKS) -> verified visitor e-mail (PLAYGROUND_AUTH=access)
+    delivery.ts           e-mail rules: address validation, masking, hashed keys, the session with `deliver`
+    mail-quota.ts         e-mail limits (visitor, IP, recipient, per-document cooldown); pure
+    gates.ts              counts issues and e-mails on the visitor cookie AND the hashed IP (Durable Objects)
+    quota.ts              20/hour and 100/day per visitor and per IP; QuotaCounter Durable Object (also holds the e-mail counters)
     fixtures.ts           demo customers/products from FACTA_DTE_FIXTURES_JSON
     issued-codes.ts       per-visitor record of issued documents (inside the QuotaCounter Durable Object)
     sale.ts               validated sale description -> fiscal request (BUILDERS per DTE type; sources catalog | demo | custom)
@@ -78,9 +83,10 @@ cp playground/.dev.vars.example playground/.dev.vars     # git-ignored; fill in 
 pnpm playground:dev                                      # builds the site, then wrangler dev on :8787
 ```
 
-`PLAYGROUND_DEV_BYPASS=1` (in `.dev.vars`) replaces Cloudflare Access with the e-mail in
-`PLAYGROUND_DEV_EMAIL`, **only** when the request host is `localhost`/`127.0.0.1`; on any other
-host the guard answers 503. Without the bypass, requests need a valid Access token.
+Locally the playground uses Cloudflare's documented Turnstile **test keys** (`.dev.vars.example`): the widget always
+passes, so nothing else is needed. With `PLAYGROUND_AUTH=access` the old behaviour is available:
+`PLAYGROUND_DEV_BYPASS=1` replaces Cloudflare Access with the e-mail in `PLAYGROUND_DEV_EMAIL`, **only** when the request
+host is `localhost`/`127.0.0.1`; on any other host the guard answers 503.
 
 Other scripts: `pnpm playground:typecheck`, `pnpm playground:test`, `pnpm playground:build`,
 `pnpm playground:deploy:check` (bundles the Worker without uploading), and
@@ -95,8 +101,10 @@ Other scripts: `pnpm playground:typecheck`, `pnpm playground:test`, `pnpm playgr
 | `FACTA_UNLOCK_KEY` | secret, optional | `factauk_…`; enables the catalog actions: the React pickers and the sale builder's «Catálogo de la llave» source (the Worker confirms each catalog id with `getCustomer` / `getProduct`, which read the decrypted snapshot). Without it the source is disabled. |
 | `FACTA_SESSION_SECRET` | secret | At least 32 random bytes: `openssl rand -base64 48`. |
 | `FACTA_DTE_FIXTURES_JSON` | secret, optional | Demo data. Keeps the shape of the live test's `STAGING_FACTA_DTE_FIXTURES_JSON` (an object keyed by DTE type with complete test requests) and adds optional `customers: [{id,label,receptor}]` and `products: [{id,label,descripcion,precioUni,productId?}]`. |
-| `ACCESS_TEAM_DOMAIN` | secret | `yourteam.cloudflareaccess.com`. |
-| `ACCESS_AUD` | secret | The Access application's Audience (AUD) tag. |
+| `TURNSTILE_SITEKEY` | var or secret | Public site key of the Cloudflare Turnstile widget (managed mode, hostname of the deployment). |
+| `TURNSTILE_SECRET` | secret | The widget's secret key; only the Worker reads it. |
+| `PLAYGROUND_AUTH` | var, optional | `turnstile` (default) or `access`. |
+| `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD` | secret, optional | Only with `PLAYGROUND_AUTH=access`: `yourteam.cloudflareaccess.com` and the application's AUD tag. |
 | `FACTA_API_BASE_URL` | var (in `wrangler.jsonc`) | Must be the staging host; there is no default on purpose. |
 | `PLAYGROUND_DEV_BYPASS`, `PLAYGROUND_DEV_EMAIL` | local only | See above. Never set them on a deployed Worker. |
 
@@ -113,10 +121,11 @@ Bindings: `ASSETS` (the built site) and `QUOTA` (Durable Object `QuotaCounter`, 
    # for main: --env production
    ```
    The first `wrangler deploy` creates the Worker; secrets can be set right after it.
-3. **Create the Cloudflare Access application** (Zero Trust → Access → Applications → Self-hosted) for
-   `playground.factadte.com` (the whole hostname) and for the workers.dev URL of the dev Worker, with
-   an allow policy limited to the e-mail list you choose (one-time PIN). Copy each application's AUD
-   tag into `ACCESS_AUD`.
+3. **Create the Turnstile widget** (Cloudflare dashboard → Turnstile → Add widget, business account): hostnames
+   `playground.factadte.com` and the dev Worker's workers.dev host, mode *Managed*. Put the **site key** in
+   `TURNSTILE_SITEKEY` and the **secret key** in `TURNSTILE_SECRET` (`wrangler secret put`, per Worker). Visitors stay
+   anonymous: no allow-list, no Access application. (To keep Access instead, set `PLAYGROUND_AUTH=access` and the `ACCESS_*`
+   secrets, as before.)
 4. **Attach the domain**: the `production` environment declares `playground.factadte.com` as a custom
    domain, so the first deploy of `main` creates the DNS record in the business account's zone.
 5. **Add two GitHub secrets** to `Facta-DTE/facta-api-sdk` (Settings → Secrets → Actions):
@@ -126,13 +135,45 @@ Bindings: `ASSETS` (the built site) and `QUOTA` (Durable Object `QuotaCounter`, 
 
 ## Safety notes
 
-* Issuing needs a verified Access visitor; the e-mail comes from the verified token, never from a header
-  the browser can set. A session token is bound to the visitor it was created for.
-* E-mail delivery goes only to that verified address; WhatsApp is never requested.
+* **Anonymous visitors, signed cookie.** `GET /api/state` mints `facta_pg_visitor` (random id, HMAC with
+  `FACTA_SESSION_SECRET`, HttpOnly, SameSite=Lax, Secure off localhost, 30 days). The id keys ownership
+  (`issued-codes`), Registro and the per-visitor quotas. A session token is bound to the visitor it was created for.
+* **Turnstile on everything that costs.** One single-use token (`x-turnstile-token`) is verified against
+  `https://challenges.cloudflare.com/turnstile/v0/siteverify` (secret, token, the caller's IP and the expected hostname) for:
+  each issue **session** (`POST /api/session`), each e-mail send or **resend** (`POST /api/delivery/resend`), each recipe run that
+  issues, invalidates or sends, and each **invalidation**. The page renders the managed widget (Spanish) beside the button.
+  The CSP allows `https://challenges.cloudflare.com` for scripts and frames and nothing else external.
+* **Issue quota: 20/hour and 100/day per visitor cookie and the same per IP** (`cf-connecting-ip`, hashed), counted at `issue`.
+* **E-mail** goes to any valid address the visitor types (syntax, ≤ 254 characters, no spaces, commas or CR/LF), always the
+  standard Facta DTE delivery of a test document with no visitor text. Limits (server-side, 429 with `Retry-After`, «Se alcanzó el
+  límite de envíos»): **5/hour and 20/day per visitor cookie and per IP**, **2/day per recipient across all visitors** (the address is
+  normalised and hashed with a pepper, never stored in clear), **one resend per document every 10 minutes**, resend only for a
+  document the visitor owns. The recipient is shown masked (`m•••@ejemplo.com`).
+* **WhatsApp is never requested**: `deliveryFor` builds `{ email }` only, any body that mentions WhatsApp is refused
+  (`channel_not_allowed`), and a test greps the server for a WhatsApp channel. The page shows it disabled, with a local
+  «demostración» of the «Sin saldo de WhatsApp» row.
+* **Resend** uses the delivery token Facta returns at issue (valid 5 minutes), kept by the Worker in the visitor's Durable Object
+  and never sent to the browser, and goes to the address marked at issue. The API sends once per channel, so after the first send
+  it returns the current state; after 5 minutes it answers `410 delivery_window_closed` (the API has no token renewal yet, D-9 of
+  `docs/api-delivery-tokens.md`).
 * The browser sends a small sale description; the server builds the fiscal request (`server/sale.ts`).
-* Quota (20/hour, 100/day) is counted per visitor in a Durable Object when an `issue` arrives; replaying
-  the same session is free.
-* The static CSP (`site/public/_headers`) allows only same-origin resources.
+* Replaying the same session is free (same idempotency key).
+* The static CSP (`site/public/_headers`) allows only same-origin resources and the Turnstile origin.
+
+## Entrega («Pantallas React → Entrega»)
+
+`examples/delivery.tsx` (shown beside its demo): the address field, the Turnstile widget, `createSession` with
+`sendEmail`/`emailTo`, `FactaInvoiceDialog` with `onDelivery`, the real SDK receipt with its «Entrega por correo» row, and
+«Reenviar por correo». The `server.ts` tab is `server/delivery.ts` (`createDeliverySession`, the rules); the «Solo servidor» tab
+is recipe 8 (`server/recipes/deliver-email.ts`: `issue` with `deliver`, `deliverEmail`, `waitForDelivery`). In mock mode
+(`?mock=1`) add `&outcome=sealed-delivered|sealed-delivering` and `&resend=limit|closed` to see each state.
+
+## Source links («Ver en GitHub»)
+
+Every file the page shows is imported with `?raw` in **one** module, `site/shown-files.ts`, next to its repository path; code panels
+and recipes link to `https://github.com/Facta-DTE/facta-api-sdk/blob/main/<path>`. `test/source-links.test.ts` checks that each path
+exists and holds exactly the text shown, and that no other module imports `?raw`. The top bar, Inicio and the footer link the
+repository, `playground/`, the npm package and the docs (license: MIT). Until the playground is promoted to `main` the `main` links 404.
 
 ## Screens section (`site/sections/screens/`)
 

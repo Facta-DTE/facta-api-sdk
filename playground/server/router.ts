@@ -22,7 +22,7 @@ import { ensureVisitor, resolveVisitor, type Visitor } from "./visitor.ts";
 import { authModeOf } from "./guard.ts";
 import { clientIp, verifyTurnstile } from "./turnstile.ts";
 import { consumeIssue, consumeMail, peekMail, readStashedToken, type Caller } from "./gates.ts";
-import { DeliveryError, deliveryFor, maskAddress, mailMessage, mentionsWhatsApp, parseAddress, recipientKey } from "./delivery.ts";
+import { createDeliverySession, DeliveryError, maskAddress, mailMessage, mentionsWhatsApp, parseAddress, recipientKey } from "./delivery.ts";
 import { FactaError } from "../../src/errors.ts";
 import type { PlaygroundEnv } from "./env.ts";
 import { createFactaParts, visitorTag, type FactaParts } from "./facta.ts";
@@ -198,12 +198,11 @@ export async function handleApi(request: Request, env: PlaygroundEnv, deps: ApiD
       const catalog = await loadCatalogLookup(body, parts.facta, Boolean(env.FACTA_UNLOCK_KEY));
       const { sale } = buildSale(body, await loadFixtures(env), { ownedCodes: owned, catalog });
       const idempotencyKey = `${await visitorTag(visitor.id)}.${crypto.randomUUID()}`;
-      const session = await createFactaSession({
+      const session = await createDeliverySession({
         request: sale.request,
         idempotencyKey,
         display: { total: sale.total, title: sale.title, reference: "Playground" },
-        // E-mail only, to the address the visitor typed; limited server-side. WhatsApp is never requested.
-        ...(address === null ? {} : { deliver: deliveryFor(address) }),
+        address,
       }, env.FACTA_SESSION_SECRET!, deps.now?.());
       return jsonResponse(200, { session, total: sale.total, title: sale.title, emailTo: address === null ? null : maskAddress(address) });
     } catch (error) {

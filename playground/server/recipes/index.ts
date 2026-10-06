@@ -96,6 +96,9 @@ async function requestFor(type: RecipeType, ctx: BindContext): Promise<DteReques
   const note = type === "05" || type === "06";
   const fixture = note ? undefined : ctx.fixtures.requests[type];
   if (fixture !== undefined) return fixture;
+  if (note && text(ctx.params, "related", 36) === undefined) {
+    throw new RecipeError("related_required", "Elija el documento que corrige: la nota debe relacionar uno que usted emitió en este playground.");
+  }
   const relatedCode = note ? await ownedCode(ctx, true, "related") : undefined;
   const customer = type === "01" ? undefined : ctx.fixtures.customers.find((c) => customerFits(c.receptor as Record<string, unknown>).includes(type));
   try {

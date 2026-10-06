@@ -5,6 +5,9 @@ import { Segmented } from "../../components/ui.tsx";
 import { createSession } from "../../api.ts";
 import { usePlayground } from "../../state.tsx";
 import { GROUPS, ITEMS, itemOf, type WorkbenchItem } from "./catalog.ts";
+import { shortName } from "../../shown-files.ts";
+import { TurnstileBox } from "../../components/turnstile.tsx";
+import { DeliveryExample } from "./examples/delivery.tsx";
 import "./screens.css";
 import { AppearanceStudio } from "./examples/appearance-studio.tsx";
 import { DialogExample } from "./examples/dialog.tsx";
@@ -70,6 +73,7 @@ function Stage({ item }: { item: WorkbenchItem }) {
     case "inline": return <InlineExample {...windowProps} />;
     case "button": return <IssueButtonExample {...windowProps} />;
     case "window": return <WindowHookExample {...windowProps} />;
+    case "delivery": return state === null ? <p className="pg-note">Esperando al servidor…</p> : <DeliveryExample state={state} onIssued={s.onIssued} />;
     case "receipt": case "badge": case "download": return <ReceiptExample result={s.last} />;
     case "list": return <DocumentListExample onInvalidated={() => void s.refreshIssued()} />;
     case "detail": return <DocumentDetailExample issued={s.issued} onInvalidated={() => void s.refreshIssued()} />;
@@ -111,8 +115,9 @@ function Workbench() {
 
   const response = redactedResponse(s.last);
   const tabs = useMemo<CodeTab[]>(() => [
-    { id: "app", label: "App.tsx", code: item.source, note: `Este es el archivo que se ejecuta en esta página, no una copia · ${item.sourceName}` },
-    { id: "server", label: "server.ts", code: item.server, note: `${item.serverNote} · ${item.serverName}` },
+    { id: "app", label: "App.tsx", code: item.source.code, path: item.source.path, note: `Este es el archivo que se ejecuta en esta página, no una copia · ${shortName(item.source.path)}` },
+    { id: "server", label: "server.ts", code: item.server.code, path: item.server.path, note: `${item.serverNote} · ${shortName(item.server.path)}` },
+    ...(item.extra ?? []).map((tab) => ({ id: tab.id, label: tab.label, code: tab.file.code, path: tab.file.path, note: `${tab.note} · ${shortName(tab.file.path)}` })),
     {
       id: "response",
       label: "Respuesta",
@@ -170,7 +175,8 @@ function Workbench() {
         <div className="wb-head">
           <div>
             <p className="wb-crumb">Pantallas React · {group.label}</p>
-            <h1 id="wb-title" className="wb-title">{item.title}</h1>
+            <h1 id="wb-title" className={item.heading === undefined ? "wb-title" : "wb-title wb-title--text"}>{item.heading ?? item.title}</h1>
+            {item.lead !== undefined && <p className="wb-lead">{item.lead}</p>}
           </div>
           {item.window && (
             <div className="wb-run">
@@ -207,10 +213,18 @@ function Workbench() {
           )}
         </div>
 
-        <div className={`wb-stage${item.window ? " wb-stage--center" : ""}`} data-pane-show="vista">
-          <span className="wb-stage-label">Vista en vivo · staging</span>
-          <div className="wb-stage-body"><Stage item={item} /></div>
-        </div>
+        {item.panel ? (
+          <div className="wb-panel" data-pane-show="vista"><Stage item={item} /></div>
+        ) : (
+          <div className={`wb-stage${item.window ? " wb-stage--center" : ""}`} data-pane-show="vista">
+            <span className="wb-stage-label">Vista en vivo · staging</span>
+            <div className="wb-stage-body">
+              {/* Components that issue nothing themselves but call the server (lists, invalidation) need a token too. */}
+              {!item.needsSale && !item.window && <TurnstileBox />}
+              <Stage item={item} />
+            </div>
+          </div>
+        )}
       </section>
 
       <div className="wb-code" data-pane-show="codigo">

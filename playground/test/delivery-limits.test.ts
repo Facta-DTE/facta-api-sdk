@@ -130,7 +130,7 @@ describe("visitor cookie", () => {
 describe("guard in Turnstile mode", () => {
   it("is the default and needs both keys", () => {
     expect(checkGuard(turnstileEnv(), `${URL_BASE}/api/state`)).toEqual({ ok: true, devBypass: false, auth: "turnstile" });
-    expect(checkGuard(turnstileEnv({ TURNSTILE_SECRET: undefined }), `${URL_BASE}/api/state`)).toMatchObject({ ok: false, code: "turnstile_not_configured" });
+    expect(checkGuard(turnstileEnv({ TURNSTILE_SECRET: undefined } as never), `${URL_BASE}/api/state`)).toMatchObject({ ok: false, code: "turnstile_not_configured" });
     expect(checkGuard(turnstileEnv({ TURNSTILE_SITEKEY: "" }), `${URL_BASE}/api/state`)).toMatchObject({ ok: false, code: "turnstile_not_configured" });
     expect(checkGuard(turnstileEnv({ PLAYGROUND_AUTH: "magic" }), `${URL_BASE}/api/state`)).toMatchObject({ ok: false, code: "auth_mode_invalid" });
   });
@@ -139,7 +139,7 @@ describe("guard in Turnstile mode", () => {
 // --- Through the router ---------------------------------------------------------------
 
 function fakeFacta(log: { issued: number; delivered: Array<{ code: string; token: string }> }, state = { estado: "enviado" }): FactaLike {
-  return {
+  return ({
     environment: "00",
     issue: (async () => {
       log.issued++;
@@ -151,7 +151,7 @@ function fakeFacta(log: { issued: number; delivered: Array<{ code: string; token
     }) as unknown as FactaLike["issue"],
     deliverEmail: (async (code: string, token: string) => { log.delivered.push({ code, token }); return { estado: state.estado, destino: "a•••@x.com" }; }) as unknown as FactaLike["deliverEmail"],
     getDocumentStatus: (async () => { throw new Error("unused"); }) as unknown as FactaLike["getDocumentStatus"],
-  };
+  }) as unknown as FactaLike;
 }
 
 async function world(options: { env?: Parameters<typeof turnstileEnv>[0] } = {}) {
@@ -398,5 +398,124 @@ describe("the server never requests WhatsApp", () => {
       const source = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
       expect(source).not.toMatch(/whatsapp\s*:\s*\{|deliverWhatsApp/);
     }
+  });
+});
+
+// --- Recipe 8 and the six types in the recipe forms --------------------------------------
+
+const API = "https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1";
+
+function fakeApi(calls: string[]): typeof fetch {
+  const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+  return (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const path = String(input).slice(API.length);
+    const method = (init?.method ?? "GET").toUpperCase();
+    calls.push(`${method} ${path}`);
+    if (method === "POST" && path === "/v1/dte") {
+      return json({
+        estado: "sellado", codigoGeneracion: CODE, numeroControl: "DTE-01-M001P001-000000000000001", tipoDte: "01", ambiente: "00",
+        fecEmi: "2026-10-06", horEmi: "10:00:00", selloRecibido: "SELLO", totales: { totalPagar: 1 }, observaciones: [],
+        entrega: { token: "fdt_recipe_secret_token", venceEn: new Date(T0 + 5 * 60_000).toISOString(), canales: { correo: { estado: "pendiente", destino: "c•••@example.com" } } },
+      });
+    }
+    if (method === "POST" && path.endsWith("/entrega/correo")) return json({ canal: "correo", estado: "enviado", destino: "c•••@example.com" });
+    if (method === "GET" && path.endsWith("/entrega")) return json({ codigoGeneracion: CODE, canales: { correo: { estado: "enviado", destino: "c•••@example.com" } } });
+    return json({ error: { code: "not_found", message: "unused" } }, 404);
+  }) as typeof fetch;
+}
+
+async function recipeWorld() {
+  const now = T0;
+  const env = turnstileEnv({
+    QUOTA: fakeQuotaNamespace(() => now),
+    FACTA_DTE_FIXTURES_JSON: JSON.stringify({
+      customers: [{ id: "c1", label: "Comercial", receptor: { nombre: "Comercial", nrc: "123456", numDocumento: "06141234567890", nombreComercial: "x" } }],
+      products: [{ id: "p1", label: "Café", descripcion: "Café", precioUni: 2 }],
+    }),
+  });
+  const calls: string[] = [];
+  const deps = { now: () => now, fetch: fakeApi(calls), turnstileFetch: fakeSiteverify(), facta: fakeFacta({ issued: 0, delivered: [] }) };
+  const state = await handleApi(new Request(`${URL_BASE}/api/state`, { headers: { "cf-connecting-ip": "203.0.113.9" } }), env, deps);
+  const cookie = /facta_pg_visitor=([^;]+)/.exec(state.headers.get("set-cookie") ?? "")![1]!;
+  const run = (body: unknown, extra: Record<string, string> = {}) => handleApi(new Request(`${URL_BASE}/api/recipes/run`, {
+    method: "POST",
+    body: JSON.stringify(body),
+    headers: { "content-type": "application/json", "x-facta-ui": "1", cookie: `facta_pg_visitor=${cookie}`, "cf-connecting-ip": "203.0.113.9", "x-turnstile-token": "XXXX.DUMMY.TOKEN.XXXX", ...extra },
+  }), env, deps);
+  const post = (path: string, body: unknown) => handleApi(new Request(`${URL_BASE}${path}`, {
+    method: "POST",
+    body: JSON.stringify(body),
+    headers: { "content-type": "application/json", "x-facta-ui": "1", cookie: `facta_pg_visitor=${cookie}`, "cf-connecting-ip": "203.0.113.9", "x-turnstile-token": "XXXX.DUMMY.TOKEN.XXXX" },
+  }), env, deps);
+  return { run, calls, post };
+}
+
+describe("recipe «Entregar por correo»", () => {
+  it("needs a Turnstile token before it issues or sends anything", async () => {
+    const { run, calls } = await recipeWorld();
+    const response = await run({ recipe: "deliver-email", params: { email: "cliente@example.com" } }, { "x-turnstile-token": "" });
+    expect(response.status).toBe(403);
+    expect(calls).toEqual([]);
+  });
+
+  it("issues with the e-mail marked, asks deliverEmail with the token and waits, without leaking the token", async () => {
+    const { run, calls } = await recipeWorld();
+    const response = await run({ recipe: "deliver-email", params: { email: "cliente@example.com" } });
+    expect(response.status).toBe(200);
+    const text = await response.text();
+    expect(text).not.toContain("fdt_recipe_secret_token");
+    expect(text).not.toContain("cliente@example.com");
+    const body = JSON.parse(text) as { ok: boolean; issued: unknown[]; steps: Array<{ method: string; endpoint: string }> };
+    expect(body.ok).toBe(true);
+    expect(body.issued).toEqual([{ codigoGeneracion: CODE, tipoDte: "01" }]);
+    expect(calls.slice(0, 3)).toEqual(["POST /v1/dte", `POST /v1/dte/${CODE}/entrega/correo`, `GET /v1/dte/${CODE}/entrega`]);
+  });
+
+  it("validates the address and limits the sends to 5 per hour", async () => {
+    const { run } = await recipeWorld();
+    const bad = await run({ recipe: "deliver-email", params: { email: "a@x.com,b@y.com" } });
+    expect(bad.status).toBe(400);
+    expect(((await bad.json()) as { error: { code: string } }).error.code).toBe("email_invalid");
+    for (let i = 0; i < 5; i++) expect((await run({ recipe: "deliver-email", runId: `run-${i}-aaaaaaaa`, params: { email: `dest${i}@example.com` } })).status).toBe(200);
+    const sixth = await run({ recipe: "deliver-email", runId: "run-9-aaaaaaaa", params: { email: "dest9@example.com" } });
+    expect(sixth.status).toBe(429);
+    expect(sixth.headers.get("retry-after")).not.toBeNull();
+    expect(((await sixth.json()) as { error: { message: string } }).error.message).toMatch(/Se alcanzó el límite de envíos/);
+  });
+
+  it("delivers a document the visitor owns with the kept token, and refuses one that is not theirs", async () => {
+    const { run, calls, post } = await recipeWorld();
+    // Issued through a session with the e-mail marked: the Worker keeps its five-minute token.
+    const session = ((await (await post("/api/session", { ...SALE, sendEmail: true, emailTo: "cliente@example.com" })).json()) as { session: string }).session;
+    expect((await post("/api/facta", issueBody(session))).status).toBe(200);
+    const other = await run({ recipe: "deliver-email", params: { code: "AAAAAAAA-9B3D-4A6E-8F10-2D5B7C9E1A34" } });
+    expect(other.status).toBe(403);
+    const before = calls.length;
+    const owned = await run({ recipe: "deliver-email", runId: "owned-run-aaaa", params: { code: CODE } });
+    expect(owned.status).toBe(200);
+    expect(calls.slice(before)).toContain(`POST /v1/dte/${CODE}/entrega/correo`);
+    expect(await owned.text()).not.toContain("fdt_recipe_secret_token");
+    // One send per document every 10 minutes also applies to this path.
+    const again = await run({ recipe: "deliver-email", runId: "owned-run-bbbb", params: { code: CODE } });
+    expect(again.status).toBe(429);
+  });
+
+  it("answers 410 for an owned document whose e-mail was never marked", async () => {
+    const { run, post } = await recipeWorld();
+    const session = ((await (await post("/api/session", SALE)).json()) as { session: string }).session;
+    expect((await post("/api/facta", issueBody(session))).status).toBe(200);
+    const closed = await run({ recipe: "deliver-email", params: { code: CODE } });
+    expect(closed.status).toBe(410);
+  });
+});
+
+describe("the six types in the recipe forms", () => {
+  it("accepts every type; notes need a document issued here", async () => {
+    const { run } = await recipeWorld();
+    const note = await run({ recipe: "issue-idempotent", params: { type: "05" } });
+    expect(note.status).toBe(400);
+    expect(((await note.json()) as { error: { message: string } }).error.message).toMatch(/documento que corrige|nota/i);
+    expect((await run({ recipe: "issue-idempotent", params: { type: "99" } })).status).toBe(400);
+    expect((await run({ recipe: "issue-idempotent", params: { type: "03" } })).status).toBe(200);
   });
 });

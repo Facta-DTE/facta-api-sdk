@@ -77,14 +77,14 @@ Both talk to **staging only**. There is no production mode.
   per-key rate limit then protects the CI test from playground traffic.
 * **Fail closed at start-up:** the Worker refuses every request when the key is
   `facta_live_*` or the base URL is not the staging host. A test pins this.
-* **Who may issue:** the site is public to read, but issuing, invalidating and
-  reading documents need a signed-in visitor. Recommended: **Cloudflare Access**
-  (one-time e-mail code; free tier) on `/api/*` and the issuing pages, with an
-  allow-list Marvin controls. Alternative for a public launch later:
-  Turnstile + per-IP quota.
+* **Who may issue (decided by Marvin, 6-Oct-2026: «poner algún captcha de cloudflare para protegernos de abuso y ya»):**
+  **Cloudflare Turnstile**, not Access. Visitors stay anonymous and get a signed HttpOnly cookie with a random id (30 days) that
+  keys ownership, Registro and the quotas. Every action that costs something (an issue session, an e-mail send or resend, a recipe
+  run that issues or sends, an invalidation) carries one single-use Turnstile token that the Worker verifies with `siteverify`
+  (secret, IP, hostname). Access stays available behind `PLAYGROUND_AUTH=access` and keeps its code and tests.
 * **Quotas inside the Worker** (in addition to the API's): issues per visitor
   per hour and per day, kept in a Durable Object or KV; clear «límite alcanzado»
-  copy.
+  copy. Counted on the visitor cookie **and** on the hashed IP.
 * **Visitors never see a credential**, a bucket name or a path: the handler's
   projections already strip them.
 * Every playground document is a real environment-00 DTE transmitted to the
@@ -107,8 +107,8 @@ Each screen runs against the real staging handler, with its code beside it:
 * Issue: `FactaInvoiceDialog`, `FactaInvoiceDrawer`, `FactaInvoiceInline`,
   `FactaIssueButton`, run modes `manual` / `auto` / `auto-close`.
 * After issuing: `FactaReceipt`, `FactaStatusBadge`, `FactaDownloadButton`
-  (PDF, JSON, ticket), delivery by e-mail (to the signed-in visitor's own
-  address only; WhatsApp off in the playground).
+  (PDF, JSON, ticket), delivery by e-mail (to any address the visitor types, limited
+  server-side; WhatsApp off in the playground and shown disabled).
 * Data: `FactaDocumentList`, `FactaDocumentDetail`, `FactaCustomerPicker`,
   `FactaProductPicker`, invalidation dialog.
 * A sale builder: pick a document type (FE, CCF, FEX, FSE, NR, NC, ND…, as far
@@ -182,14 +182,14 @@ the playground.
 | D-1 | Hosting | Cloudflare Worker with static assets (GitHub Pages cannot hold the key). |
 | D-2 | Domain | `playground.factadte.com` (or `ejemplos.factadte.com`). |
 | D-3 | Key | A dedicated staging key for the playground, not the CI key. Marvin mints it. |
-| D-4 | Who may issue | Cloudflare Access with an e-mail allow-list now; Turnstile + quotas only if it opens to the public. |
+| D-4 | Who may issue | **Decided 6-Oct-2026: Cloudflare Turnstile + signed visitor cookie + quotas per cookie and IP** (Access kept behind `PLAYGROUND_AUTH=access`). |
 | D-5 | Quotas | 20 issues per visitor per hour, 100 per day. |
-| D-6 | Delivery | E-mail only to the visitor's own address; WhatsApp off. |
+| D-6 | Delivery | **Revised 6-Oct-2026:** e-mail to any address the visitor types, with Turnstile on every send, 5/hour and 20/day per cookie and per IP, 2/day per recipient, one resend per document every 10 minutes, owned documents only; WhatsApp never requested (shown disabled). |
 | D-7 | Code location | `playground/` in this repository, built from the SDK source. |
 
 ## 9. What Marvin will need to do
 
 * Mint the playground key in staging and give it to the Worker with
   `wrangler secret put` (or let the deploy job read it from GitHub secrets).
-* Approve the Cloudflare Access policy (who gets in).
+* Create the Turnstile widget (managed mode, hostname of each Worker) and set `TURNSTILE_SITEKEY` and `TURNSTILE_SECRET`. `ACCESS_*` are optional now.
 * Create the DNS record for the chosen subdomain (or let the deploy attach it).

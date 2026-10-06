@@ -7,6 +7,8 @@
 //
 // WhatsApp is NEVER requested from this server: `deliveryFor` only ever builds `{ email }`.
 
+import { createFactaSession } from "../../src/server/session.ts";
+import type { DteRequest } from "../../src/types.ts";
 import { sha256Hex } from "./hash.ts";
 
 export const MAIL_HOUR_LIMIT = 5;
@@ -61,6 +63,23 @@ export async function ipKey(secret: string, ip: string): Promise<string> {
 /** Channels the server will request: the e-mail only. The only builder of `deliver` in the playground. */
 export function deliveryFor(address: string): { email: string } {
   return { email: address };
+}
+
+/**
+ * The session your server seals for a sale. The channels are decided HERE and ride inside the signed
+ * token: the browser can neither add nor change them. Only e-mail, only to the address the visitor typed.
+ */
+export async function createDeliverySession(
+  input: { request: DteRequest; idempotencyKey: string; display: { total: number; title: string; reference: string }; address: string | null },
+  sessionSecret: string,
+  now?: number,
+): Promise<string> {
+  return createFactaSession({
+    request: input.request,
+    idempotencyKey: input.idempotencyKey,
+    display: input.display,
+    ...(input.address === null ? {} : { deliver: deliveryFor(input.address) }),
+  }, sessionSecret, now);
 }
 
 /** Browser fields that try to name another channel; refused outright. */

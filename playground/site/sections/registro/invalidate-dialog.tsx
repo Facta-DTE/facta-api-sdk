@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { FactaWindowError, useFactaActions } from "../../../../react.ts";
 import { requestInvalidation, type RegistryDocument } from "../../api.ts";
+import { TurnstileBox } from "../../components/turnstile.tsx";
+import { useTurnstileReady } from "../../turnstile.ts";
 import { TYPE_NAMES, tail } from "./registry-data.ts";
 
 // «Anular» from the registry. Invalidation never starts in the browser: the server checks the
@@ -11,6 +13,7 @@ export function InvalidateDialog({ doc, onClose, onDone }: { doc: RegistryDocume
   const [motivo, setMotivo] = useState("");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  const ready = useTurnstileReady();
   const cancel = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     cancel.current?.focus();
@@ -44,10 +47,11 @@ export function InvalidateDialog({ doc, onClose, onDone }: { doc: RegistryDocume
           <span>Motivo (opcional; con motivo se anula por «otro motivo»)</span>
           <input type="text" maxLength={200} value={motivo} onChange={(event) => setMotivo(event.target.value)} placeholder="Error de captura" />
         </label>
+        <TurnstileBox />
         {problem !== null && <p role="alert" className="pg-error">{problem}</p>}
         <div className="reg-dialog-actions">
           <button type="button" ref={cancel} className="pg-secondary" disabled={busy} onClick={onClose}>Cancelar</button>
-          <button type="button" className="pg-primary reg-danger" disabled={busy} onClick={() => void confirm()}>{busy ? "Anulando…" : "Anular documento"}</button>
+          <button type="button" className="pg-primary reg-danger" disabled={busy || !ready} onClick={() => void confirm()}>{busy ? "Anulando…" : "Anular documento"}</button>
         </div>
       </div>
     </div>

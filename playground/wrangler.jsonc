@@ -21,8 +21,8 @@
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["QuotaCounter"] }],
 
-  // Non-secret variables. Everything else, including ACCESS_TEAM_DOMAIN and ACCESS_AUD, is set
-  // per Worker with `wrangler secret put` (see README), so a deploy never overwrites it.
+  // Non-secret variables. Everything else, including TURNSTILE_SITEKEY and TURNSTILE_SECRET (and the optional
+  // ACCESS_* of `PLAYGROUND_AUTH=access`), is set per Worker with `wrangler secret put` (see README), so a deploy never overwrites it.
   "vars": {
     "FACTA_API_BASE_URL": "https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1"
   },

@@ -57,8 +57,9 @@ export function StatusChip({ estado }: { estado: string }) {
 export const HOUR_LIMIT = 20;
 export const DAY_LIMIT = 100;
 
-/** Visitor initials from the e-mail's local part («marvin.quevedo@…» → MQ). */
+/** Visitor initials from the e-mail's local part («marvin.quevedo@…» → MQ); «V-3FA9C2» → V3. */
 export function initials(email: string): string {
+  if (/^V-[0-9A-Z_-]{6}$/.test(email)) return `V${email[2]}`;
   const parts = (email.split("@")[0] ?? "").split(/[._\-+]+/).filter(Boolean);
   const letters = parts.length >= 2 ? parts[0]![0]! + parts[1]![0]! : (parts[0] ?? "?").slice(0, 2);
   return letters.toUpperCase();

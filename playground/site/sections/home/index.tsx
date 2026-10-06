@@ -10,8 +10,8 @@ import { useDownload } from "../registro/downloads.ts";
 import { money, TYPE_NAMES, tail, totalOf, useRegistry, whenOf } from "../registro/registry-data.ts";
 import type { RegistryDocument } from "../../api.ts";
 import { LiveInvoice } from "./live-invoice.tsx";
-import liveInvoiceSource from "./live-invoice.tsx?raw";
-import saleSource from "../../../server/sale.ts?raw";
+import { SOURCES } from "../../shown-files.ts";
+import { DOCS_URL, NPM_URL, PLAYGROUND_TREE_URL, REPO_URL } from "../../source-links.ts";
 import packageSource from "../../../../package.json?raw";
 import "./home.css";
 
@@ -174,7 +174,8 @@ export function Home() {
           </p>
           <div className="home-cta">
             <LiveInvoice
-              email={visitor?.email ?? null}
+              defaultAddress={visitor?.email ?? ""}
+              signedIn={visitor !== null}
               disabled={view.status !== "ready" || visitor === null || exhausted}
               onIssued={() => { void refresh(); void reload(); }}
             />
@@ -202,7 +203,7 @@ export function Home() {
         <nav className="home-plinks" aria-label="Secciones">
           <PhoneLink to="/pantallas" icon={ICONS.react} title="Pantallas React" text="La ventana, el recibo, las listas" />
           <PhoneLink to="/implementacion" icon={ICONS.own} title="Mi propia interfaz" text="Checkout, punto de venta, CCF" />
-          <PhoneLink to="/servidor" icon={ICONS.server} title="Solo servidor" text="Siete recetas que se ejecutan aquí" />
+          <PhoneLink to="/servidor" icon={ICONS.server} title="Solo servidor" text="Ocho recetas que se ejecutan aquí" />
         </nav>
       </section>
 
@@ -220,12 +221,23 @@ export function Home() {
         <div className="home-sides"><ServiceCard /><QuotaCard /></div>
       </section>
 
+      <section className="pg-card home-open" aria-labelledby="home-open-title">
+        <h2 id="home-open-title">Todo es código abierto</h2>
+        <p className="pg-note">La librería y este mismo playground son públicos, con licencia MIT. Léalos, cópielos o propóngale cambios.</p>
+        <ul className="home-open-links">
+          <li><a href={REPO_URL} target="_blank" rel="noopener">Librería @facta-dte/api</a></li>
+          <li><a href={PLAYGROUND_TREE_URL} target="_blank" rel="noopener">Código de este playground</a></li>
+          <li><a href={NPM_URL} target="_blank" rel="noopener">Paquete en npm</a></li>
+          <li><a href={DOCS_URL} target="_blank" rel="noopener">Documentación</a></li>
+        </ul>
+      </section>
+
       <section className="home-code" aria-labelledby="home-code-title">
         <h2 id="home-code-title">El código que acaba de ver correr</h2>
         <p className="pg-note">Son los archivos reales del playground, no copias: lo que ve aquí es lo que se ejecuta.</p>
         <div className="home-code-grid">
-          <CodeBlock title="Navegador · sections/home/live-invoice.tsx" code={liveInvoiceSource} />
-          <CodeBlock title="Servidor · server/sale.ts (arma la solicitud fiscal)" code={saleSource} />
+          <CodeBlock title="Navegador · sections/home/live-invoice.tsx" code={SOURCES["playground/site/sections/home/live-invoice.tsx"]} path="playground/site/sections/home/live-invoice.tsx" />
+          <CodeBlock title="Servidor · server/sale.ts (arma la solicitud fiscal)" code={SOURCES["playground/server/sale.ts"]} path="playground/server/sale.ts" />
         </div>
       </section>
     </div>

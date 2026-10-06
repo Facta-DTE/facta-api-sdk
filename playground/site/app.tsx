@@ -6,7 +6,9 @@ import { mockFetch } from "./api.ts";
 import { StateProvider, usePlayground } from "./state.tsx";
 import { QuotaMeter, Wordmark, initials, useQuotaView } from "./components/ui.tsx";
 
-const DOCS_URL = "https://sdk.factadte.com";
+import { DOCS_URL, LICENSE_URL, NPM_URL, PLAYGROUND_TREE_URL, REPO_URL } from "./source-links.ts";
+
+const EXTERNAL = { target: "_blank", rel: "noopener" } as const;
 
 function Nav() {
   const { path } = useRoute();
@@ -24,8 +26,8 @@ function Nav() {
 function Visitor() {
   const { visitor } = useQuotaView();
   return (
-    <span className="pg-avatar" role="img" aria-label={visitor === null ? "Sin sesión" : `Sesión de ${visitor.email}`} title={visitor?.email}>
-      {visitor === null ? "–" : initials(visitor.email)}
+    <span className="pg-avatar" role="img" aria-label={visitor === null ? "Sin sesión" : `Visitante ${visitor.label}`} title={visitor?.label}>
+      {visitor === null ? "–" : initials(visitor.email ?? visitor.label)}
     </span>
   );
 }
@@ -61,6 +63,7 @@ function PhoneBar() {
         <nav id="pg-menu" className="pg-menu" aria-label="Secciones">
           {SECTIONS.map((s) => <Link key={s.path} to={s.path} aria-current={path === s.path ? "page" : undefined}>{s.label}</Link>)}
           <a href={DOCS_URL}>Documentación</a>
+          <a href={REPO_URL} {...EXTERNAL}>Código fuente</a>
           <QuotaMeter />
         </nav>
       )}
@@ -82,6 +85,7 @@ function Header() {
         <div className="pg-header-tools">
           <QuotaMeter />
           <a className="pg-doc-link" href={DOCS_URL}>Documentación</a>
+          <a className="pg-doc-link" href={REPO_URL} {...EXTERNAL}>Código fuente</a>
           <Visitor />
         </div>
       </div>
@@ -100,9 +104,24 @@ function Banner() {
     );
   }
   if (view.status === "ready" && view.state.visitor?.via === "dev-bypass") {
-    return <div className="pg-banner">Modo de desarrollo local: Cloudflare Access está omitido en este equipo.</div>;
+    return <div className="pg-banner">Modo de desarrollo local: la verificación de Cloudflare Access está omitida en este equipo.</div>;
   }
   return null;
+}
+
+/** Licence and the public repository, on every page. */
+function SiteFooter() {
+  return (
+    <footer className="pg-footer">
+      <span>Facta DTE · SDK de código abierto, licencia <a href={LICENSE_URL} {...EXTERNAL}>MIT</a></span>
+      <nav aria-label="Código abierto">
+        <a href={REPO_URL} {...EXTERNAL}>Librería @facta-dte/api</a>
+        <a href={PLAYGROUND_TREE_URL} {...EXTERNAL}>Código de este playground</a>
+        <a href={NPM_URL} {...EXTERNAL}>Paquete en npm</a>
+        <a href={DOCS_URL}>Documentación</a>
+      </nav>
+    </footer>
+  );
 }
 
 function Page() {
@@ -120,6 +139,7 @@ export function App() {
           <Header />
           <Banner />
           <Page />
+          <SiteFooter />
         </FactaProvider>
       </StateProvider>
     </Router>

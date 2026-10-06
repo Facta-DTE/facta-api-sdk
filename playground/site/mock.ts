@@ -3,7 +3,7 @@
 // behind `import.meta.env.DEV`, so it is never part of a production build.
 
 import { createMockFetch, type Outcome } from "../../examples/react-preview/src/mock-handler.ts";
-import { installMock, type CreatedSession, type IssuedDocument, type PlaygroundState } from "./api.ts";
+import { ApiError, installMock, type CreatedSession, type IssuedDocument, type PlaygroundState } from "./api.ts";
 
 const OUTCOMES: Outcome[] = ["sealed", "sealed-copies-pending", "sealed-delivered", "sealed-delivering", "contingency", "rejected", "uncertain-then-sealed", "failed-retryable", "expired"];
 
@@ -15,7 +15,11 @@ export function installDevMock(search: string): void {
   const state: PlaygroundState = {
     environment: "00",
     apiHost: "eobxzotnqzgtpuqvmpkc.supabase.co",
-    visitor: { email: "visitante@example.com", via: "dev-bypass" },
+    visitor: { label: "V-3FA9C2", email: null, via: "cookie" },
+    auth: "turnstile",
+    turnstileSiteKey: null,
+    mail: { allowed: true, remainingHour: 3, remainingDay: 17 },
+    whatsapp: false,
     quota: { allowed: true, remainingHour: 20, remainingDay: 100 },
     supportedTypes: ["01", "03", "05", "06", "11", "14"],
     catalog: params.get("catalog") !== "0",
@@ -38,9 +42,15 @@ export function installDevMock(search: string): void {
   installMock({
     fetch: createMockFetch({ outcome, environment: "00" }),
     state: () => state,
-    session: (sale): CreatedSession => ({ session: `tok-${++n}`, total: sale.lines.reduce((sum, l) => sum + l.cantidad * (l.precioUni ?? 8.5), 0), title: "Venta de prueba", emailTo: sale.sendEmail ? state.visitor!.email : null }),
+    session: (sale): CreatedSession => ({ session: `tok-${++n}`, total: sale.lines.reduce((sum, l) => sum + l.cantidad * (l.precioUni ?? 8.5), 0), title: "Venta de prueba", emailTo: sale.sendEmail && sale.emailTo ? `${sale.emailTo.slice(0, 1)}•••@${sale.emailTo.split("@")[1] ?? ""}` : null }),
     issued: () => issued,
     invalidation: () => "inv-ok",
+    // `&resend=limit` shows the limit state; `&resend=closed` the closed five-minute window.
+    resend: () => {
+      if (params.get("resend") === "limit") throw new ApiError("mail_quota_exceeded", "Se alcanzó el límite de envíos: este documento ya se envió hace poco (uno cada 10 minutos). Podrá reenviarlo en 9 min.", 429);
+      if (params.get("resend") === "closed") throw new ApiError("delivery_window_closed", "El plazo para reenviar este documento venció. Emita uno nuevo.", 410);
+      return { estado: "enviado", destino: "c•••@example.com" };
+    },
   });
   mockRegistry();
 }

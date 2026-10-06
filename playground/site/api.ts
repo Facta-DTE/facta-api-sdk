@@ -1,10 +1,21 @@
 // The page's calls to the playground Worker. Everything is same-origin.
 
+import { turnstileHeaders } from "./turnstile.ts";
+
 export interface PlaygroundState {
   environment: "00";
   apiHost: string;
-  visitor: { email: string; via: "access" | "dev-bypass" } | null;
+  /** `label` is what the page shows («V-3FA9C2», or the e-mail in Access mode). */
+  visitor: { label: string; email: string | null; via: "cookie" | "access" | "dev-bypass" } | null;
+  /** How visitors are told apart on this deployment. */
+  auth?: "turnstile" | "access";
+  /** Public Turnstile site key; null when the deployment does not use Turnstile. */
+  turnstileSiteKey?: string | null;
   quota: { allowed: boolean; remainingHour: number; remainingDay: number } | null;
+  /** E-mail sends left (5 per hour, 20 per day). */
+  mail?: { allowed: boolean; remainingHour: number; remainingDay: number } | null;
+  /** Always false: the playground never delivers by WhatsApp. */
+  whatsapp?: boolean;
   supportedTypes: string[];
   catalog: boolean;
   /** DTE types whose receiver can be a catalog customer (the API's `customerId`). */
@@ -39,6 +50,8 @@ export interface MockBackend {
   session(sale: SaleDescription): CreatedSession;
   issued(): IssuedDocument[];
   invalidation(code: string): string;
+  /** Delivery demo: answers or throws an `ApiError` (limit states). */
+  resend?(code: string): ResendOutcome;
 }
 let mock: MockBackend | null = null;
 export const installMock = (backend: MockBackend) => { mock = backend; };
@@ -89,6 +102,8 @@ export interface SaleDescription {
     codigo?: string;
   }[];
   sendEmail?: boolean;
+  /** The address to e-mail the document to (any valid address; the server limits sends). */
+  emailTo?: string;
 }
 
 export interface CreatedSession {
@@ -102,7 +117,7 @@ export async function createSession(sale: SaleDescription): Promise<CreatedSessi
   if (mock) return mock.session(sale);
   const response = await fetch("/api/session", {
     method: "POST",
-    headers: { "content-type": "application/json", "x-facta-ui": "1" },
+    headers: { "content-type": "application/json", "x-facta-ui": "1", ...turnstileHeaders() },
     body: JSON.stringify(sale),
   });
   if (!response.ok) throw await readError(response);
@@ -125,7 +140,7 @@ export async function requestInvalidation(codigoGeneracion: string, options: { t
   if (mock) return mock.invalidation(codigoGeneracion);
   const response = await fetch("/api/invalidation", {
     method: "POST",
-    headers: { "content-type": "application/json", "x-facta-ui": "1" },
+    headers: { "content-type": "application/json", "x-facta-ui": "1", ...turnstileHeaders() },
     body: JSON.stringify({ codigoGeneracion, ...options }),
   });
   if (!response.ok) throw await readError(response);
@@ -147,4 +162,27 @@ export async function loadRegistry(): Promise<RegistryDocument[]> {
   const response = await fetch("/api/registro", { headers: { accept: "application/json" } });
   if (!response.ok) throw await readError(response);
   return ((await response.json()) as { documents: RegistryDocument[] }).documents;
+}
+
+export interface ResendOutcome {
+  estado: string;
+  /** Masked: «m•••@ejemplo.com». */
+  destino: string;
+  motivo?: string;
+}
+
+/**
+ * One more e-mail attempt for a document this visitor issued (the address marked when it was issued;
+ * a different one cannot be sent). The server limits it: one per document every 10 minutes, and the
+ * hourly, daily and per-recipient e-mail caps; over a limit it answers 429.
+ */
+export async function resendEmail(codigoGeneracion: string): Promise<ResendOutcome> {
+  if (mock?.resend) return mock.resend(codigoGeneracion);
+  const response = await fetch("/api/delivery/resend", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-facta-ui": "1", ...turnstileHeaders() },
+    body: JSON.stringify({ codigoGeneracion }),
+  });
+  if (!response.ok) throw await readError(response);
+  return ((await response.json()) as { canal: ResendOutcome }).canal;
 }

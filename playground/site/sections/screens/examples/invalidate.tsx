@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { FactaWindowError, useFactaActions } from "../../../../../react.ts";
 import { requestInvalidation, type IssuedDocument } from "../../../api.ts";
+import { TurnstileBox } from "../../../components/turnstile.tsx";
+import { useTurnstileReady } from "../../../turnstile.ts";
 
 // Invalidation never starts in the browser: your server seals an invalidation session
 // (here `POST /api/invalidation`, only for documents this visitor issued, with the people
@@ -12,6 +14,7 @@ export function InvalidateExample({ issued, canInvalidate, onInvalidated }: { is
   const [motivo, setMotivo] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
+  const ready = useTurnstileReady();
   const chosen = code !== "" ? code : issued[0]?.codigoGeneracion ?? "";
 
   async function invalidate() {
@@ -42,7 +45,8 @@ export function InvalidateExample({ issued, canInvalidate, onInvalidated }: { is
         <span>Motivo (opcional; con motivo se anula por «otro motivo»)</span>
         <input type="text" maxLength={200} value={motivo} onChange={(event) => setMotivo(event.target.value)} placeholder="Error de captura" />
       </label>
-      <button type="button" className="pg-primary" disabled={busy || !canInvalidate} onClick={invalidate}>
+      <TurnstileBox />
+      <button type="button" className="pg-primary" disabled={busy || !canInvalidate || !ready} onClick={invalidate}>
         {busy ? "Preparando…" : "Anular documento"}
       </button>
       {!canInvalidate && <p className="pg-note">Este playground no tiene responsables de demostración configurados, así que no puede anular.</p>}

@@ -1,4 +1,5 @@
 import { ApiError } from "../../api.ts";
+import { turnstileHeaders } from "../../turnstile.ts";
 
 export interface RunStep {
   method: string;
@@ -33,7 +34,7 @@ export interface RunResponse {
 export async function runRecipe(body: { recipe: string; stage?: string; runId?: string; params: Record<string, unknown> }): Promise<RunResponse> {
   const response = await fetch("/api/recipes/run", {
     method: "POST",
-    headers: { "content-type": "application/json", "x-facta-ui": "1" },
+    headers: { "content-type": "application/json", "x-facta-ui": "1", ...turnstileHeaders() },
     body: JSON.stringify(body),
   });
   const payload = (await response.json().catch(() => null)) as (RunResponse & { error?: { code?: string; message?: string } }) | null;

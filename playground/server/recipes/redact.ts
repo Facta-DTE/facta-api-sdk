@@ -22,6 +22,8 @@ const SHAPES: Array<[RegExp, string]> = [
   [/factauk_[A-Za-z0-9_-]+/g, "[llave omitida]"],
   [/https?:\/\/[^\s"'<>]*\/storage\/v1\/[^\s"'<>]*/g, "[ruta omitida]"],
   [/\b(?:DTE|dte)\/\d{4}\/\d{2}\/[^\s"'<>]*/g, "[ruta omitida]"],
+  // An e-mail address is shown masked («c•••@ejemplo.com»), never whole.
+  [/([A-Za-z0-9._%+-])[A-Za-z0-9._%+-]*@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)/g, "$1•••@$2"],
 ];
 
 export interface RedactOptions {

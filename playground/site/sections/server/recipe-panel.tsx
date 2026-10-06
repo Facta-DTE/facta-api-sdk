@@ -2,13 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import { ApiError } from "../../api.ts";
 import { CodeBlock, useCopy } from "../../code-block.tsx";
 import { usePlayground } from "../../state.tsx";
+import { TurnstileBox } from "../../components/turnstile.tsx";
+import { useTurnstileReady } from "../../turnstile.ts";
 import { RECIPE_SPECS, type FieldSpec, type RecipeSpec } from "../../../server/recipes/specs.ts";
 import { denoBunScript, nodeScript, portableSource, projectZip } from "./export.ts";
 import { runRecipe, type MyDocument, type RunResponse } from "./recipes-api.ts";
 import { ResultTabs, RunNotice, Timeline, type TimelineRun } from "./results.tsx";
 import { excerptOf } from "./subtitles.ts";
 import { highlight } from "../../components/highlight.tsx";
-import { RECIPE_SOURCES } from "./sources.ts";
+import { recipePath, recipeSource } from "./sources.ts";
 
 type Values = Record<string, string | boolean>;
 
@@ -78,7 +80,7 @@ export function RecipePanel({ spec, number, mine, onIssued }: { spec: RecipeSpec
   const [problem, setProblem] = useState<string | null>(null);
   const [fullCode, setFullCode] = useState(false);
   const { copied, copy } = useCopy();
-  const source = RECIPE_SOURCES[spec.id]!;
+  const source = recipeSource(spec.file);
 
   useEffect(() => {
     if (spec.id === "order-webhook" && firstProduct !== undefined) setValues(defaults(spec, firstProduct));
@@ -87,8 +89,11 @@ export function RecipePanel({ spec, number, mine, onIssued }: { spec: RecipeSpec
   const visitor = state?.visitor ?? null;
   const exhausted = spec.consumesQuota && state?.quota != null && !state.quota.allowed;
   const unavailable = spec.needsCatalog && state !== null && !state.catalog;
-  const blocked = visitor === null || exhausted === true || unavailable === true;
-  const needsDocument = spec.fields.some((f) => f.kind === "issued" && f.required && !values[f.name]);
+  const ready = useTurnstileReady();
+  const blocked = visitor === null || exhausted === true || unavailable === true || (spec.consumesQuota && !ready);
+  // The e-mail recipe needs an address or one of your own documents.
+  const needsAddress = spec.id === "deliver-email" && !values.code && String(values.email ?? "").trim() === "";
+  const needsDocument = needsAddress || spec.fields.some((f) => f.kind === "issued" && f.required && !values[f.name]);
 
   async function execute(stage: string | undefined, id: string | null, retry = false) {
     setBusy(true);
@@ -138,6 +143,7 @@ export function RecipePanel({ spec, number, mine, onIssued }: { spec: RecipeSpec
             className="srv-codeblock"
             title={`recipes/${spec.file}`}
             code={source}
+            path={recipePath(spec.file)}
             actions={
               <span className="srv-code-actions">
                 <button type="button" className="pg-code-action" onClick={() => copy("node", nodeScript(source))}>{copied === "node" ? "Copiado" : "Copiar para Node"}</button>
@@ -163,6 +169,7 @@ export function RecipePanel({ spec, number, mine, onIssued }: { spec: RecipeSpec
           {spec.fields.map((field) => (
             <Field key={field.name} field={field} value={values[field.name] ?? ""} mine={mine} onChange={(v) => setValues((c) => ({ ...c, [field.name]: v }))} />
           ))}
+          <TurnstileBox />
           <div className="srv-actions">
             <button type="submit" className="pg-primary" disabled={busy || blocked || needsDocument}>
               {busy && !continuation ? "Ejecutando…" : spec.stages ? `Ejecutar: ${spec.stages[0]!.label}` : "Ejecutar"}

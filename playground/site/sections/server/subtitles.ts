@@ -7,6 +7,7 @@ export const RECIPE_SUBTITLES: Record<string, string> = {
   "documents-storage": "PDF, JSON y copias administradas",
   "catalog-refs": "customerId y productId",
   "order-webhook": "Un webhook que devuelve un DTE sellado",
+  "deliver-email": "deliverEmail y waitForDelivery",
 };
 
 // The rail uses short names; the full title stays on the page.
@@ -18,6 +19,7 @@ export const RECIPE_SHORT_TITLES: Record<string, string> = {
   "documents-storage": "Listar y descargar",
   "catalog-refs": "Catálogo",
   "order-webhook": "Pedido entrante",
+  "deliver-email": "Entregar por correo",
 };
 
 /** The short excerpt the phone shows: the body of the recipe's exported function. */

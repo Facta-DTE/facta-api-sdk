@@ -10,6 +10,16 @@ FACTA_SESSION_SECRET=replace-with-at-least-32-random-bytes-0000000000
 # Optional demo data, see playground/README.md.
 # FACTA_DTE_FIXTURES_JSON={"customers":[],"products":[]}
 
-# Local development only: skips Cloudflare Access on localhost. The Worker refuses it on any other host.
-PLAYGROUND_DEV_BYPASS=1
-PLAYGROUND_DEV_EMAIL=dev@example.com
+# Visitors are anonymous and told apart by a signed cookie; every costly action carries a Cloudflare
+# Turnstile token. These are Turnstile's documented TEST keys (they work on localhost and always pass).
+# Use `2x00000000000000000000AB` / `2x0000000000000000000000000000000AA` to see the always-fail path.
+TURNSTILE_SITEKEY=1x00000000000000000000AA
+TURNSTILE_SECRET=1x0000000000000000000000000000000AA
+
+# Optional, to keep the old Cloudflare Access login instead of Turnstile:
+# PLAYGROUND_AUTH=access
+# ACCESS_TEAM_DOMAIN=yourteam.cloudflareaccess.com
+# ACCESS_AUD=the-application-audience-tag
+# Access mode only, localhost only: skips Access with this e-mail as the visitor.
+# PLAYGROUND_DEV_BYPASS=1
+# PLAYGROUND_DEV_EMAIL=dev@example.com
