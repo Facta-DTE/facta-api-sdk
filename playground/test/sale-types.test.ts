@@ -38,7 +38,7 @@ describe("sale builder · every type the API v1 supports", () => {
     expect(sale.request).toMatchObject({ tipoDte: "03", receptor: { nrc: "123456" }, items: [{ cantidad: 2, precioUni: 10 }] });
     expect(sale.total).toBe(20);
     expect(code({ tipoDte: "03" })).toBe("customer_required");
-    expect(code({ tipoDte: "03", customerId: "person" })).toBe("customer_unfit");
+    expect(code({ tipoDte: "03", customerId: "person" })).toBe("customer_not_contributor");
   });
 
   it("05 and 06 only relate documents the visitor issued here", () => {

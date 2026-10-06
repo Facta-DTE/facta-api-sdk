@@ -114,11 +114,11 @@ export function parseFixtures(raw: string | undefined): PlaygroundFixtures {
   return { customers, products, requests, invalidation };
 }
 
-/** What the browser may know about the demo data: labels and prices, never receptor fields. */
+/** What the browser may know about the demo data: labels, prices and whether a customer is a taxpayer (has an NRC), never receptor fields. */
 export function publicFixtures(fixtures: PlaygroundFixtures) {
   return {
     // `fits` lists the DTE types the customer's receiver can serve; the receiver itself stays here.
-    customers: fixtures.customers.map(({ id, label, receptor }) => ({ id, label, fits: customerFits(receptor as Record<string, unknown>) })),
+    customers: fixtures.customers.map(({ id, label, receptor }) => ({ id, label, fits: customerFits(receptor as Record<string, unknown>), contributor: typeof receptor.nrc === "string" && receptor.nrc.trim() !== "" })),
     /** Types that have a built-in demo receiver, so no customer needs to be picked for them. */
     builtInReceivers: Object.keys(fixtures.requests).filter((t) => fixtures.requests[t]?.receptor),
     canInvalidate: fixtures.invalidation !== null,

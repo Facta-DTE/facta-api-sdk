@@ -57,7 +57,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 const cents = (value: number) => Math.round(value * 100) / 100;
 
-function buildLines(input: unknown[], fixtures: PlaygroundFixtures): { items: LineItem[]; total: number } {
+export function buildLines(input: unknown[], fixtures: PlaygroundFixtures): { items: LineItem[]; total: number } {
   if (input.length < 1 || input.length > MAX_LINES) {
     throw new SaleError("lines_invalid", `Agregue entre 1 y ${MAX_LINES} líneas.`);
   }
@@ -97,11 +97,11 @@ function buildLines(input: unknown[], fixtures: PlaygroundFixtures): { items: Li
 type Builder = (input: SaleInput, context: SaleContext) => BuiltSale;
 
 /** The receiver for `type`: the chosen demo customer, else the fixture request's own receiver. */
-function pickReceptor(type: string, input: SaleInput, fixtures: PlaygroundFixtures, fits: (receptor: Record<string, unknown>) => boolean, missing: string): Record<string, unknown> {
+function pickReceptor(type: string, input: SaleInput, fixtures: PlaygroundFixtures, fits: (receptor: Record<string, unknown>) => boolean, missing: string, unfitCode = "customer_unfit"): Record<string, unknown> {
   if (input.customerId !== undefined) {
     const customer = fixtures.customers.find((c) => c.id === input.customerId);
     if (!customer) throw new SaleError("customer_unknown", "Ese cliente de demostración no existe.");
-    if (!fits(customer.receptor as Record<string, unknown>)) throw new SaleError("customer_unfit", missing);
+    if (!fits(customer.receptor as Record<string, unknown>)) throw new SaleError(unfitCode, missing);
     return customer.receptor as Record<string, unknown>;
   }
   const fallback = fixtures.requests[type]?.receptor as Record<string, unknown> | null | undefined;
@@ -156,7 +156,7 @@ const BUILDERS: Record<string, Builder> = {
   // Comprobante de crédito fiscal (03): VAT excluded from the unit price; needs a contribuyente.
   "03": (input, { fixtures }) => {
     const { items, total } = buildLines(input.lines, fixtures);
-    const receptor = pickReceptor("03", input, fixtures, (r) => has(r, "nrc", "numDocumento"), "Elija un cliente con NRC: el crédito fiscal es para contribuyentes.");
+    const receptor = pickReceptor("03", input, fixtures, (r) => has(r, "nrc", "numDocumento"), "Elija un cliente con NRC: el crédito fiscal es para contribuyentes.", "customer_not_contributor");
     return { request: { tipoDte: "03", receptor: receptor as unknown as Recipient, items }, total, title: "Crédito fiscal de prueba (precios sin IVA)" };
   },
   // Nota de crédito (05) and nota de débito (06) relate to a document the visitor issued here.

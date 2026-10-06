@@ -4,8 +4,10 @@
 // Routes
 //   GET  /api/state    visitor, quota and demo data for the page
 //   POST /api/session  validated sale description -> session token
-//   POST /api/facta    the SDK handler (issue, status, documents, downloads…)
-//   GET  /api/issued   the generation codes THIS visitor issued here (ledger in server/issued.ts)
+//   POST /api/facta    the SDK handler (issue, status, documents, downloads…);
+//                      per-document reads are limited to documents this visitor issued
+//   GET  /api/registro the visitor's own documents, with their current state
+//   GET  /api/issued   the generation codes THIS visitor issued here (issued-codes.ts)
 //   POST /api/invalidation  seals an invalidation session for a document the visitor issued here
 //
 // Extension points for later batches: add a route to ROUTES; add a type to
@@ -17,7 +19,8 @@ import type { PlaygroundEnv } from "./env.ts";
 import { createFactaParts, visitorTag, type FactaParts } from "./facta.ts";
 import { FixturesError, parseFixtures, publicFixtures, type PlaygroundFixtures } from "./fixtures.ts";
 import { checkGuard, STAGING_API_HOST } from "./guard.ts";
-import { isGenerationCode, listIssued } from "./issued.ts";
+import { isGenerationCode, listIssued, ownsDocument, updateIssuedState } from "./issued-codes.ts";
+import { projectDocument } from "../../src/server/capabilities.ts";
 import { quotaMessage, type QuotaDecision } from "./quota.ts";
 import { buildSale, SaleError, SUPPORTED_SALE_TYPES } from "./sale.ts";
 import type { FactaLike } from "../../src/server/handler.ts";
@@ -97,6 +100,10 @@ async function loadFixtures(env: PlaygroundEnv): Promise<PlaygroundFixtures> {
   return parseFixtures(env.FACTA_DTE_FIXTURES_JSON);
 }
 
+/** Handler actions that name one document: only its issuer's visitor may use them. */
+const PER_DOCUMENT_ACTIONS = new Set(["documents.get", "documents.download", "documents.copies", "documents.retryStorage"]);
+const REGISTRY_ENRICH_LIMIT = 25;
+
 export async function handleApi(request: Request, env: PlaygroundEnv, deps: ApiDeps = {}): Promise<Response> {
   const path = new URL(request.url).pathname;
 
@@ -147,7 +154,7 @@ export async function handleApi(request: Request, env: PlaygroundEnv, deps: ApiD
     if (visitor === null) return jsonResponse(401, errorBody("unauthorized", "Inicie sesión para emitir facturas de prueba."));
     const body = await request.json().catch(() => null);
     try {
-      const owned = (await listIssued(env.QUOTA, visitor.email)).map((e) => e.codigoGeneracion);
+      const owned = (await listIssued(env, visitor.email)).map((e) => e.codigoGeneracion);
       const { sale, sendEmail } = buildSale(body, await loadFixtures(env), { ownedCodes: owned });
       const idempotencyKey = `${await visitorTag(visitor.email)}.${crypto.randomUUID()}`;
       const session = await createFactaSession({
@@ -169,7 +176,7 @@ export async function handleApi(request: Request, env: PlaygroundEnv, deps: ApiD
     if (request.method !== "GET") return jsonResponse(405, errorBody("method_not_allowed", "Solo se acepta GET."), { allow: "GET" });
     const visitor = await visitorOf(request);
     if (visitor === null) return jsonResponse(401, errorBody("unauthorized", "Inicie sesión para ver sus documentos."));
-    return jsonResponse(200, { issued: await listIssued(env.QUOTA, visitor.email) });
+    return jsonResponse(200, { issued: await listIssued(env, visitor.email) });
   }
 
   if (path === "/api/invalidation") {
@@ -181,8 +188,7 @@ export async function handleApi(request: Request, env: PlaygroundEnv, deps: ApiD
     if (body === null || !isGenerationCode(body.codigoGeneracion)) return jsonResponse(400, errorBody("code_invalid", "El código de generación no es válido."));
     const code = body.codigoGeneracion.toUpperCase();
     // Ownership, enforced here: only a document this visitor issued in the playground.
-    const owned = (await listIssued(env.QUOTA, visitor.email)).some((e) => e.codigoGeneracion === code);
-    if (!owned) return jsonResponse(403, errorBody("not_issued_here", "Solo puede anular documentos que usted emitió en este playground."));
+    if (!(await ownsDocument(env, visitor.email, code))) return jsonResponse(403, errorBody("not_issued_here", "Solo puede anular documentos que usted emitió en este playground."));
     const tipoAnulacion = body.tipoAnulacion === 3 ? 3 : 2;
     const motivo = typeof body.motivo === "string" ? body.motivo.trim().slice(0, 500) : "";
     if (tipoAnulacion === 3 && motivo === "") return jsonResponse(400, errorBody("motivo_required", "Escriba el motivo de la anulación."));
@@ -209,11 +215,58 @@ export async function handleApi(request: Request, env: PlaygroundEnv, deps: ApiD
     return jsonResponse(200, { session });
   }
 
+  if (path === "/api/registro") {
+    if (request.method !== "GET") return jsonResponse(405, errorBody("method_not_allowed", "Solo se acepta GET."), { allow: "GET" });
+    const visitor = await visitorOf(request);
+    if (visitor === null) return jsonResponse(401, errorBody("unauthorized", "Inicie sesión para ver su registro."));
+    const entries = await listIssued(env, visitor.email);
+    // Current state only for codes the visitor owns (they come from their own record), newest first.
+    const documents = await Promise.all(entries.map(async (entry, index) => {
+      if (index >= REGISTRY_ENRICH_LIMIT || typeof parts.facta.getDocumentStatus !== "function") return { ...entry, current: null };
+      try {
+        const status = await parts.facta.getDocumentStatus(entry.codigoGeneracion);
+        const current = projectDocument(status, { exposeRecipient: false });
+        if (typeof current.estado === "string" && current.estado !== entry.estado) {
+          await updateIssuedState(env, visitor.email, entry.codigoGeneracion, current.estado).catch(() => undefined);
+          entry = { ...entry, estado: current.estado };
+        }
+        return { ...entry, current };
+      } catch {
+        return { ...entry, current: null };
+      }
+    }));
+    return jsonResponse(200, { documents, enriched: Math.min(entries.length, REGISTRY_ENRICH_LIMIT) });
+  }
+
   if (path === "/api/facta") {
     // Count an issue before the SDK handler spends a fiscal number. A replay of
     // the same session carries the same idempotency key and is free.
     if (request.method === "POST") {
-      const peeked = await request.clone().json().catch(() => null) as { action?: unknown; session?: unknown } | null;
+      const peeked = await request.clone().json().catch(() => null) as { action?: unknown; session?: unknown; codigoGeneracion?: unknown } | null;
+      // Per-document reads: the code must be one this visitor issued.
+      if (typeof peeked?.action === "string" && PER_DOCUMENT_ACTIONS.has(peeked.action)) {
+        const visitor = await visitorOf(request);
+        if (visitor === null) return jsonResponse(401, errorBody("unauthorized", "Inicie sesión para ver documentos."));
+        const code = (peeked as { codigoGeneracion?: unknown }).codigoGeneracion;
+        if (!isGenerationCode(code) || !(await ownsDocument(env, visitor.email, code))) {
+          return jsonResponse(403, errorBody("document_not_yours", "Ese documento no fue emitido desde su sesión del playground."));
+        }
+      }
+      // The key sees every playground document: lists show only the visitor's own, holding is closed.
+      if (peeked?.action === "documents.holding") {
+        return jsonResponse(403, errorBody("action_not_allowed", "Esta acción no está disponible en el playground."));
+      }
+      if (peeked?.action === "documents.list") {
+        const visitor = await visitorOf(request);
+        if (visitor === null) return jsonResponse(401, errorBody("unauthorized", "Inicie sesión para ver documentos."));
+        const answer = await parts.handler(request);
+        if (!answer.ok) return answer;
+        const page = await answer.json().catch(() => null) as { documentos?: { codigoGeneracion?: string }[] } | null;
+        if (page === null || !Array.isArray(page.documentos)) return jsonResponse(502, errorBody("bad_gateway", "No se pudo leer la lista."));
+        const mine = new Set((await listIssued(env, visitor.email)).map((e) => e.codigoGeneracion));
+        const documentos = page.documentos.filter((d) => typeof d.codigoGeneracion === "string" && mine.has(d.codigoGeneracion.toUpperCase()));
+        return jsonResponse(200, { ...page, documentos });
+      }
       if (peeked?.action === "issue") {
         const visitor = await visitorOf(request);
         const session = visitor === null ? null : await verifyFactaSession(peeked.session, env.FACTA_SESSION_SECRET!, deps.now?.()).catch(() => null);

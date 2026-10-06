@@ -9,7 +9,7 @@ export interface PlaygroundState {
   catalog: boolean;
   demo: {
     /** `fits` lists the DTE types the customer's receiver can serve. */
-    customers: { id: string; label: string; fits: string[] }[];
+    customers: { id: string; label: string; fits: string[]; contributor: boolean }[];
     products: { id: string; label: string; descripcion: string; precioUni: number }[];
     /** DTE types that have a built-in demo receiver, so no customer needs to be picked. */
     builtInReceivers: string[];
@@ -22,8 +22,9 @@ export interface PlaygroundState {
 export interface IssuedDocument {
   codigoGeneracion: string;
   tipoDte: string;
-  numeroControl?: string;
-  at: number;
+  numeroControl: string;
+  issuedAt: string;
+  estado: string;
 }
 
 /**
@@ -114,4 +115,21 @@ export async function requestInvalidation(codigoGeneracion: string, options: { t
   });
   if (!response.ok) throw await readError(response);
   return ((await response.json()) as { session: string }).session;
+}
+
+export interface RegistryDocument {
+  codigoGeneracion: string;
+  tipoDte: string;
+  numeroControl: string;
+  issuedAt: string;
+  estado: string;
+  /** The API's current view of the document, when the server could read it. */
+  current: { estado: string; fecEmi?: string; horEmi?: string | null; selloRecibido?: string | null } | null;
+}
+
+/** The visitor's own documents, newest first (server/issued-codes.ts). */
+export async function loadRegistry(): Promise<RegistryDocument[]> {
+  const response = await fetch("/api/registro", { headers: { accept: "application/json" } });
+  if (!response.ok) throw await readError(response);
+  return ((await response.json()) as { documents: RegistryDocument[] }).documents;
 }

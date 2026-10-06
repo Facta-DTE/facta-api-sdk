@@ -113,7 +113,7 @@ describe("playground API", () => {
 
   it("rejects an invalid sale with its own code", async () => {
     const { post } = await world();
-    const response = await post("/api/session", { tipoDte: "04", lines: [] }, "ana@example.com");
+    const response = await post("/api/session", { tipoDte: "99", lines: [] }, "ana@example.com");
     expect(response.status).toBe(400);
     expect(((await response.json()) as { error: { code: string } }).error.code).toBe("type_unsupported");
   });

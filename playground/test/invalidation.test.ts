@@ -19,6 +19,10 @@ const facta = {
     estado: "sellado", codigoGeneracion: CODE, numeroControl: "DTE-01-M001P001-000000000000001", tipoDte: "01",
     ambiente: "00", fecEmi: "2026-10-06", horEmi: "10:00:00", selloRecibido: "SELLO", totales: { totalPagar: 1 }, observaciones: [],
   })) as unknown as FactaLike["issue"],
+  listDocuments: (async () => ({
+    documentos: [CODE, FOREIGN].map((codigoGeneracion) => ({ estado: "sellado", codigoGeneracion, numeroControl: "N", tipoDte: "01", fecEmi: "2026-10-06" })),
+    siguiente: "cursor-1",
+  })) as unknown as FactaLike["listDocuments"],
   getDocumentStatus: (async () => { throw new Error("unused"); }) as unknown as FactaLike["getDocumentStatus"],
 } as FactaLike;
 
@@ -119,5 +123,25 @@ describe("POST /api/invalidation", () => {
     expect((await post("/api/facta", { action: "invalidate.describe", session }, "beto@example.com")).status).toBe(403);
     expect((await post("/api/facta", { action: "invalidate.describe", session })).status).toBe(403);
     expect([401, 403]).not.toContain((await post("/api/facta", { action: "invalidate.describe", session }, "ana@example.com")).status);
+  });
+});
+
+describe("what the shared key can see", () => {
+  it("lists only the documents the visitor issued and keeps the cursor", async () => {
+    const { post, issueAs } = await world();
+    await issueAs("ana@example.com");
+    const ana = await (await post("/api/facta", { action: "documents.list" }, "ana@example.com")).json() as { documentos: { codigoGeneracion: string }[]; siguiente: string | null };
+    expect(ana.documentos.map((d) => d.codigoGeneracion)).toEqual([CODE]);
+    expect(ana.siguiente).toBe("cursor-1");
+    const beto = await (await post("/api/facta", { action: "documents.list" }, "beto@example.com")).json() as { documentos: unknown[] };
+    expect(beto.documentos).toEqual([]);
+    expect((await post("/api/facta", { action: "documents.list" })).status).toBe(401);
+  });
+
+  it("refuses documents.holding for everyone", async () => {
+    const { post, issueAs } = await world();
+    await issueAs("ana@example.com");
+    const response = await post("/api/facta", { action: "documents.holding" }, "ana@example.com");
+    expect(response.status).toBe(403);
   });
 });

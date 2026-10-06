@@ -5,7 +5,7 @@ import { createFactaHandler, type FactaLike } from "../../src/server/handler.ts"
 import type { FactaCapabilities } from "../../src/server/capabilities.ts";
 import type { PlaygroundEnv } from "./env.ts";
 import { visitorTag } from "./hash.ts";
-import { recordIssued, tagOfKey } from "./issued.ts";
+import { recordIssued } from "./issued-codes.ts";
 
 export interface FactaParts {
   facta: FactaLike;
@@ -38,16 +38,27 @@ export function createFactaParts(env: PlaygroundEnv, visitorOf: VisitorOf, facta
     ...(env.FACTA_UNLOCK_KEY ? { catalog: "read" as const } : {}),
   };
 
+  // `onIssued` has no request, so `authorize` (which does) leaves the visitor here, keyed by
+  // the session's idempotency key, for the hook to pick up in the same call.
+  const issuing = new Map<string, string>();
+
   const handler = createFactaHandler({
     facta,
     sessionSecret: env.FACTA_SESSION_SECRET!,
     capabilities,
     // Receivers of playground documents are demo data; still, keep the SDK default.
     exposeRecipient: false,
-    // Remember what each visitor issued, so only they can invalidate it from here.
+    // Per-visitor record (issued-codes.ts): «Registro» and every per-document read use it.
     onIssued: async (result, { session }) => {
-      const tag = tagOfKey(session.idempotencyKey);
-      if (tag !== null) await recordIssued(env.QUOTA, tag, { codigoGeneracion: result.codigoGeneracion, tipoDte: result.tipoDte, numeroControl: result.numeroControl });
+      const email = issuing.get(session.idempotencyKey);
+      issuing.delete(session.idempotencyKey);
+      if (email === undefined) return;
+      await recordIssued(env, email, {
+        codigoGeneracion: result.codigoGeneracion,
+        tipoDte: result.tipoDte,
+        numeroControl: result.numeroControl,
+        estado: result.estado,
+      });
     },
     authorize: async (req, ctx) => {
       // The service status is public so the page can show it before sign-in.
@@ -55,7 +66,12 @@ export function createFactaParts(env: PlaygroundEnv, visitorOf: VisitorOf, facta
       const visitor = await visitorOf(req);
       if (visitor === null) return false;
       if (ctx.idempotencyKey !== undefined) {
-        return ctx.idempotencyKey.startsWith(`${await visitorTag(visitor.email)}.`);
+        const mine = ctx.idempotencyKey.startsWith(`${await visitorTag(visitor.email)}.`);
+        if (mine && ctx.action === "issue") {
+          if (issuing.size > 500) issuing.clear();
+          issuing.set(ctx.idempotencyKey, visitor.email);
+        }
+        return mine;
       }
       return true;
     },

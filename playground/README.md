@@ -19,11 +19,13 @@ playground/
     access.ts             Cloudflare Access JWT (RS256, JWKS) -> verified visitor e-mail
     quota.ts              20/hour and 100/day per visitor; QuotaCounter Durable Object
     fixtures.ts           demo customers/products from FACTA_DTE_FIXTURES_JSON
+    issued-codes.ts       per-visitor record of issued documents (inside the QuotaCounter Durable Object)
+    sale-credito-fiscal.ts  fallback builder for type 03 (used only if BUILDERS has none)
     sale.ts               validated sale description -> fiscal request (BUILDERS per DTE type)
     facta.ts              Facta client + createFactaHandler (capabilities, authorize)
-    router.ts             GET /api/state · POST /api/session · POST /api/facta
+    router.ts             GET /api/state · POST /api/session · POST /api/facta · GET /api/registro
   site/
-    sections/registry.ts  the five routes; one folder per section (home, screens, headless, server, log)
+    sections/registry.ts  the five routes; one folder per section (home, screens, headless, server, registro)
     sections/home/        live invoice (FactaInvoiceDialog) + the code shown with ?raw
   test/                   vitest (node): guard, Access, quota, sale builder, router, packaging
   e2e/ + playwright.config.ts   smoke against PLAYGROUND_BASE_URL (not run in CI yet)
@@ -39,6 +41,27 @@ playground/
 | Another DTE type in the sale builder | an entry in `BUILDERS` in `server/sale.ts` (+ test) |
 | Another handler capability | `capabilities` in `server/facta.ts` |
 | A new route | `handleApi` in `server/router.ts` (after the guard) |
+
+## Issued documents per visitor (`server/issued-codes.ts`)
+
+The playground key sees every playground document, so anything that reads documents is scoped to what
+the visitor issued. The handler's `onIssued` hook records every sealed or contingency result under the
+verified e-mail, inside that visitor's `QuotaCounter` Durable Object (last 200 entries; only code, type,
+control number, time and state; nothing else about the receiver or the files).
+
+```ts
+recordIssued(env, email, { codigoGeneracion, tipoDte, numeroControl, estado }): Promise<void>
+listIssued(env, email): Promise<IssuedEntry[]>          // newest first, at most MAX_ISSUED (200)
+ownsDocument(env, email, code): Promise<boolean>        // case-insensitive; false for anything that is not a code or on any error
+updateIssuedState(env, email, code, estado): Promise<void>
+```
+
+`env` is the Worker environment (only `QUOTA` is used). **Server recipes and invalidation must call
+`ownsDocument` before acting on a code.** `POST /api/facta` already does it for `documents.get`,
+`documents.download`, `documents.copies` and `documents.retryStorage` (403 `document_not_yours`);
+`documents.list` and `documents.holding` are not filtered by the handler, so screens that show them list
+other visitors' codes (but cannot open them): use `GET /api/registro` for «my documents».
+`GET /api/registro` returns the visitor's entries with the API's current state (the 25 newest are read).
 
 ## Run locally
 

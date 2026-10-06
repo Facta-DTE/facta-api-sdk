@@ -11,7 +11,7 @@ export function installDevMock(search: string): void {
   const params = new URLSearchParams(search);
   const asked = params.get("outcome") as Outcome | null;
   const outcome: Outcome = asked !== null && OUTCOMES.includes(asked) ? asked : "sealed";
-  const issued: IssuedDocument[] = [{ codigoGeneracion: "7C1E4B6A-92D3-4F08-A1B7-5E30C9D2F614", tipoDte: "01", numeroControl: "DTE-01-M001P001-000000000000042", at: Date.now() }];
+  const issued: IssuedDocument[] = [{ codigoGeneracion: "7C1E4B6A-92D3-4F08-A1B7-5E30C9D2F614", tipoDte: "01", numeroControl: "DTE-01-M001P001-000000000000042", issuedAt: new Date().toISOString(), estado: "sellado" }];
   const state: PlaygroundState = {
     environment: "00",
     apiHost: "eobxzotnqzgtpuqvmpkc.supabase.co",
@@ -21,9 +21,9 @@ export function installDevMock(search: string): void {
     catalog: true,
     demo: {
       customers: [
-        { id: "c-biz", label: "Ferretería San Miguel (contribuyente)", fits: ["01", "03", "05", "06"] },
-        { id: "c-abroad", label: "Brumas Coffee Imports LLC (extranjero)", fits: ["01", "11"] },
-        { id: "c-excl", label: "Rosa Elena Campos (sujeto excluido)", fits: ["01", "14"] },
+        { id: "c-biz", label: "Ferretería San Miguel (contribuyente)", fits: ["01", "03", "05", "06"], contributor: true },
+        { id: "c-abroad", label: "Brumas Coffee Imports LLC (extranjero)", fits: ["01", "11"], contributor: false },
+        { id: "c-excl", label: "Rosa Elena Campos (sujeto excluido)", fits: ["01", "14"], contributor: false },
       ],
       products: [
         { id: "p-cafe", label: "Café de altura", descripcion: "Café de altura, bolsa de 1 lb", precioUni: 8.5 },

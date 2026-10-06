@@ -1,7 +1,8 @@
+import { handleIssuedRequest } from "./issued-codes.ts";
+
 // Per-visitor issue quota (D-5): 20 per hour and 100 per day, sliding windows.
 // The decision logic is pure; `QuotaCounter` (a Durable Object) only persists it.
 
-import { handleIssuedRequest } from "./issued.ts";
 
 export const HOUR_LIMIT = 20;
 export const DAY_LIMIT = 100;
@@ -112,9 +113,8 @@ export class QuotaCounter {
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
-    // The per-visitor ledger of issued documents lives in `issued.ts`.
-    const issued = await handleIssuedRequest(this.#storage, request, this.#now());
-    if (issued !== null) return issued;
+    // The visitor's issued-document record lives in this same object (issued-codes.ts).
+    if (url.pathname.startsWith("/issued/")) return handleIssuedRequest(this.#storage, request, this.#now());
     const stored = (await this.#storage.get<QuotaState>("quota")) ?? emptyQuota();
     if (request.method === "GET" && url.pathname === "/peek") {
       return Response.json(peekQuota(stored, this.#now()));
