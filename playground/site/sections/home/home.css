@@ -24,7 +24,9 @@
 .home-snippet code { font: inherit; }
 
 .home-quick { margin-top: 28px; }
-.home-live { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 20px; }
+.home-live { display: contents; }
+.home-live .pg-check { flex-basis: 100%; order: 3; min-height: 36px; font-size: 14px; color: var(--pg-text-2); }
+.home-live-cta { padding: 0 22px; min-height: 48px; }
 .home-live .pg-error { flex-basis: 100%; }
 
 .home-integrations { margin-top: 56px; }
@@ -79,7 +81,7 @@
   .home-lead { font-size: 15px; margin-bottom: 18px; }
   .home-lead-long, .home-hero-visual, .home-cta-2, .home-integrations .home-sub, .home-int-grid, .home-integrations h2, .home-recent, .home-code { display: none; }
   .home-lead-short { display: inline; }
-  .home-cta .pg-primary { display: flex; width: 100%; border-radius: 12px; padding: 14px; }
+  .home-cta .pg-primary, .home-live-cta { display: flex; width: 100%; border-radius: 12px; padding: 14px; }
   .home-fine { display: none; }
   .home-quick { margin-top: 20px; }
   .home-integrations { margin-top: 22px; }

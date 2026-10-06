@@ -173,9 +173,15 @@ export function Home() {
             <span className="home-lead-short">Cada botón llama al API de staging y le muestra el código exacto que lo hizo.</span>
           </p>
           <div className="home-cta">
-            <Link to="/pantallas" className="pg-primary">Emitir una factura ahora</Link>
+            <LiveInvoice
+              email={visitor?.email ?? null}
+              disabled={view.status !== "ready" || visitor === null || exhausted}
+              onIssued={() => { void refresh(); void reload(); }}
+            />
             <Link to="/servidor" className="pg-secondary home-cta-2">Ver recetas de servidor</Link>
           </div>
+          {view.status === "ready" && visitor === null && <p className="pg-note">Inicie sesión para emitir facturas de prueba.</p>}
+          {exhausted && <p className="pg-note" data-testid="quota">Límite alcanzado. Intente de nuevo más tarde.</p>}
           <p className="home-fine">Documentos sin valor fiscal. Cada emisión usa un número de control del ambiente de pruebas.</p>
         </div>
 
@@ -183,16 +189,6 @@ export function Home() {
           <HeroCard latest={latest} loading={registry.status === "loading" && visitor !== null} />
           <pre className="home-snippet" aria-label="La llamada del SDK que emite"><code>{highlight(SNIPPET)}</code></pre>
         </div>
-      </section>
-
-      <section className="home-quick" aria-label="Emisión rápida">
-        <LiveInvoice
-          email={visitor?.email ?? null}
-          disabled={view.status !== "ready" || visitor === null || exhausted}
-          onIssued={() => { void refresh(); void reload(); }}
-        />
-        {view.status === "ready" && visitor === null && <p className="pg-note">Inicie sesión para emitir facturas de prueba.</p>}
-        {exhausted && <p className="pg-note" data-testid="quota">Límite alcanzado. Intente de nuevo más tarde.</p>}
       </section>
 
       <section className="home-integrations" aria-labelledby="home-int-title">

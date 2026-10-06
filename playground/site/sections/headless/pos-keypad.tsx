@@ -47,6 +47,7 @@ export function PosKeypad({ disabled }: { disabled: boolean }) {
         {KEYS.map((k) => <button key={k} type="button" onClick={() => press(k)} aria-label={k === "⌫" ? "Borrar" : k}>{k}</button>)}
       </div>
       <button type="button" className="hl-pos-charge" disabled={disabled || cents < 1} onClick={charge}>Cobrar</button>
+      {cents < 1 && !disabled && <p className="hl-pos-hint">Escriba el monto para cobrar.</p>}
       {problem && <p role="alert" className="pg-error">{problem}</p>}
     </div>
   );

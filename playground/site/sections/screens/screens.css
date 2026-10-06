@@ -27,13 +27,13 @@
 
 .wb-stage {
   flex: 1; margin: 18px 28px 0; border-radius: 14px; border: 1px dashed #c9d3db; background-color: #eef2f5;
-  background-image: radial-gradient(#d4dde4 1px, transparent 1px); background-size: 16px 16px; padding: 44px 24px 28px; min-height: 360px; position: relative;
+  background-image: radial-gradient(#d4dde4 1px, transparent 1px); background-size: 16px 16px; padding: 44px 24px 28px; min-height: 420px; position: relative;
   display: flex; flex-direction: column;
 }
 .wb-stage--center { align-items: center; justify-content: center; }
 .wb-stage-label { position: absolute; top: 12px; left: 14px; font-size: 12px; color: var(--pg-faint); }
 .wb-stage-body { min-width: 0; width: 100%; display: grid; gap: 12px; justify-items: start; align-content: start; }
-.wb-stage--center .wb-stage-body { justify-items: center; align-content: center; text-align: center; }
+.wb-stage--center .wb-stage-body { flex: 1; justify-items: center; align-content: center; text-align: center; }
 .wb-stage-body > * { max-width: 100%; }
 
 /* Code column */
@@ -44,7 +44,9 @@
 /* Sale panel */
 .pg-sale { display: grid; gap: 14px; }
 .pg-sale-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.pg-sale .pg-segmented button { white-space: normal; line-height: 1.25; padding-inline: 8px; }
+.pg-sale .pg-segmented button { white-space: nowrap; line-height: 1.25; padding-inline: 8px; }
+.pg-sale-cols .pg-segmented { display: flex; width: 100%; }
+.pg-sale-cols .pg-segmented button { flex: 1 1 auto; padding-inline: 6px; font-size: 12.5px; }
 .pg-sale-head h2 { margin: 0; font: 700 15px/1.3 var(--pg-body); letter-spacing: 0; }
 .pg-sale-cols { display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr); align-items: start; }
 @container sale (min-width: 640px) { .pg-sale-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
@@ -137,3 +139,8 @@
   .pg-price { order: 5; }
   .pg-inline-input, .pg-inline-select { font-size: 16px; }
 }
+
+/* Keep the sale panel short so the stage starts higher on the page. */
+.pg-sale { gap: 10px; }
+.pg-sale .pg-check { min-height: 36px; }
+.wb-stage { margin-bottom: 20px; }

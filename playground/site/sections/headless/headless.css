@@ -60,7 +60,7 @@
 .hl-pos-keys button { min-height: 52px; border-radius: 12px; border: 0; background: #222c34; color: #e6edf1; font: 600 18px var(--pg-mono); cursor: pointer; }
 .hl-pos-keys button:active { background: #2e3b45; }
 .hl-pos-charge, .hl-pos-new { min-height: 50px; border: 0; border-radius: 12px; background: #2fb36e; color: #04170d; font: 700 17px var(--pg-body); cursor: pointer; width: 100%; }
-.hl-pos-charge:disabled { opacity: .45; cursor: not-allowed; }
+.hl-pos-charge:disabled { opacity: 1; background: #1c2a24; color: #9fb3a8; border: 1px dashed #4a6455; cursor: not-allowed; }
 .hl-pos button:focus-visible { outline: 3px solid #6fe0a0; outline-offset: 2px; }
 .hl-skin-pos { margin: 0; background: #070b0e; color: #e6edf1; border-radius: 14px; text-align: center; font-size: 16px; padding: 18px; }
 .hl-skin-pos dl { justify-content: center; text-align: left; }
@@ -100,3 +100,4 @@
   .hl-lead { font-size: 16px; }
   .hl-stage { padding: 20px 16px; }
 }
+.hl-pos-hint { margin: 0; font-size: 13px; color: #9fb3a8; text-align: center; }
