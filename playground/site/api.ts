@@ -7,6 +7,8 @@ export interface PlaygroundState {
   quota: { allowed: boolean; remainingHour: number; remainingDay: number } | null;
   supportedTypes: string[];
   catalog: boolean;
+  /** DTE types whose receiver can be a catalog customer (the API's `customerId`). */
+  catalogReceiverTypes?: string[];
   demo: {
     /** `fits` lists the DTE types the customer's receiver can serve. */
     customers: { id: string; label: string; fits: string[]; contributor: boolean }[];
@@ -44,17 +46,18 @@ export const installMock = (backend: MockBackend) => { mock = backend; };
 export const mockFetch = (): typeof fetch | undefined => mock?.fetch;
 
 export class ApiError extends Error {
-  constructor(readonly code: string, message: string, readonly status: number) {
+  constructor(readonly code: string, message: string, readonly status: number, readonly field?: string) {
     super(message);
   }
 }
 
 async function readError(response: Response): Promise<ApiError> {
-  const body = (await response.json().catch(() => null)) as { error?: { code?: string; message?: string } } | null;
+  const body = (await response.json().catch(() => null)) as { error?: { code?: string; message?: string; field?: string } } | null;
   return new ApiError(
     body?.error?.code ?? "request_failed",
     body?.error?.message ?? "No se pudo completar la solicitud.",
     response.status,
+    body?.error?.field,
   );
 }
 
@@ -65,14 +68,26 @@ export async function loadState(): Promise<PlaygroundState> {
   return (await response.json()) as PlaygroundState;
 }
 
+/** Where the receiver or a line comes from: the key's real catalog, the demo data or typed by the visitor. */
+export type SaleSource = "catalog" | "demo" | "custom";
+
 export interface SaleDescription {
   tipoDte: string;
-  customerId?: string;
-  /** Factura (01) only: a typed receiver name. Nothing else about the receiver can be typed. */
-  receptorNombre?: string;
+  /** Absent: Factura without receiver. `catalog` and `demo` carry an id; `custom` the typed fields. */
+  receptor?: { source: SaleSource; customerId?: string; custom?: Record<string, unknown> };
   /** Notes (05/06): a document this visitor issued here. */
   relatedCode?: string;
-  lines: { productId?: string; descripcion?: string; cantidad: number; precioUni?: number }[];
+  lines: {
+    /** Omitted: a typed line (or a demo product when only `productId` is given). */
+    source?: SaleSource;
+    productId?: string;
+    descripcion?: string;
+    cantidad: number;
+    precioUni?: number;
+    /** Custom lines: 1 = bien, 2 = servicio, chosen by the visitor. */
+    tipoItem?: 1 | 2;
+    codigo?: string;
+  }[];
   sendEmail?: boolean;
 }
 

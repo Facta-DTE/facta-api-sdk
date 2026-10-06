@@ -1,9 +1,13 @@
 // Recipe 6 · Catalog references: issue with `customerId` / `productId`.
 //
-// When the key's owner enabled «Catálogo legible por la API» the server resolves
-// the ids itself (`catalogMode: "readable"`). Otherwise the SDK resolves them from
-// the encrypted catalog and needs the unlock key. Either way the request carries
-// ids, never copied customer data.
+// The request carries ids, never copied customer data. `issue` decides who resolves them:
+// `Facta` reads `/v1/status`, and when the key's owner enabled «Catálogo legible por la API»
+// (`llave.catalogMode: "readable"`) the ids go to the API unchanged and the server resolves them;
+// otherwise the SDK resolves them from the key's decrypted snapshot and needs `unlockKey`.
+// Listing the catalog (below) always reads that snapshot, so this recipe needs the unlock key.
+// Receivers: `customerId` exists on the 01/03/05/06 receiver only; 11 and 14 have none.
+// The playground's sale builder does the same and, before sealing a session, checks on the Worker
+// that every id exists in the catalog (`getCustomer` / `getProduct`).
 import type { Facta, IssueResult } from "../../../mod.ts";
 
 export interface Input {

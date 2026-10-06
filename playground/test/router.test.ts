@@ -56,7 +56,7 @@ async function world() {
   return { env, issued, call, post };
 }
 
-const SALE = { tipoDte: "01", lines: [{ descripcion: "Servicio", cantidad: 1, precioUni: 1 }] };
+const SALE = { tipoDte: "01", lines: [{ descripcion: "Servicio", cantidad: 1, precioUni: 1, tipoItem: 2 }] };
 
 describe("playground API", () => {
   it("answers 503 with a Spanish message on every route when the guard fails", async () => {
@@ -98,7 +98,7 @@ describe("playground API", () => {
     const body = await response.json() as { session: string; total: number; emailTo: string | null };
     expect(body).toMatchObject({ total: 1, emailTo: null });
     const session = await verifyFactaSession(body.session, env.FACTA_SESSION_SECRET!, NOW);
-    expect(session.request).toMatchObject({ tipoDte: "01", items: [{ descripcion: "Servicio", cantidad: 1, precioUni: 1 }] });
+    expect(session.request).toMatchObject({ tipoDte: "01", items: [{ descripcion: "Servicio", cantidad: 1, precioUni: 1, tipoItem: 2 }] });
     expect(session.deliver).toBeUndefined();
   });
 

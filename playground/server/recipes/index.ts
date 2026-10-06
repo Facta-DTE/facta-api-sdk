@@ -83,7 +83,7 @@ function requestFor(type: "01" | "03", fixtures: PlaygroundFixtures): DteRequest
   const fixture = fixtures.requests[type];
   if (fixture !== undefined) return fixture;
   if (type === "01") {
-    return buildSale({ tipoDte: "01", lines: [{ descripcion: "Servicio de prueba", cantidad: 1, precioUni: 1 }] }, fixtures).sale.request;
+    return buildSale({ tipoDte: "01", lines: [{ descripcion: "Servicio de prueba", cantidad: 1, precioUni: 1, tipoItem: 2 }] }, fixtures).sale.request;
   }
   throw new RecipeError("fixture_missing", "Falta el ejemplo de Crédito Fiscal en los datos de demostración del playground.", 503);
 }

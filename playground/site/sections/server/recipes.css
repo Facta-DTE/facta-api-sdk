@@ -15,7 +15,7 @@
 .pg-form { display: grid; gap: 12px; margin-top: 12px; }
 .pg-field label { display: block; font-weight: 600; font-size: 14px; margin-bottom: 4px; }
 .pg-field .pg-check { font-weight: 400; }
-.pg-field input[type="text"], .pg-field input[type="number"], .pg-field select, .pg-field textarea {
+.pg-field input[type="text"], .pg-field input[type="number"], .pg-field input[type="email"], .pg-field input[type="tel"], .pg-field select, .pg-field textarea {
   width: 100%; min-height: 44px; padding: 8px 12px; border: 1px solid var(--pg-border); border-radius: 10px;
   background: var(--pg-bg); color: var(--pg-text); font: inherit; font-size: 16px;
 }

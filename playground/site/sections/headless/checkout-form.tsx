@@ -21,7 +21,7 @@ export function CheckoutForm({ disabled }: { disabled: boolean }) {
       // The server builds the fiscal request from this small description.
       const { session } = await createSession({
         tipoDte: "01",
-        lines: [{ descripcion: String(data.get("item")), cantidad: Number(data.get("qty")), precioUni: Number(data.get("price")) }],
+        lines: [{ descripcion: String(data.get("item")), cantidad: Number(data.get("qty")), precioUni: Number(data.get("price")), tipoItem: 1 }],
       });
       flow.current?.destroy();
       flow.current = createIssueFlow({ client, session, run: "auto" });

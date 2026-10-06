@@ -112,8 +112,12 @@ Each screen runs against the real staging handler, with its code beside it:
 * Data: `FactaDocumentList`, `FactaDocumentDetail`, `FactaCustomerPicker`,
   `FactaProductPicker`, invalidation dialog.
 * A sale builder: pick a document type (FE, CCF, FEX, FSE, NR, NC, ND…, as far
-  as the API supports them), a demo customer or a typed one, lines and
-  discounts; the server builds the session from it.
+  as the API supports them). The receiver and each line come from one of three
+  sources chosen in the UI: **Catálogo de la llave** (the real catalog, picked
+  with `FactaCustomerPicker` / `FactaProductPicker`; the session carries
+  `customerId` / `productId` and the Worker first confirms each id exists in
+  the catalog), **Demostración** (fixtures) or **Personalizado** (typed fields
+  validated on the Worker, nothing stored). The server builds the session from it.
 * Appearance studio: theme, density, motion, accent, radius, fonts, branding,
   `classNames` slots and messages, with a «Copiar código» of the resulting
   props. Reuses the three presets of the current preview.

@@ -50,7 +50,7 @@ async function world(estado: "sellado" | "contingencia" = "sellado") {
   };
   const post = (path: string, body: unknown, as?: string) =>
     call(path, { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json", "x-facta-ui": "1" }, ...(as ? { as } : {}) });
-  const issue = async (as: string, sale: unknown = { tipoDte: "01", lines: [{ descripcion: "Servicio", cantidad: 1, precioUni: 1 }] }) => {
+  const issue = async (as: string, sale: unknown = { tipoDte: "01", lines: [{ descripcion: "Servicio", cantidad: 1, precioUni: 1, tipoItem: 2 }] }) => {
     const { session } = await (await post("/api/session", sale, as)).json() as { session: string };
     const response = await post("/api/facta", { action: "issue", session }, as);
     expect(response.status).toBe(200);
@@ -113,7 +113,7 @@ describe("Registro", () => {
 describe("credit-fiscal session (headless example)", () => {
   it("builds a CCF for a taxpayer and refuses a customer without NRC", async () => {
     const { post } = await world();
-    const lines = [{ descripcion: "Servicio", cantidad: 1, precioUni: 25 }];
+    const lines = [{ descripcion: "Servicio", cantidad: 1, precioUni: 25, tipoItem: 2 }];
     const ok = await post("/api/session", { tipoDte: "03", customerId: "taxpayer", lines }, "ana@example.com");
     expect(ok.status).toBe(200);
     const noNrc = await post("/api/session", { tipoDte: "03", customerId: "person", lines }, "ana@example.com");

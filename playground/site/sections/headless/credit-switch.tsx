@@ -24,7 +24,7 @@ export function CreditSwitch({ disabled }: { disabled: boolean }) {
       const created = await createSession({
         tipoDte: credit ? "03" : "01",
         ...(credit ? { customerId: customerId || taxpayers[0]!.id } : {}),
-        lines: [{ descripcion: "Servicio de consultoría", cantidad: 1, precioUni: 25 }],
+        lines: [{ descripcion: "Servicio de consultoría", cantidad: 1, precioUni: 25, tipoItem: 2 }],
       });
       setSession(created.session);
     } catch (error) {

@@ -23,7 +23,8 @@ import { checkGuard, STAGING_API_HOST } from "./guard.ts";
 import { isGenerationCode, listIssued, ownsDocument, updateIssuedState } from "./issued-codes.ts";
 import { projectDocument } from "../../src/server/capabilities.ts";
 import { quotaMessage, type QuotaDecision } from "./quota.ts";
-import { buildSale, SaleError, SUPPORTED_SALE_TYPES } from "./sale.ts";
+import { buildSale, CATALOG_RECEIVER_TYPES, SaleError, SUPPORTED_SALE_TYPES } from "./sale.ts";
+import { loadCatalogLookup } from "./sale-catalog.ts";
 import type { FactaLike } from "../../src/server/handler.ts";
 import { handleRecipeRun } from "./recipes/route.ts";
 
@@ -147,6 +148,7 @@ export async function handleApi(request: Request, env: PlaygroundEnv, deps: ApiD
       quota: visitor === null ? null : await peekQuota(env, visitor.email),
       supportedTypes: SUPPORTED_SALE_TYPES,
       catalog: Boolean(env.FACTA_UNLOCK_KEY),
+      catalogReceiverTypes: CATALOG_RECEIVER_TYPES,
       demo: publicFixtures(fixtures),
     });
   }
@@ -159,7 +161,9 @@ export async function handleApi(request: Request, env: PlaygroundEnv, deps: ApiD
     const body = await request.json().catch(() => null);
     try {
       const owned = (await listIssued(env, visitor.email)).map((e) => e.codigoGeneracion);
-      const { sale, sendEmail } = buildSale(body, await loadFixtures(env), { ownedCodes: owned });
+      // Catalog ids are confirmed against the key's catalog before anything is built.
+      const catalog = await loadCatalogLookup(body, parts.facta, Boolean(env.FACTA_UNLOCK_KEY));
+      const { sale, sendEmail } = buildSale(body, await loadFixtures(env), { ownedCodes: owned, catalog });
       const idempotencyKey = `${await visitorTag(visitor.email)}.${crypto.randomUUID()}`;
       const session = await createFactaSession({
         request: sale.request,
@@ -170,7 +174,10 @@ export async function handleApi(request: Request, env: PlaygroundEnv, deps: ApiD
       }, env.FACTA_SESSION_SECRET!, deps.now?.());
       return jsonResponse(200, { session, total: sale.total, title: sale.title, emailTo: sendEmail ? visitor.email : null });
     } catch (error) {
-      if (error instanceof SaleError) return jsonResponse(400, errorBody(error.code, error.message));
+      if (error instanceof SaleError) {
+        const status = error.code === "catalog_unreadable" ? 502 : 400;
+        return jsonResponse(status, { error: { code: error.code, message: error.message, retryable: status === 502, ...(error.field === undefined ? {} : { field: error.field }) } });
+      }
       if (error instanceof FixturesError) return jsonResponse(503, errorBody("playground_fixtures_invalid", "Los datos de demostración no son válidos."));
       throw error;
     }

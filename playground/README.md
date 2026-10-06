@@ -20,8 +20,9 @@ playground/
     quota.ts              20/hour and 100/day per visitor; QuotaCounter Durable Object
     fixtures.ts           demo customers/products from FACTA_DTE_FIXTURES_JSON
     issued-codes.ts       per-visitor record of issued documents (inside the QuotaCounter Durable Object)
-    sale-credito-fiscal.ts  fallback builder for type 03 (used only if BUILDERS has none)
-    sale.ts               validated sale description -> fiscal request (BUILDERS per DTE type)
+    sale.ts               validated sale description -> fiscal request (BUILDERS per DTE type; sources catalog | demo | custom)
+    sale-catalog.ts       confirms every catalog id exists in the key's catalog before a session is sealed
+    receptor.ts           typed receivers per type (DUI 9 digits, NIT 14, NRC 2-8 and never zeros, required fields)
     facta.ts              Facta client + createFactaHandler (capabilities, authorize)
     router.ts             GET /api/state · POST /api/session · POST /api/facta · GET /api/registro
   site/
@@ -44,7 +45,7 @@ playground/
 | A React screen example | a file in `site/sections/screens/examples/`, imported by `screens/index.tsx` inside `<ExampleCard>` (`site/components/example-card.tsx`), with its source via `import src from "./file.tsx?raw"` |
 | A headless example | `site/sections/headless/`, same pattern |
 | A server recipe | a fixed file `server/recipes/<name>.ts`, a route in `server/router.ts` behind `visitorOf` + quota, a card in `site/sections/server/` showing the file with `?raw`. Visitors never send code |
-| Another DTE type in the sale builder | an entry in `BUILDERS` in `server/sale.ts` (+ test) |
+| Another DTE type in the sale builder | an entry in `BUILDERS` and `RULES` in `server/sale.ts`, its typed-receiver shape in `server/receptor.ts` (+ tests in `test/sale-sources.test.ts`) |
 | Another handler capability | `capabilities` in `server/facta.ts` |
 | A new route | `handleApi` in `server/router.ts` (after the guard) |
 
@@ -91,7 +92,7 @@ Other scripts: `pnpm playground:typecheck`, `pnpm playground:test`, `pnpm playgr
 | --- | --- | --- |
 | `FACTA_API_KEY` | secret | A **dedicated** `facta_test_` staging key (environment 00). |
 | `FACTA_SIGN_KEY` | secret | Its sign key (`factask_…`). |
-| `FACTA_UNLOCK_KEY` | secret, optional | `factauk_…`; enables the catalog actions (key needs a readable catalog). |
+| `FACTA_UNLOCK_KEY` | secret, optional | `factauk_…`; enables the catalog actions: the React pickers and the sale builder's «Catálogo de la llave» source (the Worker confirms each catalog id with `getCustomer` / `getProduct`, which read the decrypted snapshot). Without it the source is disabled. |
 | `FACTA_SESSION_SECRET` | secret | At least 32 random bytes: `openssl rand -base64 48`. |
 | `FACTA_DTE_FIXTURES_JSON` | secret, optional | Demo data. Keeps the shape of the live test's `STAGING_FACTA_DTE_FIXTURES_JSON` (an object keyed by DTE type with complete test requests) and adds optional `customers: [{id,label,receptor}]` and `products: [{id,label,descripcion,precioUni,productId?}]`. |
 | `ACCESS_TEAM_DOMAIN` | secret | `yourteam.cloudflareaccess.com`. |
@@ -170,3 +171,28 @@ from the demo data, so no visitor code ever runs.
   button is a download of a ready-to-run project that asks for the developer's own test key in `.env`.
 * **Add a recipe:** a file under `recipes/`, an entry in `specs.ts`, a binder in `recipes/index.ts`, its `?raw` import in
   `site/sections/server/sources.ts`, and tests in `test/recipes.test.ts`.
+
+## Sale builder: where the receiver and the lines come from
+
+`POST /api/session` takes `receptor: { source: "catalog" | "demo" | "custom", customerId?, custom? }` and
+`lines[].source` with the same three values.
+
+| Source | Receiver | Line |
+| --- | --- | --- |
+| `catalog` | `{ customerId }` for 01, 03, 05, 06 (the API's `Recipient`; 11 and 14 have no `customerId`) | `{ productId, cantidad }` |
+| `demo` | a fixture customer by id | a fixture product by id |
+| `custom` | typed fields, per type (see `server/receptor.ts`) | description, quantity, price, **item type bien/servicio chosen by the visitor**, optional code |
+
+**Catalog resolution.** The session carries ids only (the token is signed, not encrypted, so no customer data is copied
+into it). At issue time the SDK (0.3.0) reads `/v1/status`: with `llave.catalogMode: "readable"` the ids go to the API
+unchanged and the API resolves them; otherwise the SDK resolves them from the key's decrypted snapshot and needs the unlock
+key. Either way the Worker confirms each id with `getCustomer` / `getProduct` before sealing, so a forged id is refused with
+`customer_not_in_catalog` / `product_not_in_catalog`; that lookup needs `FACTA_UNLOCK_KEY`, so without it the source is off
+(`catalog_unavailable`). Catalog products must match the document's price basis (the SDK's own rule: `vat_included` for 01,
+excluded for the rest).
+
+**Typed receivers** (never stored, only validated and placed in the signed session): DUI 9 digits (a typed dash is
+removed), NIT 14 digits, NRC 2 to 8 digits and never all zeros; 03/05/06 require name, NIT or DUI, NRC, activity code and
+description, address and e-mail; 11 the export receptor (country code, country name, address, `tipoPersona`, activity,
+e-mail); 14 name, document and address. Department, municipality, activity and country codes are typed as codes: the SDK
+ships no CAT list, and Hacienda's verdict decides.

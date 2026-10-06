@@ -64,7 +64,7 @@ describe("sale builder · every type the API v1 supports", () => {
 
   it("falls back to the receiver of a fixture request when no customer is chosen", () => {
     const withFallback = parseFixtures(JSON.stringify({ "03": { tipoDte: "03", items: [], receptor: business } }));
-    const { sale } = buildSale({ tipoDte: "03", lines: [{ descripcion: "Servicio", cantidad: 1, precioUni: 5 }] }, withFallback);
+    const { sale } = buildSale({ tipoDte: "03", lines: [{ descripcion: "Servicio", cantidad: 1, precioUni: 5, tipoItem: 2 }] }, withFallback);
     expect(sale.request).toMatchObject({ receptor: { nrc: "123456" } });
     expect(publicFixtures(withFallback).builtInReceivers).toEqual(["03"]);
   });
@@ -91,12 +91,12 @@ describe("typed receiver name (Factura only)", () => {
   });
 
   it("refuses an empty or long name, and both a name and a customer", () => {
-    expect(code({ tipoDte: "01", receptorNombre: "  " })).toBe("receptor_name_invalid");
-    expect(code({ tipoDte: "01", receptorNombre: "x".repeat(81) })).toBe("receptor_name_invalid");
+    expect(code({ tipoDte: "01", receptorNombre: "  " })).toBe("receptor_field_required");
+    expect(code({ tipoDte: "01", receptorNombre: "x".repeat(101) })).toBe("receptor_invalid");
     expect(code({ tipoDte: "01", receptorNombre: "Ana", customerId: "biz" })).toBe("customer_ambiguous");
   });
 
-  it("ignores a typed name on types that need a real receiver", () => {
-    expect(code({ tipoDte: "03", receptorNombre: "Ana" })).toBe("customer_required");
+  it("a typed name alone is not a taxpayer", () => {
+    expect(code({ tipoDte: "03", receptorNombre: "Ana" })).toBe("receptor_field_required");
   });
 });

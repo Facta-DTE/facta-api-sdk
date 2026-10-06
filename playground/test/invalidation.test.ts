@@ -42,7 +42,7 @@ async function world(fixtures: unknown = { invalidation: PEOPLE }) {
   };
   /** Ana issues one Factura through the handler, which records it in the ledger. */
   const issueAs = async (email: string) => {
-    const created = await (await post("/api/session", { tipoDte: "01", lines: [{ descripcion: "a", cantidad: 1, precioUni: 1 }] }, email)).json() as { session: string };
+    const created = await (await post("/api/session", { tipoDte: "01", lines: [{ descripcion: "a", cantidad: 1, precioUni: 1, tipoItem: 2 }] }, email)).json() as { session: string };
     expect((await post("/api/facta", { action: "issue", session: created.session }, email)).status).toBe(200);
   };
   return { env, post, get, issueAs };

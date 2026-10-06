@@ -19,8 +19,8 @@ const fail = (input: unknown) => {
 
 describe("sale builder", () => {
   it("builds a Factura from free lines", () => {
-    const { sale, sendEmail } = buildSale({ tipoDte: "01", lines: [{ descripcion: "Servicio", cantidad: 2, precioUni: 1.5 }] }, fixtures);
-    expect(sale.request).toEqual({ tipoDte: "01", items: [{ descripcion: "Servicio", cantidad: 2, precioUni: 1.5 }] });
+    const { sale, sendEmail } = buildSale({ tipoDte: "01", lines: [{ descripcion: "Servicio", cantidad: 2, precioUni: 1.5, tipoItem: 2 }] }, fixtures);
+    expect(sale.request).toEqual({ tipoDte: "01", items: [{ descripcion: "Servicio", cantidad: 2, precioUni: 1.5, tipoItem: 2 }] });
     expect(sale.total).toBe(3);
     expect(sendEmail).toBe(false);
   });
@@ -33,7 +33,7 @@ describe("sale builder", () => {
   });
 
   it("never copies unknown fields from the input into the request", () => {
-    const { sale } = buildSale({ tipoDte: "01", ambiente: "01", receptor: { nombre: "x" }, lines: [{ descripcion: "a", cantidad: 1, precioUni: 1, ivaItem: 99 }] }, fixtures);
+    const { sale } = buildSale({ tipoDte: "01", ambiente: "01", lines: [{ descripcion: "a", cantidad: 1, precioUni: 1, tipoItem: 2, ivaItem: 99 }] }, fixtures);
     expect(JSON.stringify(sale.request)).not.toContain("ambiente");
     expect(JSON.stringify(sale.request)).not.toContain("ivaItem");
     expect(sale.request.receptor).toBeUndefined();
@@ -44,14 +44,14 @@ describe("sale builder", () => {
     expect(fail({ tipoDte: "99", lines: [] })).toBe("type_unsupported");
     expect(fail({ tipoDte: "01" })).toBe("lines_invalid");
     expect(fail({ tipoDte: "01", lines: [] })).toBe("lines_invalid");
-    expect(fail({ tipoDte: "01", lines: Array(11).fill({ descripcion: "a", cantidad: 1, precioUni: 1 }) })).toBe("lines_invalid");
-    expect(fail({ tipoDte: "01", lines: [{ descripcion: "a", cantidad: 0, precioUni: 1 }] })).toBe("quantity_invalid");
-    expect(fail({ tipoDte: "01", lines: [{ descripcion: "a", cantidad: 1.5, precioUni: 1 }] })).toBe("quantity_invalid");
-    expect(fail({ tipoDte: "01", lines: [{ descripcion: "", cantidad: 1, precioUni: 1 }] })).toBe("description_invalid");
-    expect(fail({ tipoDte: "01", lines: [{ descripcion: "a", cantidad: 1, precioUni: 0 }] })).toBe("price_invalid");
+    expect(fail({ tipoDte: "01", lines: Array(11).fill({ descripcion: "a", cantidad: 1, precioUni: 1, tipoItem: 2 }) })).toBe("lines_invalid");
+    expect(fail({ tipoDte: "01", lines: [{ descripcion: "a", cantidad: 0, precioUni: 1, tipoItem: 2 }] })).toBe("quantity_invalid");
+    expect(fail({ tipoDte: "01", lines: [{ descripcion: "a", cantidad: 1.5, precioUni: 1, tipoItem: 2 }] })).toBe("quantity_invalid");
+    expect(fail({ tipoDte: "01", lines: [{ descripcion: "", cantidad: 1, precioUni: 1, tipoItem: 2 }] })).toBe("description_invalid");
+    expect(fail({ tipoDte: "01", lines: [{ descripcion: "a", cantidad: 1, precioUni: 0, tipoItem: 2 }] })).toBe("price_invalid");
     expect(fail({ tipoDte: "01", lines: [{ productId: "nope", cantidad: 1 }] })).toBe("product_unknown");
-    expect(fail({ tipoDte: "01", customerId: "nope", lines: [{ descripcion: "a", cantidad: 1, precioUni: 1 }] })).toBe("customer_unknown");
-    expect(fail({ tipoDte: "01", lines: [{ descripcion: "a", cantidad: 1000, precioUni: MAX_TOTAL }] })).toBe("total_too_high");
+    expect(fail({ tipoDte: "01", customerId: "nope", lines: [{ descripcion: "a", cantidad: 1, precioUni: 1, tipoItem: 2 }] })).toBe("customer_unknown");
+    expect(fail({ tipoDte: "01", lines: [{ descripcion: "a", cantidad: 1000, precioUni: MAX_TOTAL, tipoItem: 2 }] })).toBe("total_too_high");
   });
 });
 

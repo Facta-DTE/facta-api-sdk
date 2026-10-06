@@ -18,7 +18,8 @@ export function installDevMock(search: string): void {
     visitor: { email: "visitante@example.com", via: "dev-bypass" },
     quota: { allowed: true, remainingHour: 20, remainingDay: 100 },
     supportedTypes: ["01", "03", "05", "06", "11", "14"],
-    catalog: true,
+    catalog: params.get("catalog") !== "0",
+    catalogReceiverTypes: ["01", "03", "05", "06"],
     demo: {
       customers: [
         { id: "c-biz", label: "Ferretería San Miguel (contribuyente)", fits: ["01", "03", "05", "06"], contributor: true },

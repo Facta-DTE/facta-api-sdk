@@ -75,7 +75,7 @@ function ScreensPage() {
   const visitor = state?.visitor ?? null;
 
   const prepareSample = useCallback(async () => {
-    const created = await createSession({ tipoDte: "01", lines: [{ descripcion: "Café de altura, bolsa de 1 lb", cantidad: 1, precioUni: 8.5 }] });
+    const created = await createSession({ tipoDte: "01", lines: [{ descripcion: "Café de altura, bolsa de 1 lb", cantidad: 1, precioUni: 8.5, tipoItem: 1 }] });
     s.setPrepared({ ...created, tipoDte: "01" });
   }, [s]);
 

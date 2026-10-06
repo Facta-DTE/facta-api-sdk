@@ -23,7 +23,7 @@ export function PosKeypad({ disabled }: { disabled: boolean }) {
     try {
       const created = await createSession({
         tipoDte: "01",
-        lines: [{ descripcion: "Venta de mostrador", cantidad: 1, precioUni: cents / 100 }],
+        lines: [{ descripcion: "Venta de mostrador", cantidad: 1, precioUni: cents / 100, tipoItem: 1 }],
       });
       setSession(created.session);
     } catch (error) {

@@ -92,7 +92,7 @@ async function world(options: { hangFirstIssue?: boolean; unlock?: boolean } = {
     QUOTA: quota,
     ...(options.unlock ? { FACTA_UNLOCK_KEY: UNLOCK_KEY } : {}),
     FACTA_DTE_FIXTURES_JSON: JSON.stringify({
-      "03": { tipoDte: "03", receptor: { nombre: "Comercial de Prueba" }, items: [{ descripcion: "Servicio", cantidad: 1, precioUni: 2 }] },
+      "03": { tipoDte: "03", receptor: { nombre: "Comercial de Prueba" }, items: [{ descripcion: "Servicio", cantidad: 1, precioUni: 2, tipoItem: 2 }] },
       customers: [{ id: "c1", label: "Cliente uno", receptor: { nombre: "Cliente uno" } }],
       products: [{ id: "p1", label: "Café", descripcion: "Café", precioUni: 2 }],
     }),

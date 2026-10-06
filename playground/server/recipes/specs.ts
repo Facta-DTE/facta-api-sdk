@@ -120,7 +120,7 @@ export const RECIPE_SPECS: RecipeSpec[] = [
   {
     id: "catalog-refs",
     title: "Referencias del catálogo",
-    summary: "Lista clientes y productos del catálogo y emite una Factura con customerId y productId en lugar de copiar sus datos.",
+    summary: "Lista clientes y productos del catálogo y emite una Factura con customerId y productId en lugar de copiar sus datos. Con un catálogo legible, el API resuelve los identificadores; si no, el SDK los resuelve con la llave de desbloqueo.",
     file: "catalog-refs.ts",
     fields: [
       { name: "customerId", label: "customerId (opcional)", kind: "text" },
