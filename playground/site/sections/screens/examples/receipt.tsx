@@ -10,11 +10,11 @@ export function ReceiptExample({ result }: { result: IssueResult | null }) {
   return (
     <div style={{ display: "grid", gap: 16, width: "100%", maxWidth: 520 }}>
       <FactaReceipt result={result} environment="00" reference="Playground" />
-      <p style={{ margin: 0, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
         <FactaStatusBadge estado={result.estado} />
         <FactaDownloadButton codigoGeneracion={result.codigoGeneracion} kinds={["pdf", "json", "ticket"]} />
         <FactaDownloadButton codigoGeneracion={result.codigoGeneracion} variant="outline" size="sm" kinds={["json"]} />
-      </p>
+      </div>
     </div>
   );
 }

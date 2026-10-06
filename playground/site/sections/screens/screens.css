@@ -56,3 +56,4 @@
 .my-primary { box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 25%, transparent); font-weight: 800; letter-spacing: .02em; }
 .my-card { outline: 2px dashed var(--facta-accent, #007faa); outline-offset: -6px; }
 .my-total { text-decoration: underline wavy; text-underline-offset: 6px; }
+.pg-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

@@ -138,9 +138,9 @@ export function AppearanceStudio({ session, canPrepare, onPrepare }: { session: 
           </div>
           <div className="pg-studio-sample">
             <FactaReceipt result={SAMPLE} environment="00" reference="Playground" />
-            <p style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
               <FactaStatusBadge estado="sellado" /> <FactaStatusBadge estado="contingencia" /> <FactaStatusBadge estado="rechazado" />
-            </p>
+            </div>
           </div>
           {session !== null && (
             <>

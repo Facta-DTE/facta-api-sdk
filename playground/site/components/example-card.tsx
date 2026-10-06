@@ -7,8 +7,10 @@ import "./example-card.css";
  * Callers pass the example's own file imported with `?raw`, so the code on
  * the page is the executed code. Shared by every section that shows examples.
  */
-export function ExampleCard({ id, title, children, intro, code, codeTitle, note }: {
+export function ExampleCard({ id, wide, title, children, intro, code, codeTitle, note }: {
   id?: string;
+  /** Stack the demo above the code (for demos that need the full width). */
+  wide?: boolean;
   title: ReactNode;
   intro?: ReactNode;
   children: ReactNode;
@@ -17,7 +19,7 @@ export function ExampleCard({ id, title, children, intro, code, codeTitle, note 
   note?: ReactNode;
 }) {
   return (
-    <article className="pg-example" id={id}>
+    <article className={wide ? "pg-example pg-example--wide" : "pg-example"} id={id}>
       <header>
         <h3>{title}</h3>
         {intro !== undefined && <p className="pg-example-intro">{intro}</p>}

@@ -35,7 +35,7 @@ playground/
 
 | To add | Where |
 | --- | --- |
-| A React screen example | a file in `site/sections/screens/`, imported by its `index.tsx`; show its source with `import src from "./file.tsx?raw"` and `<CodeBlock>` |
+| A React screen example | a file in `site/sections/screens/examples/`, imported by `screens/index.tsx` inside `<ExampleCard>` (`site/components/example-card.tsx`), with its source via `import src from "./file.tsx?raw"` |
 | A headless example | `site/sections/headless/`, same pattern |
 | A server recipe | a fixed file `server/recipes/<name>.ts`, a route in `server/router.ts` behind `visitorOf` + quota, a card in `site/sections/server/` showing the file with `?raw`. Visitors never send code |
 | Another DTE type in the sale builder | an entry in `BUILDERS` in `server/sale.ts` (+ test) |
@@ -126,3 +126,19 @@ Bindings: `ASSETS` (the built site) and `QUOTA` (Durable Object `QuotaCounter`, 
 * Quota (20/hour, 100/day) is counted per visitor in a Durable Object when an `issue` arrives; replaying
   the same session is free.
 * The static CSP (`site/public/_headers`) allows only same-origin resources.
+
+## Screens section (`site/sections/screens/`)
+
+* `sale-builder.tsx` describes a sale (type, demo customer or a typed name for a Factura, lines, e-mail); the server
+  builds the request. API v1 types: 01, 03, 05, 06, 11, 14. Notes (05/06) can only relate documents the visitor
+  issued here. Receivers always come from `FACTA_DTE_FIXTURES_JSON` (`customers`, or the `"03"`/`"05"`/… request's own
+  `receptor`); the API request has no discount field, so there are no discounts.
+* `examples/*.tsx` are the executed examples; each is shown beside its demo through `?raw`.
+* Invalidation: `POST /api/invalidation` seals a session only after `ownsDocument`; the responsible people come from
+  the optional `invalidation: { responsable, solicita }` fixture (without it the endpoint answers 503). The session's
+  idempotency key carries the visitor tag, so another visitor cannot use the token.
+* The key sees every playground document, so `documents.list` answers only the visitor's own codes and
+  `documents.holding` is refused.
+* Appearance studio: `appearance-code.ts` (pure, tested) prints the JSX the preview applies.
+* **Mock mode** (Vite dev server only, never in a production build): `pnpm exec vite --config playground/vite.config.ts`
+  then open `/pantallas?mock=1[&outcome=rejected]`. It reuses `examples/react-preview/src/mock-handler.ts`.

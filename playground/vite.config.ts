@@ -14,6 +14,6 @@ export default defineConfig({
   server: {
     fs: { allow: [here("..")] },
     // `wrangler dev` serves the site and /api together; `vite` alone proxies /api to it.
-    proxy: { "/api": "http://localhost:8787" },
+    proxy: { "/api/": "http://localhost:8787" },
   },
 });
