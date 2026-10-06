@@ -14,10 +14,12 @@ export interface FactaReceiptProps extends FactaLook {
   environment?: Environment | null | undefined;
   /** Your order reference («#1042»); printed as «Factura · Pedido #1042». */
   reference?: string | undefined;
+  /** Also offers «JSON original (raw)», the stored original. Off by default. */
+  rawJson?: boolean | undefined;
   className?: string | undefined;
 }
 
-function ReceiptCard({ result, environment, reference }: Pick<FactaReceiptProps, "result" | "environment" | "reference">) {
+function ReceiptCard({ result, environment, reference, rawJson }: Pick<FactaReceiptProps, "result" | "environment" | "reference" | "rawJson">) {
   const { sp, cx, messages, showStorage } = useCfg();
   const sealed = result.estado === "sellado";
   const tone = sealed ? "success" : "warning";
@@ -56,16 +58,16 @@ function ReceiptCard({ result, environment, reference }: Pick<FactaReceiptProps,
         <DeliveryRows result={result} />
       </dl>
       <ObservationsList result={result} />
-      <Downloads result={result} />
+      <Downloads result={result} rawJson={rawJson} />
     </article>
   );
 }
 
 /** Renders a finished document (past or present) without any network call. */
-export function FactaReceipt({ result, environment, reference, className, ...look }: FactaReceiptProps) {
+export function FactaReceipt({ result, environment, reference, rawJson, className, ...look }: FactaReceiptProps) {
   return (
     <FactaRoot look={look} className={className} state={result.estado === "sellado" ? "sealed" : "contingency"} run="manual" variant="receipt">
-      <ReceiptCard result={result} environment={environment} reference={reference} />
+      <ReceiptCard result={result} environment={environment} reference={reference} rawJson={rawJson} />
     </FactaRoot>
   );
 }

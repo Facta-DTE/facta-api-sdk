@@ -13,6 +13,11 @@ export interface FactaDownloadButtonProps extends FactaLook {
   /** `solid` (accent), `outline` (tables) or `icon` (one square button, main format only). */
   variant?: "solid" | "outline" | "icon" | undefined;
   size?: "md" | "sm" | undefined;
+  /**
+   * Adds «JSON original (raw)» to the menu: the stored original, not the Archivo DTE.
+   * Off by default, and the handler must also allow it (`capabilities.rawJson`).
+   */
+  rawJson?: boolean | undefined;
   /** Ticket roll width in mm (40–120). */
   paperWidthMm?: number | undefined;
   onDownloaded?: ((file: DownloadedFile) => void) | undefined;
@@ -48,11 +53,15 @@ export function DownloadSplit(props: Omit<FactaDownloadButtonProps, keyof FactaL
     ticket: messages.data.download.ticketHint,
   };
 
-  async function run(chosen: DownloadKind) {
+  async function run(chosen: DownloadKind, raw = false) {
     setKind(chosen);
     setPhase("loading");
     try {
-      const file = await actions.download(props.codigoGeneracion, chosen, chosen === "ticket" && props.paperWidthMm ? { paperWidthMm: props.paperWidthMm } : undefined);
+      const file = await actions.download(
+        props.codigoGeneracion,
+        chosen,
+        raw ? { raw: true } : chosen === "ticket" && props.paperWidthMm ? { paperWidthMm: props.paperWidthMm } : undefined,
+      );
       setPhase("done");
       props.onDownloaded?.(file);
       timer.current = setTimeout(() => setPhase("idle"), 2000);
@@ -78,8 +87,12 @@ export function DownloadSplit(props: Omit<FactaDownloadButtonProps, keyof FactaL
     const KIcon = KIND_ICON[k];
     return { id: k, label: k === "pdf" ? "PDF" : k === "json" ? "JSON" : names.ticket, icon: <KIcon size={16} />, hint: hints[k], onSelect: () => void run(k) };
   });
+  const rawEntry = props.rawJson === true && kinds.includes("json");
+  if (rawEntry) {
+    entries.push({ id: "json-raw", label: messages.data.download.jsonRaw, icon: <JsonIcon size={16} />, hint: messages.data.download.jsonRawHint, onSelect: () => void run("json", true) });
+  }
   const busy = phase === "loading";
-  const split = kinds.length > 1 && variant !== "icon";
+  const split = (kinds.length > 1 || rawEntry) && variant !== "icon";
 
   if (variant === "icon") {
     return (

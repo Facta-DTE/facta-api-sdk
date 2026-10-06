@@ -22,7 +22,7 @@ needs is already there:
 | Issue in one step | `issue(request, { idempotencyKey })` → `SealedDte \| DteInContingency` |
 | Review the canonical document first | `prepare` → `PreparedDte` (reserves a control number) → `sign` |
 | Recover after an uncertain response | same `idempotencyKey`, then `getDocumentStatus(codigoGeneracion)` |
-| Give the buyer the files | `SealedDte.archivoJson`, `SealedDte.representacionGrafica` (base64 PDF), `downloadDocument` |
+| Give the buyer the files | `SealedDte.archivoDte` (the receiver's file), `SealedDte.archivoJson`, `SealedDte.representacionGrafica` (base64 PDF), `downloadDocument` |
 | Explain a failure | `FactaError.code`, `isRejection`, `details`, `spent` |
 
 What is missing is everything between a browser and that server client.

@@ -273,6 +273,20 @@ directamente: parsear y serializar de nuevo el JSON cambia sus bytes. Ambas
 descargas requieren el alcance `download`. Una respuesta `202` de emisión es
 contingencia y no equivale a un rechazo ni a un DTE sellado.
 
+**Archivo DTE.** Un resultado sellado trae `archivoDte`: el texto exacto del
+Archivo DTE (el documento firmado más `firmaElectronica`, el JWS tal cual, y
+`selloRecibido`), que es el archivo para el cliente o el contador. En
+contingencia no existe porque todavía no hay sello. `archivoJson` no cambia
+(el original guardado). `archivoDteOf(resultado)` lo devuelve o lo arma con
+`documento`, `jws` y `selloRecibido` si la API todavía no envía el campo.
+`downloadDocument(id, "json")` **devuelve ahora el Archivo DTE por defecto** y
+`jsonFormat` informa `archivo-dte` o `raw` (cabecera `X-Facta-Json-Format`);
+`{ raw: true }`, solo para JSON, devuelve el original guardado. Un documento sin
+sello contesta `409 not_sealed`; pida `raw: true` para su original. El recibo y
+el botón de React dan el Archivo DTE como «Descargar JSON»; «JSON original
+(raw)» aparece solo con la propiedad `rawJson`, y el manejador del servidor la
+respeta solo con `capabilities.rawJson: true`.
+
 ```ts
 import { writeFile } from "node:fs/promises";
 

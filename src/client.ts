@@ -204,6 +204,11 @@ export interface DownloadOptions {
   signal?: AbortSignal;
   /** Ticket roll width in millimeters. The renderer supports integer widths from 40 through 120; default 80. */
   paperWidthMm?: number;
+  /**
+   * JSON only: ask for the stored original instead of the Archivo DTE (the
+   * default). Needed for a contingency document, which has no seal yet.
+   */
+  raw?: boolean;
 }
 
 export interface DestinationSnapshot {
@@ -2047,7 +2052,11 @@ export class Facta {
         throw new TypeError("paperWidthMm must be an integer from 40 through 120 millimeters.");
       }
     }
+    if (options.raw !== undefined && kind !== "json") {
+      throw new TypeError("raw is only valid when downloading kind=json.");
+    }
     const query = new URLSearchParams({ kind });
+    if (kind === "json" && options.raw === true) query.set("raw", "true");
     if (options.source === "managed") query.set("source", "managed");
     if (kind === "ticket" && paperWidthMm !== undefined) query.set("paperWidthMm", String(paperWidthMm));
     const downloaded = await this.#request<DownloadedDocument>(
@@ -2065,6 +2074,7 @@ export class Facta {
       codigoGeneracion: generationCode,
       kind,
       ...(downloaded.storageSource === undefined ? {} : { storageSource: downloaded.storageSource }),
+      ...(kind === "json" && downloaded.jsonFormat !== undefined ? { jsonFormat: downloaded.jsonFormat } : {}),
       ...(kind === "ticket" ? { paperWidthMm: paperWidthMm ?? 80 } : {}),
     };
   }
@@ -2163,11 +2173,13 @@ export class Facta {
       try {
         if (!response.ok) return await this.#parseError(response);
         const storageSource = response.headers.get("x-facta-storage-source");
+        const jsonFormat = response.headers.get("x-facta-json-format");
         return {
           bytes: new Uint8Array(await response.arrayBuffer()),
           contentType: response.headers.get("content-type") ?? "application/octet-stream",
           filename: response.headers.get("content-disposition")?.match(/filename="?([^";]+)\"?/)?.[1] ?? null,
           ...(isStorageSource(storageSource) ? { storageSource } : {}),
+          ...(jsonFormat === "archivo-dte" || jsonFormat === "raw" ? { jsonFormat } : {}),
         } as T;
       } finally {
         clearTimeout(timer); signal?.removeEventListener("abort", abort);

@@ -24,6 +24,8 @@ export type FactaErrorCode =
   | "validation_failed"
   | "not_found"
   | "method_not_allowed"
+  /** JSON download of a document that has no Hacienda seal yet, e.g. contingency (HTTP 409). Retry with `raw: true` for the original. */
+  | "not_sealed"
   | "idempotency_key_required"
   | "idempotency_key_reuse"
   | "idempotency_in_flight"
