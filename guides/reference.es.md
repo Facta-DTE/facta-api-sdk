@@ -479,6 +479,28 @@ const anulado = await facta.invalidate(generationCode, {
 if (anulado.yaEstabaInvalidado) console.log("ya estaba anulado; no se mandó nada");
 ```
 
+### `registerReturn(generationCode, request, options?)`
+
+**Manda la llave de firma.** Devuelve `ReturnResult`.
+
+Registra el evento de retorno de una factura (01), de exportación (11) o de sujeto excluido (14) que Hacienda ya selló y que esta API emitió. Es un evento aparte, con su propio código y su propio sello; **no gasta correlativo** y, una vez sellado, no se deshace. Se pueden registrar varias sobre el mismo documento hasta sumar lo que se vendió: `disponible`, en la respuesta y en `getDocumentStatus()`, dice cuánto queda de cada línea. Las líneas se cuentan **desde 1**, como en la factura impresa, y cada item lleva `cantidad` (unidades) o `noGravado` (cargo o abono que no afecta la base), una sola.
+
+```typescript
+const retorno = await facta.registerReturn(codigoGeneracion, {
+  items: [{ linea: 1, cantidad: 1 }],
+}, { idempotencyKey: "devolucion-1042-a" });
+
+if (retorno.estado === "firmado") {
+  // Hacienda no contestó (HTTP 202). Repita la llamada con la MISMA
+  // idempotencyKey y el mismo cuerpo: se reenvía el mismo evento firmado.
+  console.warn(retorno.detalle);
+} else {
+  console.log(retorno.selloRecibido, retorno.disponible);
+}
+```
+
+Los rechazos llegan como `FactaError` con un código: `return_exceeds_available` (en `details.lineas`, cada línea con lo `solicitado` y lo `disponible`), `return_window_closed` y `return_type_not_allowed`. Anular un documento que ya tiene eventos de retorno contesta `has_return_events` (409). El JSON del evento se descarga con su propio código: `downloadDocument(retorno.codigoGeneracion, "json")`; la hoja carta viene en `representacionGrafica` (base64) y también se descarga con `downloadDocument(retorno.codigoGeneracion, "pdf")`.
+
 ### `invalidateAndArchive(generationCode, request, options)`
 
 Envía una anulación y guarda su evento en el journal cifrado de

@@ -75,6 +75,7 @@ Deno.test("S3 artifact destination signs requests and conditionally writes then 
     id: "s3-test",
     label: "Local S3",
     config,
+    clock: false, // this test counts every request
     fetch: async (input, init) => {
       const url = new URL(String(input));
       methods.push(init?.method ?? "GET");
@@ -117,6 +118,7 @@ Deno.test("S3 conditional conflict never overwrites a different remote artifact"
     id: "s3-race",
     label: "Racing S3",
     config,
+    clock: false,
     fetch: async (_input, init) => {
       if (init?.method === "PUT") {
         puts += 1;
@@ -146,4 +148,166 @@ Deno.test("S3 destination rejects insecure non-local endpoints before requests",
       },
     })
   );
+});
+
+// ---- reference clock (batch K) ------------------------------------------
+
+const wrongYear = new Date("2031-02-03T04:05:06.000Z"); // what a broken device says
+const rightTime = new Date("2026-10-05T14:34:56.000Z");
+
+Deno.test("S3 SigV4 date comes from the corrected clock, not the device", async () => {
+  const seen: string[] = [];
+  const realNow = Date.now;
+  Date.now = () => wrongYear.getTime();
+  try {
+    const destination = createS3ArtifactDestination({
+      id: "s3-clock",
+      label: "Clocked S3",
+      config,
+      clock: { now: () => rightTime },
+      fetch: async (_input, init) => {
+        seen.push(new Headers(init?.headers).get("x-amz-date") ?? "");
+        return new Response("missing", { status: init?.method === "PUT" ? 200 : 404 });
+      },
+    });
+    await destination.write(await artifact());
+  } finally {
+    Date.now = realNow;
+  }
+  assertEquals(seen.length > 0, true);
+  for (const stamp of seen) assertEquals(stamp, "20261005T143456Z");
+});
+
+Deno.test("S3 calibrates lazily on first use, and not at construction", async () => {
+  let ensures = 0;
+  const destination = createS3ArtifactDestination({
+    id: "s3-lazy",
+    label: "Lazy",
+    config,
+    clock: { now: () => rightTime, ensure: async () => { ensures += 1; } },
+    fetch: async () => new Response("missing", { status: 404 }),
+  });
+  assertEquals(ensures, 0);
+  await destination.write(await artifact()).catch(() => undefined);
+  assertEquals(ensures > 0, true);
+});
+
+Deno.test("S3 RequestTimeTooSkewed recalibrates once and retries once", async () => {
+  const stamps: string[] = [];
+  let calibrations = 0;
+  let now = new Date("2031-02-03T04:05:06.000Z");
+  const destination = createS3ArtifactDestination({
+    id: "s3-skew",
+    label: "Skewed",
+    config,
+    clock: {
+      now: () => now,
+      calibrate: async () => {
+        calibrations += 1;
+        now = rightTime;
+      },
+    },
+    fetch: async (_input, init) => {
+      const stamp = new Headers(init?.headers).get("x-amz-date") ?? "";
+      stamps.push(stamp);
+      if (stamp.startsWith("2031")) {
+        return new Response(
+          "<Error><Code>RequestTimeTooSkewed</Code></Error>",
+          { status: 403 },
+        );
+      }
+      return new Response("missing", { status: 404 });
+    },
+  });
+  const outcome = await destination.write(await artifact()).catch((e) => e);
+  assertEquals(calibrations, 1);
+  assertEquals(stamps[0], "20310203T040506Z");
+  assertEquals(stamps[1], "20261005T143456Z");
+  assertEquals(outcome instanceof Error || typeof outcome === "string", true);
+});
+
+Deno.test("S3 retries a skew refusal at most once", async () => {
+  let calls = 0;
+  let calibrations = 0;
+  const destination = createS3ArtifactDestination({
+    id: "s3-skew-twice",
+    label: "Still skewed",
+    config,
+    clock: { now: () => wrongYear, calibrate: async () => { calibrations += 1; } },
+    fetch: async () => {
+      calls += 1;
+      return new Response("<Code>RequestTimeTooSkewed</Code>", { status: 403 });
+    },
+  });
+  await destination.write(await artifact()).catch(() => undefined);
+  assertEquals(calibrations, 1);
+  assertEquals(calls, 2); // one attempt + one retry, for the first request only
+});
+
+Deno.test("S3 does not retry other 403 answers", async () => {
+  let calibrations = 0;
+  let calls = 0;
+  const destination = createS3ArtifactDestination({
+    id: "s3-denied",
+    label: "Denied",
+    config,
+    clock: { now: () => rightTime, calibrate: async () => { calibrations += 1; } },
+    fetch: async () => {
+      calls += 1;
+      return new Response("<Code>AccessDenied</Code>", { status: 403 });
+    },
+  });
+  await destination.write(await artifact()).catch(() => undefined);
+  assertEquals(calibrations, 0);
+  assertEquals(calls, 1);
+});
+
+Deno.test("S3 default clock calibrates against the public Worker through clockFetch", async () => {
+  const clockUrls: string[] = [];
+  const stamps: string[] = [];
+  const destination = createS3ArtifactDestination({
+    id: "s3-default-clock",
+    label: "Default clock",
+    config,
+    clockFetch: async (input) => {
+      const url = new URL(String(input));
+      clockUrls.push(url.origin + url.pathname);
+      const t0 = Number(url.searchParams.get("t0"));
+      // the device is exactly one hour behind the Worker
+      const t1 = t0 + 3_600_000;
+      return Response.json({
+        v: 1, id: url.searchParams.get("id"), t0, t1, t2: t1, precisionMs: 1,
+        nextSyncAfterMs: 21_600_000, colo: "SJO",
+      });
+    },
+    fetch: async (_input, init) => {
+      stamps.push(new Headers(init?.headers).get("x-amz-date") ?? "");
+      return new Response("missing", { status: 404 });
+    },
+  });
+  const before = Date.now();
+  await destination.write(await artifact()).catch(() => undefined);
+  assertEquals(clockUrls[0], "https://clock.factadte.com/");
+  const signed = Date.parse(
+    stamps[0]!.replace(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/, "$1-$2-$3T$4:$5:$6Z"),
+  );
+  // about one hour ahead of the device clock
+  assertEquals(Math.abs(signed - (before + 3_600_000)) < 10_000, true);
+});
+
+Deno.test("S3 clock: false signs with the device clock and never calls the Worker", async () => {
+  let clockCalls = 0;
+  const destination = createS3ArtifactDestination({
+    id: "s3-off",
+    label: "Off",
+    config,
+    clock: false,
+    clockFetch: async () => {
+      clockCalls += 1;
+      return new Response("no", { status: 500 });
+    },
+    fetch: async () => new Response("missing", { status: 404 }),
+  });
+  await destination.write(await artifact()).catch(() => undefined);
+  assertEquals(clockCalls, 0);
 });

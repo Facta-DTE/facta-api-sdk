@@ -55,8 +55,17 @@ export {
   createStorageArtifactDestination,
   type StorageArtifactDestinationOptions,
 } from "./src/storage-adapter.ts";
+export { DEFAULT_CLOCK_URL } from "./src/clock-config.ts";
+export {
+  type ClockState,
+  type ClockStatus,
+  createReferenceClock,
+  type ReferenceClock,
+  type ReferenceClockOptions,
+} from "./src/reference-clock.ts";
 export {
   createS3ArtifactDestination,
+  type S3ClockSource,
   type S3ArtifactDestinationOptions,
   type S3ArtifactStoreConfig,
 } from "./src/s3-artifact-destination.ts";

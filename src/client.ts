@@ -38,6 +38,8 @@ import { FactaError, type FactaErrorCode } from "./errors.ts";
 import { validateFactaConfig } from "./config-validation.ts";
 import { resolveCatalogRefs } from "./catalog.ts";
 import { buildSyncedDestinations, readDocumentIdentity } from "./byos-copies.ts";
+import { createReferenceClock, type ReferenceClock } from "./reference-clock.ts";
+import { DEFAULT_CLOCK_URL } from "./clock-config.ts";
 import { submitPrintJob, type PrintResult, type PrintTransport } from "./printing.ts";
 import { diagnoseStatus, type DiagnoseOptions, type DiagnosticsReport } from "./diagnostics.ts";
 import type {
@@ -83,6 +85,8 @@ import type {
   ManagedStorageStatus,
   InvalidationRequest,
   DteRequest,
+  ReturnResult,
+  ReturnRequest,
   Status,
   WaitedDelivery,
   WaitForDeliveryOptions,
@@ -109,6 +113,18 @@ export interface FactaOptions {
   maxRetries?: number;
   /** Injected in tests. */
   fetch?: typeof globalThis.fetch;
+  /**
+   * Reference clock for the timestamps this SDK writes (archive records) and
+   * signs (S3 uploads). Default `true`: calibrate lazily against the public
+   * `https://clock.factadte.com/`, then keep time locally with no further
+   * requests for hours. Pass a URL to use another endpoint or `false` to use
+   * the device clock. Documents' own date and time are always set by the Facta
+   * server; this clock never touches them. An unreachable clock service falls
+   * back to the device clock and never fails an operation.
+   */
+  clock?: boolean | string;
+  /** Fetch used only to calibrate the clock. Defaults to `fetch`. */
+  clockFetch?: typeof globalThis.fetch;
   /** Versioned non-secret client behavior. Credentials remain separate above. */
   config?: FactaConfigV1;
   /** Runtime adapters and stores; keep separate from serializable scalar config and credentials. */
@@ -209,6 +225,33 @@ const RETRYABLE: ReadonlySet<FactaErrorCode> = new Set([
   "storage_unavailable",
   "network_error",
 ]);
+
+/** Local checks that save a round trip: the server enforces the same rules. */
+function validateReturnRequest(request: ReturnRequest): void {
+  if (!isRecord(request) || !Array.isArray(request.items) || request.items.length === 0) {
+    throw new TypeError("registerReturn requires at least one item.");
+  }
+  for (const [index, item] of request.items.entries()) {
+    const label = `items[${index}]`;
+    if (!isRecord(item) || !Number.isInteger(item.linea) || (item.linea as number) < 1) {
+      throw new RangeError(`${label}.linea must be an integer from 1 (the first line of the document is 1).`);
+    }
+    const hasQuantity = item.cantidad !== undefined;
+    const hasCharge = item.noGravado !== undefined;
+    if (hasQuantity === hasCharge) {
+      throw new TypeError(`${label} must carry exactly one of cantidad or noGravado.`);
+    }
+    if (hasQuantity && !(typeof item.cantidad === "number" && Number.isFinite(item.cantidad) && item.cantidad > 0)) {
+      throw new RangeError(`${label}.cantidad must be a number greater than zero.`);
+    }
+    if (hasCharge && !(typeof item.noGravado === "number" && Number.isFinite(item.noGravado) && item.noGravado !== 0)) {
+      throw new RangeError(`${label}.noGravado must be a non-zero number.`);
+    }
+  }
+  if (request.fechaEvento !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(request.fechaEvento)) {
+    throw new RangeError("fechaEvento must be YYYY-MM-DD.");
+  }
+}
 
 function newIdempotencyKey(): string {
   if (typeof globalThis.crypto?.randomUUID === "function") {
@@ -318,6 +361,8 @@ function throwIfAborted(signal?: AbortSignal): void {
  * carry the second password. `prepare` is deliberately not one of them: it
  * reserves a correlative and builds a document, and neither needs a signature. */
 const SIGNING_PATHS: ReadonlySet<string> = new Set(["/v1/dte", "/v1/dte/sign"]);
+/** The two events signed on a document's own path: `/invalidate` and `/return`. */
+const SIGNING_EVENT_PATH = /^\/v1\/dte\/[^/?]+\/(?:invalidate|return)$/;
 const SENSITIVE_ERROR_FIELD = /(?:authorization|api[-_]?key|sign[-_]?key|unlock[-_]?key|password|passphrase|secret|token|credential|private[-_]?key|ciphertext|refresh[-_]?token|service[-_]?key)/i;
 
 function redactErrorValue(value: unknown, secrets: readonly string[], depth = 0): unknown {
@@ -372,6 +417,7 @@ export class Facta {
   readonly #config: FactaConfigV1;
   readonly #runtime: FactaRuntimeConfigV1;
   readonly #secrets: readonly string[];
+  readonly #clock: ReferenceClock | null;
   #catalogCache: { revision: number; snapshot: CatalogSnapshot; fetchedAt: string } | null = null;
   #catalogModeCache: { readable: boolean; at: number } | null = null;
 
@@ -419,6 +465,33 @@ export class Facta {
     this.#timeoutMs = options.timeoutMs ?? config?.timeoutMs ?? 60_000;
     this.#maxRetries = options.maxRetries ?? config?.maxRetries ?? 3;
     this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
+    const clockOption = options.clock ?? true;
+    if (clockOption !== false && clockOption !== true && typeof clockOption !== "string") {
+      throw new TypeError("Facta clock option must be a boolean or a URL string.");
+    }
+    this.#clock = clockOption === false ? null : createReferenceClock({
+      url: typeof clockOption === "string" ? clockOption : DEFAULT_CLOCK_URL,
+      fetch: options.clockFetch ?? this.#fetch,
+      wallNow: () => Date.now(),
+      monoNow: () => performance.now(),
+    });
+  }
+
+  /**
+   * The client's reference clock, or `null` when disabled. Share it with other
+   * adapters: `createS3ArtifactDestination({ ..., clock: facta.clock ?? false })`.
+   */
+  get clock(): ReferenceClock | null {
+    return this.#clock;
+  }
+
+  /** Corrected time as an ISO string (device clock when the clock is off or unreachable). */
+  #stamp(): string {
+    return (this.#clock?.now() ?? new Date()).toISOString();
+  }
+
+  #nowMs(): number {
+    return this.#clock?.now().getTime() ?? Date.now();
   }
 
   /**
@@ -715,7 +788,7 @@ export class Facta {
       if (!Number.isSafeInteger(revision) || revision < 0) {
         throw new FactaError('service_unavailable', 'Catalog revision is invalid.', 503);
       }
-      this.#catalogCache = { revision, snapshot: publicSnapshot, fetchedAt: new Date().toISOString() };
+      this.#catalogCache = { revision, snapshot: publicSnapshot, fetchedAt: this.#stamp() };
       return publicSnapshot;
     } finally {
       dekBytes.fill(0);
@@ -895,6 +968,7 @@ export class Facta {
     }
     await archive.assertReady();
     throwIfAborted(signal);
+    await this.#clock?.ensure();
     const identity = await this.#archiveIdentity(signal);
     const resolved = await this.#resolveCatalogRefs(request);
     throwIfAborted(signal);
@@ -906,7 +980,7 @@ export class Facta {
       idempotencyKey,
       requestSha256,
       request: resolved,
-      createdAt: new Date().toISOString(),
+      createdAt: this.#stamp(),
       state: "started",
       ...(ticketPaperWidthMm === undefined ? {} : { ticketPaperWidthMm }),
     });
@@ -921,7 +995,7 @@ export class Facta {
     }
 
     const emission = await this.#request<IssueResult>("POST", "/v1/dte", resolved, { idempotencyKey, ...(signal ? { signal } : {}) });
-    return await this.#archiveEmission({ id: operationId, idempotencyKey, requestSha256, createdAt: new Date().toISOString(), state: "started", ...(ticketPaperWidthMm === undefined ? {} : { ticketPaperWidthMm }) }, emission, archive, signal, remote);
+    return await this.#archiveEmission({ id: operationId, idempotencyKey, requestSha256, createdAt: this.#stamp(), state: "started", ...(ticketPaperWidthMm === undefined ? {} : { ticketPaperWidthMm }) }, emission, archive, signal, remote);
   }
 
   /**
@@ -956,6 +1030,7 @@ export class Facta {
     };
     if (!archive) throw new TypeError("recoverOperation requires archive or runtime.archive.");
     await archive.assertReady();
+    await this.#clock?.ensure();
     throwIfAborted(signal);
     const operation = await archive.find(operationId);
     if (operation === null) throw new Error("Archive operation not found: " + operationId + ".");
@@ -1036,7 +1111,7 @@ export class Facta {
     {
       // API idempotency claims expire at 24 h. Stop one hour early to leave
       // margin for clock skew; beyond that window a human must reconcile.
-      const age = Date.now() - Date.parse(operation.createdAt);
+      const age = this.#nowMs() - Date.parse(operation.createdAt);
       if (!Number.isFinite(age) || age < 0 || age >= 23 * 60 * 60 * 1000) {
         const detail = "The safe idempotency window (23 h) expired; reconcile the document before issuing again.";
         await archive.markNeedsAttention(operationId, detail);
@@ -1083,6 +1158,7 @@ export class Facta {
   ): Promise<RemoteReplicationReport> {
     throwIfAborted(options.signal);
     await archive.assertReady();
+    await this.#clock?.ensure();
     const operation = await archive.find(operationId);
     if (!operation?.codigoGeneracion || operation.state !== "complete") {
       throw new Error("Operation must have a complete local archive before remote copies can be replicated.");
@@ -1154,7 +1230,7 @@ export class Facta {
           label: destination.label,
           state,
           sha256: artifact.sha256,
-          updatedAt: new Date().toISOString(),
+          updatedAt: this.#stamp(),
           ...(detail ? { detail } : {}),
         };
         try {
@@ -1182,7 +1258,7 @@ export class Facta {
       const record: RemoteCopyRecord = {
         ...prior,
         state: "unavailable",
-        updatedAt: new Date().toISOString(),
+        updatedAt: this.#stamp(),
         detail: "El snapshot o los adaptadores actuales no incluyen este destino remoto.",
       };
       try {
@@ -1486,7 +1562,7 @@ export class Facta {
         label: destination.label,
         state: "unknown" as const,
         sha256,
-        updatedAt: new Date().toISOString(),
+        updatedAt: this.#stamp(),
         detail: "Could not record the remote outcome; the local archive is complete.",
       })));
     }
@@ -1776,6 +1852,20 @@ export class Facta {
     return this.#request<InvalidationResult>("POST", `/v1/dte/${encodeURIComponent(generationCode)}/invalidate`, request, options);
   }
 
+  /**
+   * Register a return (Evento de Retorno) over a sealed FE, FEX or FSE that the
+   * API emitted. Lines are counted from 1. This sends the signing key; it is
+   * irreversible once Hacienda seals it, spends no correlative, and several
+   * returns may be registered until they add up to what was sold.
+   *
+   * A 202 (`estado: "firmado"`) means Hacienda did not answer: repeat the call
+   * with the SAME `idempotencyKey` and request to resend the same signed event.
+   */
+  registerReturn(generationCode: string, request: ReturnRequest, options: CallOptions = {}): Promise<ReturnResult> {
+    validateReturnRequest(request);
+    return this.#request<ReturnResult>("POST", `/v1/dte/${encodeURIComponent(generationCode)}/return`, request, options);
+  }
+
   /** Persist an invalidation command before sending and retain the signed event response. */
   async invalidateAndArchive(
     generationCode: string,
@@ -1789,6 +1879,7 @@ export class Facta {
       throw new TypeError("operationId and idempotencyKey are required for invalidateAndArchive.");
     }
     await archive.assertReady();
+    await this.#clock?.ensure();
     throwIfAborted(options.signal);
     const identity = await this.#archiveIdentity(options.signal);
     const requestBytes = new TextEncoder().encode(`${generationCode}\n${JSON.stringify(request)}`);
@@ -1800,7 +1891,7 @@ export class Facta {
       idempotencyKey: options.idempotencyKey,
       requestSha256,
       request,
-      createdAt: new Date().toISOString(),
+      createdAt: this.#stamp(),
       state: "started",
     });
     if (!created) return await this.recoverInvalidation(options.operationId, archive, options.signal);
@@ -1872,7 +1963,7 @@ export class Facta {
       });
     }
     const createdAt = Date.parse(operation.createdAt);
-    if (!Number.isFinite(createdAt) || Date.now() - createdAt >= 23 * 60 * 60 * 1000) {
+    if (!Number.isFinite(createdAt) || this.#nowMs() - createdAt >= 23 * 60 * 60 * 1000) {
       const detail = "The safe recovery window expired; reconcile the document status before acting again.";
       await archive.markInvalidationNeedsAttention(operationId, detail);
       throw new FactaError("operation_outcome_unknown", detail, 0, {
@@ -2007,7 +2098,7 @@ export class Facta {
     const headers: Record<string, string> = { "X-Facta-Key": this.#apiKey };
     // Sent ONLY where it is needed. A password that rides along on every
     // request is a password in every proxy log the request passes through.
-    if (this.#signKey !== null && method === "POST" && (SIGNING_PATHS.has(path) || path.includes("/invalidate"))) {
+    if (this.#signKey !== null && method === "POST" && (SIGNING_PATHS.has(path) || SIGNING_EVENT_PATH.test(path))) {
       headers["X-Facta-Sign-Key"] = this.#signKey;
     }
     if (body !== undefined) headers["Content-Type"] = "application/json";
