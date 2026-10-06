@@ -1,6 +1,6 @@
 # Facta DTE playground: a live examples site on the staging API
 
-Status: plan, 6-Oct-2026. Design and implementation follow after Marvin approves it.
+Status: plan approved 6-Oct-2026 (D-1..D-7 as recommended). Batch A (foundation) is implemented in `playground/`; see `playground/README.md`.
 
 ## Original prompt (Marvin, verbatim)
 

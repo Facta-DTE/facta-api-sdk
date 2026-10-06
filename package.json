@@ -63,7 +63,6 @@
   "engines": {
     "node": ">=22"
   },
-  "dependencies": {},
   "scripts": {
     "build": "node scripts/build.mjs",
     "prepack": "node scripts/build.mjs",
@@ -73,9 +72,16 @@
     "test:react": "vitest run --config vitest.config.ts",
     "test:browser": "deno test --allow-read --allow-write --allow-net test/browser-*.test.ts test/architecture.test.ts",
     "typecheck:react": "tsc --noEmit -p tsconfig.react.json",
-    "build:preview": "node scripts/build-preview.mjs"
+    "build:preview": "node scripts/build-preview.mjs",
+    "playground:dev": "pnpm playground:build && wrangler dev -c playground/wrangler.jsonc",
+    "playground:build": "vite build --config playground/vite.config.ts",
+    "playground:typecheck": "tsc --noEmit -p playground/tsconfig.worker.json && tsc --noEmit -p playground/tsconfig.site.json",
+    "playground:test": "vitest run --config playground/vitest.config.ts",
+    "playground:smoke": "playwright test --config playground/playwright.config.ts",
+    "playground:deploy:check": "pnpm playground:build && wrangler deploy -c playground/wrangler.jsonc --env \"\" --dry-run --outdir playground/.wrangler/dry-run"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "@testing-library/dom": "10.4.2",
     "@testing-library/react": "16.3.3",
     "@testing-library/user-event": "14.6.7",
@@ -90,7 +96,8 @@
     "typescript": "5.9.3",
     "vite": "8.3.2",
     "vite-plugin-singlefile": "2.3.3",
-    "vitest": "5.0.3"
+    "vitest": "5.0.3",
+    "wrangler": "4.147.0"
   },
   "peerDependencies": {
     "react": ">=18",

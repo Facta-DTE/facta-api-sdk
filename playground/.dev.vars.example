@@ -1,0 +1,15 @@
+# Copy to playground/.dev.vars (git-ignored) for `wrangler dev`. Test values only.
+# Mint a DEDICATED staging key in environment 00; never use a facta_live_ key.
+FACTA_API_KEY=facta_test_REPLACE.replace-with-the-staging-secret
+FACTA_SIGN_KEY=factask_REPLACE-with-the-staging-sign-key
+# Optional: lets the catalog actions work (key must have a readable catalog).
+# FACTA_UNLOCK_KEY=factauk_REPLACE
+FACTA_API_BASE_URL=https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1
+# At least 32 random bytes: `openssl rand -base64 48`
+FACTA_SESSION_SECRET=replace-with-at-least-32-random-bytes-0000000000
+# Optional demo data, see playground/README.md.
+# FACTA_DTE_FIXTURES_JSON={"customers":[],"products":[]}
+
+# Local development only: skips Cloudflare Access on localhost. The Worker refuses it on any other host.
+PLAYGROUND_DEV_BYPASS=1
+PLAYGROUND_DEV_EMAIL=dev@example.com

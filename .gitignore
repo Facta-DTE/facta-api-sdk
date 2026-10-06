@@ -5,3 +5,13 @@ dist/
 !.env.example
 npm-debug.log*
 .preview-build/
+
+# Playground
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+playground/dist/
+playground/.wrangler/
+.wrangler/
+test-results/
+playwright-report/
