@@ -15,3 +15,4 @@ playground/.wrangler/
 .wrangler/
 test-results/
 playwright-report/
+playground/screenshots/
