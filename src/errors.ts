@@ -24,10 +24,19 @@ export type FactaErrorCode =
   | "validation_failed"
   | "not_found"
   | "method_not_allowed"
+  /** JSON download of a document that has no Hacienda seal yet, e.g. contingency (HTTP 409). Retry with `raw: true` for the original. */
+  | "not_sealed"
   | "idempotency_key_required"
   | "idempotency_key_reuse"
   | "idempotency_in_flight"
   | "prepare_token_invalid"
+  // Returns (Evento de Retorno). `details.lineas` names each offending line, from 1.
+  | "return_exceeds_available"
+  | "return_window_closed"
+  | "return_type_not_allowed"
+  | "return_pdf_unavailable"
+  /** `invalidate` on a document that already has returns (HTTP 409). */
+  | "has_return_events"
   | "rate_limited"
   | "amount_limit"
   | "mh_rejected"

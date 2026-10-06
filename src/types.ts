@@ -196,6 +196,13 @@ export interface SealedDte {
   jws: string;
   /** Exact server-generated JSON archive contents; persist this verbatim. */
   archivoJson?: string;
+  /**
+   * The Archivo DTE for the receiver: the document plus `firmaElectronica` and
+   * `selloRecibido`, as exact UTF-8 text. Absent on API servers that predate it
+   * and in contingency; `archivoDteOf(result)` builds it from `documento`,
+   * `jws` and `selloRecibido` when the field is missing.
+   */
+  archivoDte?: string;
   /** Server-rendered PDF as base64, present after a successful seal. */
   representacionGrafica?: string | null;
   /** Facta-managed durable copies; absent on older API servers. */
@@ -320,6 +327,17 @@ export interface DocumentStatus {
   motivo?: unknown;
   totales: Record<string, unknown>;
   receptor?: Record<string, unknown> | null;
+  /**
+   * Returns registered over this document (FE, FEX and FSE only), newest first.
+   * Rejected ones are listed with `estado: "rechazado"` and subtract nothing.
+   */
+  retornos?: ReturnSummary[];
+  /**
+   * What is still returnable per line (FE, FEX and FSE only). `null` when the
+   * API does not hold the signed JSON of the document (it was issued from the
+   * app) or the document is no longer in force.
+   */
+  disponible?: ReturnAvailability[] | null;
 }
 
 export interface ListDocumentsFilters {
@@ -386,6 +404,93 @@ export interface AlreadyInvalidatedResult {
 
 export type InvalidationResult = CompleteInvalidationResult | AlreadyInvalidatedResult;
 
+/**
+ * One line that comes back. Lines are counted from 1, the way a person reads
+ * the invoice. Carry exactly one of `cantidad` (units returned) or `noGravado`
+ * (a charge, positive, or credit, negative, that does not touch the taxable
+ * base).
+ */
+export type ReturnItem =
+  | { linea: number; cantidad: number; noGravado?: never }
+  | { linea: number; noGravado: number; cantidad?: never };
+
+export interface ReturnRequest {
+  items: ReturnItem[];
+  /** `YYYY-MM-DD`; today in El Salvador when omitted. Bounded by the return window. */
+  fechaEvento?: string;
+}
+
+/** What is left to return of one line, counted from 1. */
+export interface ReturnAvailability {
+  linea: number;
+  vendida: number;
+  devuelta: number;
+  disponible: number;
+  noGravado: { vendido: number; devuelto: number; disponible: number } | null;
+}
+
+export interface ReturnTotals {
+  totalGravada: number;
+  totalExenta: number;
+  totalNoSuj: number;
+  totalIva: number;
+  totalPagar: number;
+}
+
+interface ReturnBase {
+  /** The code of the return EVENT, not of the document it applies to. */
+  codigoGeneracion: string;
+  documentoRelacionado: { codigoGeneracion: string; numeroControl: string; tipoDte: "01" | "11" | "14"; fecEmi: string };
+  ambiente: string;
+  fecEmi: string;
+  horEmi: string;
+  totales: ReturnTotals;
+  documento: Record<string, unknown>;
+  /** The signed event. A retry after a 202 resends exactly this. */
+  jws: string;
+  /** Exact bytes of the event's JSON, to store as-is. */
+  archivoJson: string;
+  /** Per line, already counting this return. */
+  disponible: ReturnAvailability[];
+  almacenamiento?: "retencion" | "ninguno";
+}
+
+/** Hacienda sealed the return. */
+export interface ReturnSealed extends ReturnBase {
+  estado: "sellado";
+  selloRecibido: string;
+  fhProcesamiento?: string | null;
+  observaciones?: string[];
+  /** Letter-size PDF in base64, or `null` when it could not be drawn. */
+  representacionGrafica: string | null;
+  storage?: ManagedStorageReceipt;
+  storageErrorCode?: string;
+  /** `false` when Hacienda registered it but our book has not noted the verdict yet. */
+  anotadoEnElLibro: boolean;
+}
+
+/**
+ * Hacienda did not answer (HTTP 202). The event is signed and recorded, and its
+ * units already count as returned. Repeat the call with the SAME
+ * `idempotencyKey` and request: the same `jws` is sent again.
+ */
+export interface ReturnPending extends ReturnBase {
+  estado: "firmado";
+  detalle: string;
+}
+
+export type ReturnResult = ReturnSealed | ReturnPending;
+
+/** A return listed on `DocumentStatus.retornos`. */
+export interface ReturnSummary {
+  codigoGeneracion: string;
+  estado: "firmado" | "sellado" | "rechazado";
+  fecha: string;
+  selloRecibido: string | null;
+  totales: { totalGravada: number; totalIva: number; totalPagar: number };
+  lineas: Array<{ linea: number; cantidad?: number; noGravado?: number }>;
+}
+
 export interface RetainedDocument {
   codigoGeneracion: string;
   ambiente: "00" | "01";
@@ -409,6 +514,12 @@ export interface DownloadedDocument {
   filename: string | null;
   /** Source selected by the API. Missing on servers predating source reporting. */
   storageSource?: "managed" | "holding" | "archive";
+  /**
+   * JSON downloads only, from `X-Facta-Json-Format`: `archivo-dte` is the
+   * receiver's file (the default), `raw` the stored original. Missing on
+   * servers that predate the header.
+   */
+  jsonFormat?: "archivo-dte" | "raw";
   /** Present for tickets; defaults to 80 mm when not requested. */
   paperWidthMm?: number;
 }

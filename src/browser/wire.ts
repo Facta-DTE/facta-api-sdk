@@ -91,6 +91,8 @@ export interface IssueSummary {
   detalle?: string;
   totales?: Partial<Totals>;
   archivoJson?: string;
+  /** The receiver's Archivo DTE (document + `firmaElectronica` + `selloRecibido`); sealed documents only. */
+  archivoDte?: string;
   /** Base64 PDF. */
   representacionGrafica?: string | null;
   /** Top-level sibling of `result` on the wire; the client merges it in. */
@@ -249,6 +251,8 @@ export interface DownloadedFile {
   bytes: number;
   /** The file, base64. */
   base64: string;
+  /** JSON only: `archivo-dte` (the receiver's file) or `raw` (the stored original). */
+  jsonFormat?: "archivo-dte" | "raw";
 }
 
 export interface CustomerOption {

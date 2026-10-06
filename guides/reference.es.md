@@ -423,6 +423,11 @@ if (dte.estado === "sellado" && dte.entrega?.token) {
   mensajes de error.
 * `waitForDelivery(codigoGeneracion, { channels?, timeoutMs = 60000, intervalMs = 2000, signal? })`
   devuelve `settled: false` al agotar el tiempo en vez de lanzar.
+* `isDeliveryLimitReason(motivo)` (exportada de la raíz y de `/browser`) es
+  `true` para `quota_exceeded` y `provider_unavailable`: se alcanzó el límite
+  de envíos o el proveedor no respondió. El documento ya está emitido; trátelo
+  como un aviso, ofrezca el PDF o el JSON y reintente más tarde. Ni `issue` ni
+  `waitForDelivery` lanzan por estos motivos.
 
 ### `getDocumentStatus(generationCode)`
 
@@ -479,6 +484,28 @@ const anulado = await facta.invalidate(generationCode, {
 if (anulado.yaEstabaInvalidado) console.log("ya estaba anulado; no se mandó nada");
 ```
 
+### `registerReturn(generationCode, request, options?)`
+
+**Manda la llave de firma.** Devuelve `ReturnResult`.
+
+Registra el evento de retorno de una factura (01), de exportación (11) o de sujeto excluido (14) que Hacienda ya selló y que esta API emitió. Es un evento aparte, con su propio código y su propio sello; **no gasta correlativo** y, una vez sellado, no se deshace. Se pueden registrar varias sobre el mismo documento hasta sumar lo que se vendió: `disponible`, en la respuesta y en `getDocumentStatus()`, dice cuánto queda de cada línea. Las líneas se cuentan **desde 1**, como en la factura impresa, y cada item lleva `cantidad` (unidades) o `noGravado` (cargo o abono que no afecta la base), una sola.
+
+```typescript
+const retorno = await facta.registerReturn(codigoGeneracion, {
+  items: [{ linea: 1, cantidad: 1 }],
+}, { idempotencyKey: "devolucion-1042-a" });
+
+if (retorno.estado === "firmado") {
+  // Hacienda no contestó (HTTP 202). Repita la llamada con la MISMA
+  // idempotencyKey y el mismo cuerpo: se reenvía el mismo evento firmado.
+  console.warn(retorno.detalle);
+} else {
+  console.log(retorno.selloRecibido, retorno.disponible);
+}
+```
+
+Los rechazos llegan como `FactaError` con un código: `return_exceeds_available` (en `details.lineas`, cada línea con lo `solicitado` y lo `disponible`), `return_window_closed` y `return_type_not_allowed`. Anular un documento que ya tiene eventos de retorno contesta `has_return_events` (409). El JSON del evento se descarga con su propio código: `downloadDocument(retorno.codigoGeneracion, "json")`; la hoja carta viene en `representacionGrafica` (base64) y también se descarga con `downloadDocument(retorno.codigoGeneracion, "pdf")`.
+
 ### `invalidateAndArchive(generationCode, request, options)`
 
 Envía una anulación y guarda su evento en el journal cifrado de
@@ -521,7 +548,7 @@ fiscal antes de volver a actuar.
 
 **No manda la llave de firma.** Devuelve `DownloadedDocument`.
 
-Devuelve los bytes exactos de `json`, `pdf` o `ticket`, sin parsearlos ni volver a serializarlos. El tipo predeterminado es `json`; exige el alcance `download`. `storageSource` informa `managed`, `holding` o `archive` si el servidor identifica el origen. El ticket se genera desde un DTE ya sellado y admite `paperWidthMm` entero de 40 a 120 (80 por defecto), sin issue de nuevo. Esta regeneración está disponible para DTE emitidos por la API, no para los que se emitieron desde la app web. El área de retención dura una hora desde la firma, pero **pasada esa hora la ruta sigue contestando**: el documento se rearma desde la reserva, que guarda el JWS sellado.
+Devuelve los bytes exactos de `json`, `pdf` o `ticket`, sin parsearlos ni volver a serializarlos. El tipo predeterminado es `json`; exige el alcance `download`. **El JSON es el Archivo DTE por defecto** (documento + `firmaElectronica` + `selloRecibido`) y `jsonFormat` informa `archivo-dte` o `raw` según `X-Facta-Json-Format`; `raw: true` (solo JSON) devuelve el original guardado `{codigoGeneracion, ambiente, jws}`. Un documento sin sello (contingencia) contesta `409 not_sealed`; repita con `raw: true`. Un resultado sellado trae además `archivoDte`, y `archivoDteOf(resultado)` lo arma con `documento`, `jws` y `selloRecibido` cuando la API aún no lo envía. `storageSource` informa `managed`, `holding` o `archive` si el servidor identifica el origen. El ticket se genera desde un DTE ya sellado y admite `paperWidthMm` entero de 40 a 120 (80 por defecto), sin issue de nuevo. Esta regeneración está disponible para DTE emitidos por la API, no para los que se emitieron desde la app web. El área de retención dura una hora desde la firma, pero **pasada esa hora la ruta sigue contestando**: el documento se rearma desde la reserva, que guarda el JWS sellado.
 
 ```typescript
 const archivo = await facta.downloadDocument(dte.codigoGeneracion, "json");

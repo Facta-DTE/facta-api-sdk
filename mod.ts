@@ -36,12 +36,14 @@ export type {
   DiagnosticsReport,
   DiagnosticState,
 } from "./src/diagnostics.ts";
+export { DELIVERY_LIMIT_REASONS, isDeliveryLimitReason } from "./src/delivery.ts";
 export {
   FactaError,
   type FactaErrorCode,
   type SpentCorrelative,
 } from "./src/errors.ts";
 export type * from "./src/types.ts";
+export { type ArchivoDteSource, archivoDteOf } from "./src/archivo-dte.ts";
 export {
   type PrintJob,
   type PrintJobState,
@@ -55,8 +57,17 @@ export {
   createStorageArtifactDestination,
   type StorageArtifactDestinationOptions,
 } from "./src/storage-adapter.ts";
+export { DEFAULT_CLOCK_URL } from "./src/clock-config.ts";
+export {
+  type ClockState,
+  type ClockStatus,
+  createReferenceClock,
+  type ReferenceClock,
+  type ReferenceClockOptions,
+} from "./src/reference-clock.ts";
 export {
   createS3ArtifactDestination,
+  type S3ClockSource,
   type S3ArtifactDestinationOptions,
   type S3ArtifactStoreConfig,
 } from "./src/s3-artifact-destination.ts";

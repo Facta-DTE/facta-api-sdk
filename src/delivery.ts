@@ -36,3 +36,17 @@ export function deliveryRequestFor(deliver: DeliverOptions): DeliveryRequest {
 export function isFinalDeliveryState(state: string): boolean {
   return state !== "pendiente" && state !== "en_proceso";
 }
+
+/**
+ * Reasons that mean «the message could not go out right now» rather than
+ * «something is wrong with this document or address»: the company's e-mail
+ * quota was reached, or the mail provider was rate-limited or unavailable.
+ * The document is already issued; show these as a warning and offer the PDF
+ * or JSON instead. Never treat them as a failed issuance.
+ */
+export const DELIVERY_LIMIT_REASONS: readonly string[] = Object.freeze(["quota_exceeded", "provider_unavailable"]);
+
+/** True for a delivery `motivo` that is a sending limit or provider outage (see `DELIVERY_LIMIT_REASONS`). */
+export function isDeliveryLimitReason(reason: unknown): boolean {
+  return typeof reason === "string" && DELIVERY_LIMIT_REASONS.includes(reason);
+}

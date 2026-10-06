@@ -370,6 +370,20 @@ describe("FactaDownloadButton", () => {
     await waitFor(() => expect(c.data.downloadDocument).toHaveBeenLastCalledWith(CG1, "ticket", { paperWidthMm: 58 }));
   });
 
+  it("rawJson adds «JSON original (raw)» to the menu, and it asks for the raw file", async () => {
+    const c = mount(<FactaDownloadButton codigoGeneracion={CG1} rawJson />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Más formatos" }));
+    await user.click(screen.getByRole("menuitem", { name: /JSON original \(raw\)/ }));
+    await waitFor(() => expect(c.data.downloadDocument).toHaveBeenCalledWith(CG1, "json", { raw: true }));
+  });
+
+  it("without rawJson the menu never offers the original", async () => {
+    mount(<FactaDownloadButton codigoGeneracion={CG1} />);
+    await userEvent.setup().click(screen.getByRole("button", { name: "Más formatos" }));
+    expect(screen.queryByRole("menuitem", { name: /original/ })).toBeNull();
+  });
+
   it("variants: icon-only has no menu; one kind has no chevron; sm uses the short label", async () => {
     mount(<><FactaDownloadButton codigoGeneracion={CG1} variant="icon" /><FactaDownloadButton codigoGeneracion={CG1} kinds={["json"]} size="sm" variant="outline" /></>);
     expect(screen.getAllByRole("button", { name: /Descargar/ })).toHaveLength(2);

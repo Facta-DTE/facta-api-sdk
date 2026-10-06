@@ -78,14 +78,18 @@ Original prompts (Marvin, verbatim):
 
 * `correo: true` uses `receptor.correo`; a string overrides it for delivery
   only (the fiscal document keeps `receptor.correo`).
-* `whatsapp.consentimiento: true` is the integrator's attestation that the
-  receiver agreed to receive documents by WhatsApp. Without it the channel is
-  `sin_consentimiento`. (If `whatsapp-send-document` already has a consent
+* `whatsapp.consentimiento` is the integrator's attestation that the
+  receiver agreed to receive documents by WhatsApp. It defaults to `true`
+  when omitted (asking for WhatsApp is the attestation); only an explicit
+  `false` leaves the channel `sin_consentimiento`. The SDK's `deliver.whatsapp`
+  helper still requires `consent: true` to be written out. (If `whatsapp-send-document` already has a consent
   model — the `attest` action — reuse its record; the attestation is stored
   with the API key id, timestamp and masked number.)
-* Marking a channel requires the key scope `entrega:correo` /
-  `entrega:whatsapp`; otherwise the issue still succeeds and the channel state
-  is `no_permitido`.
+* Delivery is part of issuing: any key with the `issue` scope may mark and
+  deliver both channels. A key minted with only `entrega:correo` /
+  `entrega:whatsapp` keeps that one channel; a key with neither the `issue`
+  scope nor the channel scope still issues, and the channel state is
+  `no_permitido`.
 * Idempotency: `entrega` is part of the request fingerprint.
 
 ### 3.2 Issue response

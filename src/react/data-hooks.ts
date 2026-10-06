@@ -373,7 +373,7 @@ export async function copyText(value: string): Promise<void> {
 
 export interface UseFactaActions {
   /** Fetch the file and hand it to the browser as a download. */
-  download(codigoGeneracion: string, kind: DownloadKind, options?: { paperWidthMm?: number }): Promise<DownloadedFile>;
+  download(codigoGeneracion: string, kind: DownloadKind, options?: { paperWidthMm?: number; raw?: boolean }): Promise<DownloadedFile>;
   /** Retry the managed copies of a document; refreshes the copies the detail shows. */
   retryStorage(codigoGeneracion: string): Promise<StorageRetryResult>;
   /** Open the invalidation dialog for a session made by your server. Rejects with `FactaWindowError` when closed without invalidating. */

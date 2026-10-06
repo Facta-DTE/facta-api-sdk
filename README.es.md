@@ -99,6 +99,10 @@ const readiness = await facta.diagnose();
 
 `expectedEnvironment` and `requiredScopes` are checked against live `status()` by `diagnose()`; a mismatch blocks its preparación de emisión result but does not rewrite server permissions. Runtime-only defaults use a separate versioned `runtime` block for invoice and invalidation archives, remote destinations, and a print transport. These are executable objects, not serializable profile fields; per-call adapters override them. Stale-catalog defaults apply only to non-fiscal lookup helpers; per-call `allowStale` overrides them, and fiscal reference resolution always requires a current snapshot. Archive stores, remote destination clients, and print transports may be passed per operation or as runtime defaults. Credentials remain outside both config blocks. WhatsApp sending is not available until its API contract is decided. Supported config version is `1`; unknown versions and invalid timeout, retry, and ticket-width values fail during construction.
 
+## Reloj de referencia
+
+La fecha y la hora de un DTE las pone siempre el servidor de Facta, nunca este SDK. El reloj del SDK importa para dos cosas locales: la firma SigV4 de las subidas a almacenamientos compatibles con S3 (S3 rechaza una firma con más de 15 minutos de diferencia, `RequestTimeTooSkewed`) y las marcas de tiempo de los registros de archivo. `new Facta({ apiKey })` mantiene un reloj de referencia (`facta.clock`): tres muestras al primer uso y después responde el reloj monotónico, sin volver a preguntar mientras la incertidumbre sea menor de 500 ms. La opción `clock` acepta `true` (por defecto, `https://clock.factadte.com/`), una URL o `false` para usar la hora del equipo. Para compartirlo con un destino S3: `createS3ArtifactDestination({ ..., clock: facta.clock ?? false })`. Si el servicio no responde, se usa la hora del equipo y la operación continúa. Guía: [la hora de referencia](https://sdk.factadte.com/guias/reloj-de-referencia/).
+
 ## Métodos del cliente
 
 | Método | Uso | Envía `FACTA_SIGN_KEY` |
@@ -120,6 +124,7 @@ const readiness = await facta.diagnose();
 | `getDocumentStatus(codigoGeneracion)` | Consulta un DTE por su código de generación. | No |
 | `listDocuments(filters?)` | Lista DTE con filtros y cursor de paginación. | No |
 | `invalidate(codigoGeneracion, request, options?)` | Anula un DTE sellado. | Sí |
+| `registerReturn(codigoGeneracion, solicitud, options?)` | Registra el evento de retorno de una FE, FEX o FSE sellada; varias hasta sumar lo vendido. | Sí |
 | `invalidateAndArchive(codigoGeneracion, request, options)` | Anula y guarda de forma cifrada el evento y su JWS para recuperación. | Sí |
 | `recoverInvalidation(operationId, archive?)`, `listPendingInvalidations(archive?)` | Reanuda o lista anulaciones locales pendientes; reusa la misma clave de idempotencia. | Si reanuda |
 | `downloadDocument(codigoGeneracion, kind?)` | Descarga los bytes exactos de JSON/PDF/ticket e informa origen cuando el servidor lo conoce. | No |
@@ -166,6 +171,7 @@ importan desde `@facta-dte/api`).
 | `getDocumentStatus` | `getDocumentStatus(codigoGeneracion: string)` | `Promise<DocumentStatus>` |
 | `listDocuments` | `listDocuments(filters?: ListDocumentsFilters)`; `limit` default 50, máximo API 100 | `Promise<DtePage>`; cursor `siguiente` o `null` |
 | `invalidate` | `invalidate(codigoGeneracion, request: InvalidationRequest, options?: CallOptions)` | `Promise<InvalidationResult>`; evento fiscal irreversible |
+| `registerReturn` | `registerReturn(codigoGeneracion, solicitud: ReturnRequest, options?: CallOptions)` | `Promise<ReturnResult>`; líneas desde 1; `estado: "firmado"` (202) se reintenta con la misma `idempotencyKey` |
 | `invalidateAndArchive` | `invalidateAndArchive(codigoGeneracion, request, { archive, operationId, idempotencyKey })` | Persiste el comando antes de enviar y archiva el JWS del evento en el journal cifrado; el estado del archivo se revisa aparte |
 | `recoverInvalidation`, `listPendingInvalidations` | `recoverInvalidation(operationId, archive?)`, `listPendingInvalidations(archive?)` | Reusa la misma clave dentro de la ventana segura; evita reenvíos tras expirar o si solo existe una respuesta escueta de «ya estaba anulado» |
 | `downloadDocument` | `downloadDocument(codigoGeneracion, kind?: "json" \| "pdf" \| "ticket", options?: DownloadOptions)`; `kind` defaults to `"json"` | `Promise<DownloadedDocument>` with bytes, MIME type, and suggested filename; `ticket` is regenerated without issuing again |
@@ -190,7 +196,7 @@ Todas las llamadas autenticadas envían `apiKey`. Los alcances adicionales son:
 | Lecturas locales `list*`, `get*`, `search*` | Ninguno | `unlockKey` al primer sync; solo memoria del proceso después | Retornan registros del snapshot; `get*` usa `null` si no existe. |
 | `getDocumentStatus()`, `listDocuments()` | `query` | Ninguna | Estado individual o página resumida. |
 | `downloadDocument()`, `listHolding()` | `download` | None | Exact JSON/PDF/ticket bytes or bounded holding-area evidence. |
-| `issue()`, `prepare()`, `sign()`, `invalidate()` | `issue` | `signKey` en `issue`, `sign` e `invalidate`; no en `prepare` | Emisión puede gastar correlativo; `invalidate` es una acción fiscal irreversible. |
+| `issue()`, `prepare()`, `sign()`, `invalidate()`, `registerReturn()` | `issue` | `signKey` en `issue`, `sign`, `invalidate` y `registerReturn`; no en `prepare` | Emisión puede gastar correlativo; `invalidate` es una acción fiscal irreversible. |
 | `issueAndArchive()`, `recoverOperation()` | `issue` + `download` | `signKey`; `unlockKey` if the request contains catalog references | Emite o recupera sin cambiar la clave de idempotencia y cifra los artefactos JSON/PDF/JWS/ticket. |
 | `invalidateAndArchive()`, `recoverInvalidation()` | `issue` | `signKey` en la llamada inicial o en una recuperación segura | Conserva y recupera el evento firmado en un journal cifrado independiente del DTE original. |
 | `diagnose()` | Como `status()` | Archivo local opcional; sync local se prueba solo si se piden sus métodos | Inspección previa; nunca abre vaults remotos ni reserva correlativos. |
@@ -266,6 +272,20 @@ devuelve la representación gráfica disponible. Guarda o transmite esos bytes
 directamente: parsear y serializar de nuevo el JSON cambia sus bytes. Ambas
 descargas requieren el alcance `download`. Una respuesta `202` de emisión es
 contingencia y no equivale a un rechazo ni a un DTE sellado.
+
+**Archivo DTE.** Un resultado sellado trae `archivoDte`: el texto exacto del
+Archivo DTE (el documento firmado más `firmaElectronica`, el JWS tal cual, y
+`selloRecibido`), que es el archivo para el cliente o el contador. En
+contingencia no existe porque todavía no hay sello. `archivoJson` no cambia
+(el original guardado). `archivoDteOf(resultado)` lo devuelve o lo arma con
+`documento`, `jws` y `selloRecibido` si la API todavía no envía el campo.
+`downloadDocument(id, "json")` **devuelve ahora el Archivo DTE por defecto** y
+`jsonFormat` informa `archivo-dte` o `raw` (cabecera `X-Facta-Json-Format`);
+`{ raw: true }`, solo para JSON, devuelve el original guardado. Un documento sin
+sello contesta `409 not_sealed`; pida `raw: true` para su original. El recibo y
+el botón de React dan el Archivo DTE como «Descargar JSON»; «JSON original
+(raw)» aparece solo con la propiedad `rawJson`, y el manejador del servidor la
+respeta solo con `capabilities.rawJson: true`.
 
 ```ts
 import { writeFile } from "node:fs/promises";

@@ -56,16 +56,22 @@ An `IssueResult` is a discriminated union. Check `result.estado`: `"sellado"` me
 | Option | Purpose |
 | --- | --- |
 | `apiKey` | Required `facta_test_…` or `facta_live_…` key. The key selects the Hacienda environment. |
-| `signKey` | Required for `issue`, `prepare` + `sign`, and `invalidate`. Sent only on signing operations. |
+| `signKey` | Required for `issue`, `prepare` + `sign`, `invalidate`, and `registerReturn`. Sent only on signing operations. |
 | `unlockKey` | Optional `factauk_…` key used locally to decrypt synchronized catalog and destination bundles. Never sent to the API. |
 | `baseUrl` | Optional API host. Defaults to Facta's public API URL. |
 | `timeoutMs` | Request timeout, default 60,000 ms, including response-body reading. |
 | `maxRetries` | Retry limit for explicitly retryable transport/service failures; defaults to 3. |
 | `fetch` | Optional fetch implementation for an owning runtime or tests. |
+| `clock` | Reference clock for archive timestamps and S3 signing: `true` (default, the public `https://clock.factadte.com/`), a URL, or `false` for the device clock. Calibrated lazily, never blocks and never fails an operation. |
+| `clockFetch` | Optional fetch used only to calibrate the clock. |
 | `config` | Optional versioned scalar configuration (`FactaConfigV1`). |
 | `runtime` | Optional default archive, invalidation archive, remote destinations, and print transport (`FactaRuntimeConfigV1`). |
 
 Configuration values do not include credentials. Flat legacy options override matching versioned config values. See the [Node guide](guides/node.md) or [Deno guide](guides/deno.md) for runtime setup and environment permissions.
+
+## Reference clock
+
+A document's own date and time are set by Facta's server, never by this SDK. The SDK's clock matters for two local things: SigV4 signatures on S3-compatible uploads (S3 refuses a request signed more than 15 minutes from its own time, `RequestTimeTooSkewed`) and the timestamps in archive records. `new Facta({ apiKey })` keeps one NTP-style reference clock (`facta.clock`): three calibration samples at first use, then the monotonic clock answers locally and recalibrates only when its uncertainty passes 500 ms, after `nextSyncAfterMs` or when the device time jumps. Share it with an S3 destination with `createS3ArtifactDestination({ ..., clock: facta.clock ?? false })`; without it the destination keeps its own. An unreachable clock service falls back to the device clock. See the [clock guide](https://sdk.factadte.com/guias/reloj-de-referencia/).
 
 ## Public client surface
 
@@ -73,7 +79,7 @@ The `Facta` client exposes the following English methods:
 
 - **Status and diagnostics:** `status`, `diagnose`, `getContract`, `getStorageStatus`.
 - **Synchronization and catalog:** `syncDestinations`, `syncCatalog`, `catalogState`, `listCustomers`, `getCustomer`, `searchCustomers`, `listProducts`, `getProduct`, `searchProducts`.
-- **DTE lifecycle:** `issue`, `prepare`, `sign`, `getDocumentStatus`, `listDocuments`, `invalidate`, `listHolding`, `downloadDocument`, `getDocumentCopies`, `retryDocumentStorage`.
+- **DTE lifecycle:** `issue`, `prepare`, `sign`, `getDocumentStatus`, `listDocuments`, `invalidate`, `registerReturn`, `listHolding`, `downloadDocument`, `getDocumentCopies`, `retryDocumentStorage`.
 - **Durable archival:** `issueAndArchive`, `recoverOperation`, `listPendingOperations`, `invalidateAndArchive`, `recoverInvalidation`, `listPendingInvalidations`, `replicateArchive`, `diagnoseDestinations`.
 - **Delivery by e-mail and WhatsApp:** `issue(request, { deliver })`, `deliverEmail`, `deliverWhatsApp`, `getDelivery`, `waitForDelivery`. Issuing never waits for delivery; each channel is a separate request with a five-minute token and failures are reported as states.
 - **Local printing:** `print`.
@@ -149,6 +155,25 @@ The type system helps construct payloads but does not replace server-side tax va
 - [Deno integration](guides/deno.md)
 
 The SDK sends nothing itself: e-mail and WhatsApp delivery is performed by the API after you mark the channels. It does not sign locally, choose a signing certificate, or replace the API's fiscal contract.
+
+## The Archivo DTE (what the receiver gets)
+
+A sealed result carries `archivoDte`: the exact UTF-8 text of the Archivo DTE, which is the signed document plus `firmaElectronica` (the JWS, byte-for-byte) and `selloRecibido`. This is the file to give a customer or an accountant. It is absent in contingency, where there is no seal yet. `archivoJson` is unchanged (the stored original, `{codigoGeneracion, ambiente, jws}`); keep archiving that.
+
+```ts
+import { archivoDteOf } from "@facta-dte/api";
+
+const result = await facta.issue(sale);
+if (result.estado === "sellado") {
+  // `archivoDte` when the API serves it; otherwise built from documento + jws + selloRecibido.
+  const archivo = archivoDteOf(result);
+}
+const file = await facta.downloadDocument(code, "json");               // Archivo DTE (default)
+const original = await facta.downloadDocument(code, "json", { raw: true }); // stored bytes
+console.log(file.jsonFormat, original.jsonFormat);                     // "archivo-dte" "raw"
+```
+
+`downloadDocument(code, "json")` now returns the Archivo DTE by default and reports `jsonFormat` from the `X-Facta-Json-Format` header; `{ raw: true }` returns the stored original and is valid only for `json`. A document without a seal answers `409 not_sealed`; use `raw: true` for its original. The React receipt and download button give the Archivo DTE as «Descargar JSON»; «JSON original (raw)» appears only with the `rawJson` prop, and the server handler honours it only when `capabilities.rawJson` is `true`. Local copies and replication still store exactly what they stored before.
 
 ## Errors
 

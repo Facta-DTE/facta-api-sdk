@@ -16,7 +16,10 @@ export { esMessages, explainError, fill, mergeMessages } from "./messages.es.ts"
 export type { FactaMessages, FactaMessagesOverride } from "./messages.es.ts";
 export { describeFieldPath, describeFields } from "./fields.ts";
 export type { FieldIssue } from "./fields.ts";
+export { archivoDteOf } from "../archivo-dte.ts";
+export type { ArchivoDteSource } from "../archivo-dte.ts";
 export { storageTone } from "./storage.ts";
+export { DELIVERY_LIMIT_REASONS, isDeliveryLimitReason } from "../delivery.ts";
 export type { StorageTone } from "./storage.ts";
 export { appearanceToCssVariables, colorToSrgb, mergeAppearance, pickAccentInk, resetAppearanceWarnings, resolveAccentInk, resolveMotion } from "./appearance.ts";
 export type {

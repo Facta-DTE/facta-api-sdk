@@ -2,13 +2,13 @@
 // A separate file on purpose, so the surrounding restyle stays easy to merge: the
 // only insertion point in the result screens is `<DeliveryRows result={…} />`.
 
-import { fill, type DeliveryView, type IssueResult } from "../browser/index.ts";
+import { fill, isDeliveryLimitReason, type DeliveryView, type IssueResult } from "../browser/index.ts";
 import type { DeliveryChannel, DeliveryChannelStatus } from "../types.ts";
 import { useCfg } from "./look.tsx";
 
 const CHANNELS: DeliveryChannel[] = ["correo", "whatsapp"];
 
-type RowTone = "pending" | "ok" | "problem" | "info";
+type RowTone = "pending" | "ok" | "problem" | "info" | "warn";
 
 function describe(
   channel: DeliveryChannel,
@@ -27,6 +27,12 @@ function describe(
     case "enviado":
       return { text: fill(m.sent[channel], { to: status.destino ?? "" }).replace(/\s+a\s*$/, ""), tone: "ok" };
     case "fallido": {
+      // A sending limit or a provider outage is not a problem with the document:
+      // it is already issued, so the row is a warning that offers a way forward.
+      if (isDeliveryLimitReason(status.motivo)) {
+        const headline = m.reasons[status.motivo as string] ?? m.failed[channel];
+        return { text: headline, ...(m.limitHelp ? { reason: m.limitHelp } : {}), tone: "warn" };
+      }
       const reason = (status.motivo ? m.reasons[status.motivo] : undefined) ?? m.reasons.default;
       return { text: m.failed[channel], ...(reason ? { reason } : {}), tone: "problem" };
     }
@@ -41,7 +47,7 @@ function describe(
   }
 }
 
-const DOT: Record<RowTone, string> = { pending: "pending", ok: "saved", info: "off", problem: "problem" };
+const DOT: Record<RowTone, string> = { pending: "pending", ok: "saved", info: "off", problem: "problem", warn: "warn" };
 
 /** Same markup as the «Copias» row (`facta-kv` + the status dot), so it sits in the identifiers list. */
 export function DeliveryRows({ result }: { result: IssueResult }) {
@@ -60,6 +66,7 @@ export function DeliveryRows({ result }: { result: IssueResult }) {
             {...sp("deliveryRow", "facta-kv facta-delivery-row")}
             data-channel={channel}
             data-state={status.estado}
+            data-tone={tone}
           >
             <dt className="facta-kv-k">{messages.delivery.label[channel]}</dt>
             <dd className="facta-kv-v facta-dd" role="status" aria-live="polite">

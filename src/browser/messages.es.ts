@@ -22,7 +22,7 @@ export interface FactaMessages {
   closeLabel: string;
   footerBrand: string;
   autoClose: { closingIn: string };
-  downloads: { pdfHint: string; jsonHint: string };
+  downloads: { pdfHint: string; jsonHint: string; jsonRawHint: string };
   dialogLabel: string;
   docTypes: Record<DteType, string>;
   review: {
@@ -52,6 +52,7 @@ export interface FactaMessages {
     dateTime: string;
     downloadPdf: string;
     downloadJson: string;
+    downloadJsonRaw: string;
     done: string;
     copy: string;
     copied: string;
@@ -97,6 +98,11 @@ export interface FactaMessages {
     later: string;
     /** Readable text per reason code; `default` when the code is unknown. */
     reasons: Record<string, string>;
+    /**
+     * Help under a sending limit or provider outage (`quota_exceeded`,
+     * `provider_unavailable`), which is shown as a warning, never as an error.
+     */
+    limitHelp?: string;
   };
   button: {
     label: string;
@@ -193,6 +199,8 @@ export interface FactaMessages {
       formats: string;
       pdfHint: string;
       jsonHint: string;
+      jsonRaw: string;
+      jsonRawHint: string;
       ticketHint: string;
       failed: string;
     };
@@ -286,7 +294,7 @@ export const esMessages: FactaMessages = {
     expired: "Ventana vencida",
   },
   autoClose: { closingIn: "Se cerrará en {n} s" },
-  downloads: { pdfHint: "Representación gráfica", jsonHint: "Documento firmado" },
+  downloads: { pdfHint: "Representación gráfica", jsonHint: "Archivo DTE con sello", jsonRawHint: "Tal como se guardó" },
   chipTest: "Pruebas",
   closeLabel: "Cerrar ventana",
   footerBrand: "Powered by factadte.com",
@@ -333,6 +341,7 @@ export const esMessages: FactaMessages = {
     dateTime: "Fecha y hora",
     downloadPdf: "Descargar PDF",
     downloadJson: "Descargar JSON",
+    downloadJsonRaw: "JSON original (raw)",
     done: "Listo",
     copy: "Copiar",
     copied: "Copiado",
@@ -409,6 +418,7 @@ export const esMessages: FactaMessages = {
       quota_exceeded: "Se alcanzó el límite de envíos",
       default: "Intente reenviarlo desde su sistema",
     },
+    limitHelp: "El documento ya está emitido; descargue el PDF o el JSON y compártalo, o reintente más tarde.",
   },
   button: {
     label: "Emitir factura",
@@ -534,7 +544,9 @@ export const esMessages: FactaMessages = {
       done: "{kind} descargado",
       formats: "Formato",
       pdfHint: "Carta",
-      jsonHint: "DTE firmado",
+      jsonHint: "Archivo DTE con sello",
+      jsonRaw: "JSON original (raw)",
+      jsonRawHint: "Tal como se guardó",
       ticketHint: "Térmica",
       failed: "No se pudo descargar",
     },
@@ -668,6 +680,7 @@ export const esMessages: FactaMessages = {
     invalid_request: "Los datos del documento no son válidos.",
     validation_failed: "Los datos del documento no cumplen los requisitos de Hacienda. Revise la información e intente de nuevo.",
     not_found: "No encontramos el documento.",
+    not_sealed: "El documento todavía no tiene sello de Hacienda; use raw para el original.",
     method_not_allowed: "La operación no está disponible.",
     idempotency_key_required: "Falta la clave de idempotencia del pedido.",
     idempotency_key_reuse: "Este pedido ya se envió con datos distintos. Vuelva a abrirlo desde su pedido.",

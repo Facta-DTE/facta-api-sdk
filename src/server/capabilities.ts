@@ -25,6 +25,12 @@ export interface FactaCapabilities {
   documents?: "read";
   /** `documents.download`: `true` allows PDF, JSON and ticket; an array narrows it. */
   downloads?: boolean | FactaDownloadKind[];
+  /**
+   * `documents.download` of `json` may ask for the stored original (`raw`)
+   * instead of the Archivo DTE. Off by default: the buyer-facing file is the
+   * Archivo DTE. Needs `downloads` to allow `json`.
+   */
+  rawJson?: boolean;
   /** `catalog.customers.*` and `catalog.products.*` (needs `unlockKey` on the server). */
   catalog?: "read";
   /** `service.status`. */
@@ -97,7 +103,7 @@ export function validateCapabilities(value: unknown): FactaCapabilities {
     throw new TypeError("capabilities must be an object.");
   }
   const c = value as Record<string, unknown>;
-  const known = ["documents", "downloads", "catalog", "status", "storage", "retryStorage", "invalidate"];
+  const known = ["documents", "downloads", "catalog", "rawJson", "status", "storage", "retryStorage", "invalidate"];
   for (const key of Object.keys(c)) {
     if (!known.includes(key)) throw new TypeError(`Unknown capability "${key}".`);
   }
@@ -105,7 +111,7 @@ export function validateCapabilities(value: unknown): FactaCapabilities {
   if (c.catalog !== undefined && c.catalog !== "read") throw new TypeError('capabilities.catalog must be "read".');
   if (c.storage !== undefined && c.storage !== "read") throw new TypeError('capabilities.storage must be "read".');
   if (c.invalidate !== undefined && c.invalidate !== "session") throw new TypeError('capabilities.invalidate must be "session".');
-  for (const key of ["status", "retryStorage"]) {
+  for (const key of ["status", "retryStorage", "rawJson"]) {
     if (c[key] !== undefined && typeof c[key] !== "boolean") throw new TypeError(`capabilities.${key} must be a boolean.`);
   }
   if (c.downloads !== undefined) {

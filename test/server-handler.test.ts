@@ -699,3 +699,19 @@ Deno.test("session.describe returns the environment for the Pruebas chip", async
   assertEquals(body.includes("bbbbbbbb"), false);
   assertEquals((await (await post(make().handler, { action: "session.describe", session: await session() })).json()).environment, null);
 });
+
+Deno.test("issue passes archivoDte through, or builds it for an API that predates the field", async () => {
+  const given = make({}, { issue: { ...SEALED, archivoDte: "{\"archivo\":true}" } });
+  const withField = (await (await post(given.handler, { action: "issue", session: await session() })).json()).result;
+  assertEquals(withField.archivoDte, "{\"archivo\":true}");
+  const old = make();
+  const built = (await (await post(old.handler, { action: "issue", session: await session() })).json()).result;
+  const parsed = JSON.parse(built.archivoDte);
+  assertEquals(parsed.firmaElectronica, "header.payload.sig");
+  assertEquals(parsed.selloRecibido, "2026ABC");
+  assertEquals("jws" in built || "documento" in built, false);
+  const none = make({}, { issue: CONTINGENCY });
+  assertEquals("archivoDte" in (await (await post(none.handler, { action: "issue", session: await session() })).json()).result, false);
+  const dropped = make();
+  assertEquals("archivoDte" in (await (await post(dropped.handler, { action: "issue", session: await session({ download: false }) })).json()).result, false);
+});
