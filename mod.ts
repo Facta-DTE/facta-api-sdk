@@ -43,6 +43,7 @@ export {
   type SpentCorrelative,
 } from "./src/errors.ts";
 export type * from "./src/types.ts";
+export { type ArchivoDteSource, archivoDteOf } from "./src/archivo-dte.ts";
 export {
   type PrintJob,
   type PrintJobState,

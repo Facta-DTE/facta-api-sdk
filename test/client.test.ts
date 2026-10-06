@@ -499,3 +499,33 @@ Deno.test("explicit managed downloads demand source proof and never accept holdi
     assertEquals(calls.length, count);
   }
 });
+
+Deno.test("downloadDocument json sends raw only when asked and reports the format from the header", async () => {
+  const calls: string[] = [];
+  const formats = ["archivo-dte", "raw", null];
+  const fetch = ((url: string | URL | Request) => {
+    calls.push(String(url));
+    const format = formats[calls.length - 1];
+    return Promise.resolve(new Response("{}", { status: 200, headers: { "Content-Type": "application/json", ...(format ? { "X-Facta-Json-Format": format } : {}) } }));
+  }) as unknown as typeof globalThis.fetch;
+  const facta = new Facta({ apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch });
+  const archivo = await facta.downloadDocument("ABC-123", "json");
+  const raw = await facta.downloadDocument("ABC-123", "json", { raw: true });
+  const old = await facta.downloadDocument("ABC-123", "json", { raw: true });
+  assertEquals(calls[0].endsWith("/v1/dte/ABC-123/file?kind=json"), true);
+  assertEquals(calls[1].endsWith("/v1/dte/ABC-123/file?kind=json&raw=true"), true);
+  assertEquals(archivo.jsonFormat, "archivo-dte");
+  assertEquals(raw.jsonFormat, "raw");
+  assertEquals("jsonFormat" in old, false);
+});
+
+Deno.test("raw is local-only valid for JSON and not_sealed surfaces as its own error code", async () => {
+  const { fetch, calls } = fakeFetch([{ status: 409, body: { error: { code: "not_sealed", message: "sin sello" } } }]);
+  const facta = new Facta({ apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch });
+  await assertRejects(() => facta.downloadDocument("ABC-123", "pdf", { raw: true }), TypeError);
+  await assertRejects(() => facta.downloadDocument("ABC-123", "ticket", { raw: false }), TypeError);
+  assertEquals(calls.length, 0);
+  const error = await assertRejects(() => facta.downloadDocument("ABC-123", "json")) as FactaError;
+  assertEquals(error.code, "not_sealed");
+  assertEquals(error.status, 409);
+});

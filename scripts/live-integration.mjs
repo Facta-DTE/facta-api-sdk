@@ -64,7 +64,7 @@ if (deliveryInbox !== undefined && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(deliveryIn
 }
 assertLiveRunWithinIdempotencyWindow(process.env.GITHUB_RUN_CREATED_AT);
 
-const { Facta } = await import("../dist/index.js");
+const { Facta, archivoDteOf } = await import("../dist/index.js");
 const { FileInvoiceArchive } = await import("../dist/node.js");
 const scratch = await mkdtemp(join(tmpdir(), "facta-sdk-integration-"));
 const archivePassphrase = Buffer.from(crypto.getRandomValues(new Uint8Array(48))).toString("base64url");
@@ -192,6 +192,20 @@ try {
     "archived JSON must match the exact response bytes");
   assert(Buffer.from(pdf.bytes).equals(Buffer.from(result.emission.representacionGrafica, "base64")),
     "archived PDF must match the exact response bytes");
+  // The Archivo DTE: the server's `archivoDte` when deployed, otherwise the SDK builds it.
+  // Either way it must carry the exact JWS and the seal of this document.
+  const archivoDte = archivoDteOf(result.emission);
+  assert(typeof archivoDte === "string", "a sealed result must yield an Archivo DTE");
+  const archivoParsed = JSON.parse(archivoDte);
+  assert(archivoParsed.firmaElectronica === result.emission.jws, "Archivo DTE must carry the exact JWS");
+  assert(archivoParsed.selloRecibido === result.emission.selloRecibido, "Archivo DTE must carry Hacienda's seal");
+  if (typeof result.emission.archivoDte === "string") {
+    const fallback = archivoDteOf({ ...result.emission, archivoDte: undefined });
+    assert(JSON.stringify(archivoParsed) === JSON.stringify(JSON.parse(fallback)), "the server's Archivo DTE must match the SDK's fallback");
+    console.log(`INFO archivoDte served by the API; fallback bytes ${fallback === result.emission.archivoDte ? "identical" : "differ in formatting only"}`);
+  } else {
+    console.log("INFO archivoDte not served by this API yet; built by the SDK fallback");
+  }
   checks["inline-bytes"] = "Passed";
   currentCheck = "no-downloads";
   const fileRequests = requestRecords.filter(({ url }) => /\/v1\/dte\/[^/]+\/file$/.test(url.pathname));

@@ -196,6 +196,13 @@ export interface SealedDte {
   jws: string;
   /** Exact server-generated JSON archive contents; persist this verbatim. */
   archivoJson?: string;
+  /**
+   * The Archivo DTE for the receiver: the document plus `firmaElectronica` and
+   * `selloRecibido`, as exact UTF-8 text. Absent on API servers that predate it
+   * and in contingency; `archivoDteOf(result)` builds it from `documento`,
+   * `jws` and `selloRecibido` when the field is missing.
+   */
+  archivoDte?: string;
   /** Server-rendered PDF as base64, present after a successful seal. */
   representacionGrafica?: string | null;
   /** Facta-managed durable copies; absent on older API servers. */
@@ -507,6 +514,12 @@ export interface DownloadedDocument {
   filename: string | null;
   /** Source selected by the API. Missing on servers predating source reporting. */
   storageSource?: "managed" | "holding" | "archive";
+  /**
+   * JSON downloads only, from `X-Facta-Json-Format`: `archivo-dte` is the
+   * receiver's file (the default), `raw` the stored original. Missing on
+   * servers that predate the header.
+   */
+  jsonFormat?: "archivo-dte" | "raw";
   /** Present for tickets; defaults to 80 mm when not requested. */
   paperWidthMm?: number;
 }

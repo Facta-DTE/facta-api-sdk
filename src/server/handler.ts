@@ -10,6 +10,7 @@
 import { FactaError } from "../errors.ts";
 import type { Facta } from "../client.ts";
 import type { ArchiveEmissionResult } from "../archive.ts";
+import { archivoDteOf } from "../archivo-dte.ts";
 import type {
   DeliverOptions,
   DeliveryChannel,
@@ -235,6 +236,9 @@ function summarizeIssue(result: IssueResult, download: boolean, exposeDocument: 
     out.totales = result.totales;
     out.observaciones = result.observaciones ?? [];
     if (download && result.representacionGrafica != null) out.representacionGrafica = result.representacionGrafica;
+    // The server's own field, or built from the same pieces for an API that predates it.
+    const archivoDte = download ? archivoDteOf(result) : null;
+    if (archivoDte !== null) out.archivoDte = archivoDte;
   } else {
     out.detalle = result.detalle;
   }
