@@ -6,7 +6,9 @@ TypeScript. El código fuente también funciona con Deno 2.6.6; el chequeo del
 tarball prueba un consumidor Node y uno Deno desde un directorio limpio.
 **Paquete y código:** [npm `@facta-dte/api`](https://www.npmjs.com/package/@facta-dte/api) · [repositorio público en GitHub](https://github.com/Facta-DTE/facta-api-sdk).
 
-**Selección de versión:** Esta documentación describe `0.2.1`. El [registro de npm](https://www.npmjs.com/package/@facta-dte/api?activeTab=versions) es la autoridad para las versiones publicadas y sus etiquetas. `latest` elige la versión estable aprobada. Confirme que la versión publicada instalada incluye un método antes de usarlo; valide las capacidades que solo estén en el código fuente con una copia empaquetada.
+**Selección de versión:** Esta documentación describe `0.3.0`. El [registro de npm](https://www.npmjs.com/package/@facta-dte/api?activeTab=versions) es la autoridad para las versiones publicadas y sus etiquetas. `latest` elige la versión estable aprobada. Confirme que la versión publicada instalada incluye un método antes de usarlo; valide las capacidades que solo estén en el código fuente con una copia empaquetada.
+
+**Novedades de 0.3.0:** con una llave de desbloqueo y un snapshot de destinos publicado desde la app de Facta, `issueAndArchive()` ahora también copia por defecto a esos destinos sincronizados, en las rutas canónicas de Facta, y le informa a Facta cada copia verificada (`replicate: false` lo desactiva). Un problema de almacenamiento sobre un documento sellado es un aviso tipado (`byos_not_replicated`, `copy_report_failed`), nunca un fallo. Las llaves con catálogo legible permiten que el servidor resuelva `customerId` / `productId` sin catálogo local. Vea la guía de adaptadores de almacenamiento.
 
 El paquete oficial admite TypeScript y JavaScript. Los SDK de otros lenguajes están pendientes; los ejemplos HTTP directos no representan SDK publicados.
 
@@ -14,8 +16,8 @@ El paquete oficial admite TypeScript y JavaScript. Los SDK de otros lenguajes es
 # Verificar versiones y etiquetas, luego instalar la versión estable aprobada:
 npm view @facta-dte/api version dist-tags
 pnpm add @facta-dte/api
-# Opcional: fijar 0.2.1 después de verificar que está publicada:
-pnpm add @facta-dte/api@0.2.1
+# Opcional: fijar 0.3.0 después de verificar que está publicada:
+pnpm add @facta-dte/api@0.3.0
 ```
 
 

@@ -5,18 +5,18 @@ y mecanismos de recuperación, consulta la [referencia de métodos del SDK](refe
 
 **Paquete y código:** [npm `@facta-dte/api`](https://www.npmjs.com/package/@facta-dte/api) · [repositorio público en GitHub](https://github.com/Facta-DTE/facta-api-sdk).
 
-**Selección de versión:** Esta documentación describe `0.2.1`. El [registro de npm](https://www.npmjs.com/package/@facta-dte/api?activeTab=versions) es la autoridad para las versiones publicadas y sus etiquetas. `latest` elige la versión estable aprobada. Confirme que la versión publicada instalada incluye un método antes de usarlo; valide las capacidades que solo estén en el código fuente con una copia empaquetada.
+**Selección de versión:** Esta documentación describe `0.3.0`. El [registro de npm](https://www.npmjs.com/package/@facta-dte/api?activeTab=versions) es la autoridad para las versiones publicadas y sus etiquetas. `latest` elige la versión estable aprobada. Confirme que la versión publicada instalada incluye un método antes de usarlo; valide las capacidades que solo estén en el código fuente con una copia empaquetada.
 
 El paquete oficial admite TypeScript y JavaScript. Los SDK de otros lenguajes están pendientes; los ejemplos HTTP directos no representan SDK publicados.
 
 ## Requisitos e instalación
 
 Consulte `npm view @facta-dte/api version dist-tags` y elija una versión publicada
-que incluya las capacidades requeridas. Cuando `0.2.1` esté disponible, fíjela
+que incluya las capacidades requeridas. Cuando `0.3.0` esté disponible, fíjela
 en `deno.json`:
 
 ```json
-{ "imports": { "@facta-dte/api": "npm:@facta-dte/api@0.2.1" } }
+{ "imports": { "@facta-dte/api": "npm:@facta-dte/api@0.3.0" } }
 ```
 
 No hay paquete JSR. Guarde la versión elegida y el lockfile en el repositorio.
@@ -72,7 +72,7 @@ llamada explícita consume una secuencia fiscal de prueba y requiere un
 `ERP_ORDER_ID` estable.
 
 ```ts
-import { Facta } from "npm:@facta-dte/api@0.2.1";
+import { Facta } from "npm:@facta-dte/api@0.3.0";
 
 const facta = new Facta({
   apiKey: Deno.env.get("FACTA_API_KEY")!,
