@@ -128,8 +128,9 @@ export async function handleRecipeRun(request: Request, deps: RecipeRouteDeps): 
     }
   }
 
-  const { output, outcome } = await execute(env, deps.fetch, bound.exec, { timings });
+  const { output, outcome, servedRegion } = await execute(env, deps.fetch, bound.exec, { timings });
   if (timings) {
+    timeline.setRegion(servedRegion);
     // Every call the recipe made, with the API's own breakdown under it when the API returned one.
     for (const step of output.steps) {
       if (step.at === undefined) continue;

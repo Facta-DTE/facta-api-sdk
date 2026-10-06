@@ -170,7 +170,28 @@ export function secretsOf(env: PlaygroundEnv): string[] {
   return [env.FACTA_API_KEY, env.FACTA_SIGN_KEY, env.FACTA_UNLOCK_KEY, env.FACTA_SESSION_SECRET].filter((v): v is string => Boolean(v));
 }
 
-export function buildRecordedFacta(env: PlaygroundEnv, innerFetch: typeof globalThis.fetch | undefined, redaction: RedactOptions, timings = false) {
+// What this Worker isolate learned from `/v1/status`. A recipe builds a fresh client per run; handing it the
+// region keeps the discovery request out of the steps the page shows.
+let learnedRegion: string | undefined;
+
+/** The `region` option for a recipe client: learned once per isolate, never throws, `{}` when unknown. */
+async function regionOption(env: PlaygroundEnv, innerFetch: typeof globalThis.fetch | undefined): Promise<{ region?: string }> {
+  if (learnedRegion === undefined) {
+    try {
+      const probe = new Facta({
+        apiKey: env.FACTA_API_KEY!,
+        baseUrl: env.FACTA_API_BASE_URL!.replace(/\/+$/, ""),
+        fetch: innerFetch ?? ((input, init) => globalThis.fetch(input, init)),
+        clock: false,
+        maxRetries: 0,
+      });
+      learnedRegion = (await probe.region()) ?? undefined;
+    } catch { /* the SDK never throws here; belt and braces */ }
+  }
+  return learnedRegion === undefined ? {} : { region: learnedRegion };
+}
+
+export function buildRecordedFacta(env: PlaygroundEnv, innerFetch: typeof globalThis.fetch | undefined, redaction: RedactOptions, timings = false, region: { region?: string } = {}) {
   const base = env.FACTA_API_BASE_URL!.replace(/\/+$/, "");
   const recorder = recordingFetch(base, innerFetch ?? ((input, init) => globalThis.fetch(input, init)), redaction, timings);
   const facta = new Facta({
@@ -179,6 +200,7 @@ export function buildRecordedFacta(env: PlaygroundEnv, innerFetch: typeof global
     ...(env.FACTA_UNLOCK_KEY ? { unlockKey: env.FACTA_UNLOCK_KEY } : {}),
     baseUrl: base,
     fetch: recorder.fetch,
+    ...region,
     // A debugging aid, only when the page asked for timings: the SDK then sends `X-Facta-Debug: timings`.
     ...(timings ? { debug: { timings: true } } : {}),
   });
@@ -190,9 +212,9 @@ export async function execute(
   innerFetch: typeof globalThis.fetch | undefined,
   exec: (facta: Facta) => Promise<ExecOutcome>,
   run: { timings?: boolean } = {},
-): Promise<{ output: RunOutput; outcome: ExecOutcome | null }> {
+): Promise<{ output: RunOutput; outcome: ExecOutcome | null; servedRegion: string | null }> {
   const redaction: RedactOptions = { secrets: secretsOf(env) };
-  const { facta, recorder } = buildRecordedFacta(env, innerFetch, redaction, run.timings === true);
+  const { facta, recorder } = buildRecordedFacta(env, innerFetch, redaction, run.timings === true, await regionOption(env, innerFetch));
   const started = Date.now();
   let outcome: ExecOutcome | null = null;
   let error: RunOutput["error"];
@@ -222,5 +244,5 @@ export async function execute(
     files: outcome === null ? [] : collectFiles(outcome.result, redaction.secrets),
     ...(error === undefined ? {} : { error }),
   };
-  return { output, outcome };
+  return { output, outcome, servedRegion: facta.servedRegion };
 }

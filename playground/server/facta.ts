@@ -18,6 +18,8 @@ export interface FactaParts {
   debugHandler: (req: Request) => Promise<Response>;
   /** What the timed client measured for one issue (by idempotency key) and one delivery start (by code). */
   steps: StepLog;
+  /** The functions region that served the latest API response (`x-sb-edge-region`), or null. */
+  servedRegion: (debug?: boolean) => string | null;
 }
 
 /** One call measured around the SDK client, in epoch milliseconds. */
@@ -92,16 +94,24 @@ export function createFactaParts(env: PlaygroundEnv, visitorOf: VisitorOf, facta
   // Reads go through the API budget (api-budget.ts): the key's own rate limit is shared by all visitors.
   const cache = apiCacheOf(env.QUOTA);
   const steps = new StepLog();
-  const build = (debug: boolean): FactaLike => timed(withApiBudget(factaOverride ?? new Facta({
-    apiKey: env.FACTA_API_KEY!,
-    signKey: env.FACTA_SIGN_KEY!,
-    ...(env.FACTA_UNLOCK_KEY ? { unlockKey: env.FACTA_UNLOCK_KEY } : {}),
-    baseUrl: env.FACTA_API_BASE_URL!,
-    // A debugging aid, asked for per request by the page («Mostrar tiempos»): never on by default.
-    ...(debug ? { debug: { timings: true } } : {}),
-  }), { cache }), steps);
+  // The SDK pins every request to the API's functions region by itself (`x-region`, learned once from
+  // `/v1/status`), so nothing here sends the header; the client only reports where it was served.
+  const raws: { plain: Facta | null; debug: Facta | null } = { plain: null, debug: null };
+  const build = (debug: boolean): FactaLike => {
+    const raw = factaOverride ?? new Facta({
+      apiKey: env.FACTA_API_KEY!,
+      signKey: env.FACTA_SIGN_KEY!,
+      ...(env.FACTA_UNLOCK_KEY ? { unlockKey: env.FACTA_UNLOCK_KEY } : {}),
+      baseUrl: env.FACTA_API_BASE_URL!,
+      // A debugging aid, asked for per request by the page («Mostrar tiempos»): never on by default.
+      ...(debug ? { debug: { timings: true } } : {}),
+    });
+    if (raw instanceof Facta) raws[debug ? "debug" : "plain"] = raw;
+    return timed(withApiBudget(raw, { cache }), steps);
+  };
   const facta = build(false);
   const debugFacta = factaOverride === undefined ? build(true) : facta;
+  const servedRegion = (debug = false): string | null => (debug ? raws.debug : raws.plain)?.servedRegion ?? raws.plain?.servedRegion ?? null;
 
   const capabilities: FactaCapabilities = {
     documents: "read",
@@ -185,5 +195,5 @@ export function createFactaParts(env: PlaygroundEnv, visitorOf: VisitorOf, facta
       return true;
     },
   });
-  return { facta, handler: handlerFor(facta), debugHandler: handlerFor(debugFacta), steps };
+  return { facta, handler: handlerFor(facta), debugHandler: handlerFor(debugFacta), steps, servedRegion };
 }

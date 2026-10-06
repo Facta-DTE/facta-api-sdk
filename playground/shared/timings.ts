@@ -24,6 +24,8 @@ export interface Timings {
   totalMs: number;
   /** True when the API returned its own breakdown (so `source: "api"` steps exist). */
   apiBreakdown: boolean;
+  /** The functions region that served the API calls (`x-sb-edge-region`), when known. */
+  region?: string | null;
 }
 
 /** The note the page shows while the API has not returned a breakdown. */
@@ -37,6 +39,7 @@ export class Timeline {
   readonly #steps: TimingStep[] = [];
   readonly #t0: number;
   #apiBreakdown = false;
+  #region: string | null = null;
 
   constructor(readonly now: () => number = Date.now) {
     this.#t0 = now();
@@ -72,9 +75,19 @@ export class Timeline {
     }
   }
 
+  /** The region the API answered from, shown above the steps. */
+  setRegion(region: string | null | undefined): void {
+    if (typeof region === "string" && region !== "") this.#region = region;
+  }
+
   toJSON(): Timings {
     const steps = [...this.#steps].sort((a, b) => a.startedAtMs - b.startedAtMs);
-    return { steps, totalMs: roundMs(this.now() - this.#t0), apiBreakdown: this.#apiBreakdown };
+    return {
+      steps,
+      totalMs: roundMs(this.now() - this.#t0),
+      apiBreakdown: this.#apiBreakdown,
+      ...(this.#region === null ? {} : { region: this.#region }),
+    };
   }
 }
 

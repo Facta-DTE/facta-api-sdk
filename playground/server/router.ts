@@ -222,7 +222,7 @@ export async function handleApi(request: Request, env: PlaygroundEnv, deps: ApiD
         emailTo: address === null ? null : maskAddress(address),
         orderNumber,
         idempotencyKey,
-        ...(wantsTimings(request) ? { timings: timeline.toJSON() } : {}),
+        ...(wantsTimings(request) ? { timings: (timeline.setRegion(parts.servedRegion()), timeline.toJSON()) } : {}),
       });
     } catch (error) {
       if (error instanceof DeliveryError) return jsonResponse(error.status, errorBody(error.code, error.message));
@@ -462,6 +462,7 @@ export async function handleApi(request: Request, env: PlaygroundEnv, deps: ApiD
             const debug = (body as { debug?: { timings?: Array<{ step: string; ms: number; startedAtMs?: number }> } }).debug;
             timeline.addApi(debug, issueCall?.at ?? handlerStarted);
             if (deliverCall !== undefined) timeline.record("API · iniciar la entrega (deliverEmail)", deliverCall.ms, deliverCall.at);
+            timeline.setRegion(parts.servedRegion(true));
           }
           const { debug: _debug, ...rest } = body;
           const augmented = { ...rest, playground: { replay, ...(timings ? { timings: timeline.toJSON() } : {}) } };

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { handleApi } from "../server/router.ts";
+import { TIMINGS_HEADER } from "../shared/timings.ts";
 import { redact } from "../server/recipes/redact.ts";
 import { RECIPE_SPECS } from "../server/recipes/specs.ts";
 import { denoBunScript, nodeScript, portableSource, projectFiles, projectZip } from "../site/sections/server/export.ts";
@@ -48,8 +49,10 @@ function fakeApi(calls: Call[] = [], options: { hangFirstIssue?: boolean; failIs
     const url = String(input);
     const path = url.slice(API.length);
     const method = (init?.method ?? "GET").toUpperCase();
+    // The Worker learns the API's region once from /v1/status and pins every call to it; not a recipe call.
+    if (method === "GET" && path === "/v1/status") return new Response(JSON.stringify({ ok: true, region: "us-west-2" }), { status: 200, headers: { "content-type": "application/json", "x-sb-edge-region": "us-west-2" } });
     calls.push({ method, path, headers: new Headers(init?.headers), body: typeof init?.body === "string" ? JSON.parse(init.body) : undefined });
-    const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+    const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "x-sb-edge-region": "us-west-2" } });
     if (method === "POST" && path === "/v1/dte" && options.failIssue === 429) {
       return json({ error: { code: "rate_limited", message: "Demasiadas solicitudes" } }, 429);
     }
@@ -141,7 +144,23 @@ describe("recipes API", () => {
     expect(body.issued).toEqual([{ codigoGeneracion: CODE, tipoDte: "01" }]);
     // The credentials travel to the API, never back to the page.
     expect(calls[0]!.headers.get("x-facta-key")).toBe(API_KEY);
+    // Pinned next to the database: the region was learned once from /v1/status.
+    expect(calls[0]!.headers.get("x-region")).toBe("us-west-2");
     expect(body.steps.every((s: object) => !("headers" in s))).toBe(true);
+  });
+
+  it("shows the region that served the API in the timings, only when timings were asked for", async () => {
+    const { call } = await world();
+    const post = (extra: Record<string, string>) => call("/api/recipes/run", {
+      method: "POST",
+      body: JSON.stringify({ recipe: "issue-idempotent", params: { type: "01" } }),
+      headers: { "content-type": "application/json", "x-facta-ui": "1", ...extra },
+      as: "ana@example.com",
+    });
+    const plain = await (await post({})).json() as { timings?: unknown };
+    expect(plain.timings).toBeUndefined();
+    const timed = await (await post({ [TIMINGS_HEADER]: "1" })).json() as { timings: { region?: string } };
+    expect(timed.timings.region).toBe("us-west-2");
   });
 
   it("scrubs secrets that appear in free text", async () => {

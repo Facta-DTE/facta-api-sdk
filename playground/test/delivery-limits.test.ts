@@ -416,6 +416,8 @@ function fakeApi(calls: string[]): typeof fetch {
   return (async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = String(input).slice(API.length);
     const method = (init?.method ?? "GET").toUpperCase();
+    // The Worker learns the API's region once from /v1/status and pins every call to it; not a recipe call.
+    if (method === "GET" && path === "/v1/status") return json({ ok: true, region: "us-west-2" });
     calls.push(`${method} ${path}`);
     if (method === "POST" && path === "/v1/dte") {
       const code = codeOf(new Headers(init?.headers).get("idempotency-key") ?? "none");

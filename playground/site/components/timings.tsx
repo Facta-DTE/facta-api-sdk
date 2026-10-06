@@ -27,6 +27,9 @@ export function TimingsPanel({ title, timings }: { title: string; timings: Timin
         <h4>{title}</h4>
         <b>Total {seconds(timings.totalMs)}</b>
       </header>
+      {typeof timings.region === "string" && timings.region !== "" && (
+        <p className="pg-hint" data-testid="timings-region">Región del API: {timings.region}</p>
+      )}
       <ol>
         {timings.steps.map((step, index) => (
           <li key={`${step.step}-${index}`} data-source={step.source}>
