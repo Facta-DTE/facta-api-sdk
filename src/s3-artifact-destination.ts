@@ -3,6 +3,15 @@ import {
   type ArtifactStore,
   createStorageArtifactDestination,
 } from "./storage-adapter.ts";
+import { DEFAULT_CLOCK_URL } from "./clock-config.ts";
+import { createReferenceClock } from "./reference-clock.ts";
+
+/** The part of a reference clock the S3 signer needs. */
+export interface S3ClockSource {
+  now(): Date;
+  ensure?(options?: { maxUncertaintyMs?: number }): Promise<unknown>;
+  calibrate?(): Promise<unknown>;
+}
 
 export interface S3ArtifactStoreConfig {
   bucket: string;
@@ -26,6 +35,18 @@ export interface S3ArtifactDestinationOptions {
   /** Defaults to api-invoices/{generation-code}/{artifact-kind}. */
   pathForArtifact?: (artifact: ArchiveArtifact) => string;
   fetch?: typeof fetch;
+  /**
+   * Time source for the SigV4 date. S3 refuses a request signed more than 15
+   * minutes away from its own clock (`RequestTimeTooSkewed`), so a device with
+   * a wrong clock cannot write. Default: this destination keeps its own
+   * lazily calibrated reference clock (`https://clock.factadte.com/`); pass
+   * `facta.clock` to share the client's one, a URL to use another endpoint, or
+   * `false` to sign with the device clock. A calibration never blocks: if the
+   * clock service is unreachable the device clock is used, as before.
+   */
+  clock?: S3ClockSource | string | false;
+  /** Fetch used only for clock calibration. Defaults to `fetch`. */
+  clockFetch?: typeof fetch;
 }
 
 /**
@@ -36,7 +57,19 @@ export interface S3ArtifactDestinationOptions {
 export function createS3ArtifactDestination(
   options: S3ArtifactDestinationOptions,
 ): RemoteArtifactDestination {
-  const store = createS3ArtifactStore(options.config, options.fetch ?? fetch);
+  const fetcher = options.fetch ?? fetch;
+  const clockOption = options.clock;
+  const clock: S3ClockSource | null = clockOption === false
+    ? null
+    : typeof clockOption === "object"
+    ? clockOption
+    : createReferenceClock({
+      url: typeof clockOption === "string" ? clockOption : DEFAULT_CLOCK_URL,
+      fetch: options.clockFetch ?? fetcher,
+      wallNow: () => Date.now(),
+      monoNow: () => performance.now(),
+    });
+  const store = createS3ArtifactStore(options.config, fetcher, clock);
   return createStorageArtifactDestination({
     id: options.id,
     kind: "s3",
@@ -47,6 +80,14 @@ export function createS3ArtifactDestination(
         `api-invoices/${artifact.codigoGeneracion}/${artifact.kind}`),
     isNotFound: (error) => error instanceof S3ObjectNotFoundError,
   });
+}
+
+async function isTimeSkew(response: Response): Promise<boolean> {
+  try {
+    return (await response.clone().text()).includes("RequestTimeTooSkewed");
+  } catch {
+    return false;
+  }
 }
 
 export class S3ObjectNotFoundError extends Error {
@@ -68,6 +109,7 @@ export class S3ArtifactStoreError extends Error {
 function createS3ArtifactStore(
   config: S3ArtifactStoreConfig,
   fetcher: typeof fetch,
+  clock: S3ClockSource | null = null,
 ): ArtifactStore {
   validateConfig(config);
   const endpoint = new URL(
@@ -103,23 +145,35 @@ function createS3ArtifactStore(
     signal?: AbortSignal,
   ): Promise<Response> {
     const target = locate(key);
-    const headers = await signS3Request({
-      method,
-      path: target.path,
-      host: target.host,
-      region: config.region,
-      accessKeyId: config.accessKeyId,
-      secretAccessKey: config.secretAccessKey,
-      body,
-      ...(contentType ? { contentType } : {}),
-      ...(method === "PUT" ? { ifNoneMatch: "*" } : {}),
-    });
-    const response = await fetcher(target.url, {
-      method,
-      headers,
-      ...(method === "PUT" ? { body: body.slice() as BodyInit } : {}),
-      ...(signal ? { signal } : {}),
-    });
+    // Lazy: the first request that needs the time calibrates; afterwards the
+    // clock answers from memory. Never throws, never blocks beyond its timeouts.
+    await clock?.ensure?.();
+    const send = async (): Promise<Response> => {
+      const headers = await signS3Request({
+        method,
+        path: target.path,
+        host: target.host,
+        region: config.region,
+        accessKeyId: config.accessKeyId,
+        secretAccessKey: config.secretAccessKey,
+        body,
+        ...(contentType ? { contentType } : {}),
+        ...(method === "PUT" ? { ifNoneMatch: "*" } : {}),
+        ...(clock ? { now: clock.now() } : {}),
+      });
+      return await fetcher(target.url, {
+        method,
+        headers,
+        ...(method === "PUT" ? { body: body.slice() as BodyInit } : {}),
+        ...(signal ? { signal } : {}),
+      });
+    };
+    let response = await send();
+    if (response.status === 403 && clock?.calibrate && await isTimeSkew(response)) {
+      // The signing time was refused: recalibrate once and retry once.
+      await clock.calibrate();
+      response = await send();
+    }
     return response;
   }
 

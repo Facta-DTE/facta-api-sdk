@@ -1127,6 +1127,7 @@ Deno.test("sparse already-invalidated response and expired event recovery never 
     apiKey: "facta_test_a.bbbbbbbbbbbbbbbb",
     signKey: "factask_signing-secret",
     maxRetries: 0,
+    clock: false, // this test counts every request
     runtime: { version: 1, invalidationArchive: archive },
     fetch: (async (input) => {
       // Status is a read-only identity preflight; only invalidation counts below.
@@ -1215,7 +1216,7 @@ Deno.test("inline archival can explicitly omit the unsupported optional ticket a
 Deno.test("ticket opt-out rejects an explicit width before any request", async () => {
   const archive = new MemoryArchive();
   const { fetch, calls } = transport();
-  const facta = new Facta({ apiKey: "facta_test_x.secret", fetch });
+  const facta = new Facta({ apiKey: "facta_test_x.secret", fetch, clock: false });
   await assertRejects(() => facta.issueAndArchive(request, {
     archive, operationId: "conflict", idempotencyKey: "conflict", includeTicket: false, ticketPaperWidthMm: 58,
   }), TypeError, "ticketPaperWidthMm cannot be supplied");
