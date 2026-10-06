@@ -36,7 +36,7 @@ export function Segmented<T extends string>({ label, value, onChange, choices, b
           role="radio"
           data-value={choice.value}
           aria-checked={choice.value === value}
-          tabIndex={choice.value === value ? 0 : -1}
+          tabIndex={choice.value === value || (!choices.some((c) => c.value === value) && choice === choices.find((c) => c.disabled !== true)) ? 0 : -1}
           disabled={choice.disabled}
           onClick={() => onChange(choice.value)}
         >
