@@ -47,6 +47,7 @@ const facta = new Facta({
 | `timeoutMs` | número, opcional, defecto 60000 | Plazo de la petición entera. El Ministerio puede tardar unos cuarenta segundos en contestar. |
 | `maxRetries` | número, opcional, defecto 3 | Cuántas veces reintentar las condiciones donde reintentar es seguro. |
 | `fetch` | función, opcional | Para inyectarlo en pruebas. |
+| `region` | cadena o `false`, opcional | Región de las funciones que se envía como `x-region`. Por defecto se descubre una sola vez en `/v1/status` (respaldo `us-west-2`); una cadena la fija y `false` la apaga. También `config.region` y `FACTA_API_REGION`. Un fallo al descubrirla nunca falla la operación. `await facta.region()` la devuelve; `facta.servedRegion` y `diagnose().servedRegion` dicen qué región atendió. |
 | `debug` | `{ timings?: boolean }`, opcional | Ayuda para depurar, apagada por defecto. Con `{ timings: true }` el cliente envía `X-Facta-Debug: timings`; el API devuelve el tiempo de cada paso y el SDK lo expone en `result.debug` (si el cuerpo no lo trae, lee el encabezado `Server-Timing`). Sin la bandera el API no agrega nada. También se puede pasar `debug` en las opciones de una sola llamada. No la deje encendida en producción. |
 
 `CallOptions` — el segundo argumento de los métodos que escriben:

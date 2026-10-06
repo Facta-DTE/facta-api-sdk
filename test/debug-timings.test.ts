@@ -16,7 +16,7 @@ function fake(body: unknown, headers: Record<string, string> = {}) {
   return { fetch, seen };
 }
 const options = (fetch: typeof globalThis.fetch, debug?: { timings?: boolean }) =>
-  ({ apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch, maxRetries: 0, ...(debug ? { debug } : {}) });
+  ({ region: false as const, apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch, maxRetries: 0, ...(debug ? { debug } : {}) });
 
 Deno.test("no flag: no header, and a stray debug member is not handed over", async () => {
   const { fetch, seen } = fake({ estado: "sellado", codigoGeneracion: CG, debug: { timings: [], totalMs: 1 } });

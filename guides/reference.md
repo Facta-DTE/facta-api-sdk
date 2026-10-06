@@ -44,6 +44,22 @@ business order when recovery must survive a process restart. Aborting a
 request stops retries, but it does not prove that a request already accepted
 by the server was cancelled.
 
+### Regional pinning
+
+Supabase Edge Functions run near the caller, while the Facta database is in
+`us-west-2`; a function far from it pays a cross-country round trip per query
+(`POST /v1/dte` measured 7.2 s on average, 4.3 s once pinned). The client sends
+`x-region` on every request. The value is, in order: the `region` option,
+`config.region`, `FACTA_API_REGION`, the `region` that `GET /v1/status`
+advertises (read once per client, lazily, shared by concurrent first calls),
+then a built-in default (`us-west-2` for test and live keys). `region: false`
+(or `FACTA_API_REGION=false`) turns it off. A failed discovery never fails an
+operation: no header is sent and discovery is retried after 60 s.
+`await facta.region()` returns the value in use (`null` when off), and
+`facta.servedRegion` / `diagnose().servedRegion` report the region that actually
+answered (`x-sb-edge-region`). The browser client needs nothing: it talks to your
+server, whose `Facta` instance does the pinning.
+
 ### Debug timings (a debugging aid)
 
 `new Facta({ debug: { timings: true } })`, or `{ debug: { timings: true } }` in
