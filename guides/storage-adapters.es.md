@@ -182,3 +182,36 @@ const destination = createOneDriveArtifactDestination({
 El token debe incluir `Files.ReadWrite.AppFolder`. La renovación se delega al callback del entorno, por lo que el SDK nunca escribe credenciales rotadas en un vault de API. Las sesiones de carga usan `conflictBehavior: "fail"`; un reintento a la misma ruta vuelve a leer y verifica SHA-256 antes de informar éxito. La URL de carga está preautenticada y nunca se persiste ni registra. El adaptador tiene cobertura mock para consumidores Node y Deno, pero aún necesita una prueba real con OneDrive.
 
 S3, Supabase Storage, Google Drive, OneDrive y el puente local tienen adaptadores BYOS. El almacenamiento JSON/PDF administrado por Facta lo escribe el servidor y, cuando la API despliegue la capacidad versión 1, se consulta con `getStorageStatus()`, `getDocumentCopies()` y `retryDocumentStorage()`. El SDK no recibe credenciales R2, rutas de objetos, enlaces firmados ni tokens de sesión web. Un servidor anterior responde `storage_unsupported`; no envuelvas las rutas Worker de sesión de usuario de la aplicación en un cliente con clave API. El storage administrado, el archivo local cifrado y las copias BYOS tienen recibos y recuperación independientes.
+
+## Adónde van los documentos: cada modo
+
+| Modo | Qué escribe |
+| --- | --- |
+| `issue()` | Nada en su almacenamiento. Solo devuelve el documento sellado. El SDK nunca escribe BYOS aquí. |
+| `issueAndArchive()` sin `unlockKey` | El archivo local cifrado y los `remoteDestinations` que usted pase. |
+| `issueAndArchive()` / `recoverOperation()` con `unlockKey` y un snapshot de destinos publicado | El archivo local **y**, por defecto, los destinos sincronizados desde la app de Facta (buckets compatibles con S3 y Supabase Storage). |
+| Igual, con `replicate: false` | Solo el archivo local. Se indica por llamada o en `runtime.replicate`. |
+| Igual, con `remoteDestinations` | Exactamente sus destinos; no se lee el snapshot. |
+
+Los destinos sincronizados usan la estructura de Facta para que la app pueda
+encontrar, contar y reparar las copias: `DTE/pruebas/AAAA/MM/<numeroControl>.json|pdf`
+con una llave de pruebas y `DTE/AAAA/MM/<numeroControl>.json|pdf` con una llave
+real (año y mes de `fecEmi`, ambos leídos del JSON firmado exacto). Solo se
+escriben el JSON legal y el PDF; el JWS y el ticket quedan en su archivo local.
+Google Drive, OneDrive y el puente necesitan una sesión interactiva y no se
+escriben sin ella: cada uno se informa como aviso `byos_not_replicated`. Los
+adaptadores que usted construye conservan la ruta que les indique.
+
+Tras una escritura verificada en un destino sincronizado, el SDK avisa a Facta
+(`POST /v1/storage/copies/{codigoGeneracion}/byos`) para que la app muestre la
+copia. Solo lo hace si `GET /v1/storage/status` anuncia
+`capabilities.byosCopyReport`; un servidor anterior no recibe reporte ni error.
+
+### Avisos, nunca fallos
+
+Un problema de almacenamiento o de reporte no hace fallar `issueAndArchive()`
+una vez sellado el documento; aparece en `result.warnings`:
+`byos_not_replicated` (un destino no se pudo resolver o no confirmó el JSON o
+el PDF) y `copy_report_failed` (la copia existe pero Facta no fue avisada). La
+operación sigue en `listPendingOperations()`; `recoverOperation(operationId)`
+reintenta sin reescribir lo ya guardado.

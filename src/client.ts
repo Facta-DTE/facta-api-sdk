@@ -37,6 +37,7 @@
 import { FactaError, type FactaErrorCode } from "./errors.ts";
 import { validateFactaConfig } from "./config-validation.ts";
 import { resolveCatalogRefs } from "./catalog.ts";
+import { buildSyncedDestinations, readDocumentIdentity } from "./byos-copies.ts";
 import { submitPrintJob, type PrintResult, type PrintTransport } from "./printing.ts";
 import { diagnoseStatus, type DiagnoseOptions, type DiagnosticsReport } from "./diagnostics.ts";
 import type {
@@ -45,6 +46,7 @@ import type {
   ArchiveEmissionResult,
   ArchiveOperation,
   ArchiveOperationIdentity,
+  ArchiveWarning,
   InvalidationArchive,
   InvalidationArchiveResult,
   InvalidationOperation,
@@ -138,6 +140,8 @@ export interface FactaRuntimeConfigV1 {
   archive?: InvoiceArchive;
   invalidationArchive?: InvalidationArchive;
   remoteDestinations?: readonly RemoteArtifactDestination[];
+  /** Default `true`: replicate to the destinations synced from the Facta app. `false` opts out. */
+  replicate?: boolean;
   printTransport?: PrintTransport;
 }
 
@@ -189,6 +193,11 @@ export interface DownloadOptions {
 export interface DestinationSnapshot {
   version: number;
   destinos: Array<{ id: string; kind: string; label: string; secret: string }>;
+}
+
+interface RemoteOptions {
+  destinations?: readonly RemoteArtifactDestination[] | undefined;
+  replicate?: boolean | undefined;
 }
 
 const DEFAULT_BASE_URL = "https://hcnvknpsbadplnfcflxx.supabase.co/functions/v1/api-v1";
@@ -869,7 +878,10 @@ export class Facta {
     if (!archive) throw new TypeError("issueAndArchive requires archive or runtime.archive.");
     const { operationId, idempotencyKey, signal } = options;
     throwIfAborted(signal);
-    const remoteDestinations = options.remoteDestinations ?? this.#runtime.remoteDestinations;
+    const remote: RemoteOptions = {
+      destinations: options.remoteDestinations ?? this.#runtime.remoteDestinations,
+      replicate: options.replicate ?? this.#runtime.replicate,
+    };
     if (options.includeTicket === false && options.ticketPaperWidthMm !== undefined) {
       throw new TypeError("ticketPaperWidthMm cannot be supplied when includeTicket is false.");
     }
@@ -903,12 +915,13 @@ export class Facta {
         request: withDelivery(request, options.deliver),
         archive,
         ...(signal ? { signal } : {}),
-        ...(remoteDestinations ? { remoteDestinations } : {}),
+        ...(remote.destinations ? { remoteDestinations: remote.destinations } : {}),
+        ...(remote.replicate === undefined ? {} : { replicate: remote.replicate }),
       });
     }
 
     const emission = await this.#request<IssueResult>("POST", "/v1/dte", resolved, { idempotencyKey, ...(signal ? { signal } : {}) });
-    return await this.#archiveEmission({ id: operationId, idempotencyKey, requestSha256, createdAt: new Date().toISOString(), state: "started", ...(ticketPaperWidthMm === undefined ? {} : { ticketPaperWidthMm }) }, emission, archive, signal, remoteDestinations);
+    return await this.#archiveEmission({ id: operationId, idempotencyKey, requestSha256, createdAt: new Date().toISOString(), state: "started", ...(ticketPaperWidthMm === undefined ? {} : { ticketPaperWidthMm }) }, emission, archive, signal, remote);
   }
 
   /**
@@ -930,12 +943,17 @@ export class Facta {
       archive?: InvoiceArchive;
       signal?: AbortSignal;
       remoteDestinations?: readonly RemoteArtifactDestination[];
+      /** `false` opts out of the default replication to the synced destinations. */
+      replicate?: boolean;
     } = {},
   ): Promise<ArchiveEmissionResult> {
     const request = options.request;
     const archive = options.archive ?? this.#runtime.archive;
     const signal = options.signal;
-    let remoteDestinations = options.remoteDestinations ?? this.#runtime.remoteDestinations;
+    const remote: RemoteOptions = {
+      destinations: options.remoteDestinations ?? this.#runtime.remoteDestinations,
+      replicate: options.replicate ?? this.#runtime.replicate,
+    };
     if (!archive) throw new TypeError("recoverOperation requires archive or runtime.archive.");
     await archive.assertReady();
     throwIfAborted(signal);
@@ -983,17 +1001,17 @@ export class Facta {
       if (requiredKinds.some((kind) => !storedArtifacts.some((artifact) => artifact.kind === kind))) {
         throw new FactaError("archive_integrity_error", "Journal is marked complete but required artifacts are missing.", 0, { operationId });
       }
-      const remote = remoteDestinations?.length
-        ? (await this.replicateArchive(operationId, archive, remoteDestinations, signal ? { signal } : {})).outcomes
-        : operation.remoteCopies;
+      const step = await this.#remoteStep(operationId, archive, remote, storedArtifacts, signal);
+      const remoteCopies = step.remoteCopies ?? operation.remoteCopies;
       return {
         ...(managedStorage === undefined ? {} : { managedStorage }),
         ...(storageErrorCode === undefined ? {} : { storageErrorCode }),
+        ...(step.warnings.length ? { warnings: step.warnings } : {}),
         archive: {
           state: "complete",
           operationId,
           artifacts: storedArtifacts,
-          ...(remote ? { remoteCopies: remote } : {}),
+          ...(remoteCopies ? { remoteCopies } : {}),
         },
       };
     }
@@ -1011,8 +1029,8 @@ export class Facta {
     if (operation.state === "issued" || (operation.state === "needs_attention" && operation.codigoGeneracion)) {
       const codigoGeneracion = operation.codigoGeneracion!;
       await this.getDocumentStatus(codigoGeneracion);
-      const archived = await this.#archiveArtifacts(operation.id, codigoGeneracion, archive, signal, operation.ticketPaperWidthMm, remoteDestinations);
-      return { ...(managedStorage === undefined ? {} : { managedStorage }), ...(storageErrorCode === undefined ? {} : { storageErrorCode }), archive: archived };
+      const archived = await this.#archiveArtifacts(operation.id, codigoGeneracion, archive, signal, operation.ticketPaperWidthMm, remote);
+      return { ...(managedStorage === undefined ? {} : { managedStorage }), ...(storageErrorCode === undefined ? {} : { storageErrorCode }), ...(archived.warnings.length ? { warnings: archived.warnings } : {}), archive: archived.archive };
     }
 
     {
@@ -1028,7 +1046,7 @@ export class Facta {
         idempotencyKey: operation.idempotencyKey,
         ...(signal ? { signal } : {}),
       });
-      return await this.#archiveEmission(operation, emission, archive, signal, remoteDestinations);
+      return await this.#archiveEmission(operation, emission, archive, signal, remote);
     }
   }
 
@@ -1091,6 +1109,7 @@ export class Facta {
     }
     for (const destination of destinations) {
       for (const kind of kinds) {
+        if (destination.kinds && !destination.kinds.includes(kind)) continue;
         throwIfAborted(options.signal);
         const artifact = artifacts.get(kind)!;
         const prior = (operation.remoteCopies ?? []).find((row) =>
@@ -1297,7 +1316,7 @@ export class Facta {
     emission: IssueResult,
     archive: ArchiveEmissionOptions["archive"],
     signal?: AbortSignal,
-    remoteDestinations?: readonly RemoteArtifactDestination[],
+    remote: RemoteOptions = {},
   ): Promise<ArchiveEmissionResult> {
     const artifacts: ArchiveEmissionResult["archive"]["artifacts"] = [];
     try {
@@ -1308,10 +1327,10 @@ export class Facta {
         archive,
         signal,
         operation.ticketPaperWidthMm,
-        remoteDestinations,
+        remote,
         emission,
       );
-      return { emission, ...(emission.storage === undefined ? {} : { managedStorage: emission.storage }), ...(emission.storageErrorCode === undefined ? {} : { storageErrorCode: emission.storageErrorCode }), archive: archived };
+      return { emission, ...(emission.storage === undefined ? {} : { managedStorage: emission.storage }), ...(emission.storageErrorCode === undefined ? {} : { storageErrorCode: emission.storageErrorCode }), ...(archived.warnings.length ? { warnings: archived.warnings } : {}), archive: archived.archive };
     } catch (cause) {
       const detail = cause instanceof Error ? cause.message : String(cause);
       try { await archive.markNeedsAttention(operation.id, detail.slice(0, 500)); } catch { /* Preserve the successful fiscal result. */ }
@@ -1325,9 +1344,9 @@ export class Facta {
     archive: ArchiveEmissionOptions["archive"],
     signal?: AbortSignal,
     ticketPaperWidthMm?: number,
-    remoteDestinations?: readonly RemoteArtifactDestination[],
+    remote: RemoteOptions = {},
     emission?: IssueResult,
-  ): Promise<ArchiveEmissionResult["archive"]> {
+  ): Promise<{ archive: ArchiveEmissionResult["archive"]; warnings: ArchiveWarning[] }> {
     const artifacts: ArchiveEmissionResult["archive"]["artifacts"] = [];
     try {
       const kinds = emission?.estado === "contingencia" ? ["json"] as const : ["json", "pdf"] as const;
@@ -1422,30 +1441,180 @@ export class Facta {
     } catch (cause) {
       const detail = cause instanceof Error ? cause.message : String(cause);
       try { await archive.markNeedsAttention(operationId, detail.slice(0, 500)); } catch { /* Preserve fiscal success if journaling fails. */ }
-      return { state: "needs_attention", operationId, artifacts, detail };
+      return { archive: { state: "needs_attention", operationId, artifacts, detail }, warnings: [] };
     }
-    if (remoteDestinations?.length) {
-      try {
-        const remoteCopies = (await this.replicateArchive(operationId, archive, remoteDestinations, signal ? { signal } : {})).outcomes;
-        return { state: "complete", operationId, artifacts, remoteCopies };
-      } catch {
-        return {
-          state: "complete",
-          operationId,
-          artifacts,
-          remoteCopies: remoteDestinations.flatMap((destination) => artifacts.map(({ kind, sha256 }) => ({
-            destinationId: destination.id,
-            kind,
-            label: destination.label,
-            state: "unknown" as const,
-            sha256,
-            updatedAt: new Date().toISOString(),
-            detail: "Could not record the remote outcome; the local archive is complete.",
-          }))),
-        };
+    const step = await this.#remoteStep(operationId, archive, remote, artifacts, signal);
+    return {
+      archive: {
+        state: "complete",
+        operationId,
+        artifacts,
+        ...(step.remoteCopies ? { remoteCopies: step.remoteCopies } : {}),
+      },
+      warnings: step.warnings,
+    };
+  }
+
+  /**
+   * Replicate to BYOS destinations and tell Facta about verified canonical copies.
+   * Never throws for a storage or report problem: the document is already sealed.
+   */
+  async #remoteStep(
+    operationId: string,
+    archive: InvoiceArchive,
+    remote: RemoteOptions,
+    artifacts: ArchiveEmissionResult["archive"]["artifacts"],
+    signal?: AbortSignal,
+  ): Promise<{ remoteCopies?: RemoteCopyRecord[]; warnings: ArchiveWarning[] }> {
+    const warnings: ArchiveWarning[] = [];
+    let destinations = remote.destinations;
+    if (destinations === undefined && remote.replicate !== false) {
+      const resolved = await this.#syncedDestinations(operationId, archive, signal);
+      destinations = resolved.destinations;
+      warnings.push(...resolved.warnings);
+    }
+    if (!destinations?.length) return { warnings };
+    const kindsOf = (destination: RemoteArtifactDestination) =>
+      artifacts.map(({ kind }) => kind).filter((kind) => destination.kinds === undefined || destination.kinds.includes(kind));
+    let outcomes: RemoteCopyRecord[];
+    try {
+      outcomes = (await this.replicateArchive(operationId, archive, destinations, signal ? { signal } : {})).outcomes;
+    } catch {
+      outcomes = destinations.flatMap((destination) => artifacts.filter(({ kind }) => kindsOf(destination).includes(kind)).map(({ kind, sha256 }) => ({
+        destinationId: destination.id,
+        kind,
+        label: destination.label,
+        state: "unknown" as const,
+        sha256,
+        updatedAt: new Date().toISOString(),
+        detail: "Could not record the remote outcome; the local archive is complete.",
+      })));
+    }
+    for (const destination of destinations) {
+      const bad = outcomes.filter((row) => row.destinationId === destination.id && row.state !== "stored" && kindsOf(destination).includes(row.kind));
+      if (bad.length) {
+        warnings.push({
+          code: "byos_not_replicated",
+          destinationId: destination.id,
+          detail: `Not confirmed at "${destination.label}": ${bad.map((row) => `${row.kind} (${row.state})`).join(", ")}. Retry with recoverOperation.`,
+        });
       }
     }
-    return { state: "complete", operationId, artifacts };
+    await this.#reportCopies(operationId, archive, destinations, outcomes, warnings, signal);
+    return { remoteCopies: outcomes, warnings };
+  }
+
+  async #syncedDestinations(
+    operationId: string,
+    archive: InvoiceArchive,
+    signal?: AbortSignal,
+  ): Promise<{ destinations: RemoteArtifactDestination[]; warnings: ArchiveWarning[] }> {
+    const none = { destinations: [] as RemoteArtifactDestination[], warnings: [] as ArchiveWarning[] };
+    if (this.#unlockKey === null) return none;
+    const warn = (detail: string): { destinations: RemoteArtifactDestination[]; warnings: ArchiveWarning[] } => ({
+      destinations: [],
+      warnings: [{ code: "byos_not_replicated", detail }],
+    });
+    let snapshot: DestinationSnapshot;
+    try {
+      throwIfAborted(signal);
+      snapshot = await this.syncDestinations();
+    } catch (cause) {
+      if (cause instanceof FactaError && (cause.code === "no_storage_destination" || cause.code === "not_found")) return none;
+      const code = cause instanceof FactaError ? cause.code : "unexpected_error";
+      return warn(`The destinations snapshot could not be opened (${code}); no BYOS copy was written. Retry with recoverOperation.`);
+    }
+    if (snapshot.destinos.length === 0) return none;
+    try {
+      const operation = await archive.find(operationId);
+      const code = operation?.codigoGeneracion;
+      const json = code ? await this.#getVerifiedArtifact(archive, code, "json") : null;
+      if (!json) return warn("The archived legal JSON is not available, so the canonical BYOS path could not be built.");
+      const built = buildSyncedDestinations(snapshot, {
+        environment: this.#environment(),
+        identity: readDocumentIdentity(json.bytes),
+        fetch: this.#fetch,
+      });
+      return {
+        destinations: built.destinations,
+        warnings: built.skipped.map((skip) => ({
+          code: "byos_not_replicated" as const,
+          destinationId: skip.destinationId,
+          detail: `${skip.kind}: ${skip.reason}`,
+        })),
+      };
+    } catch (cause) {
+      return warn(`BYOS destinations could not be prepared: ${cause instanceof Error ? cause.message.slice(0, 200) : "unknown error"}`);
+    }
+  }
+
+  /** `true` only when the server advertises `capabilities.byosCopyReport`; cached per client. */
+  #byosReportCapability: Promise<boolean> | undefined = undefined;
+  async #serverAcceptsByosReports(): Promise<boolean> {
+    this.#byosReportCapability ??= (async () => {
+      try {
+        const status = await this.#request<unknown>("GET", "/v1/storage/status");
+        const caps = isRecord(status) && isRecord(status.capabilities) ? status.capabilities : undefined;
+        return caps?.byosCopyReport === 1;
+      } catch (cause) {
+        if (cause instanceof FactaError && (cause.status === 404 || cause.status === 501)) return false;
+        throw cause;
+      }
+    })();
+    try {
+      return await this.#byosReportCapability;
+    } catch (cause) {
+      this.#byosReportCapability = undefined; // a transient failure is not cached
+      throw cause;
+    }
+  }
+
+  async #reportCopies(
+    operationId: string,
+    archive: InvoiceArchive,
+    destinations: readonly RemoteArtifactDestination[],
+    outcomes: RemoteCopyRecord[],
+    warnings: ArchiveWarning[],
+    signal?: AbortSignal,
+  ): Promise<void> {
+    const candidates = destinations.filter((destination) => destination.canonicalCopy !== undefined);
+    if (candidates.length === 0) return;
+    const code = (await archive.find(operationId))?.codigoGeneracion;
+    if (!code) return;
+    for (const destination of candidates) {
+      const canonical = destination.canonicalCopy!;
+      const index = outcomes.findIndex((row) => row.destinationId === destination.id && row.kind === "json");
+      const json = outcomes[index];
+      if (!json || json.state !== "stored" || json.report === "reported") continue;
+      const pdf = outcomes.find((row) => row.destinationId === destination.id && row.kind === "pdf");
+      let report: "reported" | "failed";
+      try {
+        throwIfAborted(signal);
+        if (!await this.#serverAcceptsByosReports()) continue;
+        const response = await this.#request<unknown>("POST", `/v1/storage/copies/${encodeURIComponent(code)}/byos`, {
+          secretId: canonical.secretId,
+          jsonPath: canonical.jsonPath,
+          pdfPath: pdf?.state === "stored" ? canonical.pdfPath : null,
+          verified: true,
+          pdfRegenerated: false,
+        }, signal ? { signal } : {});
+        const copy = isRecord(response) && isRecord(response.copy) ? response.copy : undefined;
+        if (copy?.recorded !== true) throw new FactaError("service_unavailable", "Facta did not confirm the copy report.", 502);
+        report = "reported";
+      } catch (cause) {
+        if (signal?.aborted) return;
+        report = "failed";
+        const reason = cause instanceof FactaError ? cause.code : "network_error";
+        warnings.push({
+          code: "copy_report_failed",
+          destinationId: destination.id,
+          detail: `The copy at "${destination.label}" is stored but Facta was not told (${reason}). Retry with recoverOperation.`,
+        });
+      }
+      const updated: RemoteCopyRecord = { ...json, report };
+      outcomes[index] = updated;
+      try { await archive.recordRemoteCopy(operationId, updated); } catch { /* the stored copy stays valid; reporting retries */ }
+    }
   }
 
   /** Reserve the correlative and get the canonical document, unsigned. */

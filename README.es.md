@@ -674,7 +674,11 @@ const { customers, products } = await facta.syncCatalog();
 ```
 
 `syncDestinations()` decrypts destination configurations but does not itself
-upload invoice artifacts. `issueAndArchive()` stores exact artifacts in the
+upload invoice artifacts. (Since this version `issueAndArchive()` and
+`recoverOperation()` do replicate to the synced destinations by default when
+`unlockKey` is set; see "Adónde van los documentos" in
+[`guides/storage-adapters.es.md`](guides/storage-adapters.es.md). `issue()` never
+writes storage; opt out with `replicate: false`.) `issueAndArchive()` stores exact artifacts in the
 configured `InvoiceArchive`; remote replication is a separate step. Each runtime
 can adapt a synced destination to the SDK's `RemoteArtifactDestination` port:
 

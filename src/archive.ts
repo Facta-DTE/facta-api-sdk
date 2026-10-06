@@ -65,6 +65,12 @@ export interface RemoteCopyRecord {
   sha256: string;
   updatedAt: string;
   detail?: string;
+  /**
+   * Whether Facta was told about this BYOS copy. Only set on the JSON record of a
+   * destination that has `canonicalCopy`; `failed` keeps the operation pending so
+   * `recoverOperation` retries the report.
+   */
+  report?: "reported" | "failed";
 }
 
 /** Runtime-specific writer supplied by the integrator for one synced destination. */
@@ -72,6 +78,15 @@ export interface RemoteArtifactDestination {
   id: string;
   kind: string;
   label: string;
+  /** Artifact kinds this destination receives; defaults to every archived kind. */
+  kinds?: readonly ArchiveArtifact["kind"][];
+  /**
+   * Set only when the destination writes to Facta's canonical archive layout
+   * (`DTE/…/YYYY/MM/<numeroControl>.json|pdf`). Such copies are reported to Facta
+   * after a verified write so the app can see them. `secretId` is the `id` of the
+   * entry in the synced destinations snapshot.
+   */
+  canonicalCopy?: { secretId: string; jsonPath: string; pdfPath: string };
   /** Repeating the same artifact/hash MUST replace or confirm identical bytes at a stable location. */
   write(artifact: ArchiveArtifact, options?: { signal?: AbortSignal }): Promise<RemoteCopyState>;
   /** Read-only check. Resolve an ambiguous write without modifying remote data. */
@@ -145,7 +160,18 @@ export interface InvalidationArchiveResult {
   };
 }
 
+/** Non-fatal problem after a document was sealed. The sealed document is never affected. */
+export interface ArchiveWarning {
+  code: "byos_not_replicated" | "copy_report_failed";
+  /** Destination the warning is about; absent when the destinations could not be resolved at all. */
+  destinationId?: string;
+  /** Safe, credential-free explanation. */
+  detail: string;
+}
+
 export interface ArchiveEmissionResult {
+  /** Typed, non-throwing problems with BYOS replication or reporting; retry with `recoverOperation`. */
+  warnings?: ArchiveWarning[];
   /** Omitted when restart recovery finds the existing DTE by generation code. */
   emission?: IssueResult;
   managedStorage?: ManagedStorageReceipt;
@@ -172,6 +198,11 @@ export interface ArchiveEmissionOptions {
   signal?: AbortSignal;
   /** Optional writes to destinations resolved locally by the integrator. */
   remoteDestinations?: readonly RemoteArtifactDestination[];
+  /**
+   * Set `false` to opt out of the default replication to the destinations synced
+   * from the Facta app (used only when `remoteDestinations` is not supplied).
+   */
+  replicate?: boolean;
 }
 
 export interface RemoteReplicationReport {

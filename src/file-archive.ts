@@ -635,7 +635,7 @@ export class FileInvoiceArchive implements InvoiceArchive, InvalidationArchive {
         if ((await hashText(value.id)) + ".enc" !== name) {
           throw new FactaError("archive_integrity_error", "Invoice journal ID does not match its archive path.", 0);
         }
-        if (value.storageErrorCode || value.state !== "complete" || value.remoteCopies?.some((copy) => copy.state !== "stored") ||
+        if (value.storageErrorCode || value.state !== "complete" || value.remoteCopies?.some((copy) => copy.state !== "stored" || copy.report === "failed") ||
           value.managedStorage?.json.state === "pending" || value.managedStorage?.json.state === "failed" ||
           value.managedStorage?.pdf.state === "pending" || value.managedStorage?.pdf.state === "failed") {
           rows.push(value);

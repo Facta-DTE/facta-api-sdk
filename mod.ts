@@ -15,6 +15,7 @@ export type {
   ArchiveEmissionResult,
   ArchiveOperation,
   ArchiveOperationIdentity,
+  ArchiveWarning,
   InvalidationArchive,
   InvalidationArchiveResult,
   InvalidationOperation,
