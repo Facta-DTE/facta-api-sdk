@@ -56,16 +56,22 @@ An `IssueResult` is a discriminated union. Check `result.estado`: `"sellado"` me
 | Option | Purpose |
 | --- | --- |
 | `apiKey` | Required `facta_test_…` or `facta_live_…` key. The key selects the Hacienda environment. |
-| `signKey` | Required for `issue`, `prepare` + `sign`, and `invalidate`. Sent only on signing operations. |
+| `signKey` | Required for `issue`, `prepare` + `sign`, `invalidate`, and `registerReturn`. Sent only on signing operations. |
 | `unlockKey` | Optional `factauk_…` key used locally to decrypt synchronized catalog and destination bundles. Never sent to the API. |
 | `baseUrl` | Optional API host. Defaults to Facta's public API URL. |
 | `timeoutMs` | Request timeout, default 60,000 ms, including response-body reading. |
 | `maxRetries` | Retry limit for explicitly retryable transport/service failures; defaults to 3. |
 | `fetch` | Optional fetch implementation for an owning runtime or tests. |
+| `clock` | Reference clock for archive timestamps and S3 signing: `true` (default, the public `https://clock.factadte.com/`), a URL, or `false` for the device clock. Calibrated lazily, never blocks and never fails an operation. |
+| `clockFetch` | Optional fetch used only to calibrate the clock. |
 | `config` | Optional versioned scalar configuration (`FactaConfigV1`). |
 | `runtime` | Optional default archive, invalidation archive, remote destinations, and print transport (`FactaRuntimeConfigV1`). |
 
 Configuration values do not include credentials. Flat legacy options override matching versioned config values. See the [Node guide](guides/node.md) or [Deno guide](guides/deno.md) for runtime setup and environment permissions.
+
+## Reference clock
+
+A document's own date and time are set by Facta's server, never by this SDK. The SDK's clock matters for two local things: SigV4 signatures on S3-compatible uploads (S3 refuses a request signed more than 15 minutes from its own time, `RequestTimeTooSkewed`) and the timestamps in archive records. `new Facta({ apiKey })` keeps one NTP-style reference clock (`facta.clock`): three calibration samples at first use, then the monotonic clock answers locally and recalibrates only when its uncertainty passes 500 ms, after `nextSyncAfterMs` or when the device time jumps. Share it with an S3 destination with `createS3ArtifactDestination({ ..., clock: facta.clock ?? false })`; without it the destination keeps its own. An unreachable clock service falls back to the device clock. See the [clock guide](https://sdk.factadte.com/guias/reloj-de-referencia/).
 
 ## Public client surface
 
@@ -73,7 +79,7 @@ The `Facta` client exposes the following English methods:
 
 - **Status and diagnostics:** `status`, `diagnose`, `getContract`, `getStorageStatus`.
 - **Synchronization and catalog:** `syncDestinations`, `syncCatalog`, `catalogState`, `listCustomers`, `getCustomer`, `searchCustomers`, `listProducts`, `getProduct`, `searchProducts`.
-- **DTE lifecycle:** `issue`, `prepare`, `sign`, `getDocumentStatus`, `listDocuments`, `invalidate`, `listHolding`, `downloadDocument`, `getDocumentCopies`, `retryDocumentStorage`.
+- **DTE lifecycle:** `issue`, `prepare`, `sign`, `getDocumentStatus`, `listDocuments`, `invalidate`, `registerReturn`, `listHolding`, `downloadDocument`, `getDocumentCopies`, `retryDocumentStorage`.
 - **Durable archival:** `issueAndArchive`, `recoverOperation`, `listPendingOperations`, `invalidateAndArchive`, `recoverInvalidation`, `listPendingInvalidations`, `replicateArchive`, `diagnoseDestinations`.
 - **Delivery by e-mail and WhatsApp:** `issue(request, { deliver })`, `deliverEmail`, `deliverWhatsApp`, `getDelivery`, `waitForDelivery`. Issuing never waits for delivery; each channel is a separate request with a five-minute token and failures are reported as states.
 - **Local printing:** `print`.
