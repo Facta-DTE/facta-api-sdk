@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { RECIPE_SPECS } from "../../../server/recipes/specs.ts";
 import { RecipePanel } from "./recipe-panel.tsx";
 import { loadMine, type MyDocument } from "./recipes-api.ts";
+import { RECIPE_SHORT_TITLES, RECIPE_SUBTITLES } from "./subtitles.ts";
 import "./recipes.css";
 
 // Solo servidor: fixed recipes (server/recipes/*.ts) the Worker runs against staging with
@@ -22,27 +23,33 @@ export function ServerRecipes() {
     setSelected(id);
     window.history.replaceState(null, "", `${window.location.pathname}?receta=${id}`);
   };
-  const spec = RECIPE_SPECS.find((s) => s.id === selected)!;
+  const index = RECIPE_SPECS.findIndex((s) => s.id === selected);
+  const spec = RECIPE_SPECS[index]!;
 
   return (
-    <section className="pg-page">
-      <header className="pg-hero">
-        <p className="pg-eyebrow">Solo servidor · ambiente de pruebas</p>
-        <h1>Recetas para integrar Facta DTE desde su servidor</h1>
-        <p className="pg-lead">
-          Cada receta es un archivo real: lo ve completo y lo puede ejecutar aquí contra el ambiente de pruebas.
-          Usted solo escribe los parámetros; la llave vive en el servidor del playground.
-        </p>
-      </header>
-      <div className="pg-recipes">
-        <nav className="pg-recipe-nav" aria-label="Recetas">
-          {RECIPE_SPECS.map((s) => (
-            <button type="button" key={s.id} aria-current={s.id === selected ? "true" : undefined} onClick={() => choose(s.id)}>{s.title}</button>
-          ))}
-        </nav>
-        <RecipePanel key={spec.id} spec={spec} mine={mine} onIssued={onIssued} />
+    <div className="srv">
+      <nav className="srv-rail" aria-label="Recetas">
+        <h2 className="srv-rail-title">Recetas</h2>
+        {RECIPE_SPECS.map((s, i) => (
+          <button type="button" key={s.id} className="srv-rail-item" aria-current={s.id === selected ? "true" : undefined} onClick={() => choose(s.id)}>
+            <span className="srv-num" aria-hidden>{i + 1}</span>
+            <span>
+              <b>{RECIPE_SHORT_TITLES[s.id] ?? s.title}</b>
+              <small>{RECIPE_SUBTITLES[s.id] ?? ""}</small>
+            </span>
+          </button>
+        ))}
+      </nav>
+      <div className="srv-select">
+        <label className="pg-field">
+          <span>Receta</span>
+          <select value={selected} onChange={(event) => choose(event.target.value)}>
+            {RECIPE_SPECS.map((s, i) => <option key={s.id} value={s.id}>{i + 1} · {RECIPE_SHORT_TITLES[s.id] ?? s.title}</option>)}
+          </select>
+        </label>
       </div>
-    </section>
+      <RecipePanel key={spec.id} spec={spec} number={index + 1} mine={mine} onIssued={onIssued} />
+    </div>
   );
 }
 

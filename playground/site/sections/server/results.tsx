@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { RunFile, RunResponse } from "./recipes-api.ts";
+import type { RunFile, RunResponse, RunStep } from "./recipes-api.ts";
 
 function blobOf(file: RunFile): Blob | null {
   if (file.base64 === undefined) return null;
@@ -28,72 +28,97 @@ function FileView({ file }: { file: RunFile }) {
   }, [blob, file.contentType]);
 
   return (
-    <details className="pg-file" open>
-      <summary>
-        {file.name} <small>({Math.max(1, Math.round(file.size / 1024))} KB)</small>
-      </summary>
+    <div className="srv-file">
+      <div className="srv-file-head">
+        <span className="mono">{file.name} <small>({Math.max(1, Math.round(file.size / 1024))} KB)</small></span>
+        {url !== null && <a className="pg-btn pg-btn--sm" href={url} download={file.name}>Descargar</a>}
+      </div>
       {blob === null && <p className="pg-note">El archivo es demasiado grande para mostrarlo aquí.</p>}
-      {url !== null && <a className="pg-btn" href={url} download={file.name}>Descargar</a>}
-      {url !== null && file.contentType.includes("pdf") && <iframe className="pg-pdf" title={`Vista previa de ${file.name}`} src={url} />}
-      {text !== null && <pre className="pg-json" tabIndex={0}>{text}</pre>}
-    </details>
+      {url !== null && file.contentType.includes("pdf") && <iframe className="srv-pdf" title={`Vista previa de ${file.name}`} src={url} />}
+      {text !== null && <pre className="srv-json" tabIndex={0}>{text}</pre>}
+    </div>
   );
 }
 
-export function Results({ run }: { run: RunResponse }) {
+/** One run's calls, as the timeline rows of the board (a retry is its own row). */
+export interface TimelineRun { retry: boolean; steps: RunStep[]; issuedLabel: string | null }
+
+const seconds = (ms: number) => `${(ms / 1000).toFixed(2)} s`;
+
+export function Timeline({ runs, sameDocument }: { runs: TimelineRun[]; sameDocument: { code: string } | null }) {
+  const rows = runs.flatMap((run, runIndex) => run.steps.map((step, i) => ({ run, step, runIndex, last: i === run.steps.length - 1 })));
+  if (rows.length === 0) return null;
   return (
-    <div className="pg-results" data-testid="recipe-results">
-      {run.ok ? (
-        <p className="pg-ok" role="status">Listo en {run.totalMs} ms.</p>
-      ) : (
-        <div role="alert" className="pg-fail">
-          <strong>{run.error?.message ?? "La receta no se completó."}</strong>
-          <p className="pg-note">Código: <code>{run.error?.code}</code>{run.error?.status ? ` · HTTP ${run.error.status}` : ""}</p>
-          {run.error?.spent && (
-            <p className="pg-note">Hacienda rechazó el documento y ya gastó el correlativo {run.error.spent.numeroControl}.</p>
-          )}
-          {run.error?.observations?.map((o) => <p className="pg-note" key={o}>Hacienda: {o}</p>)}
-        </div>
-      )}
+    <ol className="srv-timeline" aria-label="Llamadas al API">
+      {rows.map(({ run, step, last, runIndex }, index) => {
+        const failed = step.status === null || step.status >= 400;
+        const tone = failed ? "bad" : run.retry ? "retry" : "ok";
+        const isLastRow = index === rows.length - 1;
+        return (
+          <li key={index} className="srv-step">
+            <span className={`srv-dot srv-dot--${tone}`} aria-hidden />
+            <div>
+              <div className="srv-step-head">
+                <span className="mono">{step.method} {step.endpoint}{run.retry && runIndex > 0 ? " · reintento" : ""}</span>
+                <span>{seconds(step.ms)}</span>
+              </div>
+              <div className="srv-step-detail">
+                {step.status ?? "sin respuesta"}{last && run.issuedLabel !== null ? ` · sellada · ${run.issuedLabel}` : ""}
+              </div>
+              {isLastRow && sameDocument !== null && <div className="srv-same">El mismo documento: {sameDocument.code}</div>}
+            </div>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
 
-      <h3>Solicitudes al API</h3>
-      {run.steps.length === 0 ? <p className="pg-note">No se llegó a llamar al API.</p> : (
-        <div className="pg-table-wrap">
-          <table className="pg-table">
-            <thead><tr><th>Método</th><th>Dirección</th><th>Estado</th><th>Tiempo</th></tr></thead>
-            <tbody>
-              {run.steps.map((step, index) => (
-                <tr key={index}>
-                  <td>{step.method}</td>
-                  <td><code>{step.endpoint}</code></td>
-                  <td>{step.status ?? "—"}</td>
-                  <td>{step.ms} ms</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {run.steps.some((s) => s.request !== undefined) && (
-        <details>
-          <summary>Cuerpo de las solicitudes (sin llaves)</summary>
-          <pre className="pg-json" tabIndex={0}>{JSON.stringify(run.steps.filter((s) => s.request !== undefined).map((s) => ({ [`${s.method} ${s.endpoint}`]: s.request })), null, 2)}</pre>
-        </details>
-      )}
+/** Failure or notices of the last run. */
+export function RunNotice({ run }: { run: RunResponse }) {
+  if (run.ok) return null;
+  return (
+    <div role="alert" className="srv-fail" data-testid="recipe-results">
+      <strong>{run.error?.message ?? "La receta no se completó."}</strong>
+      <p>Código: <code>{run.error?.code}</code>{run.error?.status ? ` · HTTP ${run.error.status}` : ""}</p>
+      {run.error?.spent && <p>Hacienda rechazó el documento y ya gastó el correlativo {run.error.spent.numeroControl}.</p>}
+      {run.error?.observations?.map((o) => <p key={o}>Hacienda: {o}</p>)}
+      {run.steps.length === 0 && <p>No se llegó a llamar al API.</p>}
+    </div>
+  );
+}
 
-      {run.result !== null && (
-        <>
-          <h3>Respuesta</h3>
-          <p className="pg-note">Se muestra sin llaves, rutas ni identificadores de almacenamiento.</p>
-          <pre className="pg-json" tabIndex={0}>{JSON.stringify(run.result, null, 2)}</pre>
-        </>
-      )}
-      {run.files.length > 0 && (
-        <>
-          <h3>Archivos</h3>
-          {run.files.map((file) => <FileView key={file.name} file={file} />)}
-        </>
-      )}
+type Tab = "response" | "pdf" | "json";
+
+/** Respuesta / PDF / JSON firmado: the redacted result and the real files of the run. */
+export function ResultTabs({ run }: { run: RunResponse }) {
+  const [tab, setTab] = useState<Tab>("response");
+  const pdfs = run.files.filter((f) => f.contentType.includes("pdf"));
+  const others = run.files.filter((f) => !f.contentType.includes("pdf"));
+  const tabs: Array<[Tab, string]> = [["response", "Respuesta"], ["pdf", "PDF"], ["json", "JSON firmado"]];
+  const requests = run.steps.filter((s) => s.request !== undefined);
+  return (
+    <div className="srv-result" data-testid={run.ok ? "recipe-results" : undefined}>
+      <div role="tablist" aria-label="Resultado" className="srv-tabs">
+        {tabs.map(([id, label]) => (
+          <button key={id} type="button" role="tab" id={`srv-tab-${id}`} aria-selected={tab === id} aria-controls="srv-tabpanel" onClick={() => setTab(id)}>{label}</button>
+        ))}
+      </div>
+      <div role="tabpanel" id="srv-tabpanel" aria-labelledby={`srv-tab-${tab}`} className="srv-tabpanel">
+        {tab === "response" && (
+          <>
+            {run.result !== null ? <pre className="srv-json" tabIndex={0}>{JSON.stringify(run.result, null, 2)}</pre> : <p className="pg-note">Esta receta no devolvió datos.</p>}
+            {requests.length > 0 && (
+              <details className="srv-requests">
+                <summary>Cuerpo de las solicitudes (sin llaves)</summary>
+                <pre className="srv-json" tabIndex={0}>{JSON.stringify(requests.map((s) => ({ [`${s.method} ${s.endpoint}`]: s.request })), null, 2)}</pre>
+              </details>
+            )}
+          </>
+        )}
+        {tab === "pdf" && (pdfs.length > 0 ? pdfs.map((f) => <FileView key={f.name} file={f} />) : <p className="pg-note">Esta ejecución no produjo un PDF.</p>)}
+        {tab === "json" && (others.length > 0 ? others.map((f) => <FileView key={f.name} file={f} />) : <p className="pg-note">Esta ejecución no produjo un JSON firmado.</p>)}
+      </div>
     </div>
   );
 }
