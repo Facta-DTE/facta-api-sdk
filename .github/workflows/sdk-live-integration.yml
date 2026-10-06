@@ -66,6 +66,9 @@ jobs:
           STAGING_FACTA_SIGN_KEY: ${{ secrets.STAGING_FACTA_SIGN_KEY }}
           STAGING_FACTA_UNLOCK_KEY: ${{ secrets.STAGING_FACTA_UNLOCK_KEY }}
           STAGING_FACTA_DTE_FIXTURES_JSON: ${{ secrets.STAGING_FACTA_DTE_FIXTURES_JSON }}
+          # Optional test inbox for the e-mail delivery check. A reached mail
+          # quota or provider outage there is a WARNING, never a failed run.
+          STAGING_FACTA_DELIVERY_EMAIL: ${{ secrets.STAGING_FACTA_DELIVERY_EMAIL }}
           STAGING_FACTA_API_BASE_URL: https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1
           FACTA_LIVE_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.confirmation || 'emit-test-fe' }}
           GITHUB_RUN_CREATED_AT: ${{ steps.run-age.outputs.created_at }}

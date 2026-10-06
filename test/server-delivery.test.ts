@@ -179,6 +179,34 @@ Deno.test("a failing channel POST is captured in onEvent and never fails the iss
   assert(!JSON.stringify(events).includes(TOKEN));
 });
 
+Deno.test("a quota_exceeded e-mail state reaches the browser as a state, with no delivery_error and a 200 issue", async () => {
+  const fake = fakeFacta({
+    deliverEmail: () => Promise.resolve({ estado: "fallido", motivo: "quota_exceeded", destino: "m•••@ejemplo.com" }),
+  });
+  const { handler, events } = make(fake);
+  const res = await post(handler, { action: "issue", session: await session({ deliver: { email: true } }) });
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.result.estado, "sellado");
+  assertEquals(body.delivery.canales.correo.estado, "fallido");
+  assertEquals(body.delivery.canales.correo.motivo, "quota_exceeded");
+  await new Promise((r) => setTimeout(r, 5));
+  assertEquals(events.some((e) => e.type === "delivery_error"), false);
+});
+
+Deno.test("a rate-limited channel POST (429) is an event, never a failed issue", async () => {
+  const fake = fakeFacta({
+    deliverEmail: () => Promise.reject(new FactaError("rate_limited", "slow down", 429)),
+  });
+  const { handler, events } = make(fake);
+  const res = await post(handler, { action: "issue", session: await session({ deliver: { email: true } }) });
+  assertEquals(res.status, 200);
+  assertEquals((await res.json()).result.estado, "sellado");
+  await new Promise((r) => setTimeout(r, 5));
+  const failure = events.find((e) => e.type === "delivery_error");
+  assertEquals(failure && "status" in failure ? failure.status : null, 429);
+});
+
 Deno.test("a contingency document marks channels but never POSTs (no token)", async () => {
   const fake = fakeFacta({
     issue: {

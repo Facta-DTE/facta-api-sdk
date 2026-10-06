@@ -423,6 +423,11 @@ if (dte.estado === "sellado" && dte.entrega?.token) {
   mensajes de error.
 * `waitForDelivery(codigoGeneracion, { channels?, timeoutMs = 60000, intervalMs = 2000, signal? })`
   devuelve `settled: false` al agotar el tiempo en vez de lanzar.
+* `isDeliveryLimitReason(motivo)` (exportada de la raíz y de `/browser`) es
+  `true` para `quota_exceeded` y `provider_unavailable`: se alcanzó el límite
+  de envíos o el proveedor no respondió. El documento ya está emitido; trátelo
+  como un aviso, ofrezca el PDF o el JSON y reintente más tarde. Ni `issue` ni
+  `waitForDelivery` lanzan por estos motivos.
 
 ### `getDocumentStatus(generationCode)`
 

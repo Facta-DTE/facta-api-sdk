@@ -107,6 +107,35 @@ describe("delivery rows", () => {
     await screen.findByText("Dirección rechazada");
   });
 
+  it("shows a reached e-mail quota as a non-blocking warning, never as an error", async () => {
+    const { client } = clientWith(view({ correo: { estado: "fallido", motivo: "quota_exceeded", destino: "m•••@ejemplo.com" } }), []);
+    const onClose = vi.fn();
+    renderInline(client, { onClose });
+    await screen.findByText("Se alcanzó el límite de envíos");
+    screen.getByText("El documento ya está emitido; descargue el PDF o el JSON y compártalo, o reintente más tarde.");
+    expect(screen.queryByText("No se pudo enviar el correo")).toBeNull();
+    const row = document.querySelector('[data-channel="correo"]')!;
+    expect(row.getAttribute("data-tone")).toBe("warn");
+    expect(row.querySelector(".facta-storage--warn")).toBeTruthy();
+    expect(row.querySelector(".facta-storage--problem")).toBeNull();
+    // The document stays sealed and closable.
+    const done = screen.getByRole("button", { name: "Listo" });
+    expect((done as HTMLButtonElement).disabled).toBe(false);
+    await userEvent.setup().click(done);
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("shows an unavailable mail provider as a warning too, while a rejected address stays a problem", async () => {
+    const { client } = clientWith(view({
+      correo: { estado: "fallido", motivo: "provider_unavailable" },
+      whatsapp: { estado: "fallido", motivo: "smtp_rejected" },
+    }), []);
+    renderInline(client);
+    await screen.findByText("El proveedor no respondió");
+    expect(document.querySelector('[data-channel="correo"]')!.getAttribute("data-tone")).toBe("warn");
+    expect(document.querySelector('[data-channel="whatsapp"]')!.getAttribute("data-tone")).toBe("problem");
+  });
+
   it("shows only the marked channels, e-mail first", async () => {
     const { client } = clientWith(view({
       whatsapp: { estado: "enviado", destino: "+503 •••• 0000" },

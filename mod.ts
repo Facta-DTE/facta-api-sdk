@@ -36,6 +36,7 @@ export type {
   DiagnosticsReport,
   DiagnosticState,
 } from "./src/diagnostics.ts";
+export { DELIVERY_LIMIT_REASONS, isDeliveryLimitReason } from "./src/delivery.ts";
 export {
   FactaError,
   type FactaErrorCode,
