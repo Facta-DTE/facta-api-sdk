@@ -26,8 +26,10 @@
 .wb-ready { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--pg-track); color: var(--pg-ok); font-weight: 600; }
 
 .wb-stage {
-  flex: 1; margin: 18px 28px 0; border-radius: 14px; border: 1px dashed #c9d3db; background-color: #eef2f5;
-  background-image: radial-gradient(#d4dde4 1px, transparent 1px); background-size: 16px 16px; padding: 44px 24px 28px; min-height: 420px; position: relative;
+  /* Sized by its content, not stretched to the code column's height, so the
+     example stays centred on screen. */
+  flex: 0 0 auto; margin: 18px 28px 0; border-radius: 14px; border: 1px dashed #c9d3db; background-color: #eef2f5;
+  background-image: radial-gradient(#d4dde4 1px, transparent 1px); background-size: 16px 16px; padding: 44px 24px 28px; min-height: 280px; position: relative;
   display: flex; flex-direction: column;
 }
 .wb-stage--center { align-items: center; justify-content: center; }
