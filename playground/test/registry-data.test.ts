@@ -11,6 +11,8 @@ describe("registry rows", () => {
   it("shows the total stored at issue time, else the API's view, else nothing", () => {
     expect(totalOf(row({ total: 12.5 }))).toBe(12.5);
     expect(totalOf(row({ current: { estado: "sellado", totales: { montoTotalOperacion: 9.99 } } as never }))).toBe(9.99);
+    // A real Factura (01) from staging carries `totalPagar` and no `montoTotalOperacion`.
+    expect(totalOf(row({ current: { estado: "sellado", totales: { totalGravada: 1, totalIva: 0.12, totalPagar: 1 } } as never }))).toBe(1);
     expect(totalOf(row())).toBeNull();
   });
 

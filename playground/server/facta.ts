@@ -74,7 +74,7 @@ export function createFactaParts(env: PlaygroundEnv, visitorOf: VisitorOf, facta
       }
       // The total is stored now, so no list ever has to ask the API for it. A contingency has no
       // sealed totals yet: the figure the visitor reviewed is the one shown.
-      const sealedTotal = result.estado === "sellado" ? result.totales?.montoTotalOperacion : undefined;
+      const sealedTotal = result.estado === "sellado" ? (result.totales?.totalPagar ?? result.totales?.montoTotalOperacion) : undefined;
       const total = typeof sealedTotal === "number" ? sealedTotal : session.display?.total;
       // A sealed document is already a complete answer to «what does the API say about it?»: keep it, so
       // Registro and Inicio never spend an API request to read what was just issued.

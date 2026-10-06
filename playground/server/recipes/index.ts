@@ -89,7 +89,8 @@ function codeOf(result: unknown): Array<{ codigoGeneracion: string; tipoDte: str
   if (!isRecord(result)) return [];
   const { codigoGeneracion, tipoDte, numeroControl, estado } = result;
   if ((estado !== "sellado" && estado !== "contingencia") || typeof codigoGeneracion !== "string" || typeof tipoDte !== "string" || typeof numeroControl !== "string") return [];
-  const total = isRecord(result.totales) && typeof result.totales.montoTotalOperacion === "number" ? result.totales.montoTotalOperacion : undefined;
+  const total = isRecord(result.totales) && typeof result.totales.totalPagar === "number" ? result.totales.totalPagar
+    : isRecord(result.totales) && typeof result.totales.montoTotalOperacion === "number" ? result.totales.montoTotalOperacion : undefined;
   return [{ codigoGeneracion, tipoDte, numeroControl, estado, ...(total === undefined ? {} : { total }) }];
 }
 

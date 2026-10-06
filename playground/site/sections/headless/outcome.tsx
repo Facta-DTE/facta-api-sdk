@@ -27,7 +27,7 @@ export function Outcome({ state, skin, onRetry }: { state: FlowState; skin: stri
         <dl>
           <dt>Número de control</dt><dd>{truncateMiddle(result.numeroControl, 12, 8)}</dd>
           {result.selloRecibido && <><dt>Sello</dt><dd>{truncateMiddle(result.selloRecibido)}</dd></>}
-          {result.totales?.montoTotalOperacion !== undefined && <><dt>Total</dt><dd>{formatMoney(result.totales.montoTotalOperacion)}</dd></>}
+          {(result.totales?.totalPagar ?? result.totales?.montoTotalOperacion) !== undefined && <><dt>Total</dt><dd>{formatMoney((result.totales?.totalPagar ?? result.totales?.montoTotalOperacion)!)}</dd></>}
         </dl>
       )}
       {step === "contingency" && <p>El documento ya tiene número; se enviará cuando Hacienda vuelva a responder.</p>}

@@ -333,8 +333,10 @@ export async function handleApi(request: Request, env: PlaygroundEnv, deps: ApiD
       if (entry === undefined) continue;
       try {
         const current = projectDocument(await parts.facta.getDocumentStatus(code), { exposeRecipient: false });
-        const totales = current.totales as { montoTotalOperacion?: unknown } | null;
-        const total = typeof totales?.montoTotalOperacion === "number" ? totales.montoTotalOperacion : undefined;
+        const totales = current.totales as { totalPagar?: unknown; montoTotalOperacion?: unknown } | null;
+        // `totalPagar` is present for every type; `montoTotalOperacion` only for some (not the FE).
+        const total = typeof totales?.totalPagar === "number" ? totales.totalPagar
+          : typeof totales?.montoTotalOperacion === "number" ? totales.montoTotalOperacion : undefined;
         const estado = typeof current.estado === "string" ? current.estado : entry.estado;
         // Keep the ledger in step: the last known state, and the total when none was stored (older rows).
         if (estado !== entry.estado || (total !== undefined && entry.total === undefined)) {

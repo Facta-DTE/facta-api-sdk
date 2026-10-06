@@ -9,7 +9,9 @@ export const TYPE_NAMES: Record<string, string> = { "01": "Factura", "03": "Cré
 /** Document total: the one stored when it was issued, else the API's current view when it was read. */
 export function totalOf(d: RegistryDocument): number | null {
   if (typeof d.total === "number") return d.total;
-  const totales = (d.current as { totales?: { montoTotalOperacion?: unknown } | null } | null)?.totales;
+  // The API's projection carries `totalPagar` for every type; `montoTotalOperacion` only for some.
+  const totales = (d.current as { totales?: { totalPagar?: unknown; montoTotalOperacion?: unknown } | null } | null)?.totales;
+  if (typeof totales?.totalPagar === "number") return totales.totalPagar;
   return typeof totales?.montoTotalOperacion === "number" ? totales.montoTotalOperacion : null;
 }
 
