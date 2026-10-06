@@ -22,6 +22,7 @@ import { ServiceStatusExample } from "./examples/service-status.tsx";
 import { WindowHookExample } from "./examples/window-hook.tsx";
 import { SaleBuilder } from "./sale-builder.tsx";
 import { ScreenStateProvider, useScreens } from "./screen-state.tsx";
+import { IssueInsight } from "../../components/timings.tsx";
 
 type Pane = "venta" | "vista" | "codigo";
 
@@ -208,6 +209,7 @@ function Workbench() {
           {s.prepared !== null && (
             <p className="pg-note wb-ready" role="status">
               Venta lista: {s.prepared.title} · ${s.prepared.total.toFixed(2)}{s.prepared.emailTo ? ` · correo a ${s.prepared.emailTo}` : ""}.
+              {s.prepared.idempotencyKey !== undefined && <> Llave de idempotencia: <code data-testid="idempotency-key">{s.prepared.idempotencyKey}</code>. Si emite este mismo pedido otra vez, Hacienda no emitirá otra factura.</>}
             </p>
           )}
         </div>
@@ -224,6 +226,7 @@ function Workbench() {
             </div>
           </div>
         )}
+        {item.window && <IssueInsight />}
       </section>
 
       <div className="wb-code" data-pane-show="codigo">

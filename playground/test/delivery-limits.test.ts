@@ -406,14 +406,21 @@ describe("the server never requests WhatsApp", () => {
 const API = "https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1";
 
 function fakeApi(calls: string[]): typeof fetch {
+  // The first idempotency key gets CODE; every other key a code of its own, as the real API issues them.
+  const codes = new Map<string, string>();
+  const codeOf = (key: string) => {
+    if (!codes.has(key)) codes.set(key, codes.size === 0 ? CODE : `${(codes.size).toString(16).padStart(8, "0").toUpperCase()}${CODE.slice(8)}`);
+    return codes.get(key)!;
+  };
   const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
   return (async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = String(input).slice(API.length);
     const method = (init?.method ?? "GET").toUpperCase();
     calls.push(`${method} ${path}`);
     if (method === "POST" && path === "/v1/dte") {
+      const code = codeOf(new Headers(init?.headers).get("idempotency-key") ?? "none");
       return json({
-        estado: "sellado", codigoGeneracion: CODE, numeroControl: "DTE-01-M001P001-000000000000001", tipoDte: "01", ambiente: "00",
+        estado: "sellado", codigoGeneracion: code, numeroControl: "DTE-01-M001P001-000000000000001", tipoDte: "01", ambiente: "00",
         fecEmi: "2026-10-06", horEmi: "10:00:00", selloRecibido: "SELLO", totales: { totalPagar: 1 }, observaciones: [],
         entrega: { token: "fdt_recipe_secret_token", venceEn: new Date(T0 + 5 * 60_000).toISOString(), canales: { correo: { estado: "pendiente", destino: "c•••@example.com" } } },
       });
@@ -458,45 +465,63 @@ describe("recipe «Entregar por correo»", () => {
     expect(calls).toEqual([]);
   });
 
-  it("issues with the e-mail marked, asks deliverEmail with the token and waits, without leaking the token", async () => {
+  it("is two calls: stage 1 issues and marks the e-mail, stage 2 sends with the sealed token, and the token never reaches the page", async () => {
     const { run, calls } = await recipeWorld();
-    const response = await run({ recipe: "deliver-email", params: { email: "cliente@example.com" } });
-    expect(response.status).toBe(200);
-    const text = await response.text();
-    expect(text).not.toContain("fdt_recipe_secret_token");
-    expect(text).not.toContain("cliente@example.com");
-    const body = JSON.parse(text) as { ok: boolean; issued: unknown[]; steps: Array<{ method: string; endpoint: string }> };
-    expect(body.ok).toBe(true);
-    expect(body.issued).toEqual([{ codigoGeneracion: CODE, tipoDte: "01" }]);
-    expect(calls.slice(0, 3)).toEqual(["POST /v1/dte", `POST /v1/dte/${CODE}/entrega/correo`, `GET /v1/dte/${CODE}/entrega`]);
+    const first = await run({ recipe: "deliver-email", stage: "issue", runId: "two-calls-aaaa", params: { email: "cliente@example.com" } });
+    expect(first.status).toBe(200);
+    const issueText = await first.text();
+    expect(issueText).not.toContain("fdt_recipe_secret_token");
+    expect(issueText).not.toContain("cliente@example.com");
+    const issueBody = JSON.parse(issueText) as { ok: boolean; issued: unknown[]; continuation?: string; result: { entrega: { tokenRecibido: boolean } } };
+    expect(issueBody.ok).toBe(true);
+    expect(issueBody.issued).toEqual([{ codigoGeneracion: CODE, tipoDte: "01" }]);
+    expect(issueBody.result.entrega.tokenRecibido).toBe(true);
+    // Stage 1 made ONE call: nothing was sent yet.
+    expect(calls).toEqual(["POST /v1/dte"]);
+    const second = await run({ recipe: "deliver-email", stage: "send", runId: "two-calls-aaaa", params: { continuation: issueBody.continuation } });
+    expect(second.status).toBe(200);
+    expect(await second.text()).not.toContain("fdt_recipe_secret_token");
+    expect(calls).toEqual(["POST /v1/dte", `POST /v1/dte/${CODE}/entrega/correo`, `GET /v1/dte/${CODE}/entrega`]);
   });
 
-  it("validates the address and limits the sends to 5 per hour", async () => {
+  it("refuses stage 2 without the hand-over of stage 1", async () => {
+    const { run, calls } = await recipeWorld();
+    const response = await run({ recipe: "deliver-email", stage: "send", params: { continuation: "x".repeat(60) } });
+    expect(response.status).toBe(410);
+    expect(calls).toEqual([]);
+  });
+
+  it("validates the address and counts the sends (5 per hour) when they are SENT, not when the e-mail is marked", async () => {
     const { run } = await recipeWorld();
     const bad = await run({ recipe: "deliver-email", params: { email: "a@x.com,b@y.com" } });
     expect(bad.status).toBe(400);
     expect(((await bad.json()) as { error: { code: string } }).error.code).toBe("email_invalid");
-    for (let i = 0; i < 5; i++) expect((await run({ recipe: "deliver-email", runId: `run-${i}-aaaaaaaa`, params: { email: `dest${i}@example.com` } })).status).toBe(200);
-    const sixth = await run({ recipe: "deliver-email", runId: "run-9-aaaaaaaa", params: { email: "dest9@example.com" } });
+    for (let i = 0; i < 5; i++) {
+      const runId = `run-${i}-aaaaaaaa`;
+      const first = (await (await run({ recipe: "deliver-email", stage: "issue", runId, params: { email: `dest${i}@example.com` } })).json()) as { continuation: string };
+      expect((await run({ recipe: "deliver-email", stage: "send", runId, params: { continuation: first.continuation } })).status).toBe(200);
+    }
+    // Once the five are spent, stage 1 is refused up front (the check counts nothing): no document is issued for a mail that cannot go.
+    const sixth = await run({ recipe: "deliver-email", stage: "issue", runId: "run-9-aaaaaaaa", params: { email: "dest9@example.com" } });
     expect(sixth.status).toBe(429);
     expect(sixth.headers.get("retry-after")).not.toBeNull();
     expect(((await sixth.json()) as { error: { message: string } }).error.message).toMatch(/Se alcanzó el límite de envíos/);
   });
 
-  it("delivers a document the visitor owns with the kept token, and refuses one that is not theirs", async () => {
+  it("delivers a document the visitor owns with the kept token (stage 2 alone), and refuses one that is not theirs", async () => {
     const { run, calls, post } = await recipeWorld();
     // Issued through a session with the e-mail marked: the Worker keeps its five-minute token.
     const session = ((await (await post("/api/session", { ...SALE, sendEmail: true, emailTo: "cliente@example.com" })).json()) as { session: string }).session;
     expect((await post("/api/facta", issueBody(session))).status).toBe(200);
-    const other = await run({ recipe: "deliver-email", params: { code: "AAAAAAAA-9B3D-4A6E-8F10-2D5B7C9E1A34" } });
+    const other = await run({ recipe: "deliver-email", stage: "send", params: { code: "AAAAAAAA-9B3D-4A6E-8F10-2D5B7C9E1A34" } });
     expect(other.status).toBe(403);
     const before = calls.length;
-    const owned = await run({ recipe: "deliver-email", runId: "owned-run-aaaa", params: { code: CODE } });
+    const owned = await run({ recipe: "deliver-email", stage: "send", runId: "owned-run-aaaa", params: { code: CODE } });
     expect(owned.status).toBe(200);
     expect(calls.slice(before)).toContain(`POST /v1/dte/${CODE}/entrega/correo`);
     expect(await owned.text()).not.toContain("fdt_recipe_secret_token");
     // One send per document every 10 minutes also applies to this path.
-    const again = await run({ recipe: "deliver-email", runId: "owned-run-bbbb", params: { code: CODE } });
+    const again = await run({ recipe: "deliver-email", stage: "send", runId: "owned-run-bbbb", params: { code: CODE } });
     expect(again.status).toBe(429);
   });
 
@@ -504,7 +529,7 @@ describe("recipe «Entregar por correo»", () => {
     const { run, post } = await recipeWorld();
     const session = ((await (await post("/api/session", SALE)).json()) as { session: string }).session;
     expect((await post("/api/facta", issueBody(session))).status).toBe(200);
-    const closed = await run({ recipe: "deliver-email", params: { code: CODE } });
+    const closed = await run({ recipe: "deliver-email", stage: "send", params: { code: CODE } });
     expect(closed.status).toBe(410);
   });
 });

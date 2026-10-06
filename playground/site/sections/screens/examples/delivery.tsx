@@ -5,6 +5,8 @@ import { EMPTY_EMAIL, EmailChoice, emailReady, type EmailChoiceValue } from "../
 import { TurnstileBox } from "../../../components/turnstile.tsx";
 import { Busy } from "../../../components/busy.tsx";
 import { useTurnstileReady } from "../../../turnstile.ts";
+import { OrderLine, useOrderNumber } from "../../../components/order-line.tsx";
+import { IssueInsight, TimingsToggle } from "../../../components/timings.tsx";
 
 // Delivery by e-mail and WhatsApp. Your server marks the channels when it creates the session
 // (here `POST /api/session` -> `deliver: { email }`, see server/delivery.ts); the window only follows
@@ -37,6 +39,7 @@ export function DeliveryExample({ state, onIssued }: { state: PlaygroundState; o
   const [demo, setDemo] = useState(false);
   const [resent, setResent] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
   const signedIn = state.visitor !== null;
+  const { orderNumber, renew } = useOrderNumber();
 
   async function start() {
     setBusy(true);
@@ -47,6 +50,7 @@ export function DeliveryExample({ state, onIssued }: { state: PlaygroundState; o
       const created = await createSession({
         tipoDte: "01",
         lines: [{ descripcion: "Café de altura, bolsa de 1 lb", cantidad: 1, precioUni: 8.5, tipoItem: 1 }],
+        orderNumber,
         sendEmail: true,
         emailTo: mail.address.trim(),
       });
@@ -83,6 +87,7 @@ export function DeliveryExample({ state, onIssued }: { state: PlaygroundState; o
 
         <div className="dl-channel dl-channel--on">
           <EmailChoice value={mail} onChange={setMail} disabled={!signedIn} />
+          <OrderLine orderNumber={orderNumber} onRenew={renew} />
           <p className="pg-hint">Puede ser cualquier dirección. Facta DTE verifica que no sea un robot y limita los envíos para que nadie lo use contra un tercero.</p>
         </div>
 
@@ -109,6 +114,7 @@ export function DeliveryExample({ state, onIssued }: { state: PlaygroundState; o
           </ul>
         </div>
 
+        <TimingsToggle />
         <div className="dl-actions">
           <TurnstileBox />
           <button type="button" className="pg-primary" disabled={busy || !signedIn || !ready || !mail.send || !emailReady(mail) || mail.address.trim() === "" || (state.quota !== null && !state.quota.allowed)} onClick={() => void start()}>
@@ -126,6 +132,7 @@ export function DeliveryExample({ state, onIssued }: { state: PlaygroundState; o
         ) : (
           <FactaReceipt result={live} environment="00" reference="Playground" />
         )}
+        <IssueInsight />
         {demo && (
           <div className="dl-demo">
             <span className="dl-demo-tag">demostración</span>

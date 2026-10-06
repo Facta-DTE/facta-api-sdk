@@ -5,6 +5,8 @@ import { Facta } from "../../../src/client.ts";
 import { FactaError } from "../../../src/errors.ts";
 import type { PlaygroundEnv } from "../env.ts";
 import { archivoDteFromStored, archivoDteOf, dteFileName, rawFileName } from "../../shared/archivo-dte.ts";
+import { debugFromBody, debugFromServerTiming } from "../../../src/debug.ts";
+import type { DebugInfo } from "../../../src/types.ts";
 import { leaksSecret, redact, redactText, type RedactOptions } from "./redact.ts";
 
 export interface Step {
@@ -15,6 +17,10 @@ export interface Step {
   ms: number;
   /** Request body, redacted and shortened. Absent for GET. */
   request?: unknown;
+  /** Epoch ms when the call started (only with timings on). */
+  at?: number;
+  /** What the API reported about its own processing of this call (only with timings on and an API that returns it). */
+  api?: DebugInfo;
 }
 
 export interface FileOut {
@@ -124,7 +130,7 @@ export interface Recorder {
 }
 
 /** A fetch that records method, endpoint, status, duration and the redacted body. Never headers. */
-export function recordingFetch(base: string, inner: typeof globalThis.fetch, redaction: RedactOptions): Recorder {
+export function recordingFetch(base: string, inner: typeof globalThis.fetch, redaction: RedactOptions, captureDebug = false): Recorder {
   const steps: Step[] = [];
   const recorded: typeof globalThis.fetch = async (input, init) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
@@ -142,6 +148,16 @@ export function recordingFetch(base: string, inner: typeof globalThis.fetch, red
     try {
       const response = await inner(input, init);
       step.status = response.status;
+      if (captureDebug) {
+        step.at = started;
+        // The API's own breakdown: the body's `debug` member first, the Server-Timing header as the fallback.
+        let fromBody: DebugInfo | null = null;
+        if ((response.headers.get("content-type") ?? "").includes("json")) {
+          fromBody = debugFromBody(((await response.clone().json().catch(() => null)) as { debug?: unknown } | null)?.debug);
+        }
+        const found = fromBody ?? debugFromServerTiming(response.headers.get("server-timing"));
+        if (found !== null) step.api = found;
+      }
       return response;
     } finally {
       step.ms = Date.now() - started;
@@ -154,15 +170,17 @@ export function secretsOf(env: PlaygroundEnv): string[] {
   return [env.FACTA_API_KEY, env.FACTA_SIGN_KEY, env.FACTA_UNLOCK_KEY, env.FACTA_SESSION_SECRET].filter((v): v is string => Boolean(v));
 }
 
-export function buildRecordedFacta(env: PlaygroundEnv, innerFetch: typeof globalThis.fetch | undefined, redaction: RedactOptions) {
+export function buildRecordedFacta(env: PlaygroundEnv, innerFetch: typeof globalThis.fetch | undefined, redaction: RedactOptions, timings = false) {
   const base = env.FACTA_API_BASE_URL!.replace(/\/+$/, "");
-  const recorder = recordingFetch(base, innerFetch ?? ((input, init) => globalThis.fetch(input, init)), redaction);
+  const recorder = recordingFetch(base, innerFetch ?? ((input, init) => globalThis.fetch(input, init)), redaction, timings);
   const facta = new Facta({
     apiKey: env.FACTA_API_KEY!,
     signKey: env.FACTA_SIGN_KEY!,
     ...(env.FACTA_UNLOCK_KEY ? { unlockKey: env.FACTA_UNLOCK_KEY } : {}),
     baseUrl: base,
     fetch: recorder.fetch,
+    // A debugging aid, only when the page asked for timings: the SDK then sends `X-Facta-Debug: timings`.
+    ...(timings ? { debug: { timings: true } } : {}),
   });
   return { facta, recorder };
 }
@@ -171,9 +189,10 @@ export async function execute(
   env: PlaygroundEnv,
   innerFetch: typeof globalThis.fetch | undefined,
   exec: (facta: Facta) => Promise<ExecOutcome>,
+  run: { timings?: boolean } = {},
 ): Promise<{ output: RunOutput; outcome: ExecOutcome | null }> {
   const redaction: RedactOptions = { secrets: secretsOf(env) };
-  const { facta, recorder } = buildRecordedFacta(env, innerFetch, redaction);
+  const { facta, recorder } = buildRecordedFacta(env, innerFetch, redaction, run.timings === true);
   const started = Date.now();
   let outcome: ExecOutcome | null = null;
   let error: RunOutput["error"];

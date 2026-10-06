@@ -7,6 +7,8 @@ import { EMPTY_EMAIL, EmailChoice, emailReady, type EmailChoiceValue } from "../
 import { useTurnstileReady } from "../../turnstile.ts";
 import { Busy } from "../../components/busy.tsx";
 import { CATALOG_SEARCH } from "../../catalog-search.ts";
+import { newOrderNumber, ORDER_NUMBER } from "../../order-number.ts";
+import { TimingsToggle } from "../../components/timings.tsx";
 import { EMPTY_CHOICE, ReceptorSection, receptorForSale, type ReceptorChoice } from "./sale-receptor.tsx";
 
 export const TYPE_LABELS: Record<string, string> = {
@@ -36,6 +38,7 @@ interface Line {
 }
 
 let nextKey = 1;
+
 const newLine = (patch: Partial<Line> = {}): Line => ({ key: nextKey++, source: "custom", productId: "", picked: null, descripcion: "", cantidad: 1, precioUni: 5, tipoItem: 0, codigo: "", ...patch });
 
 const SOURCE_LABELS: [SaleSource, string][] = [["catalog", "Catálogo"], ["demo", "Demostración"], ["custom", "Personalizado"]];
@@ -77,6 +80,7 @@ export function SaleBuilder({ state, issued, onPrepared, onStale }: {
   const [tipoDte, setTipoDte] = useState("01");
   const [receptor, setReceptor] = useState<ReceptorChoice>(EMPTY_CHOICE);
   const [relatedCode, setRelatedCode] = useState("");
+  const [orderNumber, setOrderNumber] = useState(newOrderNumber);
   const [mail, setMail] = useState<EmailChoiceValue>({ ...EMPTY_EMAIL, address: state.visitor?.email ?? "" });
   const ready = useTurnstileReady();
   const [lines, setLines] = useState<Line[]>(() => [newLine({ descripcion: "Café de altura, bolsa de 1 lb", precioUni: 8.5 })]);
@@ -90,7 +94,7 @@ export function SaleBuilder({ state, issued, onPrepared, onStale }: {
 
   // The prepared sale belongs to exactly what was on screen when it was prepared. Any later change (type,
   // receiver, lines, related document, e-mail) invalidates it, so «Abrir…» can never open an old session.
-  const signature = JSON.stringify({ tipoDte, receptor, relatedCode, mail, lines: lines.map((l) => ({ ...l, key: 0 })) });
+  const signature = JSON.stringify({ tipoDte, receptor, relatedCode, orderNumber, mail, lines: lines.map((l) => ({ ...l, key: 0 })) });
   const preparedFor = useRef<string | null>(null);
   const latest = useRef(signature);
   latest.current = signature;
@@ -139,6 +143,7 @@ export function SaleBuilder({ state, issued, onPrepared, onStale }: {
     const askedFor = signature;
     const sale: SaleDescription = {
       tipoDte,
+      orderNumber: orderNumber.trim(),
       lines: lines.map((l) => {
         if (l.source === "catalog" || l.source === "demo") return { source: l.source, productId: l.source === "catalog" ? l.picked!.id : l.productId, cantidad: l.cantidad };
         return {
@@ -171,6 +176,7 @@ export function SaleBuilder({ state, issued, onPrepared, onStale }: {
     }
   }
 
+  const orderValid = ORDER_NUMBER.test(orderNumber.trim());
   const chips = TYPE_CHIPS.filter((chip) => state.supportedTypes.includes(chip.value));
   const blocker = typeBlocker(tipoDte, issued);
   const need = TYPE_CHIPS.find((chip) => chip.value === tipoDte)?.needs ?? "";
@@ -212,6 +218,19 @@ export function SaleBuilder({ state, issued, onPrepared, onStale }: {
           </label>
         </div>
       )}
+
+      <div className="pg-sale-order">
+        <label className="pg-field">
+          <span>Número de pedido</span>
+          <input type="text" className="mono" maxLength={40} value={orderNumber} spellCheck={false} autoComplete="off" aria-invalid={!orderValid} onChange={(event) => setOrderNumber(event.target.value)} />
+        </label>
+        <button type="button" className="pg-secondary" onClick={() => setOrderNumber(newOrderNumber())}>Nuevo pedido</button>
+        <p className="pg-hint">
+          Es la identidad de la venta: viaja como llave de idempotencia (<code>{`<visitante>.sale-${orderValid ? orderNumber.trim() : "…"}`}</code>). Emitir el mismo pedido dos veces devuelve el mismo documento;
+          para otra factura, use «Nuevo pedido».
+        </p>
+        {!orderValid && <p className="pg-error" role="alert">Use letras, números, punto, guion o guion bajo (hasta 40).</p>}
+      </div>
 
       <div className="pg-sale-cols">
         <ReceptorSection state={state} tipoDte={tipoDte} choice={receptor} onChange={setReceptor} error={field} />
@@ -299,7 +318,8 @@ export function SaleBuilder({ state, issued, onPrepared, onStale }: {
           {unknownPrice && <small> Algún producto del catálogo no trae precio; el API lo resuelve al emitir.</small>}
         </p>
         <TurnstileBox />
-        <button type="button" className="pg-primary" disabled={busy || !ready || !emailReady(mail) || (isNote && relatedCode === "") || missing.length > 0 || state.visitor === null || (state.quota !== null && !state.quota.allowed)} onClick={prepare}>
+        <TimingsToggle />
+        <button type="button" className="pg-primary" disabled={busy || !ready || !orderValid || !emailReady(mail) || (isNote && relatedCode === "") || missing.length > 0 || state.visitor === null || (state.quota !== null && !state.quota.allowed)} onClick={prepare}>
           {busy ? <Busy>Preparando…</Busy> : "Preparar la venta"}
         </button>
       </div>

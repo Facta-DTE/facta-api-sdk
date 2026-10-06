@@ -17,6 +17,7 @@ import { listIssued, ownsDocument, recordIssued, updateIssuedState } from "../is
 import { execute } from "./runner.ts";
 import { apiCacheOf } from "../api-cache.ts";
 import { documentKey } from "../api-budget.ts";
+import { Timeline, wantsTimings } from "../../shared/timings.ts";
 
 export interface RecipeRouteDeps {
   env: PlaygroundEnv;
@@ -74,12 +75,14 @@ export async function handleRecipeRun(request: Request, deps: RecipeRouteDeps): 
   if (params === null || typeof params !== "object" || Array.isArray(params)) return failure(400, "bad_request", "Faltan los parámetros de la receta.");
 
   const { env, visitor } = deps;
+  const timings = wantsTimings(request);
+  const timeline = new Timeline(deps.now);
   const secret = env.FACTA_SESSION_SECRET!;
   const tag = await visitorTag(visitor.id);
 
   let bound;
   try {
-    bound = await def.bind({
+    bound = await timeline.measure("Armado de la receta", async () => def.bind({
       stage,
       params: params as Record<string, unknown>,
       fixtures: await deps.fixtures(),
@@ -93,7 +96,7 @@ export async function handleRecipeRun(request: Request, deps: RecipeRouteDeps): 
       mine: async () => (await listIssued(env, visitor.id)).map((entry) => entry.codigoGeneracion),
       ownedDocs: async () => (await listIssued(env, visitor.id)).map((entry) => ({ codigoGeneracion: entry.codigoGeneracion, tipoDte: entry.tipoDte })),
       now: deps.now?.() ?? Date.now(),
-    });
+    }));
   } catch (error) {
     if (error instanceof RecipeError) return failure(error.status, error.code, error.message);
     if (error instanceof FixturesError) return failure(503, "playground_fixtures_invalid", "Los datos de demostración no son válidos.");
@@ -102,29 +105,38 @@ export async function handleRecipeRun(request: Request, deps: RecipeRouteDeps): 
 
   // Anything that costs something (an issue, an invalidation, an e-mail) needs a fresh Turnstile token.
   if ((bound.quotaKeys.length > 0 || bound.mail !== undefined) && deps.turnstile !== undefined) {
-    const blocked = await deps.turnstile();
+    const blocked = await timeline.measure("Verificación de Turnstile", () => deps.turnstile!());
     if (blocked) return blocked;
   }
   // E-mail limits first (they also name the document cooldown), then the issue quota.
   if (bound.mail !== undefined && deps.mail !== undefined) {
-    const decision = await deps.mail({
-      key: bound.mail.key,
-      recipient: bound.mail.recipient,
-      ...(bound.mail.doc === undefined ? {} : { doc: bound.mail.doc }),
-    });
+    const decision = await timeline.measure("Límites de correo", () => deps.mail!({
+      key: bound.mail!.key,
+      recipient: bound.mail!.recipient,
+      ...(bound.mail!.doc === undefined ? {} : { doc: bound.mail!.doc }),
+      ...(bound.mail!.commit === false ? { commit: false } : {}),
+    }));
     if (decision === null) return failure(503, "playground_quota_unavailable", "No se pudo comprobar el límite de envíos. Intente de nuevo.");
     if (!decision.allowed) return failure(429, "mail_quota_exceeded", mailMessage(decision), { "retry-after": String(decision.retryAfterSeconds ?? 60) });
   }
   // The gate: is there room for this run? Nothing is counted yet. A key already counted (a retry of the same run) is free.
   for (const key of [...(bound.gateKeys ?? []), ...bound.quotaKeys]) {
-    const decision = await deps.consume(visitor.id, key, false);
+    const decision = await timeline.measure("Límite de emisiones (solo comprobar)", () => deps.consume(visitor.id, key, false));
     if (decision === null) return failure(503, "playground_quota_unavailable", "No se pudo comprobar el límite de emisiones. Intente de nuevo.");
     if (!decision.allowed) {
       return failure(429, "quota_exceeded", quotaMessage(decision), { "retry-after": String(decision.retryAfterSeconds ?? 60) });
     }
   }
 
-  const { output, outcome } = await execute(env, deps.fetch, bound.exec);
+  const { output, outcome } = await execute(env, deps.fetch, bound.exec, { timings });
+  if (timings) {
+    // Every call the recipe made, with the API's own breakdown under it when the API returned one.
+    for (const step of output.steps) {
+      if (step.at === undefined) continue;
+      timeline.record(`API · ${step.method} ${step.endpoint}`, step.ms, step.at);
+      timeline.addApi(step.api, step.at);
+    }
+  }
   // The count: once, and only for a run that sealed (or put in contingency) a document or invalidated one.
   // A rejection, a rate limit or any failure before or at the API costs the visitor nothing.
   if (output.ok && ((outcome?.issued?.length ?? 0) > 0 || (outcome?.invalidated?.length ?? 0) > 0)) {
@@ -147,6 +159,7 @@ export async function handleRecipeRun(request: Request, deps: RecipeRouteDeps): 
     await apiCacheOf(env.QUOTA).del(documentKey(code)).catch(() => undefined);
   }
   return reply(200, {
+    ...(timings ? { timings: timeline.toJSON() } : {}),
     recipe: input.recipe,
     stage,
     runId,

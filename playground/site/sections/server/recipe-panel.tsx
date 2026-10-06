@@ -9,6 +9,7 @@ import { RECIPE_SPECS, type FieldSpec, type RecipeSpec } from "../../../server/r
 import { denoBunScript, nodeScript, portableSource, projectZip } from "./export.ts";
 import { runRecipe, type MyDocument, type RunResponse } from "./recipes-api.ts";
 import { ResultSkeleton, ResultTabs, RunNotice, Timeline, type TimelineRun } from "./results.tsx";
+import { TimingsPanel, TimingsToggle } from "../../components/timings.tsx";
 import { excerptOf } from "./subtitles.ts";
 import { highlight } from "../../components/highlight.tsx";
 import { recipePath, recipeSource } from "./sources.ts";
@@ -126,8 +127,10 @@ export function RecipePanel({ spec, number, mine, onIssued }: { spec: RecipeSpec
   }
 
   const code = (out: RunResponse | null) => out === null ? null : out.issued[0]?.codigoGeneracion ?? null;
-  const firstStage = spec.stages?.[0]?.id;
-  const nextStage = spec.stages?.[1]?.id;
+  // Recipe 8 with one of your own documents chosen skips step 1: its token is already on the server.
+  const skipsIssue = spec.id === "deliver-email" && Boolean(values.code);
+  const firstStage = skipsIssue ? spec.stages?.[1]?.id : spec.stages?.[0]?.id;
+  const nextStage = skipsIssue ? undefined : spec.stages?.[1]?.id;
 
   const sameDocument = useMemo(() => (previous !== null && code(run) !== null ? previous === code(run) : null), [previous, run]);
   const tail = (value: string) => `…${value.slice(-12)}`;
@@ -141,6 +144,8 @@ export function RecipePanel({ spec, number, mine, onIssued }: { spec: RecipeSpec
           <h1 id={`r-${spec.id}`}>{spec.title}</h1>
           <p>{spec.summary}</p>
           {spec.consumesQuota && <p className="pg-hint">Esta receta cuenta contra su límite de emisiones; repetir la misma llave no cuenta otra vez.</p>}
+          {spec.id === "deliver-email" && <WhyTwoCalls />}
+          {spec.id === "issue-idempotent" && <WhySameKey />}
         </div>
 
         <div className={`srv-codewrap${fullCode ? " is-full" : ""}`}>
@@ -175,9 +180,10 @@ export function RecipePanel({ spec, number, mine, onIssued }: { spec: RecipeSpec
             <Field key={field.name} field={field} value={values[field.name] ?? ""} mine={mine} onChange={(v) => setValues((c) => ({ ...c, [field.name]: v }))} />
           ))}
           <TurnstileBox />
+          <TimingsToggle />
           <div className="srv-actions">
             <button type="submit" className="pg-primary" disabled={busy || blocked || needsDocument}>
-              {busy && running !== "next" ? <Busy>Ejecutando…</Busy> : spec.stages ? `Ejecutar: ${spec.stages[0]!.label}` : "Ejecutar"}
+              {busy && running !== "next" ? <Busy>Ejecutando…</Busy> : spec.stages ? `Ejecutar: ${spec.stages[skipsIssue ? 1 : 0]!.label}` : "Ejecutar"}
             </button>
             {nextStage !== undefined && continuation !== null && run?.ok === true && run.stage === firstStage && (
               <button type="button" className="pg-primary" disabled={busy} onClick={() => void execute(nextStage, runId)}>{busy && running === "next" ? <Busy>Ejecutando…</Busy> : spec.stages![1]!.label}</button>
@@ -208,6 +214,7 @@ export function RecipePanel({ spec, number, mine, onIssued }: { spec: RecipeSpec
               <>
                 <p className="srv-total" role="status">{run.ok ? `Listo en ${(run.totalMs / 1000).toFixed(2)} s.` : "La ejecución falló."}</p>
                 <Timeline runs={runs} sameDocument={sameDocument === true && code(run) !== null ? { code: tail(run.issued[0]!.codigoGeneracion) } : null} />
+                {run.timings !== undefined && <TimingsPanel title="Dónde se fue el tiempo" timings={run.timings} />}
                 <RunNotice run={run} />
                 {run.ok && <ResultTabs run={run} />}
                 {spec.id === "catalog-refs" && <CatalogPicks run={run} onPick={(name, value) => setValues((c) => ({ ...c, [name]: value }))} />}
@@ -218,6 +225,39 @@ export function RecipePanel({ spec, number, mine, onIssued }: { spec: RecipeSpec
         )}
       </aside>
     </>
+  );
+}
+
+/** Why recipe 8 is two calls, in plain words. */
+function WhyTwoCalls() {
+  return (
+    <aside className="srv-why" aria-labelledby="srv-why-mail">
+      <h3 id="srv-why-mail">¿Por qué son dos llamadas?</h3>
+      <p>
+        Emitir y enviar el correo son funciones aparte a propósito. Al emitir con <code>deliver: {"{"} email {"}"}</code> el API devuelve un
+        <b> token de entrega</b> (<code>entrega.token</code>): demuestra que quien pide el correo acaba de emitir ese mismo documento, porque
+        está atado al documento y a su llave de idempotencia. Así nadie puede usar el API como relevo de correo con documentos que no emitió.
+      </p>
+      <p>
+        <b>El token dura 5 minutos.</b> Pasado ese plazo, <code>deliverEmail</code> contesta <code>entrega_vencida</code> (410). El documento sigue
+        sellado y válido; solo se pierde el permiso de envío, y para enviar de nuevo hay que emitir un documento nuevo. El token se queda en su
+        servidor: aquí el Worker lo guarda y la página nunca lo ve.
+      </p>
+    </aside>
+  );
+}
+
+/** What the idempotency key does, next to recipe 1. */
+function WhySameKey() {
+  return (
+    <aside className="srv-why" aria-labelledby="srv-why-key">
+      <h3 id="srv-why-key">Una llave, un documento</h3>
+      <p>
+        La llave identifica la venta, no el clic. Al pulsar <b>Reintentar igual</b> se envía la misma solicitud con la misma llave y el API no vuelve a
+        pedirle nada a Hacienda: responde con el documento original (el mismo <code>codigoGeneracion</code>). Si cada clic usara una llave nueva,
+        cada clic sería una factura nueva. En su sistema, use como llave el número de su pedido.
+      </p>
+    </aside>
   );
 }
 

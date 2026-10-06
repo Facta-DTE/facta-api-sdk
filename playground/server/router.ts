@@ -33,6 +33,8 @@ import { isGenerationCode, listIssued, ownsDocument, updateIssuedState } from ".
 import { projectDocument } from "../../src/server/capabilities.ts";
 import { quotaMessage, type QuotaDecision } from "./quota.ts";
 import { buildSale, CATALOG_RECEIVER_TYPES, SaleError, SUPPORTED_SALE_TYPES } from "./sale.ts";
+import { saleKey } from "./order-key.ts";
+import { Timeline, wantsTimings } from "../shared/timings.ts";
 import { loadCatalogLookup } from "./sale-catalog.ts";
 import type { FactaLike } from "../../src/server/handler.ts";
 import { handleRecipeRun } from "./recipes/route.ts";
@@ -187,7 +189,8 @@ export async function handleApi(request: Request, env: PlaygroundEnv, deps: ApiD
     const body = await request.json().catch(() => null);
     // The browser can never name another channel: any mention of WhatsApp is refused outright.
     if (mentionsWhatsApp(body)) return jsonResponse(400, errorBody("channel_not_allowed", "El playground solo entrega por correo."));
-    const blocked = await requireTurnstile(request, env, deps);
+    const timeline = new Timeline(deps.now);
+    const blocked = await timeline.measure("Verificación de Turnstile", () => requireTurnstile(request, env, deps));
     if (blocked) return blocked;
     try {
       const wantsMail = (body as { sendEmail?: unknown } | null)?.sendEmail === true;
@@ -196,21 +199,31 @@ export async function handleApi(request: Request, env: PlaygroundEnv, deps: ApiD
         const typed = (body as { emailTo?: unknown }).emailTo;
         address = parseAddress(typed === undefined && visitor.email !== null ? visitor.email : typed);
         // Pre-flight, counting nothing: the real count happens when the document is issued.
-        const check = await consumeMail(env, { caller: callerOf(request, visitor), key: "preflight", recipient: await recipientKey(env.FACTA_SESSION_SECRET!, address), commit: false });
+        const check = await timeline.measure("Límites de correo (solo comprobar)", async () =>
+          consumeMail(env, { caller: callerOf(request, visitor), key: "preflight", recipient: await recipientKey(env.FACTA_SESSION_SECRET!, address!), commit: false }));
         if (check !== null && !check.allowed) return mailLimited(check);
       }
-      const owned = (await listIssued(env, visitor.id)).map((e) => ({ codigoGeneracion: e.codigoGeneracion, tipoDte: e.tipoDte }));
+      const owned = (await timeline.measure("Documentos del visitante (registro)", () => listIssued(env, visitor.id))).map((e) => ({ codigoGeneracion: e.codigoGeneracion, tipoDte: e.tipoDte }));
       // Catalog ids are confirmed against the key's catalog before anything is built.
-      const catalog = await loadCatalogLookup(body, parts.facta, Boolean(env.FACTA_UNLOCK_KEY));
-      const { sale } = buildSale(body, await loadFixtures(env), { owned, catalog });
-      const idempotencyKey = `${await visitorTag(visitor.id)}.${crypto.randomUUID()}`;
-      const session = await createDeliverySession({
+      const catalog = await timeline.measure("Catálogo del API (confirmar ids)", () => loadCatalogLookup(body, parts.facta, Boolean(env.FACTA_UNLOCK_KEY)));
+      const { sale } = await timeline.measure("Armado de la venta", async () => buildSale(body, await loadFixtures(env), { owned, catalog }));
+      // The order number IS the key: the same order prepared and issued twice is one document.
+      const { idempotencyKey, orderNumber } = saleKey(await visitorTag(visitor.id), (body as { orderNumber?: unknown } | null)?.orderNumber);
+      const session = await timeline.measure("Firma de la sesión", () => createDeliverySession({
         request: sale.request,
         idempotencyKey,
         display: { total: sale.total, title: sale.title, reference: "Playground", ...(sale.recipientLabel === undefined ? {} : { recipient: sale.recipientLabel }) },
         address,
-      }, env.FACTA_SESSION_SECRET!, deps.now?.());
-      return jsonResponse(200, { session, total: sale.total, title: sale.title, emailTo: address === null ? null : maskAddress(address) });
+      }, env.FACTA_SESSION_SECRET!, deps.now?.()));
+      return jsonResponse(200, {
+        session,
+        total: sale.total,
+        title: sale.title,
+        emailTo: address === null ? null : maskAddress(address),
+        orderNumber,
+        idempotencyKey,
+        ...(wantsTimings(request) ? { timings: timeline.toJSON() } : {}),
+      });
     } catch (error) {
       if (error instanceof DeliveryError) return jsonResponse(error.status, errorBody(error.code, error.message));
       if (error instanceof SaleError) {
@@ -398,6 +411,7 @@ export async function handleApi(request: Request, env: PlaygroundEnv, deps: ApiD
         return jsonResponse(200, { ...page, documentos });
       }
       if (peeked?.action === "issue") {
+        const timeline = new Timeline(deps.now);
         const visitor = await visitorOf(request);
         const session = visitor === null ? null : await verifyFactaSession(peeked.session, env.FACTA_SESSION_SECRET!, deps.now?.()).catch(() => null);
         if (visitor !== null && session !== null && session.idempotencyKey.startsWith(`${await visitorTag(visitor.id)}.`)) {
@@ -405,32 +419,55 @@ export async function handleApi(request: Request, env: PlaygroundEnv, deps: ApiD
           const key = session.idempotencyKey;
           // The gate: is there room? Nothing is counted yet. A replay of the same session carries the same
           // idempotency key, so it is free; and a failure never costs the visitor anything.
-          const decision = await consumeIssue(env, caller, key, false);
+          const decision = await timeline.measure("Límite de emisiones (solo comprobar)", () => consumeIssue(env, caller, key, false));
           if (decision === null) return jsonResponse(503, errorBody("playground_quota_unavailable", "No se pudo comprobar el límite de emisiones. Intente de nuevo."));
           if (!decision.allowed) {
             return jsonResponse(429, errorBody("quota_exceeded", quotaMessage(decision)), {
               "retry-after": String(decision.retryAfterSeconds ?? 60),
             });
           }
+          // The order was already issued here: the API will answer with the ORIGINAL document, not a new one.
+          const replay = decision.replay === true;
           // A session that marks the e-mail channel is also checked against the e-mail limits.
           const address = session.deliver?.email;
           const recipient = typeof address === "string" ? await recipientKey(env.FACTA_SESSION_SECRET!, address) : null;
           if (recipient !== null) {
-            const mail = await consumeMail(env, { caller, key: `mail.${key}`, recipient, commit: false });
+            const mail = await timeline.measure("Límite de correo (solo comprobar)", () => consumeMail(env, { caller, key: `mail.${key}`, recipient, commit: false }));
             if (mail === null) return jsonResponse(503, errorBody("playground_quota_unavailable", "No se pudo comprobar el límite de envíos. Intente de nuevo."));
             if (!mail.allowed) return mailLimited(mail);
           }
-          const answer = await parts.handler(request);
+          const timings = wantsTimings(request);
+          const handlerStarted = Date.now();
+          // With «Mostrar tiempos» the SDK client asks the API for its own breakdown; otherwise nothing extra is requested.
+          const answer = await timeline.measure("Handler del SDK (todo lo siguiente)", () => (timings ? parts.debugHandler : parts.handler)(request));
+          let body: Record<string, unknown> | null = null;
           // The count, exactly once: only when the document was sealed or went to contingency.
           if (answer.ok) {
-            const outcome = await answer.clone().json().catch(() => null) as { result?: { estado?: unknown } } | null;
-            const estado = outcome?.result?.estado;
+            body = await answer.clone().json().catch(() => null) as Record<string, unknown> | null;
+            const estado = (body as { result?: { estado?: unknown } } | null)?.result?.estado;
             if (estado === "sellado" || estado === "contingencia") {
-              await consumeIssue(env, caller, key, true);
-              if (recipient !== null) await consumeMail(env, { caller, key: `mail.${key}`, recipient });
+              await timeline.measure("Contar la emisión", async () => {
+                await consumeIssue(env, caller, key, true);
+                if (recipient !== null) await consumeMail(env, { caller, key: `mail.${key}`, recipient });
+              });
             }
           }
-          return answer;
+          if (body === null) return answer;
+          // What the page may know beyond the handler's answer: was it a replay, and (on request) the timings.
+          const issueCall = parts.steps.takeIssue(key);
+          const code = (body as { result?: { codigoGeneracion?: unknown } }).result?.codigoGeneracion;
+          const deliverCall = typeof code === "string" ? parts.steps.takeDeliver(code) : undefined;
+          if (timings) {
+            if (issueCall !== undefined) timeline.record("API · emitir (facta.issue)", issueCall.ms, issueCall.at);
+            const debug = (body as { debug?: { timings?: Array<{ step: string; ms: number; startedAtMs?: number }> } }).debug;
+            timeline.addApi(debug, issueCall?.at ?? handlerStarted);
+            if (deliverCall !== undefined) timeline.record("API · iniciar la entrega (deliverEmail)", deliverCall.ms, deliverCall.at);
+          }
+          const { debug: _debug, ...rest } = body;
+          const augmented = { ...rest, playground: { replay, ...(timings ? { timings: timeline.toJSON() } : {}) } };
+          const headers = new Headers(answer.headers);
+          headers.delete("content-length");
+          return new Response(JSON.stringify(augmented), { status: answer.status, headers });
         }
       }
     }

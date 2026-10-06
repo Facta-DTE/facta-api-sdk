@@ -31,6 +31,11 @@ export interface QuotaDecision {
   remainingDay: number;
   /** Seconds until the refusing window frees a slot. */
   retryAfterSeconds?: number;
+  /**
+   * True when `key` was already counted: this call is a replay of an order the visitor already issued, so
+   * the API answers with the original document and nothing is counted again.
+   */
+  replay?: boolean;
 }
 
 export const emptyQuota = (): QuotaState => ({ stamps: [], keys: {} });
@@ -54,7 +59,7 @@ export function consumeQuota(
     remainingDay: Math.max(0, limits.day - stamps.length - extra),
   });
 
-  if (key in keys) return { state: { stamps, keys }, decision: { allowed: true, ...view() } };
+  if (key in keys) return { state: { stamps, keys }, decision: { allowed: true, ...view(), replay: true } };
 
   if (hourStamps.length >= limits.hour) {
     const oldest = Math.min(...hourStamps);

@@ -5,7 +5,7 @@
 import type { DteRequest, InvalidationRequest, PreparedDte, Recipient } from "../../../mod.ts";
 import type { PlaygroundFixtures } from "../fixtures.ts";
 import { buildSale, customerFits, MAX_LINES, MAX_TOTAL, SaleError } from "../sale.ts";
-import { parseAddress, recipientKey, DeliveryError } from "../delivery.ts";
+import { parseAddress, recipientKey, maskAddress, DeliveryError } from "../delivery.ts";
 import type { StashedToken } from "../mail-quota.ts";
 import type { ExecOutcome } from "./runner.ts";
 import { openJson, sealJson } from "./seal.ts";
@@ -57,7 +57,7 @@ export interface Bound {
   /** Keys that are only CHECKED against the quota before the run (a stage that will count later, like `prepare`). */
   gateKeys?: string[];
   /** Set when the run sends an e-mail: counted on the visitor, IP and recipient (gates.ts). */
-  mail?: { key: string; /** `recipientKey(...)`, never the address. */ recipient: string; doc?: string };
+  mail?: { key: string; /** `recipientKey(...)`, never the address. */ recipient: string; doc?: string; /** False: only check the limits now, count later (the stage that issues; the stage that sends counts). */ commit?: boolean };
   exec(facta: Facta): Promise<ExecOutcome>;
 }
 
@@ -336,39 +336,66 @@ const orderDef: RecipeDef = {
   },
 };
 
+/** What the second stage needs, sealed for the browser to carry: the token never reaches the page. */
+interface HeldDelivery {
+  code: string;
+  token: string;
+  masked: string;
+  rcpt: string;
+}
+
 const deliverEmailDef: RecipeDef = {
-  stages: ["run"],
+  stages: ["issue", "send"],
   async bind(ctx) {
-    const code = await ownedCode(ctx, false);
-    if (code !== undefined) {
-      // A document issued here: its e-mail was marked at issue, and the five-minute token is the one the Worker kept.
-      const kept = await ctx.stash(code);
-      if (kept === null) {
-        throw new RecipeError("delivery_window_closed", "El plazo para entregar ese documento venció (cinco minutos desde que se emitió) o no se marcó el correo. Deje el campo vacío para emitir uno nuevo.", 410);
+    if (ctx.stage === "issue") {
+      let address: string;
+      try {
+        address = parseAddress(ctx.params.email);
+      } catch (error) {
+        if (error instanceof DeliveryError) throw new RecipeError(error.code, error.message);
+        throw error;
       }
-      const input: deliverEmail.Input = { email: kept.masked, code, token: kept.token };
+      const input: deliverEmail.IssueInput = { request: await requestFor("01", ctx), idempotencyKey: `${ctx.baseKey}.deliver`, email: address };
+      const rcpt = await recipientKey(ctx.secret, address);
       return {
-        quotaKeys: [],
-        mail: { key: `${ctx.baseKey}.mail`, recipient: kept.rcpt, doc: code },
+        quotaKeys: [input.idempotencyKey],
+        // Marking the e-mail sends nothing yet: the limits are only checked here and counted by the stage that sends.
+        mail: { key: `${ctx.baseKey}.mail-check`, recipient: rcpt, commit: false },
         async exec(facta) {
-          return { result: await deliverEmail.run(facta, input) };
+          const out = await deliverEmail.issueWithDelivery(facta, input);
+          const offer = out.result.entrega;
+          // The token stays on the server. The page gets proof that it exists and when it dies.
+          const result = {
+            issued: out.result,
+            entrega: { tokenRecibido: out.token !== undefined, venceEn: offer?.venceEn ?? null, canales: offer?.canales ?? {} },
+          };
+          const continuation = out.token === undefined ? undefined
+            : await sealJson(ctx.secret, "deliver-email", ctx.email, { code: out.code, token: out.token, masked: maskAddress(address), rcpt }, 10 * 60_000, ctx.now);
+          return { result, issued: codeOf(out.result), ...(continuation === undefined ? {} : { continuation }) };
         },
       };
     }
-    let address: string;
-    try {
-      address = parseAddress(ctx.params.email);
-    } catch (error) {
-      if (error instanceof DeliveryError) throw new RecipeError(error.code, error.message);
-      throw error;
+    // Stage «send»: with the sealed hand-over from stage 1, or with a document issued in «Pantallas React»
+    // whose five-minute token the Worker kept.
+    let held = await openJson<HeldDelivery>(ctx.secret, "deliver-email", ctx.email, ctx.params.continuation, ctx.now);
+    if (held === null) {
+      const code = await ownedCode(ctx, false);
+      if (code === undefined) throw new RecipeError("continuation_invalid", "Primero emita el documento con el correo marcado (paso 1), o elija uno suyo emitido hace menos de cinco minutos.", 410);
+      const kept = await ctx.stash(code);
+      if (kept === null) {
+        throw new RecipeError("delivery_window_closed", "El plazo para entregar ese documento venció (cinco minutos desde que se emitió) o no se marcó el correo. Emita uno nuevo.", 410);
+      }
+      held = { code, token: kept.token, masked: kept.masked, rcpt: kept.rcpt };
     }
-    const input: deliverEmail.Input = { request: await requestFor("01", ctx), idempotencyKey: `${ctx.baseKey}.deliver`, email: address };
+    const input: deliverEmail.SendInput = { code: held.code, token: held.token };
+    const { masked } = held;
     return {
-      quotaKeys: [input.idempotencyKey!],
-      mail: { key: `${ctx.baseKey}.mail`, recipient: await recipientKey(ctx.secret, address) },
+      quotaKeys: [],
+      // One send per document every ten minutes, and the hourly, daily and per-recipient limits: counted here.
+      mail: { key: `${ctx.baseKey}.mail`, recipient: held.rcpt, doc: held.code },
       async exec(facta) {
-        const out = await deliverEmail.run(facta, input);
-        return { result: out, issued: codeOf(out.issued) };
+        const out = await deliverEmail.sendEmail(facta, input);
+        return { result: { codigoGeneracion: held.code, destino: masked, ...out } };
       },
     };
   },

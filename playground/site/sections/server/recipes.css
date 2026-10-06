@@ -107,3 +107,8 @@
 
 .srv-downloads { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--pg-track); }
 .srv-summary-note { margin: 0; padding: 10px 14px 0; font-size: 13px; color: var(--pg-muted); }
+
+.srv-why { margin: 12px 0 4px; padding: 12px 14px; border: 1px solid var(--pg-border); border-left: 3px solid var(--pg-accent); border-radius: var(--pg-radius-md); background: var(--pg-surface); max-width: 680px; }
+.srv-why h3 { margin: 0 0 6px; font-size: 14px; }
+.srv-why p { margin: 0 0 6px; font-size: 14px; color: var(--pg-text-2); max-width: none; }
+.srv-why p:last-child { margin-bottom: 0; }

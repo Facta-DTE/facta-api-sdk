@@ -2,6 +2,8 @@
 
 import { isApiRateLimit, reportRateLimit } from "./rate-limit.ts";
 import { turnstileHeaders } from "./turnstile.ts";
+import { publishIssue, publishSession, timingsHeaders } from "./timings.ts";
+import type { Timings } from "../shared/timings.ts";
 
 export interface PlaygroundState {
   environment: "00";
@@ -72,7 +74,18 @@ export class ApiError extends Error {
  * API's rate limit so the page can show one banner whichever component hit it.
  */
 export const playgroundFetch: typeof fetch = async (input, init) => {
-  const response = await (mock?.fetch ?? fetch)(input, init);
+  const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+  const isHandler = new URL(url, window.location.href).pathname === "/api/facta";
+  // «Mostrar tiempos»: ask the Worker for its timings, only when the switch is on.
+  const asked = isHandler ? timingsHeaders() : {};
+  const withFlag: RequestInit | undefined = Object.keys(asked).length === 0 ? init : { ...init, headers: { ...Object.fromEntries(new Headers(init?.headers)), ...asked } };
+  const response = await (mock?.fetch ?? fetch)(input, withFlag);
+  if (isHandler && response.ok) {
+    // An issue answers with what the page may learn beyond the document: was it a replay, and the timings.
+    void response.clone().json().then((body: { result?: { codigoGeneracion?: string }; playground?: { replay?: boolean; timings?: Timings } } | null) => {
+      if (body?.playground !== undefined) publishIssue({ replay: body.playground.replay === true, ...(body.playground.timings === undefined ? {} : { timings: body.playground.timings }) }, body.result?.codigoGeneracion ?? null);
+    }).catch(() => undefined);
+  }
   if (response.status === 429) {
     void response.clone().json().then((body: { error?: { code?: string } } | null) => {
       if (isApiRateLimit(body?.error?.code)) reportRateLimit();
@@ -119,6 +132,11 @@ export interface SaleDescription {
     tipoItem?: 1 | 2;
     codigo?: string;
   }[];
+  /**
+   * Your order number: it is the idempotency key's identity. The same number prepared and issued twice is one
+   * document. Absent: a random key, so every call is a new sale.
+   */
+  orderNumber?: string;
   sendEmail?: boolean;
   /** The address to e-mail the document to (any valid address; the server limits sends). */
   emailTo?: string;
@@ -129,17 +147,29 @@ export interface CreatedSession {
   total: number;
   title: string;
   emailTo: string | null;
+  /** The number the key was made from (null when the sale had none). */
+  orderNumber?: string | null;
+  /** The idempotency key the session carries: `<visitor tag>.sale-<order number>`. */
+  idempotencyKey?: string;
+  /** With «Mostrar tiempos»: the playground's steps while preparing the session. */
+  timings?: Timings;
 }
 
 export async function createSession(sale: SaleDescription): Promise<CreatedSession> {
-  if (mock) return await mock.session(sale);
+  if (mock) {
+    const made = await mock.session(sale);
+    publishSession(made.timings, made.orderNumber ?? null);
+    return made;
+  }
   const response = await fetch("/api/session", {
     method: "POST",
-    headers: { "content-type": "application/json", "x-facta-ui": "1", ...turnstileHeaders() },
+    headers: { "content-type": "application/json", "x-facta-ui": "1", ...turnstileHeaders(), ...timingsHeaders() },
     body: JSON.stringify(sale),
   });
   if (!response.ok) throw await readError(response);
-  return (await response.json()) as CreatedSession;
+  const made = (await response.json()) as CreatedSession;
+  publishSession(made.timings, made.orderNumber ?? null);
+  return made;
 }
 
 /** What this visitor issued here, newest first. */

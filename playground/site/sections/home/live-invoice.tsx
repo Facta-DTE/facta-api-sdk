@@ -5,6 +5,8 @@ import { TurnstileBox } from "../../components/turnstile.tsx";
 import { EMPTY_EMAIL, EmailChoice, emailReady, type EmailChoiceValue } from "../../components/email-choice.tsx";
 import { useTurnstileReady } from "../../turnstile.ts";
 import { Busy } from "../../components/busy.tsx";
+import { OrderLine, useOrderNumber } from "../../components/order-line.tsx";
+import { IssueInsight, TimingsToggle } from "../../components/timings.tsx";
 
 // Real component of the playground, shown on the page as-is.
 //
@@ -19,6 +21,7 @@ export function LiveInvoice({ defaultAddress, signedIn, disabled, onIssued, seco
   const ready = useTurnstileReady();
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  const { orderNumber, renew } = useOrderNumber();
 
   async function start() {
     setBusy(true);
@@ -27,6 +30,8 @@ export function LiveInvoice({ defaultAddress, signedIn, disabled, onIssued, seco
       const created = await createSession({
         tipoDte: "01",
         lines: [{ descripcion: "Café de altura, bolsa de 1 lb", cantidad: 1, precioUni: 8.5, tipoItem: 1 }],
+        // The order number is the idempotency key: «Emitir» twice on the same order is one invoice.
+        orderNumber,
         ...(mail.send ? { sendEmail: true, emailTo: mail.address.trim() } : {}),
       });
       setSession(created.session);
@@ -47,9 +52,12 @@ export function LiveInvoice({ defaultAddress, signedIn, disabled, onIssued, seco
         </button>
         {secondary}
       </div>
+      {signedIn && <OrderLine orderNumber={orderNumber} onRenew={renew} />}
       {signedIn && <EmailChoice value={mail} onChange={setMail} />}
+      <TimingsToggle />
       <TurnstileBox className="home-live-turnstile" />
       {problem !== null && <p role="alert" className="pg-error">{problem}</p>}
+      <IssueInsight />
       {session !== null && (
         <FactaInvoiceDialog
           session={session}

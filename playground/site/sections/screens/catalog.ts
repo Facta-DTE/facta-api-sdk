@@ -39,7 +39,12 @@ export interface WorkbenchItem {
   serverNote: string;
 }
 
-const SALE = { server: sourceFile("playground/server/sale.ts"), serverNote: "El servidor valida la descripción de la venta y arma la solicitud fiscal; el navegador nunca escribe el documento." };
+const KEY_TAB = { id: "llave", label: "Llave", file: sourceFile("playground/server/order-key.ts"), note: "La llave de idempotencia que viaja en la sesión: su número de pedido, atado al visitante" };
+const SALE = {
+  server: sourceFile("playground/server/sale.ts"),
+  serverNote: "El servidor valida la descripción de la venta y arma la solicitud fiscal; el navegador nunca escribe el documento.",
+  extra: [KEY_TAB],
+};
 const HANDLER = { server: sourceFile("playground/server/router.ts"), serverNote: "El servidor guarda la llave y atiende las rutas que usan estos componentes." };
 
 export const ITEMS: WorkbenchItem[] = [
@@ -57,8 +62,8 @@ export const ITEMS: WorkbenchItem[] = [
     lead: "Su servidor marca los canales al crear la sesión. Apenas Hacienda sella, Facta DTE envía el JSON y el PDF; la ventana muestra cada canal en vivo y nunca espera a que termine para cerrar.",
     source: sourceFile("playground/site/sections/screens/examples/delivery.tsx"),
     server: sourceFile("playground/server/delivery.ts"),
-    serverNote: "Los canales los decide su servidor y viajan firmados dentro del token; aquí solo se marca el correo y se aplican los límites",
-    extra: [{ id: "solo", label: "Solo servidor", file: sourceFile("playground/server/recipes/deliver-email.ts"), note: "Sin navegador: deliverEmail con el token de entrega y waitForDelivery · la receta 8 de «Solo servidor»" }],
+    serverNote: "Su servidor marca los canales con createFactaSession({ deliver }); viajan firmados dentro del token y el cliente solo los sigue con onDelivery. Aquí solo se marca el correo y se aplican los límites",
+    extra: [KEY_TAB, { id: "solo", label: "Solo servidor", file: sourceFile("playground/server/recipes/deliver-email.ts"), note: "Sin navegador, en dos llamadas: issue devuelve el token de entrega y deliverEmail lo usa (cinco minutos) · la receta 8 de «Solo servidor»" }],
   },
   { id: "list", title: "FactaDocumentList", group: "datos", window: false, needsSale: false, source: sourceFile("playground/site/sections/screens/examples/document-list.tsx"), ...HANDLER },
   { id: "detail", title: "FactaDocumentDetail", group: "datos", window: false, needsSale: false, source: sourceFile("playground/site/sections/screens/examples/document-detail.tsx"), ...HANDLER },

@@ -23,6 +23,7 @@ import pos from "./sections/headless/pos-keypad.tsx?raw";
 import router from "../server/router.ts?raw";
 import sale from "../server/sale.ts?raw";
 import deliveryServer from "../server/delivery.ts?raw";
+import orderKey from "../server/order-key.ts?raw";
 import catalogRefs from "../server/recipes/catalog-refs.ts?raw";
 import deliverEmail from "../server/recipes/deliver-email.ts?raw";
 import documentsStorage from "../server/recipes/documents-storage.ts?raw";
@@ -58,6 +59,7 @@ export const SOURCES = {
   "playground/server/router.ts": router,
   "playground/server/sale.ts": sale,
   "playground/server/delivery.ts": deliveryServer,
+  "playground/server/order-key.ts": orderKey,
   [`${R}catalog-refs.ts`]: catalogRefs,
   [`${R}deliver-email.ts`]: deliverEmail,
   [`${R}documents-storage.ts`]: documentsStorage,

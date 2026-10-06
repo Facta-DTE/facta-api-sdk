@@ -158,8 +158,8 @@ export const RECIPE_SPECS: RecipeSpec[] = [
   },
   {
     id: "deliver-email",
-    title: "Entregar por correo y seguir el estado",
-    summary: "Emite una Factura marcando el correo, pide la entrega con el token que devuelve el API y espera el estado final. También sigue un documento suyo recién emitido.",
+    title: "Emitir y enviar por correo, en dos llamadas",
+    summary: "Dos llamadas separadas: facta.issue marca el correo y devuelve un token de entrega (cinco minutos); facta.deliverEmail lo usa para pedir el envío y waitForDelivery sigue el estado. El token existe para que nadie use el API como relevo de correo con documentos que no emitió.",
     file: "deliver-email.ts",
     fields: [
       {
@@ -168,10 +168,12 @@ export const RECIPE_SPECS: RecipeSpec[] = [
       },
       {
         name: "code", label: "O un documento suyo emitido hace menos de 5 minutos con correo (opcional)", kind: "issued",
-        help: "Con un documento elegido se usa el correo marcado al emitirlo y no se emite otro.",
+        help: "Con un documento elegido se salta el paso 1: se usa el correo marcado al emitirlo y no se emite otro.",
       },
     ],
+    stages: [{ id: "issue", label: "1. Emitir y marcar el correo" }, { id: "send", label: "2. Enviar con el token" }],
     consumesQuota: true,
+    retry: true,
   },
 ];
 
