@@ -5,7 +5,7 @@ import { FactaDownloadButton, FactaReceipt, FactaStatusBadge, type IssueResult }
 // JSON or the 80 mm ticket. The «Entrega» row appears when the sale asked for e-mail.
 export function ReceiptExample({ result }: { result: IssueResult | null }) {
   if (result === null) {
-    return <p className="pg-note">Emita una factura con cualquiera de los ejemplos de arriba y aparecerá aquí.</p>;
+    return <p className="pg-note">Emita una factura desde «Emitir» (prepare la venta y úsela en cualquier ventana) y aparecerá aquí.</p>;
   }
   return (
     <div style={{ display: "grid", gap: 16, width: "100%", maxWidth: 520 }}>

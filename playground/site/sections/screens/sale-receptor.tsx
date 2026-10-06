@@ -1,4 +1,5 @@
 import { FactaCustomerPicker, type CustomerOption } from "../../../../react.ts";
+import { Segmented } from "../../components/ui.tsx";
 import type { PlaygroundState, SaleDescription, SaleSource } from "../../api.ts";
 
 /** What the visitor chose for the receiver. The browser keeps ids and typed text only. */
@@ -87,14 +88,10 @@ function CustomFields({ type, f, set, error }: { type: string; f: Record<string,
         <Text label="Actividad económica" name="descActividad" {...common} max={150} />
         <Text label="Correo" name="correo" type="email" {...common} />
         <Text label="Teléfono" name="telefono" type="tel" optional {...common} max={30} />
-        <fieldset className="pg-source" style={{ gridColumn: "1 / -1" }}>
-          <legend>Tipo de persona</legend>
-          <div className="pg-seg pg-seg--compact">
-            {[["1", "Persona natural"], ["2", "Persona jurídica"]].map(([value, label]) => (
-              <label key={value}><input type="radio" name="tipoPersona" checked={f.tipoPersona === value} onChange={() => set("tipoPersona", value)} />{label}</label>
-            ))}
-          </div>
-        </fieldset>
+        <div className="pg-field" style={{ gridColumn: "1 / -1" }}>
+          <span>Tipo de persona</span>
+          <Segmented label="Tipo de persona" value={(f.tipoPersona ?? "") as "1" | "2"} onChange={(value) => set("tipoPersona", value)} choices={[{ value: "1", label: "Persona natural" }, { value: "2", label: "Persona jurídica" }]} />
+        </div>
       </div>
     );
   }
@@ -149,29 +146,27 @@ export function ReceptorSection({ state, tipoDte, choice, onChange, error }: {
 
   return (
     <div className="pg-sale-receptor" style={{ display: "grid", gap: 12 }}>
-      <fieldset className="pg-source">
-        <legend>Receptor</legend>
-        <div className="pg-seg">
-          {labels.map(([value, label]) => (
-            <label key={value}>
-              <input type="radio" name="receptor-source" value={value} checked={source === value} disabled={value === "catalog" && !catalogOk}
-                onChange={() => onChange({ ...choice, source: value })} />
-              {label}
-            </label>
-          ))}
-        </div>
+      <div className="pg-field">
+        <span>Receptor</span>
+        <Segmented
+          label="Origen del receptor"
+          value={source}
+          onChange={(value) => onChange({ ...choice, source: value })}
+          choices={labels.map(([value, label]) => ({ value, label, disabled: value === "catalog" && !catalogOk }))}
+          block
+        />
         {source === "catalog" || catalogWhy === null ? null : <p className="pg-hint">{catalogWhy}</p>}
-      </fieldset>
+      </div>
 
       {source === "catalog" && (
-        <div style={{ display: "grid", gap: 8, maxWidth: 520 }}>
+        <div style={{ display: "grid", gap: 8 }}>
           <FactaCustomerPicker value={choice.catalog} onChange={(customer) => onChange({ ...choice, catalog: customer })} />
           <p className="pg-hint">El navegador solo recibe el identificador. Su servidor confirma que existe en el catálogo y el API completa los datos al emitir.</p>
         </div>
       )}
 
       {source === "demo" && (
-        <label className="pg-field" style={{ maxWidth: 520 }}>
+        <label className="pg-field">
           <span>Cliente de demostración{tipoDte === "01" || builtIn ? " (opcional)" : ""}</span>
           <select value={choice.demoId} onChange={(event) => onChange({ ...choice, demoId: event.target.value })}>
             <option value="">{tipoDte === "01" ? "Consumidor final" : builtIn ? "Receptor de demostración incluido" : "Elija un cliente"}</option>

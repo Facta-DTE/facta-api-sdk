@@ -1,194 +1,229 @@
-import { useCallback, type ReactNode } from "react";
-import type { AutoCloseOn, RunMode } from "../../../../react.ts";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { AutoCloseOn, IssueResult, RunMode } from "../../../../react.ts";
+import { CodePanel, type CodeTab } from "../../code-block.tsx";
+import { Segmented } from "../../components/ui.tsx";
 import { createSession } from "../../api.ts";
-import { ExampleCard } from "../../components/example-card.tsx";
 import { usePlayground } from "../../state.tsx";
+import { GROUPS, ITEMS, itemOf, type WorkbenchItem } from "./catalog.ts";
 import "./screens.css";
 import { AppearanceStudio } from "./examples/appearance-studio.tsx";
-import appearanceSource from "./examples/appearance-studio.tsx?raw";
 import { DialogExample } from "./examples/dialog.tsx";
-import dialogSource from "./examples/dialog.tsx?raw";
 import { DocumentDetailExample } from "./examples/document-detail.tsx";
-import documentDetailSource from "./examples/document-detail.tsx?raw";
 import { DocumentListExample } from "./examples/document-list.tsx";
-import documentListSource from "./examples/document-list.tsx?raw";
 import { DrawerExample } from "./examples/drawer.tsx";
-import drawerSource from "./examples/drawer.tsx?raw";
 import { InlineExample } from "./examples/inline.tsx";
-import inlineSource from "./examples/inline.tsx?raw";
 import { InvalidateExample } from "./examples/invalidate.tsx";
-import invalidateSource from "./examples/invalidate.tsx?raw";
 import { IssueButtonExample } from "./examples/issue-button.tsx";
-import issueButtonSource from "./examples/issue-button.tsx?raw";
 import { PickersExample } from "./examples/pickers.tsx";
-import pickersSource from "./examples/pickers.tsx?raw";
 import { ReceiptExample } from "./examples/receipt.tsx";
-import receiptSource from "./examples/receipt.tsx?raw";
 import { ServiceStatusExample } from "./examples/service-status.tsx";
-import serviceStatusSource from "./examples/service-status.tsx?raw";
 import { WindowHookExample } from "./examples/window-hook.tsx";
-import windowHookSource from "./examples/window-hook.tsx?raw";
 import { SaleBuilder } from "./sale-builder.tsx";
-import saleBuilderSource from "./sale-builder.tsx?raw";
 import { ScreenStateProvider, useScreens } from "./screen-state.tsx";
 
-function Band({ id, title, children }: { id: string; title: string; children: ReactNode }) {
-  return (
-    <div className="pg-band" id={id}>
-      <h2>{title}</h2>
-      <p>{children}</p>
-    </div>
-  );
+type Pane = "venta" | "vista" | "codigo";
+
+/**
+ * The response the server's handler gave for the last issued document, without anything the
+ * visitor must not see: no signed file, no PDF, no storage locations, no tokens.
+ */
+export function redactedResponse(result: IssueResult | null): string | null {
+  if (result === null) return null;
+  const safe = {
+    estado: result.estado,
+    tipoDte: result.tipoDte,
+    ambiente: result.ambiente,
+    numeroControl: result.numeroControl,
+    codigoGeneracion: result.codigoGeneracion,
+    fecEmi: result.fecEmi,
+    horEmi: result.horEmi,
+    selloRecibido: result.selloRecibido,
+    fhProcesamiento: result.fhProcesamiento,
+    observaciones: result.observaciones,
+    detalle: result.detalle,
+    totales: result.totales,
+  };
+  return JSON.stringify(safe, (_key, value: unknown) => (value === undefined || value === null ? undefined : value), 2);
 }
 
-function RunBar() {
-  const s = useScreens();
-  return (
-    <div className="pg-runbar">
-      <label className="pg-field">
-        <span>Modo de ejecución (<code>run</code>)</span>
-        <select value={s.run} onChange={(event) => s.setRun(event.target.value as RunMode)}>
-          <option value="manual">manual: revisar y pulsar Emitir</option>
-          <option value="auto">auto: emite al abrir</option>
-          <option value="auto-close">auto-close: emite y se cierra</option>
-        </select>
-      </label>
-      <label className="pg-field">
-        <span>Cierre en ms (<code>autoCloseDelay</code>)</span>
-        <input type="number" min={0} step={100} value={s.autoCloseDelay} disabled={s.run !== "auto-close"} onChange={(event) => s.setAutoCloseDelay(Math.max(0, Number(event.target.value) || 0))} />
-      </label>
-      <label className="pg-field">
-        <span>Cerrar en (<code>autoCloseOn</code>)</span>
-        <select value={s.autoCloseOn} disabled={s.run !== "auto-close"} onChange={(event) => s.setAutoCloseOn(event.target.value as AutoCloseOn)}>
-          <option value="success">success: solo si se emitió</option>
-          <option value="any">any: también ante un error</option>
-        </select>
-      </label>
-    </div>
-  );
+function writeUrl(id: string) {
+  const url = new URL(window.location.href);
+  url.searchParams.set("c", id);
+  window.history.replaceState(null, "", url);
 }
 
-function ScreensPage() {
+function Stage({ item }: { item: WorkbenchItem }) {
   const { view } = usePlayground();
   const s = useScreens();
   const state = view.status === "ready" ? view.state : null;
   const visitor = state?.visitor ?? null;
+  const windowProps = { session: s.prepared?.session ?? null, run: s.run, autoCloseDelay: s.autoCloseDelay, autoCloseOn: s.autoCloseOn, onIssued: s.onIssued };
 
   const prepareSample = useCallback(async () => {
     const created = await createSession({ tipoDte: "01", lines: [{ descripcion: "Café de altura, bolsa de 1 lb", cantidad: 1, precioUni: 8.5, tipoItem: 1 }] });
     s.setPrepared({ ...created, tipoDte: "01" });
   }, [s]);
 
-  const windowProps = {
-    session: s.prepared?.session ?? null,
-    run: s.run,
-    autoCloseDelay: s.autoCloseDelay,
-    autoCloseOn: s.autoCloseOn,
-    onIssued: s.onIssued,
+  switch (item.id) {
+    case "dialog": return <DialogExample {...windowProps} />;
+    case "drawer": return <DrawerExample {...windowProps} />;
+    case "inline": return <InlineExample {...windowProps} />;
+    case "button": return <IssueButtonExample {...windowProps} />;
+    case "window": return <WindowHookExample {...windowProps} />;
+    case "receipt": case "badge": case "download": return <ReceiptExample result={s.last} />;
+    case "list": return <DocumentListExample onInvalidated={() => void s.refreshIssued()} />;
+    case "detail": return <DocumentDetailExample issued={s.issued} onInvalidated={() => void s.refreshIssued()} />;
+    case "pickers": return state === null ? <p className="pg-note">Esperando al servidor…</p> : <PickersExample state={state} />;
+    case "status": return <ServiceStatusExample />;
+    case "invalidate": return <InvalidateExample issued={s.issued} canInvalidate={state?.demo.canInvalidate ?? false} onInvalidated={() => void s.refreshIssued()} />;
+    default: return <AppearanceStudio session={s.prepared?.session ?? null} canPrepare={visitor !== null} onPrepare={() => void prepareSample()} />;
+  }
+}
+
+const RUN_CHOICES = [{ value: "manual", label: "manual" }, { value: "auto", label: "auto" }, { value: "auto-close", label: "auto-close" }] as const;
+
+function Workbench() {
+  const { view } = usePlayground();
+  const s = useScreens();
+  const state = view.status === "ready" ? view.state : null;
+  const [itemId, setItemId] = useState(() => itemOf(new URLSearchParams(window.location.search).get("c")).id);
+  const [tab, setTab] = useState("app");
+  const [pane, setPane] = useState<Pane>("venta");
+  const item = itemOf(itemId);
+  const group = GROUPS.find((g) => g.id === item.group)!;
+
+  const choose = (id: string) => {
+    setItemId(id);
+    writeUrl(id);
+    setTab("app");
+    setPane(itemOf(id).needsSale && s.prepared === null ? "venta" : "vista");
   };
 
+  // A prepared sale is what the live view needs: move there once it exists.
+  const preparedSession = s.prepared?.session ?? null;
+  useEffect(() => {
+    if (preparedSession !== null) setPane("vista");
+  }, [preparedSession]);
+  // The first visit to a component that needs no sale opens its view.
+  useEffect(() => {
+    if (!item.needsSale) setPane((current) => (current === "venta" ? "vista" : current));
+  }, [item.needsSale]);
+
+  const response = redactedResponse(s.last);
+  const tabs = useMemo<CodeTab[]>(() => [
+    { id: "app", label: "App.tsx", code: item.source, note: `Este es el archivo que se ejecuta en esta página, no una copia · ${item.sourceName}` },
+    { id: "server", label: "server.ts", code: item.server, note: `${item.serverNote} · ${item.serverName}` },
+    {
+      id: "response",
+      label: "Respuesta",
+      code: response ?? "// La respuesta aparece aquí cuando emita un documento.\n// Se muestra sin archivos, rutas de almacenamiento ni tokens.",
+      note: "Respuesta real de staging, sin llaves, archivos ni rutas de almacenamiento.",
+    },
+  ], [item, response]);
+
+  // After an issue, the «Respuesta» tab is the interesting one.
+  const lastCode = s.last?.codigoGeneracion;
+  useEffect(() => {
+    if (lastCode !== undefined) setTab("response");
+  }, [lastCode]);
+
+  const showSale = item.needsSale;
+
   return (
-    <section className="pg-page">
-      <header className="pg-hero">
-        <p className="pg-eyebrow">Ambiente de pruebas · documentos sin valor fiscal</p>
-        <h1>Pantallas React del SDK, funcionando</h1>
-        <p className="pg-lead">
-          Cada ejemplo usa los componentes de <code>@facta-dte/api/react</code> contra el servidor del playground, con su
-          código al lado. El código que ve es el archivo que se ejecuta.
-        </p>
-        {state !== null && visitor === null && <p className="pg-note">Inicie sesión para emitir y para ver sus documentos.</p>}
-      </header>
+    <div className="wb" data-pane={pane}>
+      <aside className="wb-rail" aria-label="Componentes">
+        {GROUPS.map((g) => (
+          <div key={g.id}>
+            <h2 className="wb-rail-title">{g.label}</h2>
+            <ul>
+              {ITEMS.filter((i) => i.group === g.id).map((i) => (
+                <li key={i.id}>
+                  <a href={`?c=${i.id}`} aria-current={i.id === item.id ? "page" : undefined} onClick={(event) => { event.preventDefault(); choose(i.id); }}>{i.title}</a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </aside>
 
-      <ul className="pg-subnav" aria-label="En esta página">
-        <li><a href="#venta">1 · Venta</a></li>
-        <li><a href="#emitir">2 · Emitir</a></li>
-        <li><a href="#despues">3 · Después de emitir</a></li>
-        <li><a href="#datos">4 · Datos</a></li>
-        <li><a href="#anular">5 · Anular</a></li>
-        <li><a href="#apariencia">6 · Apariencia</a></li>
-      </ul>
+      <div className="wb-phone-pick">
+        <label className="pg-field">
+          <span>Componente</span>
+          <select className="wb-select" value={item.id} onChange={(event) => choose(event.target.value)}>
+            {GROUPS.map((g) => (
+              <optgroup key={g.id} label={g.label}>
+                {ITEMS.filter((i) => i.group === g.id).map((i) => <option key={i.id} value={i.id}>{i.title}</option>)}
+              </optgroup>
+            ))}
+          </select>
+        </label>
+        <Segmented<Pane>
+          block
+          label="Qué ver"
+          value={pane}
+          onChange={setPane}
+          choices={[{ value: "venta", label: "Venta" }, { value: "vista", label: "Vista" }, { value: "codigo", label: "Código" }]}
+        />
+      </div>
 
-      <Band id="venta" title="1 · Arme una venta">
-        El navegador solo describe la venta (tipo, cliente, líneas). El servidor la valida, arma la solicitud fiscal y le entrega un
-        token de sesión: ningún valor fiscal sale del navegador.
-      </Band>
-      {state !== null ? (
-        <ExampleCard wide title="Constructor de ventas" intro="Seis tipos de documento: los que el API v1 acepta hoy." code={saleBuilderSource} codeTitle="Navegador · sections/screens/sale-builder.tsx"
-          note={s.prepared === null ? undefined : `Venta lista: ${s.prepared.title} · $${s.prepared.total.toFixed(2)}${s.prepared.emailTo ? ` · correo a ${s.prepared.emailTo}` : ""}. Úsela en los ejemplos de abajo.`}>
-          <SaleBuilder state={state} issued={s.issued} onPrepared={s.setPrepared} />
-        </ExampleCard>
-      ) : <p className="pg-note">Esperando al servidor…</p>}
-
-      <Band id="emitir" title="2 · Emitir">
-        La misma venta se puede emitir con cuatro presentaciones y con una función. Los modos de ejecución cambian cuándo arranca la emisión.
-        Los ejemplos comparten la venta: si ya la emitió, los demás muestran el mismo documento (misma llave de idempotencia).
-      </Band>
-      <RunBar />
-      <div style={{ height: 16 }} />
-      <ExampleCard title={<code>FactaInvoiceDialog</code>} intro="Ventana modal; en el teléfono se vuelve una hoja inferior." code={dialogSource} codeTitle="sections/screens/examples/dialog.tsx">
-        <DialogExample {...windowProps} />
-      </ExampleCard>
-      <ExampleCard title={<code>FactaInvoiceDrawer</code>} intro="El mismo flujo en un panel lateral." code={drawerSource} codeTitle="sections/screens/examples/drawer.tsx">
-        <DrawerExample {...windowProps} />
-      </ExampleCard>
-      <ExampleCard title={<code>FactaInvoiceInline</code>} intro="Incrustada en su página, sin capa encima." code={inlineSource} codeTitle="sections/screens/examples/inline.tsx">
-        <InlineExample {...windowProps} />
-      </ExampleCard>
-      <ExampleCard title={<code>FactaIssueButton</code>} intro="Un botón para punto de venta: etiqueta, progreso y marca de listo." code={issueButtonSource} codeTitle="sections/screens/examples/issue-button.tsx">
-        <IssueButtonExample {...windowProps} />
-      </ExampleCard>
-      <ExampleCard title={<code>useFactaWindow().open</code>} intro="Sin componente en su JSX: una promesa con el resultado." code={windowHookSource} codeTitle="sections/screens/examples/window-hook.tsx">
-        <WindowHookExample {...windowProps} />
-      </ExampleCard>
-
-      <Band id="despues" title="3 · Después de emitir">
-        Recibo, estado y descargas del último documento que emitió en esta página. La fila «Entrega» aparece si pidió el correo en la venta.
-      </Band>
-      <ExampleCard title={<><code>FactaReceipt</code> · <code>FactaStatusBadge</code> · <code>FactaDownloadButton</code></>} code={receiptSource} codeTitle="sections/screens/examples/receipt.tsx">
-        <ReceiptExample result={s.last} />
-      </ExampleCard>
-
-      <Band id="datos" title="4 · Datos">
-        Listados, detalle, selectores y estado del servicio. El playground solo muestra los documentos que usted emitió aquí.
-      </Band>
-      <ExampleCard wide title={<code>FactaDocumentList</code>} intro="Tabla en escritorio, tarjetas en el teléfono." code={documentListSource} codeTitle="sections/screens/examples/document-list.tsx">
-        <DocumentListExample onInvalidated={() => void s.refreshIssued()} />
-      </ExampleCard>
-      <ExampleCard title={<code>FactaDocumentDetail</code>} code={documentDetailSource} codeTitle="sections/screens/examples/document-detail.tsx">
-        <DocumentDetailExample issued={s.issued} onInvalidated={() => void s.refreshIssued()} />
-      </ExampleCard>
-      {state !== null && (
-        <ExampleCard title={<><code>FactaCustomerPicker</code> · <code>FactaProductPicker</code></>} code={pickersSource} codeTitle="sections/screens/examples/pickers.tsx">
-          <PickersExample state={state} />
-        </ExampleCard>
-      )}
-      <ExampleCard title={<code>FactaServiceStatus</code>} code={serviceStatusSource} codeTitle="sections/screens/examples/service-status.tsx">
-        <ServiceStatusExample />
-      </ExampleCard>
-
-      <Band id="anular" title="5 · Anular">
-        La anulación nace en el servidor: usted pide un token, el servidor comprueba que el documento sea suyo y pone a los responsables de la demostración.
-      </Band>
-      <ExampleCard title="Diálogo de anulación" code={invalidateSource} codeTitle="sections/screens/examples/invalidate.tsx">
-        <InvalidateExample issued={s.issued} canInvalidate={state?.demo.canInvalidate ?? false} onInvalidated={() => void s.refreshIssued()} />
-      </ExampleCard>
-
-      <Band id="apariencia" title="6 · Estudio de apariencia">
-        Cambie tokens, marca, clases y textos sobre una ventana real. Abajo queda el código listo para copiar.
-      </Band>
-      <ExampleCard wide title="Estudio de apariencia" intro="Parte de los tres ajustes de la vista previa del SDK." code={appearanceSource} codeTitle="sections/screens/examples/appearance-studio.tsx">
-        <div style={{ width: "100%" }}>
-          <AppearanceStudio session={s.prepared?.session ?? null} canPrepare={visitor !== null} onPrepare={() => void prepareSample()} />
+      <section className="wb-center" aria-labelledby="wb-title">
+        <div className="wb-head">
+          <div>
+            <p className="wb-crumb">Pantallas React · {group.label}</p>
+            <h1 id="wb-title" className="wb-title">{item.title}</h1>
+          </div>
+          {item.window && (
+            <div className="wb-run">
+              <span id="wb-run-label">Modo</span>
+              <Segmented label="Modo de ejecución (run)" value={s.run} onChange={(value) => s.setRun(value as RunMode)} choices={RUN_CHOICES} />
+            </div>
+          )}
         </div>
-      </ExampleCard>
-    </section>
+        {item.window && s.run === "auto-close" && (
+          <div className="wb-runopts">
+            <label className="pg-field">
+              <span>Cierre en ms (<code>autoCloseDelay</code>)</span>
+              <input type="number" min={0} step={100} value={s.autoCloseDelay} onChange={(event) => s.setAutoCloseDelay(Math.max(0, Number(event.target.value) || 0))} />
+            </label>
+            <label className="pg-field">
+              <span>Cerrar en (<code>autoCloseOn</code>)</span>
+              <select value={s.autoCloseOn} onChange={(event) => s.setAutoCloseOn(event.target.value as AutoCloseOn)}>
+                <option value="success">success: solo si se emitió</option>
+                <option value="any">any: también ante un error</option>
+              </select>
+            </label>
+          </div>
+        )}
+        {state !== null && state.visitor === null && <p className="pg-note wb-pad">Inicie sesión para emitir y para ver sus documentos.</p>}
+
+        <div className="wb-sale" hidden={!showSale} data-pane-show="venta">
+          {state !== null ? (
+            <SaleBuilder state={state} issued={s.issued} onPrepared={s.setPrepared} />
+          ) : <p className="pg-note">Esperando al servidor…</p>}
+          {s.prepared !== null && (
+            <p className="pg-note wb-ready" role="status">
+              Venta lista: {s.prepared.title} · ${s.prepared.total.toFixed(2)}{s.prepared.emailTo ? ` · correo a ${s.prepared.emailTo}` : ""}.
+            </p>
+          )}
+        </div>
+
+        <div className={`wb-stage${item.window ? " wb-stage--center" : ""}`} data-pane-show="vista">
+          <span className="wb-stage-label">Vista en vivo · staging</span>
+          <div className="wb-stage-body"><Stage item={item} /></div>
+        </div>
+      </section>
+
+      <div className="wb-code" data-pane-show="codigo">
+        <CodePanel tabs={tabs} selected={tab} onSelect={setTab} />
+      </div>
+    </div>
   );
 }
 
 export function Screens() {
   return (
     <ScreenStateProvider>
-      <ScreensPage />
+      <Workbench />
     </ScreenStateProvider>
   );
 }
