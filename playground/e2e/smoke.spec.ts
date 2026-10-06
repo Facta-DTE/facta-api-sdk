@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 // Read-only checks: they never issue a document.
 test("the shell loads and navigates the five sections", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { level: 1 })).toContainText("factura real");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("facturas de verdad");
   for (const label of ["Pantallas React", "Mi propia implementación", "Solo servidor", "Registro", "Inicio"]) {
     await page.getByRole("navigation", { name: "Secciones" }).getByRole("link", { name: label }).click();
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();

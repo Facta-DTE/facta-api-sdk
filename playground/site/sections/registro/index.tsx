@@ -1,104 +1,143 @@
-import { useCallback, useEffect, useState } from "react";
-import { base64ToBytes, createFactaClient, formatDateTime, saveBlob, truncateMiddle } from "../../../../browser.ts";
-import { ApiError, loadRegistry, type RegistryDocument } from "../../api.ts";
+import { useMemo, useState } from "react";
+import type { RegistryDocument } from "../../api.ts";
+import { StatusChip } from "../../components/ui.tsx";
 import { Link } from "../../router.tsx";
 import { usePlayground } from "../../state.tsx";
+import { useDownload } from "./downloads.ts";
+import { InvalidateDialog } from "./invalidate-dialog.tsx";
+import { money, observationsOf, TYPE_NAMES, tail, totalOf, useRegistry, whenOf } from "./registry-data.ts";
 import "./registro.css";
 
 // Section «Registro» (docs/playground.md §5.5). The list is the visitor's own record
-// (server/issued-codes.ts); the server adds each document's current state. Files go
-// through the SDK handler, which only serves codes this visitor issued.
-const client = createFactaClient({ endpoint: "/api/facta" });
-const TYPES: Record<string, string> = { "01": "Factura", "03": "Crédito fiscal", "05": "Nota de crédito", "06": "Nota de débito", "11": "Exportación", "14": "Sujeto excluido" };
-const STATES: Record<string, string> = { sellado: "Sellado", contingencia: "En contingencia", invalidado: "Invalidado", rechazado: "Rechazado" };
-
-type Load = { status: "loading" } | { status: "error"; message: string } | { status: "ready"; documents: RegistryDocument[] };
+// (server/issued-codes.ts); the server adds each document's current state, total and
+// Hacienda's observations (the newest 25). Files go through the SDK handler, which only
+// serves codes this visitor issued.
+const STATES: [string, string][] = [["sellado", "Sellada"], ["rechazado", "Rechazada"], ["invalidado", "Anulada"], ["contingencia", "Contingencia"]];
 
 export function Registro() {
   const { view } = usePlayground();
-  const signedIn = view.status === "ready" && view.state.visitor !== null;
-  const [load, setLoad] = useState<Load>({ status: "loading" });
-  const [busy, setBusy] = useState<string | null>(null);
-  const [problem, setProblem] = useState<string | null>(null);
+  const { registry, reload, signedIn } = useRegistry();
+  const { busy, problem, download } = useDownload();
+  const [type, setType] = useState("");
+  const [estado, setEstado] = useState("");
+  const [reason, setReason] = useState<string | null>(null);
+  const [checking, setChecking] = useState<string | null>(null);
+  const [voiding, setVoiding] = useState<RegistryDocument | null>(null);
+  const canInvalidate = view.status === "ready" && view.state.demo.canInvalidate;
 
-  const refresh = useCallback(async () => {
-    setLoad({ status: "loading" });
-    try {
-      setLoad({ status: "ready", documents: await loadRegistry() });
-    } catch (error) {
-      setLoad({ status: "error", message: error instanceof ApiError ? error.message : "No se pudo leer su registro." });
-    }
-  }, []);
-  useEffect(() => { if (signedIn) void refresh(); }, [signedIn, refresh]);
+  const documents = registry.status === "ready" ? registry.documents : [];
+  const types = useMemo(() => [...new Set(documents.map((d) => d.tipoDte))].sort(), [documents]);
+  const shown = documents.filter((d) => (type === "" || d.tipoDte === type) && (estado === "" || d.estado === estado));
+  // The first rejected document explains itself without a click, as in the board.
+  const open = reason ?? documents.find((d) => d.estado === "rechazado")?.codigoGeneracion ?? null;
 
-  async function download(code: string, kind: "pdf" | "json") {
-    setBusy(`${code}.${kind}`);
-    setProblem(null);
-    try {
-      const file = await client.downloadDocument(code, kind);
-      saveBlob(new Blob([base64ToBytes(file.base64)], { type: file.contentType }), file.filename);
-    } catch (error) {
-      setProblem(error instanceof Error ? error.message : "No se pudo descargar el archivo.");
-    } finally {
-      setBusy(null);
-    }
+  async function check(code: string) {
+    setChecking(code);
+    await reload();
+    setChecking(null);
   }
 
   return (
-    <section className="pg-page">
-      <header className="pg-hero">
-        <p className="pg-eyebrow">Solo sus documentos</p>
-        <h1>Registro</h1>
-        <p className="pg-lead">
-          Las facturas de prueba que usted emitió desde el playground, con su estado actual en Hacienda. Otros
-          visitantes no aparecen aquí ni pueden abrir sus archivos.
-        </p>
+    <div className="pg-wrap pg-wrap--mid reg">
+      <header className="reg-head">
+        <div>
+          <h1>Sus documentos de prueba</h1>
+          <p className="reg-lead">Solo los que usted emitió en el playground. El estado se lee del API cada vez que abre esta página.</p>
+        </div>
+        {documents.length > 0 && (
+          <div className="reg-filters">
+            <label className="reg-select"><span className="pg-sr">Tipo de documento</span>
+              <select value={type} onChange={(event) => setType(event.target.value)}>
+                <option value="">Todos los tipos</option>
+                {types.map((t) => <option key={t} value={t}>{TYPE_NAMES[t] ?? `Tipo ${t}`}</option>)}
+              </select>
+            </label>
+            <label className="reg-select"><span className="pg-sr">Estado</span>
+              <select value={estado} onChange={(event) => setEstado(event.target.value)}>
+                <option value="">Todos los estados</option>
+                {STATES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+            </label>
+            <button type="button" className="pg-secondary reg-refresh" onClick={() => void reload()}>Actualizar</button>
+          </div>
+        )}
       </header>
 
       {view.status === "ready" && !signedIn && <p className="pg-note">Inicie sesión para ver su registro.</p>}
-      {signedIn && load.status === "loading" && <p className="pg-note" aria-busy="true">Leyendo su registro…</p>}
-      {signedIn && load.status === "error" && <p role="alert" className="pg-error">{load.message}</p>}
+      {signedIn && registry.status === "loading" && <p className="pg-note" aria-busy="true">Leyendo su registro…</p>}
+      {signedIn && registry.status === "error" && <p role="alert" className="pg-error">{registry.message}</p>}
       {problem !== null && <p role="alert" className="pg-error">{problem}</p>}
 
-      {load.status === "ready" && load.documents.length === 0 && (
-        <div className="pg-card rg-empty">
+      {registry.status === "ready" && documents.length === 0 && (
+        <div className="pg-card reg-empty">
           <h2>Todavía no hay documentos</h2>
           <p>Cuando emita una factura de prueba aparecerá aquí.</p>
-          <Link to="/" className="pg-primary rg-link">Emitir desde Inicio</Link>
+          <Link to="/" className="pg-primary">Emitir desde Inicio</Link>
         </div>
       )}
 
-      {load.status === "ready" && load.documents.length > 0 && (
+      {documents.length > 0 && (
         <>
-          <div className="rg-bar">
-            <span className="pg-note">{load.documents.length} documento{load.documents.length === 1 ? "" : "s"} (los últimos 200)</span>
-            <button type="button" className="rg-refresh" onClick={() => void refresh()}>Actualizar</button>
-          </div>
-          <ul className="rg-list">
-            {load.documents.map((d) => (
-              <li key={d.codigoGeneracion} className="pg-card rg-row">
-                <div className="rg-main">
-                  <strong>{TYPES[d.tipoDte] ?? `Tipo ${d.tipoDte}`}</strong>
-                  <span className={`rg-state rg-state--${d.estado}`}>{STATES[d.estado] ?? d.estado}</span>
-                </div>
-                <dl className="rg-meta">
-                  <dt>Código</dt><dd title={d.codigoGeneracion}>{truncateMiddle(d.codigoGeneracion, 8, 6)}</dd>
-                  <dt>Control</dt><dd title={d.numeroControl}>{truncateMiddle(d.numeroControl, 12, 8)}</dd>
-                  <dt>Emitido</dt><dd>{d.current ? formatDateTime(d.current.fecEmi, d.current.horEmi) : formatDateTime(d.issuedAt.slice(0, 10), d.issuedAt.slice(11, 16))}</dd>
-                  {d.current?.selloRecibido && <><dt>Sello</dt><dd>{truncateMiddle(d.current.selloRecibido)}</dd></>}
-                </dl>
-                <div className="rg-actions">
-                  {(["pdf", "json"] as const).map((kind) => (
-                    <button key={kind} type="button" disabled={busy !== null} onClick={() => void download(d.codigoGeneracion, kind)}>
-                      {busy === `${d.codigoGeneracion}.${kind}` ? "Descargando…" : kind === "pdf" ? "Descargar PDF" : "Descargar JSON"}
-                    </button>
-                  ))}
-                </div>
-              </li>
-            ))}
-          </ul>
+          <p className="pg-hint reg-count" role="status">{shown.length} de {documents.length} documento{documents.length === 1 ? "" : "s"} (los últimos 200)</p>
+          {shown.length === 0 && <p className="pg-note">Ningún documento coincide con los filtros.</p>}
+          {shown.length > 0 && (
+            <div className="reg-table-card">
+              <table className="reg-table">
+                <thead>
+                  <tr><th scope="col">Fecha</th><th scope="col">Tipo</th><th scope="col">Número de control</th><th scope="col" className="r">Total</th><th scope="col">Estado</th><th scope="col"><span className="pg-sr">Acciones</span></th></tr>
+                </thead>
+                <tbody>
+                  {shown.map((d) => {
+                    const total = totalOf(d);
+                    const label = `${TYPE_NAMES[d.tipoDte] ?? d.tipoDte} ${tail(d.numeroControl, 4)}`;
+                    const observations = observationsOf(d);
+                    return [
+                      <tr key={d.codigoGeneracion} className={`reg-row reg-row--${d.estado}`}>
+                        <td className="when">{whenOf(d)}</td>
+                        <td className="type">{TYPE_NAMES[d.tipoDte] ?? `Tipo ${d.tipoDte}`}</td>
+                        <td className="ctl mono" title={d.numeroControl}><span className="reg-ctl-full">{d.numeroControl}</span><span className="reg-ctl-short">{tail(d.numeroControl, 4)}</span></td>
+                        <td className="total r">{total === null ? "—" : money(total)}</td>
+                        <td className="state"><StatusChip estado={d.estado} /></td>
+                        <td className="act">
+                          {(d.estado === "sellado" || d.estado === "invalidado") && (["pdf", "json"] as const).map((kind) => (
+                            <button key={kind} type="button" className="pg-btn pg-btn--sm" aria-label={`Descargar ${kind.toUpperCase()} de ${label}`} disabled={busy !== null} onClick={() => void download(d.codigoGeneracion, kind)}>
+                              {busy === `${d.codigoGeneracion}.${kind}` ? "…" : kind.toUpperCase()}
+                            </button>
+                          ))}
+                          {d.estado === "sellado" && canInvalidate && (
+                            <button type="button" className="pg-btn pg-btn--sm reg-void" aria-label={`Anular ${label}`} onClick={() => setVoiding(d)}>Anular</button>
+                          )}
+                          {d.estado === "rechazado" && (
+                            <button type="button" className="pg-btn pg-btn--sm" aria-expanded={open === d.codigoGeneracion} aria-controls={`reason-${d.codigoGeneracion}`} onClick={() => setReason(open === d.codigoGeneracion ? "" : d.codigoGeneracion)}>Ver motivo</button>
+                          )}
+                          {d.estado === "contingencia" && (
+                            <button type="button" className="pg-btn pg-btn--sm" aria-label={`Consultar estado de ${label}`} disabled={checking !== null} onClick={() => void check(d.codigoGeneracion)}>
+                              {checking === d.codigoGeneracion ? "Consultando…" : "Consultar estado"}
+                            </button>
+                          )}
+                        </td>
+                      </tr>,
+                      d.estado === "rechazado" && open === d.codigoGeneracion && (
+                        <tr key={`${d.codigoGeneracion}-why`} className="reg-why-row">
+                          <td colSpan={6}>
+                            <div className="reg-why" id={`reason-${d.codigoGeneracion}`} role="note">
+                              <b>Motivo de Hacienda:</b>{" "}
+                              {observations.length > 0
+                                ? observations.map((o) => <code key={o}>{o}</code>)
+                                : <span>Hacienda no devolvió observaciones para este documento. Use «Actualizar» para volver a leerlo.</span>}
+                            </div>
+                          </td>
+                        </tr>
+                      ),
+                    ];
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </>
       )}
-    </section>
+      {voiding !== null && <InvalidateDialog doc={voiding} onClose={() => setVoiding(null)} onDone={() => void reload()} />}
+    </div>
   );
 }

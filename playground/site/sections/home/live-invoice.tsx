@@ -34,8 +34,8 @@ export function LiveInvoice({ email, disabled, onIssued }: { email: string | nul
   }
 
   return (
-    <div className="pg-live">
-      <button type="button" className="pg-primary" disabled={disabled || busy} onClick={start}>
+    <div className="home-live">
+      <button type="button" className="pg-secondary" disabled={disabled || busy} onClick={start}>
         {busy ? "Preparando…" : "Emitir una factura de prueba"}
       </button>
       {email !== null && (

@@ -1,27 +1,69 @@
-.rg-empty { max-width: 520px; }
-.rg-link { display: inline-flex; align-items: center; text-decoration: none; }
-.rg-bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
-.rg-refresh, .rg-actions button {
-  min-height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--pg-border);
-  background: var(--pg-surface); color: var(--pg-text); font: inherit; cursor: pointer;
-}
-.rg-actions button:disabled { opacity: .6; cursor: wait; }
-.rg-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
-.rg-row { display: grid; gap: 10px; }
-.rg-main { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
-.rg-state { padding: 2px 10px; border-radius: 99px; font-size: 13px; font-weight: 700; background: var(--pg-accent-soft); color: var(--pg-accent); }
-.rg-state--sellado { background: #e4f5ea; color: #14532d; }
-.rg-state--contingencia { background: #fff4d6; color: #6b4a00; }
-.rg-state--invalidado, .rg-state--rechazado { background: var(--pg-danger-soft); color: var(--pg-danger); }
-@media (prefers-color-scheme: dark) {
-  .rg-state--sellado { background: #123222; color: #a7e5bd; }
-  .rg-state--contingencia { background: #3a2f0f; color: #f0d27a; }
-}
-.rg-meta { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 14px; margin: 0; font-size: 14px; }
-.rg-meta dt { color: var(--pg-muted); }
-.rg-meta dd { margin: 0; font-family: ui-monospace, Menlo, monospace; overflow-wrap: anywhere; }
-.rg-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-@media (min-width: 900px) {
-  .rg-row { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto; align-items: center; }
-  .rg-main { flex-direction: column; align-items: flex-start; }
+/* Registro. Boards: Registro.dc.html and MovilRegistro.dc.html. */
+.reg-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px 24px; flex-wrap: wrap; margin-bottom: 28px; }
+.reg h1 { font-size: 36px; line-height: 1.1; margin: 0 0 6px; font-weight: 700; letter-spacing: -0.025em; }
+.reg-lead { margin: 0; color: var(--pg-muted); font-size: 15px; }
+.reg-filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.reg-select { position: relative; display: inline-block; }
+.reg-select select { appearance: none; -webkit-appearance: none; min-height: 42px; padding: 0 34px 0 14px; border: 1px solid var(--pg-border-strong); border-radius: var(--pg-radius-sm); background: var(--pg-surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%231f2d36' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 14px center; color: var(--pg-text); font: inherit; font-size: 14px; cursor: pointer; }
+.reg-refresh { min-height: 42px; padding: 0 16px; border-radius: var(--pg-radius-sm); font-size: 14px; }
+.reg-count { margin-bottom: 8px; }
+.reg-empty { max-width: 520px; }
+.reg-empty .pg-primary { margin-top: 8px; }
+
+.reg-table-card { background: var(--pg-surface); border: 1px solid var(--pg-border); border-radius: var(--pg-radius); overflow: hidden; }
+.reg-table { width: 100%; border-collapse: collapse; }
+.reg-table thead th { text-align: left; font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--pg-muted); background: var(--pg-bg); padding: 16px; }
+.reg-table td { padding: 12px 16px; border-top: 1px solid var(--pg-track); vertical-align: middle; }
+.reg-table thead + tbody tr:first-child td { border-top: 1px solid var(--pg-track); }
+.reg-table .r { text-align: right; }
+.reg-table .when { color: var(--pg-text-2); white-space: nowrap; }
+.reg-table .ctl { font-size: 12.5px; }
+.reg-table .total { font-weight: 500; }
+.reg-ctl-short { display: none; }
+.reg-table td.act { text-align: right; white-space: nowrap; }
+.reg-table td.act .pg-btn + .pg-btn { margin-left: 6px; }
+.reg-void { color: var(--pg-danger); }
+.reg-why-row td { padding: 0; border-top: 0; }
+.reg-why { margin: 0 16px 16px; padding: 14px 16px; border-radius: var(--pg-radius-md); background: var(--pg-danger-soft); color: var(--pg-danger-ink); font-size: 14px; }
+.reg-why code { font-family: var(--pg-mono); font-size: 13px; display: block; margin-top: 4px; overflow-wrap: anywhere; }
+.reg-why code:first-of-type { display: inline; margin: 0; }
+
+.reg-backdrop { position: fixed; inset: 0; z-index: 40; background: rgba(16, 28, 36, .5); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.reg-dialog { width: min(440px, 100%); background: var(--pg-surface); border-radius: var(--pg-radius); padding: 24px; display: grid; gap: 14px; box-shadow: 0 24px 48px -16px rgba(16, 40, 60, .4); }
+.reg-dialog h2 { margin: 0; font-size: 20px; }
+.reg-dialog p { margin: 0; color: var(--pg-text-2); }
+.reg-dialog-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.reg-danger { background: var(--pg-danger); }
+.reg-danger:hover:not(:disabled) { background: var(--pg-danger-ink); }
+
+/* Phone: each row becomes a card (MovilRegistro). */
+@media (max-width: 899px) {
+  /* The phone bar already names the section; the heading stays for screen readers. */
+  .reg h1 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; margin: 0; }
+  .reg-head { margin-bottom: 14px; }
+  .reg-lead { font-size: 15px; }
+  .reg-filters { width: 100%; }
+  .reg-select { flex: 1 1 140px; }
+  .reg-select select { width: 100%; min-height: 44px; }
+  .reg-refresh { min-height: 44px; }
+  .reg-table-card { background: transparent; border: 0; border-radius: 0; overflow: visible; }
+  .reg-table, .reg-table tbody { display: block; }
+  .reg-table thead { display: none; }
+  .reg-row { display: grid; grid-template-columns: auto 1fr auto; gap: 6px 8px; align-items: center; background: var(--pg-surface); border: 1px solid var(--pg-border); border-radius: 14px; padding: 14px 16px; margin-bottom: 12px; }
+  .reg-row.reg-row--rechazado { margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+  .reg-table td { border: 0 !important; padding: 0; }
+  .reg-row .type { grid-column: 1; grid-row: 1; font-weight: 600; font-size: 16px; }
+  .reg-row .total { grid-column: 2; grid-row: 1; text-align: left; font-weight: 600; font-size: 16px; }
+  .reg-row .total::before { content: "· "; }
+  .reg-row .state { grid-column: 3; grid-row: 1; }
+  .reg-row .ctl { grid-column: 1 / 3; grid-row: 2; color: var(--pg-muted); font-size: 12px; }
+  .reg-row .when { grid-column: 3; grid-row: 2; text-align: right; font-size: 12px; color: var(--pg-muted); }
+  .reg-row .act { grid-column: 1 / -1; grid-row: 3; display: flex; gap: 8px; text-align: left; margin-top: 6px; }
+  .reg-row .act:empty { display: none; }
+  .reg-row .act .pg-btn { flex: 1 1 0; margin: 0 !important; }
+  .reg-ctl-full { display: none; }
+  .reg-ctl-short { display: inline; }
+  .reg-why-row { display: block; margin-bottom: 12px; }
+  .reg-why-row td { display: block; }
+  .reg-why { margin: 0; border-radius: 0 0 14px 14px; border: 1px solid var(--pg-border); border-top: 0; }
 }

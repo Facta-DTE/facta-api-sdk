@@ -42,4 +42,30 @@ export function installDevMock(search: string): void {
     issued: () => issued,
     invalidation: () => "inv-ok",
   });
+  mockRegistry();
+}
+
+// /api/registro is read with a plain fetch (not the SDK's), so the dev mock answers it here.
+function mockRegistry(): void {
+  const real = window.fetch.bind(window);
+  const hours = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
+  const row = (n: number, tipoDte: string, estado: string, h: number, total: number, observaciones: string[] = []) => ({
+    codigoGeneracion: `7C1E4B6A-92D3-4F08-A1B7-5E30C9D2F${String(600 + n).padStart(3, "0")}`,
+    tipoDte, estado, issuedAt: hours(h),
+    numeroControl: `DTE-${tipoDte}-M001P001-${String(n).padStart(15, "0")}`,
+    current: { estado, fecEmi: "2026-10-06", horEmi: "10:42:00", selloRecibido: estado === "rechazado" ? null : "2026A1F3C9E0B7D4", observaciones, totales: { montoTotalOperacion: total } },
+  });
+  const documents = [
+    row(214, "01", "sellado", 0.3, 12.5),
+    row(88, "03", "rechazado", 0.5, 113, ["Campo #/receptor/nrc no cumple el formato requerido"]),
+    row(213, "01", "invalidado", 1, 8.5),
+    row(12, "05", "contingencia", 17, 4),
+  ];
+  window.fetch = (input, init) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    if (new URL(url, window.location.href).pathname === "/api/registro") {
+      return Promise.resolve(new Response(JSON.stringify({ documents, enriched: documents.length }), { headers: { "content-type": "application/json" } }));
+    }
+    return real(input, init);
+  };
 }
