@@ -98,6 +98,11 @@ export interface FactaMessages {
     later: string;
     /** Readable text per reason code; `default` when the code is unknown. */
     reasons: Record<string, string>;
+    /**
+     * Help under a sending limit or provider outage (`quota_exceeded`,
+     * `provider_unavailable`), which is shown as a warning, never as an error.
+     */
+    limitHelp?: string;
   };
   button: {
     label: string;
@@ -413,6 +418,7 @@ export const esMessages: FactaMessages = {
       quota_exceeded: "Se alcanzó el límite de envíos",
       default: "Intente reenviarlo desde su sistema",
     },
+    limitHelp: "El documento ya está emitido; descargue el PDF o el JSON y compártalo, o reintente más tarde.",
   },
   button: {
     label: "Emitir factura",

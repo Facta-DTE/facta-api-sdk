@@ -25,6 +25,7 @@ const LABELS = Object.freeze({
   listing: "Invoice listing",
   journal: "Completed operation journal",
   restart: "Encrypted journal restart and recovery",
+  "email-delivery": "E-mail delivery (a mail quota or provider outage only warns)",
 });
 const STATES = new Set([
   "Not checked", "Failed", "Passed", "Passed (sealed test FE, $0.01)",
@@ -32,6 +33,8 @@ const STATES = new Set([
   "Not run (fixture missing)", "Blocked (permission unavailable)",
   "Ready (baseline test only)", "Ready (fixture configured)",
   "Passed (test fixture sealed)",
+  "Passed (e-mail sent)", "Warning (mail quota reached)", "Warning (mail provider unavailable)",
+  "Not run (no test inbox configured)",
 ]);
 const ERROR_CODES = new Set([
   // Stable public API codes from the server error taxonomy.
@@ -51,6 +54,7 @@ const ERROR_CODES = new Set([
   "storage_unsupported", "storage_unavailable", "storage_contract_invalid",
   "fixture_required", "fixture_invalid", "permission_missing", "related_document_invalid",
   "idempotency_window_expired", "assertion_failed",
+  "email_delivery_failed", "delivery_inbox_invalid",
 ]);
 
 export function createValidationResults() {

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createValidationResults, renderLiveReport, safeFailureCode } from "./live-report.mjs";
 import { validateLiveManagedStorage } from "./live-managed-storage.mjs";
+import { emailDeliveryReportState, emailDeliveryVerdict, emailDeliveryWarningLines } from "./live-delivery.mjs";
 import { requireLiveSnapshots, validateLiveCatalogReads } from "./live-preflight.mjs";
 import {
   assertRelatedTestDocuments,
@@ -22,6 +23,9 @@ const apiBaseUrl = process.env.STAGING_FACTA_API_BASE_URL;
 const runId = process.env.GITHUB_RUN_ID;
 const reportDir = process.env.FACTA_LIVE_REPORT_DIR;
 const liveMode = process.env.FACTA_LIVE_MODE ?? "emit-test-fe";
+// Optional: the inbox the e-mail delivery check sends to. Unset means the check
+// is reported as not run; nothing is sent.
+const deliveryInbox = process.env.STAGING_FACTA_DELIVERY_EMAIL?.trim() || undefined;
 const EXPECTED_STAGING_API_BASE_URL =
   "https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1";
 
@@ -52,6 +56,11 @@ if (apiBaseUrl !== EXPECTED_STAGING_API_BASE_URL) {
 }
 if (!["emit-test-fe", "emit-enabled-dte-fixtures"].includes(liveMode)) {
   throw new Error("Refusing integration run: unknown live-test mode.");
+}
+if (deliveryInbox !== undefined && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(deliveryInbox)) {
+  const error = new Error("Refusing integration run: the delivery inbox is not an e-mail address.");
+  error.code = "delivery_inbox_invalid";
+  throw error;
 }
 assertLiveRunWithinIdempotencyWindow(process.env.GITHUB_RUN_CREATED_AT);
 
@@ -279,6 +288,14 @@ try {
   assert.equal(requestRecords.slice(postRestart).filter(({ url, method }) => url.pathname.endsWith("/v1/dte") && method === "POST").length, 0,
     "completed restart recovery must not submit an invoice");
   checks.restart = "Passed";
+
+  currentCheck = "email-delivery";
+  if (deliveryInbox === undefined) {
+    checks["email-delivery"] = "Not run (no test inbox configured)";
+    console.log("SKIP e-mail delivery: STAGING_FACTA_DELIVERY_EMAIL is not configured");
+  } else {
+    await validateLiveEmailDelivery(facta, request);
+  }
 } catch (error) {
   checks[currentCheck] = "Failed";
   failureCode = safeFailureCode(error);
@@ -297,6 +314,45 @@ try {
   } finally {
     await rm(scratch, { recursive: true, force: true });
   }
+}
+
+/**
+ * Issue one more $0.01 test FE marked for e-mail delivery, start it, and wait
+ * for its final state. A reached mail quota or a provider outage only warns;
+ * any other outcome that is not «enviado» to the right inbox fails the run.
+ */
+async function validateLiveEmailDelivery(facta, request) {
+  const idempotencyKey = `sdk-live-${runId}-mail`;
+  const emission = await facta.issue(request, { idempotencyKey, deliver: { email: deliveryInbox } });
+  assert.equal(emission.estado, "sellado", "the delivery test invoice must be sealed");
+  assert.equal(emission.ambiente, "00", "the delivery test invoice must be in the test environment");
+  const token = emission.entrega?.token;
+  let observed;
+  if (typeof token !== "string" || token === "") {
+    // No token: the API declined the channel up front; its state says why.
+    observed = { channel: emission.entrega?.canales?.correo, settled: true, expectedRecipient: deliveryInbox };
+  } else {
+    try {
+      await facta.deliverEmail(emission.codigoGeneracion, token);
+      const waited = await facta.waitForDelivery(emission.codigoGeneracion, { channels: ["correo"], timeoutMs: 90_000, intervalMs: 3_000 });
+      observed = { channel: waited.canales.correo, settled: waited.settled, expectedRecipient: deliveryInbox };
+    } catch (error) {
+      observed = { error };
+    }
+  }
+  const verdict = emailDeliveryVerdict(observed);
+  checks["email-delivery"] = emailDeliveryReportState(verdict);
+  if (verdict.outcome === "warn") {
+    for (const line of emailDeliveryWarningLines(verdict)) console.log(line);
+    return;
+  }
+  if (verdict.outcome === "fail") {
+    console.error(`FAIL e-mail delivery: ${verdict.code}${verdict.status ? ` (HTTP ${verdict.status})` : ""}`);
+    const error = new Error("E-mail delivery failed.");
+    error.code = "email_delivery_failed";
+    throw error;
+  }
+  console.log("PASS e-mail delivery: sent to the configured test inbox");
 }
 
 async function saveReport() {
