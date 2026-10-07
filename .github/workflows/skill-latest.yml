@@ -1,0 +1,52 @@
+name: Publish agent skill (latest)
+
+# Keeps a downloadable copy of the skill current between npm releases: every change to
+# skills/ on main refreshes the `skill-latest` release (marked prerelease, never «latest»),
+# whose asset URL never changes:
+# https://github.com/Facta-DTE/facta-api-sdk/releases/download/skill-latest/facta-dte-api-skill.zip
+on:
+  push:
+    branches: [main]
+    paths:
+      - "skills/**"
+      - "scripts/pack-skill.mjs"
+      - "scripts/build-skill-recipes.mjs"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: skill-latest
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Refresh skill-latest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm skill:check
+      - run: pnpm skill:pack
+      - name: Replace the skill-latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          gh release delete skill-latest --yes --cleanup-tag 2>/dev/null || true
+          gh release create skill-latest dist/facta-dte-api-skill.zip \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "Agent skill facta-dte-api (latest, SDK ${version})" \
+            --notes "The facta-dte-api agent skill as of ${GITHUB_SHA::7} on main. Unzip into ~/.claude/skills/ or a project's .claude/skills/. Each npm release also attaches the skill to its own release."

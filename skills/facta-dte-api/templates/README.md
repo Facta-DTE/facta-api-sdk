@@ -17,4 +17,4 @@ mock mode are removed, and each file says so in its header.
 
 Inside this repo they import `@facta-dte/api`; in your project that resolves to the installed
 package. Keys come from environment variables (`FACTA_API_KEY`, `FACTA_SIGN_KEY`,
-`FACTA_SESSION_SECRET`) and are never printed. Start with a `facta_test_` key.
+`FACTA_SESSION_SECRET`) and are never printed. Start with a `facta_test_` key on the same public API: no `baseUrl` is set anywhere (never configure a staging or internal URL); a `facta_live_` key (ambiente `01`, real documents) belongs only in the production deploy, and `express-server.ts` derives `expectedEnvironment` from the key prefix.
