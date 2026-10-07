@@ -34,6 +34,8 @@ export interface RecipeSpec {
   consumesQuota: boolean;
   /** Offer «Reintentar con la misma llave» after a run. */
   retry?: boolean;
+  /** The run issues a document keyed by the visitor's order number (the page shows «Número de orden»). */
+  orders?: boolean;
   /** Needs the key's unlock key (catalog). */
   needsCatalog?: boolean;
   /** A notice shown above the form (for example: «this recipe is a simulation»). */
@@ -65,6 +67,7 @@ export const RECIPE_SPECS: RecipeSpec[] = [
     summary: "Emite una Factura o un Crédito Fiscal con una llave propia. Repetir la misma llave devuelve el mismo documento.",
     file: "issue-idempotent.ts",
     fields: [{ name: "type", label: "Tipo de documento", kind: "select", options: TYPE_OPTIONS, default: "01" }, RELATED_FIELD],
+    orders: true,
     consumesQuota: true,
     retry: true,
   },
@@ -75,6 +78,7 @@ export const RECIPE_SPECS: RecipeSpec[] = [
     file: "prepare-sign.ts",
     fields: [{ name: "type", label: "Tipo de documento", kind: "select", options: TYPE_OPTIONS, default: "01" }, RELATED_FIELD],
     stages: [{ id: "prepare", label: "1. Preparar" }, { id: "sign", label: "2. Firmar" }],
+    orders: true,
     consumesQuota: true,
   },
   {
@@ -90,6 +94,7 @@ export const RECIPE_SPECS: RecipeSpec[] = [
         help: "Solo acorta la espera de este cliente (250 ms). El API no cambia: el documento puede haberse emitido igual.",
       },
     ],
+    orders: true,
     consumesQuota: true,
   },
   {
@@ -149,11 +154,11 @@ export const RECIPE_SPECS: RecipeSpec[] = [
   },
   {
     id: "order-webhook",
-    title: "Webhook: un pedido entra, un documento sale",
-    summary: "Su tienda envía un pedido en JSON; el servidor lo convierte en solicitud y emite. El número de pedido es la llave de idempotencia.",
+    title: "Un pedido entra, una factura sale",
+    summary: "Su tienda en línea avisa a su servidor cuando alguien compra (un webhook). Su servidor traduce el pedido con su propia lista de precios y emite. El número de pedido es la llave de idempotencia: si la tienda manda el mismo aviso dos veces —pasa seguido—, sale una sola factura.",
     file: "order-webhook.ts",
     fields: [
-      { name: "order", label: "Pedido (JSON)", kind: "textarea", required: true, help: "sku es el id de un producto de demostración; customerRef es el id de un cliente de demostración." },
+      { name: "order", label: "Pedido (JSON)", kind: "textarea", required: true, help: "sku es un código de la lista de precios de la Tienda de ejemplo (por ejemplo CAF-250); customerRef es un código de cliente de esa tienda (por ejemplo CLI-01)." },
     ],
     consumesQuota: true,
     retry: true,
@@ -174,6 +179,7 @@ export const RECIPE_SPECS: RecipeSpec[] = [
       },
     ],
     stages: [{ id: "issue", label: "1. Emitir y marcar el correo" }, { id: "send", label: "2. Enviar con el token" }],
+    orders: true,
     consumesQuota: true,
     retry: true,
   },

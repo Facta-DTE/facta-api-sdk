@@ -6,7 +6,7 @@ export const RECIPE_SUBTITLES: Record<string, string> = {
   "invalidate": "Solo sus documentos de prueba",
   "documents-storage": "PDF, JSON y copias administradas",
   "catalog-refs": "customerId y productId",
-  "order-webhook": "Un webhook que devuelve un DTE sellado",
+  "order-webhook": "Ejemplo: webhook de una tienda externa",
   "deliver-email": "deliverEmail y waitForDelivery",
   "archivo-dte": "downloadDocument, raw y archivoDteOf",
   "region-timings": "region(), servedRegion y debug",

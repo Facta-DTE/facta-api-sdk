@@ -88,6 +88,23 @@ function text(params: Record<string, unknown>, name: string, max: number, requir
   return value.trim();
 }
 
+/** Letters, digits, dot, dash, underscore; up to 64. The visitor's order number in a recipe (the SDK's `idempotencyKey` identity). */
+export const RECIPE_ORDER = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
+/**
+ * The idempotency key of a recipe run. With the visitor's order number it is `<visitor tag>.r-<recipe>.<order>.<type>`:
+ * the same order sent again is the same key (the API answers with the original document), the tag keeps two visitors
+ * who type the same number apart, and the recipe id keeps two recipes apart. Without one the key follows the run id,
+ * the old behaviour («Reintentar igual» reuses it, a new run gets a new one).
+ */
+function recipeKey(ctx: BindContext, recipe: string, suffix: string): string {
+  const given = ctx.params.orderNumber;
+  if (given === undefined || given === null || given === "") return `${ctx.baseKey}.${suffix}`;
+  const order = typeof given === "string" ? given.trim() : "";
+  if (!RECIPE_ORDER.test(order)) throw new RecipeError("order_number_invalid", "El número de orden admite letras, números, punto, guion y guion bajo (hasta 64).");
+  return `${ctx.tag}.r-${recipe}.${order}.${suffix}`;
+}
+
 function oneOf<T extends string>(params: Record<string, unknown>, name: string, allowed: readonly T[]): T {
   const value = params[name];
   if (typeof value !== "string" || !(allowed as readonly string[]).includes(value)) throw new RecipeError("param_invalid", `El campo «${name}» no es válido.`);
@@ -148,7 +165,7 @@ const issueDef: RecipeDef = {
   stages: ["run"],
   async bind(ctx) {
     const type = oneOf(ctx.params, "type", RECIPE_TYPES);
-    const input: issueIdempotent.Input = { request: await requestFor(type, ctx), idempotencyKey: `${ctx.baseKey}.${type}` };
+    const input: issueIdempotent.Input = { request: await requestFor(type, ctx), idempotencyKey: recipeKey(ctx, "issue-idempotent", type) };
     return {
       quotaKeys: [input.idempotencyKey],
       async exec(facta) {
@@ -164,7 +181,7 @@ const prepareSignDef: RecipeDef = {
   async bind(ctx) {
     if (ctx.stage === "prepare") {
       const type = oneOf(ctx.params, "type", RECIPE_TYPES);
-      const input: prepareSign.Input = { request: await requestFor(type, ctx), idempotencyKey: `${ctx.baseKey}.${type}` };
+      const input: prepareSign.Input = { request: await requestFor(type, ctx), idempotencyKey: recipeKey(ctx, "prepare-sign", type) };
       return {
         // Preparing reserves a number but issues nothing: the count happens when the document is signed.
         quotaKeys: [],
@@ -195,7 +212,7 @@ const statusRecoveryDef: RecipeDef = {
     const type = oneOf(ctx.params, "type", RECIPE_TYPES);
     const input: statusRecovery.Input = {
       request: await requestFor(type, ctx),
-      idempotencyKey: `${ctx.baseKey}.${type}`,
+      idempotencyKey: recipeKey(ctx, "status-recovery", type),
       ...(ctx.params.simulateTimeout === true ? { simulateTimeoutMs: 250 } : {}),
     };
     return {
@@ -300,47 +317,41 @@ const orderDef: RecipeDef = {
   async bind(ctx) {
     const raw = ctx.params.order;
     if (typeof raw !== "string" || raw.length > 2_000) throw new RecipeError("order_invalid", "El pedido debe ser un JSON de hasta 2,000 caracteres.");
-    let order: unknown;
+    let parsed: unknown;
     try {
-      order = JSON.parse(raw);
+      parsed = JSON.parse(raw);
     } catch {
       throw new RecipeError("order_invalid", "El pedido no es un JSON válido.");
     }
-    if (!isRecord(order) || typeof order.orderId !== "string" || !/^[A-Za-z0-9-]{1,40}$/.test(order.orderId)) {
-      throw new RecipeError("order_invalid", "El pedido necesita un orderId de letras, números y guiones (hasta 40).");
+    if (!isRecord(parsed) || typeof parsed.orderId !== "string" || !RECIPE_ORDER.test(parsed.orderId)) {
+      throw new RecipeError("order_invalid", "El pedido necesita un orderId de letras, números, punto, guion y guion bajo (hasta 64).");
     }
-    if (!Array.isArray(order.lines) || order.lines.length < 1 || order.lines.length > MAX_LINES) {
+    if (!Array.isArray(parsed.lines) || parsed.lines.length < 1 || parsed.lines.length > MAX_LINES) {
       throw new RecipeError("order_invalid", `El pedido necesita entre 1 y ${MAX_LINES} líneas.`);
     }
-    const priceList: orderWebhook.Input["priceList"] = {};
-    let total = 0;
     const lines: orderWebhook.Order["lines"] = [];
-    for (const line of order.lines) {
+    for (const line of parsed.lines) {
       const sku = isRecord(line) ? line.sku : undefined;
       const qty = isRecord(line) ? line.qty : undefined;
-      const product = ctx.fixtures.products.find((p) => p.id === sku);
-      if (product === undefined) throw new RecipeError("order_invalid", "Una línea usa un sku que no es un producto de demostración.");
+      if (typeof sku !== "string") throw new RecipeError("order_invalid", "Cada línea necesita un sku, por ejemplo CAF-250.");
       if (typeof qty !== "number" || !Number.isInteger(qty) || qty < 1 || qty > 1000) throw new RecipeError("order_invalid", "Cada qty debe ser un entero entre 1 y 1000.");
-      priceList[product.id] = { descripcion: product.descripcion, precioUni: product.precioUni };
-      total = Math.round((total + qty * product.precioUni) * 100) / 100;
-      lines.push({ sku: product.id, qty });
+      lines.push({ sku, qty });
+    }
+    if (parsed.customerRef !== undefined && typeof parsed.customerRef !== "string") throw new RecipeError("order_invalid", "customerRef debe ser el código de un cliente, por ejemplo CLI-01.");
+    const order: orderWebhook.Order = { orderId: parsed.orderId, ...(parsed.customerRef === undefined ? {} : { customerRef: parsed.customerRef }), lines };
+    // The translation is the integration's own code: its messages name the valid SKUs and customers.
+    let total = 0;
+    try {
+      const request = orderWebhook.orderToRequest(order);
+      total = (request.items as Array<{ cantidad: number; precioUni: number }>).reduce((sum, item) => Math.round((sum + item.cantidad * item.precioUni) * 100) / 100, 0);
+    } catch (error) {
+      if (error instanceof orderWebhook.OrderError) throw new RecipeError("order_invalid", error.message);
+      throw error;
     }
     if (total > MAX_TOTAL) throw new RecipeError("order_invalid", `El total de un pedido de prueba no puede pasar de $${MAX_TOTAL}.`);
-    const customers: Record<string, Recipient> = {};
-    let customerRef: string | undefined;
-    if (order.customerRef !== undefined) {
-      const customer = ctx.fixtures.customers.find((c) => c.id === order.customerRef);
-      if (customer === undefined) throw new RecipeError("order_invalid", "customerRef no es un cliente de demostración.");
-      customers[customer.id] = customer.receptor;
-      customerRef = customer.id;
-    }
-    const input: orderWebhook.Input = {
-      order: { orderId: order.orderId, ...(customerRef === undefined ? {} : { customerRef }), lines },
-      priceList,
-      customers,
-      // The order id IS the key, scoped to the visitor: delivering the same order twice issues once.
-      idempotencyKey: `${ctx.tag}.order-${order.orderId}`,
-    };
+    // The order id IS the key, scoped to the visitor: the same order delivered twice issues once, and two visitors
+    // who both type «ORD-1042» never meet.
+    const input = { order, idempotencyKey: `${ctx.tag}.${orderWebhook.keyOf(order)}` };
     return {
       quotaKeys: [input.idempotencyKey],
       async exec(facta) {
@@ -370,7 +381,7 @@ const deliverEmailDef: RecipeDef = {
         if (error instanceof DeliveryError) throw new RecipeError(error.code, error.message);
         throw error;
       }
-      const input: deliverEmail.IssueInput = { request: await requestFor("01", ctx), idempotencyKey: `${ctx.baseKey}.deliver`, email: address };
+      const input: deliverEmail.IssueInput = { request: await requestFor("01", ctx), idempotencyKey: recipeKey(ctx, "deliver-email", "deliver"), email: address };
       const rcpt = await recipientKey(ctx.secret, address);
       return {
         quotaKeys: [input.idempotencyKey],

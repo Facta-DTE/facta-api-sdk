@@ -144,14 +144,14 @@ export async function handleRecipeRun(request: Request, deps: RecipeRouteDeps): 
     for (const key of bound.quotaKeys) await deps.consume(visitor.id, key, true);
   }
   // Record what this run issued or invalidated in the visitor's own ledger (issued-codes.ts).
-  const issued: Array<{ codigoGeneracion: string; tipoDte?: string }> = [];
+  const issued: Array<{ codigoGeneracion: string; tipoDte?: string; numeroControl?: string; total?: number }> = [];
   for (const document of outcome?.issued ?? []) {
     try {
       await recordIssued(env, visitor.id, document);
-      issued.push({ codigoGeneracion: document.codigoGeneracion, ...(document.tipoDte === undefined ? {} : { tipoDte: document.tipoDte }) });
+      issued.push({ codigoGeneracion: document.codigoGeneracion, ...(document.tipoDte === undefined ? {} : { tipoDte: document.tipoDte }), numeroControl: document.numeroControl, ...(document.total === undefined ? {} : { total: document.total }) });
     } catch {
       // The document exists in Hacienda's test service even if the ledger write failed; the page still shows it.
-      issued.push({ codigoGeneracion: document.codigoGeneracion, ...(document.tipoDte === undefined ? {} : { tipoDte: document.tipoDte }) });
+      issued.push({ codigoGeneracion: document.codigoGeneracion, ...(document.tipoDte === undefined ? {} : { tipoDte: document.tipoDte }), numeroControl: document.numeroControl, ...(document.total === undefined ? {} : { total: document.total }) });
     }
   }
   for (const code of outcome?.invalidated ?? []) {

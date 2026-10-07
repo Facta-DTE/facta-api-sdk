@@ -3,6 +3,7 @@
 import { isApiRateLimit, reportRateLimit } from "./rate-limit.ts";
 import { turnstileHeaders } from "./turnstile.ts";
 import { publishIssue, publishSession, timingsHeaders } from "./timings.ts";
+import { orders, SALE_SCOPE } from "./order-session.ts";
 import type { Timings } from "../shared/timings.ts";
 
 export interface PlaygroundState {
@@ -79,10 +80,13 @@ export const playgroundFetch: typeof fetch = async (input, init) => {
   // «Mostrar tiempos»: ask the Worker for its timings, only when the switch is on.
   const asked = isHandler ? timingsHeaders() : {};
   const withFlag: RequestInit | undefined = Object.keys(asked).length === 0 ? init : { ...init, headers: { ...Object.fromEntries(new Headers(init?.headers)), ...asked } };
+  const startedAt = performance.now();
   const response = await (mock?.fetch ?? fetch)(input, withFlag);
+  const elapsed = Math.round(performance.now() - startedAt);
   if (isHandler && response.ok) {
     // An issue answers with what the page may learn beyond the document: was it a replay, and the timings.
-    void response.clone().json().then((body: { result?: { codigoGeneracion?: string }; playground?: { replay?: boolean; timings?: Timings } } | null) => {
+    void response.clone().json().then((body: { result?: { codigoGeneracion?: string; numeroControl?: string }; playground?: { replay?: boolean; timings?: Timings } } | null) => {
+      if (body?.playground !== undefined) orders.issued({ code: body.result?.codigoGeneracion ?? null, control: body.result?.numeroControl ?? null, ms: elapsed, replay: body.playground.replay === true });
       if (body?.playground !== undefined) publishIssue({ replay: body.playground.replay === true, ...(body.playground.timings === undefined ? {} : { timings: body.playground.timings }) }, body.result?.codigoGeneracion ?? null);
     }).catch(() => undefined);
   }
@@ -159,6 +163,7 @@ export async function createSession(sale: SaleDescription): Promise<CreatedSessi
   if (mock) {
     const made = await mock.session(sale);
     publishSession(made.timings, made.orderNumber ?? null);
+    if (made.orderNumber) orders.pend(SALE_SCOPE, made.orderNumber, sale.tipoDte, made.total);
     return made;
   }
   const response = await fetch("/api/session", {
@@ -169,6 +174,7 @@ export async function createSession(sale: SaleDescription): Promise<CreatedSessi
   if (!response.ok) throw await readError(response);
   const made = (await response.json()) as CreatedSession;
   publishSession(made.timings, made.orderNumber ?? null);
+  if (made.orderNumber) orders.pend(SALE_SCOPE, made.orderNumber, sale.tipoDte, made.total);
   return made;
 }
 

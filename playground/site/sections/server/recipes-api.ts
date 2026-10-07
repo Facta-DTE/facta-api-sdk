@@ -32,7 +32,7 @@ export interface RunResponse {
   result: unknown;
   files: RunFile[];
   error?: { code: string; status: number; message: string; spent?: { codigoGeneracion: string; numeroControl: string }; observations?: string[] };
-  issued: Array<{ codigoGeneracion: string; tipoDte?: string }>;
+  issued: Array<{ codigoGeneracion: string; tipoDte?: string; numeroControl?: string; total?: number }>;
   invalidated: string[];
   continuation?: string;
   /** Only with «Mostrar tiempos»: the Worker's steps and, when the API returns it, the API's. */

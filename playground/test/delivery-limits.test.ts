@@ -476,7 +476,7 @@ describe("recipe «Entregar por correo»", () => {
     expect(issueText).not.toContain("cliente@example.com");
     const issueBody = JSON.parse(issueText) as { ok: boolean; issued: unknown[]; continuation?: string; result: { entrega: { tokenRecibido: boolean } } };
     expect(issueBody.ok).toBe(true);
-    expect(issueBody.issued).toEqual([{ codigoGeneracion: CODE, tipoDte: "01" }]);
+    expect(issueBody.issued).toMatchObject([{ codigoGeneracion: CODE, tipoDte: "01" }]);
     expect(issueBody.result.entrega.tokenRecibido).toBe(true);
     // Stage 1 made ONE call: nothing was sent yet.
     expect(calls).toEqual(["POST /v1/dte"]);

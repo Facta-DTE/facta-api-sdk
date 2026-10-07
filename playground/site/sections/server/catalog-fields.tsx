@@ -1,4 +1,11 @@
 import { useState } from "react";
+import departmentsData from "../../catalogs/cat-012-departamento.json";
+import municipalitiesData from "../../catalogs/cat-013-municipio.json";
+import { titleCase, type CatalogEntry, type MunicipalityEntry } from "../../receptor/catalogs.ts";
+
+// Two tiny catalogs (≈4 KB) imported statically: the field table is not lazy and a code alone says nothing.
+const departments: CatalogEntry[] = departmentsData;
+const municipalities: MunicipalityEntry[] = municipalitiesData;
 
 // The catalog recipe's records as a field table next to their JSON. The Worker already masked the personal
 // data (`server/catalog-mask.ts`); every key is here, so the shape is the real one.
@@ -16,12 +23,20 @@ const show = (value: unknown): string => {
 
 const price = (value: unknown): string => (typeof value === "number" ? `$${value.toFixed(2)}` : show(value));
 
+/** «06» → «San Salvador (06)», «23» of 06 → «San Salvador Centro (23)»; a code the catalogs do not know stays as it is. */
+function placeName(key: string, value: unknown, department: unknown): string {
+  const code = typeof value === "string" ? value : "";
+  if (key === "departamento") { const d = departments.find((e) => e.code === code); return d === undefined ? show(value) : `${d.value} (${code})`; }
+  const m = municipalities.find((e) => e.code === code && e.departamento === department);
+  return m === undefined ? show(value) : `${titleCase(m.value)} (${code})`;
+}
+
 function addressOf(value: unknown): string {
   if (typeof value !== "object" || value === null) return "—";
   const a = value as Rec;
   const parts = [["departamento", "Departamento"], ["municipio", "Municipio"], ["distrito", "Distrito"], ["pais", "País"], ["complemento", "Complemento"]]
     .filter(([key]) => a[key!] !== undefined)
-    .map(([key, label]) => `${label} ${show(a[key!])}`);
+    .map(([key, label]) => `${label} ${key === "departamento" || key === "municipio" ? placeName(key!, a[key!], a.departamento) : show(a[key!])}`);
   return parts.length === 0 ? "—" : parts.join(" · ");
 }
 
