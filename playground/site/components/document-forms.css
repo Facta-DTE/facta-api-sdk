@@ -1,0 +1,45 @@
+/* «Las tres formas del documento» (board Ticket.dc.html). Tokens come from ../styles.css. */
+.docforms { container-type: inline-size; display: flex; flex-direction: column; gap: 16px; min-width: 0; width: 100%; }
+.docforms-head { display: flex; flex-direction: column; gap: 12px; }
+.docforms-lead { margin: 0; color: var(--pg-muted); font-size: 14px; max-width: 760px; }
+.docforms-seg { display: inline-flex; gap: 2px; padding: 4px; background: var(--pg-track); border-radius: 12px; align-self: flex-start; max-width: 100%; overflow-x: auto; }
+.docforms-seg button { border: 0; background: transparent; font: inherit; font-size: 14px; font-weight: 600; color: var(--pg-muted); padding: 0 14px; min-height: 40px; border-radius: 9px; cursor: pointer; white-space: nowrap; }
+.docforms-seg button[aria-selected="true"], .docforms-seg button[aria-checked="true"] { background: var(--pg-surface); color: var(--pg-text); box-shadow: 0 1px 2px rgba(0, 0, 0, .12); }
+.docforms-seg--small { padding: 3px; }
+.docforms-seg--small button { min-height: 34px; padding: 0 12px; font-size: 13px; }
+.docforms-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 340px); gap: 16px; align-items: start; }
+.docforms-stage { background: var(--pg-surface-2, var(--pg-bg)); border: 1px solid var(--pg-border); border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.docforms-roll { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.docforms-roll-label { font-size: 13px; color: var(--pg-text-2); }
+.docforms-roll-note { margin-left: auto; font-size: 12px; color: var(--pg-muted); }
+.docforms-other { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.docforms-other input { width: 76px; min-height: 40px; border: 1px solid var(--pg-border-strong); border-radius: var(--pg-radius-sm); padding: 0 10px; font: inherit; font-size: 16px; background: var(--pg-surface); }
+.docforms-view { min-height: 120px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; min-width: 0; }
+.docforms-pdf { width: 100%; height: 520px; border: 0; background: #fff; border-radius: 6px; box-shadow: 0 1px 6px rgba(0, 0, 0, .15); }
+.docforms-pdf--carta { height: 600px; }
+.docforms-unavailable { margin: 0; padding: 12px 14px; border-radius: 10px; background: var(--pg-warn-soft); color: var(--pg-warn); font-size: 14px; max-width: 520px; }
+.docforms-nopreview { text-align: center; max-width: 440px; font-size: 14px; color: var(--pg-text-2); }
+.docforms-nopreview p { margin: 0 0 10px; }
+.docforms-side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.docforms-card { background: var(--pg-surface); border: 1px solid var(--pg-border); border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.docforms-card h3 { margin: 0; font: 600 11px/1.4 var(--pg-body); letter-spacing: .07em; text-transform: uppercase; color: var(--pg-muted); }
+.docforms-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.docforms-actions > * { flex: 1 1 auto; }
+.docforms-code { margin: 0; padding: 12px 14px; background: #13232d; color: #e3eef5; border-radius: 12px; font: 400 12px/1.6 var(--pg-mono); overflow-x: auto; }
+.docforms-how { margin: 0; font-size: 13px; }
+.docforms-how > div { display: flex; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--pg-track); }
+.docforms-how > div:last-child { border-bottom: 0; }
+.docforms-how dt { flex: 0 0 64px; color: var(--pg-muted); }
+.docforms-how dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+@container (max-width: 700px) {
+  .docforms-grid { grid-template-columns: minmax(0, 1fr); }
+  .docforms-roll-note { margin-left: 0; flex-basis: 100%; }
+}
+@media (max-width: 899px) {
+  .docforms-grid { grid-template-columns: minmax(0, 1fr); }
+  .docforms-seg { width: 100%; }
+  .docforms-seg > button { flex: 1 1 auto; }
+  .docforms-roll-note { margin-left: 0; flex-basis: 100%; }
+  .docforms-actions > * { min-height: 48px; }
+  .docforms-pdf { height: 460px; }
+}

@@ -13,6 +13,7 @@ import { TimingsPanel, TimingsToggle } from "../../components/timings.tsx";
 import { excerptOf } from "./subtitles.ts";
 import { highlight } from "../../components/highlight.tsx";
 import { recipePath, recipeSource } from "./sources.ts";
+import { DocumentForms } from "../../components/document-forms.tsx";
 import { COVERAGE } from "../../../shared/sdk-coverage.ts";
 import { Link } from "../../router.tsx";
 import { RECIPE_GUIDES } from "./guides.ts";
@@ -253,6 +254,7 @@ export function RecipePanel({ spec, number, mine, onIssued }: { spec: RecipeSpec
                 {run.timings !== undefined && <TimingsPanel title="Dónde se fue el tiempo" timings={run.timings} replay={wasRepeat} />}
                 <RunNotice run={run} />
                 {run.ok && <ResultTabs run={run} />}
+                {run.ok && run.issued.length > 0 && spec.id !== "deliver-email" && <DocumentForms code={run.issued[0]!.codigoGeneracion} showHow={false} title="El documento que acaba de emitir, en sus tres formas." />}
                 {spec.id === "catalog-refs" && <CatalogPicks run={run} onPick={(name, value) => setValues((c) => ({ ...c, [name]: value }))} />}
                 <p className="srv-redaction">Las llaves, rutas de almacenamiento y tokens nunca aparecen en la respuesta.</p>
               </>

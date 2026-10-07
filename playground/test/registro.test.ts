@@ -16,6 +16,7 @@ const FIXTURES = JSON.stringify({
 function fakeFacta(estado: "sellado" | "contingencia" = "sellado") {
   let counter = 0;
   const downloads: string[] = [];
+  const widths: Array<number | undefined> = [];
   const facta = {
     environment: "00",
     issue: async (request: { tipoDte: string }) => {
@@ -30,18 +31,19 @@ function fakeFacta(estado: "sellado" | "contingencia" = "sellado") {
     getDocumentStatus: async (code: string) => ({
       estado: "sellado", codigoGeneracion: code, numeroControl: "N", tipoDte: "01", ambiente: "00", fecEmi: "2026-10-06", horEmi: "10:00:00", selloRecibido: "SELLO", observaciones: [], totales: { totalPagar: 1 },
     }),
-    downloadDocument: async (code: string, kind: string) => {
+    downloadDocument: async (code: string, kind: string, options?: { paperWidthMm?: number }) => {
       downloads.push(`${code}.${kind}`);
+      if (kind === "ticket") widths.push(options?.paperWidthMm);
       return { filename: `${code}.${kind}`, bytes: new Uint8Array([1, 2, 3]) };
     },
   } as unknown as FactaLike;
-  return { facta, downloads };
+  return { facta, downloads, widths };
 }
 
 async function world(estado: "sellado" | "contingencia" = "sellado") {
   const keys = await makeKeys();
   const env = goodEnv({ QUOTA: fakeQuotaNamespace(() => NOW), FACTA_DTE_FIXTURES_JSON: FIXTURES });
-  const { facta, downloads } = fakeFacta(estado);
+  const { facta, downloads, widths } = fakeFacta(estado);
   const deps = { keys: async () => [keys.jwk], now: () => NOW, facta };
   const call = async (path: string, init: RequestInit & { as?: string } = {}) => {
     const headers = new Headers(init.headers);
@@ -56,7 +58,7 @@ async function world(estado: "sellado" | "contingencia" = "sellado") {
     expect(response.status).toBe(200);
     return ((await response.json()) as { result: { codigoGeneracion: string } }).result.codigoGeneracion;
   };
-  return { call, post, issue, downloads };
+  return { call, post, issue, downloads, widths };
 }
 
 describe("Registro", () => {
@@ -107,6 +109,26 @@ describe("Registro", () => {
     expect((await post("/api/facta", { action: "documents.get", codigoGeneracion: mine })).status).toBe(401);
     expect((await post("/api/facta", { action: "documents.get", codigoGeneracion: "nope" }, "ana@example.com")).status).toBe(403);
     expect(downloads).toHaveLength(1);
+  });
+});
+
+describe("ticket downloads", () => {
+  it("serves the ticket only for the visitor's own document, and only at a width the API accepts (40 to 120)", async () => {
+    const { post, issue, widths } = await world();
+    const mine = await issue("ana@example.com");
+    const theirs = await issue("beto@example.com");
+    const ask = (code: string, extra: Record<string, unknown>, as = "ana@example.com") => post("/api/facta", { action: "documents.download", codigoGeneracion: code, kind: "ticket", ...extra }, as);
+    expect((await ask(mine, { paperWidthMm: 58 })).status).toBe(200);
+    expect((await ask(mine, {})).status).toBe(200);
+    expect(widths).toEqual([58, undefined]);
+    for (const bad of [39, 121, 80.5, "80"]) expect((await ask(mine, { paperWidthMm: bad })).status).toBe(400);
+    // The width belongs to tickets only.
+    expect((await post("/api/facta", { action: "documents.download", codigoGeneracion: mine, kind: "pdf", paperWidthMm: 80 }, "ana@example.com")).status).toBe(400);
+    // Another visitor's document, or no session at all.
+    const foreign = await ask(theirs, { paperWidthMm: 80 });
+    expect(foreign.status).toBe(403);
+    expect(((await foreign.json()) as { error: { code: string } }).error.code).toBe("document_not_yours");
+    expect(widths).toEqual([58, undefined]);
   });
 });
 

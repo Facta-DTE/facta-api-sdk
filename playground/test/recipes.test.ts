@@ -218,6 +218,20 @@ describe("recipes API", () => {
     expect(await peek("ana@example.com")).toBe(before);
   });
 
+  it("recipe 5 can download the ticket at the roll width asked, and refuses a width the API would", async () => {
+    const { run, calls } = await world();
+    await run({ recipe: "issue-idempotent", params: { type: "01" } });
+    const ok = await run({ recipe: "documents-storage", params: { code: CODE, kind: "ticket", paperWidthMm: 58, limit: "5" } });
+    expect(ok.status).toBe(200);
+    expect(calls.some((c) => c.path === `/v1/dte/${CODE}/file?kind=ticket&paperWidthMm=58`)).toBe(true);
+    for (const bad of [39, 121, 80.5, "abc", "5"]) {
+      const refused = await run({ recipe: "documents-storage", params: { code: CODE, kind: "ticket", paperWidthMm: bad, limit: "5" } });
+      expect(refused.status).toBe(400);
+    }
+    // The width is ignored (not even read) for a PDF.
+    expect((await run({ recipe: "documents-storage", params: { code: CODE, kind: "pdf", paperWidthMm: 999, limit: "5" } })).status).toBe(200);
+  });
+
   it("prepares, shows the canonical document and signs from a sealed continuation", async () => {
     const { run } = await world();
     const prepared = await (await run({ recipe: "prepare-sign", stage: "prepare", params: { type: "01" } })).json() as { runId: string; continuation: string; result: { documento: unknown; prepareToken?: unknown } };

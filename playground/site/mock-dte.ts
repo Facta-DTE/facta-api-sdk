@@ -39,3 +39,31 @@ export function mockRecipeFiles(contingency: boolean) {
 
 /** The stored holding file the SDK handler serves for `documents.download` kind json. */
 export const mockHoldingBase64 = () => base64(holding);
+
+/**
+ * A small valid PDF for the dev mock: a ticket at `widthMm` (or a letter page when none) with a few text lines,
+ * so the preview can be looked at without an API. Development only.
+ */
+export function mockPdfBase64(widthMm?: number): string {
+  const w = widthMm === undefined ? 612 : Math.round(widthMm * 2.8346);
+  const h = widthMm === undefined ? 792 : 430;
+  const lines = widthMm === undefined
+    ? ["FACTURA ELECTRONICA", "Hoja carta (mock)", `Codigo: ${MOCK_CODE}`, "TOTAL A PAGAR  $1.13"]
+    : ["COMERCIAL DEMO, S.A. DE C.V.", "FACTURA ELECTRONICA", `Ticket ${widthMm} mm (mock)`, "----------------------", "1 x Servicio de prueba   1.00", "TOTAL A PAGAR  $1.13", "", "Sello de recepcion", MOCK_SEAL.slice(0, 20) + "..."];
+  const size = widthMm === undefined ? 14 : 8;
+  const x = widthMm === undefined ? 56 : 10;
+  const stream = `BT /F1 ${size} Tf ${x} ${h - 30} Td ${size + 6} TL ${lines.map((l) => `(${l.replace(/[()\\]/g, "")}) Tj T*`).join(" ")} ET`;
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${w} ${h}] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>`,
+    `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>",
+  ];
+  let out = "%PDF-1.4\n";
+  const offsets: number[] = [];
+  objects.forEach((body, i) => { offsets.push(out.length); out += `${i + 1} 0 obj\n${body}\nendobj\n`; });
+  const xref = out.length;
+  out += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.map((o) => `${String(o).padStart(10, "0")} 00000 n \n`).join("")}trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+  return btoa(out);
+}

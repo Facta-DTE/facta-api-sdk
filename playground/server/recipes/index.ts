@@ -267,10 +267,17 @@ const documentsDef: RecipeDef = {
   stages: ["run"],
   async bind(ctx) {
     const code = await ownedCode(ctx, false);
-    const kind = oneOf(ctx.params, "kind", ["pdf", "json"] as const);
+    const kind = oneOf(ctx.params, "kind", ["pdf", "json", "ticket"] as const);
     const limit = Number(oneOf(ctx.params, "limit", ["5", "10", "25"] as const));
+    // The roll width is only read for a ticket, and only as an integer the API accepts (40 through 120).
+    const rawWidth = ctx.params.paperWidthMm;
+    let paperWidthMm: number | undefined;
+    if (kind === "ticket" && rawWidth !== undefined && rawWidth !== "") {
+      paperWidthMm = typeof rawWidth === "number" ? rawWidth : /^\d{2,3}$/.test(String(rawWidth).trim()) ? Number(String(rawWidth).trim()) : Number.NaN;
+      if (!Number.isInteger(paperWidthMm) || paperWidthMm < 40 || paperWidthMm > 120) throw new RecipeError("param_invalid", "El ancho del rollo debe ser un entero de 40 a 120 mm.");
+    }
     // The key's issuer holds every visitor's documents: list only the codes this visitor issued.
-    const input: documentsStorage.Input = { kind, limit, onlyCodes: await ctx.mine(), ...(code === undefined ? {} : { codigoGeneracion: code }) };
+    const input: documentsStorage.Input = { kind, limit, onlyCodes: await ctx.mine(), ...(code === undefined ? {} : { codigoGeneracion: code }), ...(paperWidthMm === undefined ? {} : { paperWidthMm }) };
     return {
       quotaKeys: [],
       async exec(facta) {

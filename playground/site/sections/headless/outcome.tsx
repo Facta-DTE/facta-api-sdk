@@ -1,3 +1,4 @@
+import { DocumentForms } from "../../components/document-forms.tsx";
 import { formatMoney, truncateMiddle, type FlowState } from "../../../../browser.ts";
 
 // Shared by the three examples: draws every state of the issuance flow with plain
@@ -29,6 +30,9 @@ export function Outcome({ state, skin, onRetry }: { state: FlowState; skin: stri
           {result.selloRecibido && <><dt>Sello</dt><dd>{truncateMiddle(result.selloRecibido)}</dd></>}
           {(result.totales?.totalPagar ?? result.totales?.montoTotalOperacion) !== undefined && <><dt>Total</dt><dd>{formatMoney((result.totales?.totalPagar ?? result.totales?.montoTotalOperacion)!)}</dd></>}
         </dl>
+      )}
+      {result && (step === "sealed" || step === "contingency") && (
+        <DocumentForms code={result.codigoGeneracion} estado={step === "contingency" ? "contingencia" : "sellado"} seal={result.selloRecibido ?? null} showHow={false} title="El mismo documento, en las formas que puede entregar su sistema." />
       )}
       {step === "contingency" && <p>El documento ya tiene número; se enviará cuando Hacienda vuelva a responder.</p>}
       {error && <p>{step === "expired" ? "Prepare la venta de nuevo para obtener otra sesión." : error.explanation}</p>}
