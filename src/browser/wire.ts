@@ -99,7 +99,7 @@ export interface IssueSummary {
    * Present only when the server's emergency safeguard ran for this document: whether the
    * integrator's emergency store took it. Never carries a path or a file.
    */
-  emergency?: { saved: boolean; reason: string };
+  emergency?: { saved: boolean; reason: string; critical?: boolean };
   /** Lets the window ask `status` about this document. Added by the client. */
   statusToken?: string;
   /** Opaque, session-bound handle for `delivery.status`. Added by the client, consumed by the flow. */
