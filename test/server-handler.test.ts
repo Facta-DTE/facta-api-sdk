@@ -715,3 +715,12 @@ Deno.test("issue passes archivoDte through, or builds it for an API that predate
   const dropped = make();
   assertEquals("archivoDte" in (await (await post(dropped.handler, { action: "issue", session: await session({ download: false }) })).json()).result, false);
 });
+
+Deno.test("an emergency on the result reaches the browser as a sibling, without paths or files", async () => {
+  const emergency = { saved: false, reason: "not_configured", trigger: "server_warning", detail: "keep the files" };
+  const { handler } = make({}, { issue: { ...SEALED, emergency } });
+  const body = await (await post(handler, { action: "issue", session: await session() })).json();
+  assertEquals(body.emergency, { saved: false, reason: "not_configured" });
+  const normal = make({}, { issue: SEALED });
+  assertEquals((await (await post(normal.handler, { action: "issue", session: await session() })).json()).emergency, undefined);
+});
