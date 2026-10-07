@@ -83,7 +83,7 @@ export interface FactaMessages {
   };
   expired: { headline: string; body: string; close: string };
   /** Banner for a document with no permanent storage (the emergency safeguard ran). */
-  emergency: { saved: string; failed: string };
+  emergency: { saved: string; backup: string; failed: string };
   storage: { label: string; saved: string; pending: string; off: string; pendingHelp: string; offHelp: string; savedHelp: string };
   /** Delivery rows (e-mail / WhatsApp) on finished documents. */
   delivery: {
@@ -390,6 +390,7 @@ export const esMessages: FactaMessages = {
   },
   emergency: {
     saved: "Este documento no quedó en un almacenamiento permanente; se guardó en el respaldo de emergencia. Puede descargarlo también ahora.",
+    backup: "Este documento no quedó en un almacenamiento permanente. Facta DTE enviará una copia de respaldo al correo del dueño; también puede descargarlo ahora.",
     failed: "Este documento no quedó en un almacenamiento permanente y el respaldo de emergencia no lo guardó: descárguelo ahora.",
   },
   storage: {

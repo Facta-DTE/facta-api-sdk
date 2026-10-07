@@ -188,10 +188,14 @@ export function StorageRow({ result }: { result: IssueResult }) {
 /** The banner for a document that has no permanent copy; the download buttons stay below it. */
 export function EmergencyNotice({ result }: { result: IssueResult }) {
   const { messages } = useCfg();
-  if (!result.emergency) return null;
+  const e = result.emergency;
+  if (!e) return null;
+  // «Descárguelo ahora» only when nothing was saved AND the server's own holding copy failed too.
+  const urgent = !e.saved && e.reason === "store_failed" && e.critical === true;
+  const text = e.saved ? messages.emergency.saved : urgent ? messages.emergency.failed : messages.emergency.backup;
   return (
-    <Callout tone={result.emergency.saved ? "warning" : "danger"}>
-      <span role="alert" data-testid="facta-emergency">{result.emergency.saved ? messages.emergency.saved : messages.emergency.failed}</span>
+    <Callout tone={urgent ? "danger" : "warning"}>
+      <span role="alert" data-testid="facta-emergency">{text}</span>
     </Callout>
   );
 }

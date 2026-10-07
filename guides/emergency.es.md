@@ -72,7 +72,7 @@ entrada de `sdkWarnings`, `emergency_saved` o `emergency_failed`:
 
 En React, `FactaReceipt` y la ventana del sello muestran un aviso («Este
 documento no quedó en un almacenamiento permanente; se guardó en el respaldo de
-emergencia» o «descárguelo ahora») y mantienen los botones de descarga.
+emergencia» o, sin función, «Facta DTE enviará una copia de respaldo al correo del dueño; también puede descargarlo ahora»). «Descárguelo ahora» sale solo si su función falló y el servidor reportó `sin_copia_en_servidor`. Los botones de descarga se mantienen.
 
 ## Recuperación y guía de operación
 

@@ -70,7 +70,7 @@ The issue result (and `issueAndArchive`'s `emission` and result) carries
 
 In React, `FactaReceipt` and the sealed window show a banner («Este documento no
 quedó en un almacenamiento permanente; se guardó en el respaldo de emergencia»
-or «descárguelo ahora») and keep the download buttons.
+or, without a store, «Facta DTE enviará una copia de respaldo al correo del dueño; también puede descargarlo ahora»). «Descárguelo ahora» appears only when your function failed and the server reported `sin_copia_en_servidor`. The download buttons stay.
 
 ## Recovery and runbook
 

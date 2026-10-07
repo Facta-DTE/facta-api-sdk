@@ -54,6 +54,8 @@ export interface EmergencyReport {
   trigger: EmergencyTrigger;
   /** Human text; when not saved it says to keep the files from the result. */
   detail: string;
+  /** True when the server reported `sin_copia_en_servidor`: even its holding copy failed. */
+  critical?: boolean;
 }
 
 export type EmergencyEvent = { info: EmergencyInfo; report: EmergencyReport };
@@ -189,6 +191,7 @@ export class EmergencyDesk {
         };
       }
     }
+    if (info.warnings.includes("sin_copia_en_servidor")) report.critical = true;
     this.#seen.set(code, report);
     if (this.#onEmergency) {
       try {
