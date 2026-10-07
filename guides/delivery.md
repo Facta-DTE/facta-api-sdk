@@ -64,6 +64,10 @@ literally `true`.
 replaying the same request with the same key returns the same token while it is
 valid, and changing `deliver` with the same key is `idempotency_key_reuse`.
 
+`issueAndArchive(request, { deliver, … })` takes the same option and sends it
+with its first request (and stores it in the journal, so a recovery replays it);
+the token is in `result.entrega` (the same object as `result.emission.entrega`).
+
 **Scopes.** A key with the `issue` scope may mark and deliver both channels. A
 key minted with only `entrega:correo` or `entrega:whatsapp` keeps that channel.
 A channel the key may not use still issues the document; the channel state is
@@ -160,11 +164,6 @@ The headless flow in `@facta-dte/api/browser` exposes the same view as
   deliverable (check `canales` for `no_permitido` / `sin_consentimiento`).
 - **`waitForDelivery` never settles**: you listed a channel in `channels` that
   was not marked; it is never reported, so the call waits until `timeoutMs`.
-- **`issueAndArchive` with `deliver`**: in this version `issueAndArchive` does
-  **not** send `entrega` on its first request, so the result has no delivery
-  token and nothing is delivered (the server handler inherits this when the
-  client has `runtime.archive`). Use `issue(request, { deliver })` when you need
-  delivery until this is fixed.
 - **Delivery failure is not an issuance failure**: never re-issue a document
   because a channel ended `fallido`.
 

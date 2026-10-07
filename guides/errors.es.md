@@ -82,6 +82,7 @@ En las tablas, «Reintento» significa que el SDK lo reintenta automáticamente.
 | --- | --- | --- | --- | --- |
 | `invalid_request` | 400 (422 local) | no | Cuerpo ausente o que no es JSON, de más de 1 MB, un campo con forma equivocada o un código de generación que no es UUID (`details.field`). Localmente (422): un producto del catálogo con tipo de ítem o unidad de medida inválidos, o con una base de IVA que no corresponde al DTE. | Corrija la petición. No se gastó número. |
 | `validation_failed` | 422 | no | El documento no cumple el esquema oficial de Hacienda (`details.issues`). También lo lanzan localmente (422, antes de cualquier petición) las escrituras de catálogo. | Corrija los campos indicados. No se gastó número. |
+| `retention_mixed_class_unsupported` | 422 | no | Se pidió `aplicarReteRenta` en un documento con alguna línea `exenta` o `no_sujeta` (`items[].tipoVenta`). | No se firmó nada ni se gastó número. Emita las líneas exentas o no sujetas en otro documento, o no aplique la retención. |
 | `not_found` | 404 | no | No existe ese documento, cliente, producto o ruta para la empresa de la llave. También se lanza localmente cuando un `customerId`/`productId` no está en la foto del catálogo. | Revise el identificador y la empresa de la llave; sincronice el catálogo. |
 | `method_not_allowed` | 405 | no | La ruta existe, pero no con ese método. | Solo aparece al llamar a la API fuera de los métodos del SDK. |
 | `prepare_token_invalid` | 422 | no | El `prepareToken` venció (15 min), es de otra llave o el documento cambió. | Llame a `prepare` otra vez. Vea [prepare-sign.es.md](prepare-sign.es.md). |
@@ -159,13 +160,8 @@ Nunca vienen del servidor; `status` es `0`.
 | `operation_outcome_unknown` | no | Puede que una anulación se haya completado, pero su evento firmado no se puede recuperar (venció la ventana segura, o la API solo confirma que ya estaba anulada). | Concilie a mano; no vuelva a anular. |
 | `archive_integrity_error` | no | Los datos del archivo local no pasaron una revisión de identidad o de huella, o la identidad de la API (dirección, llave, emisor, ambiente) no es la misma con la que se registró la operación. | Conserve los archivos cifrados; revíselos antes de repararlos. Use el cliente y las credenciales originales. |
 
-## Códigos fuera de la unión de TypeScript
+## Códigos del cliente de navegador
 
-El contrato de la API también lista `retention_mixed_class_unsupported`
-(HTTP 422): `aplicarReteRenta` en un documento con alguna línea `exenta` o
-`no_sujeta`. No se firmó nada ni se gastó número. El SDK deja pasar el código
-del servidor sin cambios, así que `error.code` puede traerlo aunque
-`FactaErrorCode` no lo declare en esta versión; compárelo como texto.
 
 El cliente de navegador (`@facta-dte/api/browser`) lanza `FactaClientError`, que
 trae los mismos códigos más los propios del handler: `session_invalid`,
