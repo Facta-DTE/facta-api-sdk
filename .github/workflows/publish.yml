@@ -79,9 +79,12 @@ jobs:
       # Every npm version also gets a GitHub Release with the agent skill zip and the exact
       # tarball npm received, so the skill can be downloaded without npm.
       - name: Pack the agent skill and the release tarball
+        # npm pack runs prepack, which rebuilds (and empties) dist/: pack the tarball FIRST,
+        # then the skill zip, or the zip is gone before the release step looks for it.
         run: |
-          pnpm skill:pack
           npm pack --pack-destination dist
+          pnpm skill:pack
+          ls -l dist/facta-dte-api-skill.zip dist/facta-dte-api-*.tgz
 
       - name: Create the GitHub Release
         env:
