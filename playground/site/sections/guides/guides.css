@@ -1,0 +1,85 @@
+/* In-place guides (board GuiaReceta.dc.html): recipe tabs and the «Cómo funciona» pane, and the collapsible
+   card at the top of the other pages. Tokens come from ../../styles.css. */
+
+.srv [hidden], .gd[hidden] { display: none !important; }
+
+/* ---------- Recipe tabs ---------- */
+.gd-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--pg-border); margin-top: 6px; overflow-x: auto; scrollbar-width: none; }
+.gd-tabs button { border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; background: transparent; color: var(--pg-text-2); font: inherit; font-weight: 500; padding: 0 14px; min-height: 44px; cursor: pointer; white-space: nowrap; }
+.gd-tabs button:hover { color: var(--pg-text); }
+.gd-tabs button[aria-selected="true"] { border-bottom-color: var(--pg-accent); color: var(--pg-accent-text); font-weight: 600; }
+
+/* ---------- The «Cómo funciona» pane ---------- */
+.gd { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; align-items: start; }
+.gd-col { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+@media (min-width: 1180px) { .gd { grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 20px; } }
+
+.gd-card { background: var(--pg-surface); border: 1px solid var(--pg-border); border-radius: var(--pg-radius); padding: 20px 22px; min-width: 0; }
+.gd-card--tight { padding: 16px 20px; }
+.gd-cap { margin: 0 0 10px; font: 600 12px/1.4 var(--pg-body); letter-spacing: .06em; text-transform: uppercase; color: var(--pg-muted); }
+.gd-card p, .gd-page p { margin: 0; color: var(--pg-text); }
+.gd code { font-size: 0.9em; overflow-wrap: anywhere; }
+
+.gd-steps { list-style: none; margin: 0; padding: 0; }
+.gd-step { display: flex; gap: 14px; padding: 14px 0; border-top: 1px solid var(--pg-track); }
+.gd-step:first-child { border-top: 0; padding-top: 4px; }
+.gd-step:last-child { padding-bottom: 2px; }
+.gd-n { flex: 0 0 26px; height: 26px; border-radius: 50%; background: var(--pg-accent-soft); color: var(--pg-accent-text); font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; margin-top: 1px; }
+.gd-step > div { min-width: 0; }
+.gd-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px !important; }
+.gd-chip { border: 1px solid var(--pg-border-strong); background: var(--pg-surface-2); border-radius: 8px; padding: 4px 10px; font-size: 12.5px; color: var(--pg-text); max-width: 100%; overflow-wrap: anywhere; }
+
+.gd-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.gd-list li { position: relative; padding-left: 20px; }
+.gd-list--dot li::before { content: "•"; position: absolute; left: 4px; color: var(--pg-muted); }
+.gd-list--check li::before { content: "✓"; position: absolute; left: 0; color: var(--pg-ok); font-weight: 700; }
+.gd-links li { padding-left: 0; }
+
+.gd-warn, .gd-ok { border-radius: var(--pg-radius-md); padding: 14px 18px; border: 1px solid; }
+.gd-warn { background: var(--pg-danger-soft); border-color: #f1c4bb; color: var(--pg-danger-ink); }
+.gd-ok { background: var(--pg-ok-soft); border-color: #b7dfc7; color: #14573a; }
+
+.gd-concepts, .gd-errors { margin: 0; display: flex; flex-direction: column; gap: 12px; }
+.gd-concepts dt { font-weight: 600; }
+.gd-concepts dd, .gd-errors dd { margin: 2px 0 0; color: var(--pg-text-2); }
+.gd-errors dt { font-size: 13px; }
+.gd-errors dd { margin-top: 0; }
+.gd-try { margin-top: 12px; width: auto; padding: 0 18px; }
+
+/* ---------- Layout of the recipe page with tabs ---------- */
+.srv:has(> .srv-main[data-tab]) { grid-template-columns: 280px minmax(0, 1fr); grid-template-rows: auto 1fr; }
+.srv:has(> .srv-main[data-tab]) > .srv-rail { grid-row: 1 / span 2; }
+.srv-main[data-tab] { padding-bottom: 20px; }
+/* The two intro boxes of recipes 1 and 8 belong to «Probarla»; «Cómo funciona» already says it all. */
+.srv-main:not([data-tab="probar"]) .srv-why { display: none; }
+@media (max-width: 1099px) { .srv:has(> .srv-main[data-tab]) { grid-template-columns: 240px minmax(0, 1fr); } }
+@media (min-width: 900px) {
+  .srv:has(> .srv-main[data-tab]) > .srv-run { align-self: start; border: 1px solid var(--pg-border); border-radius: var(--pg-radius); margin: 0 28px 28px; max-width: 760px; }
+}
+
+/* ---------- «Cómo funciona esta pantalla» ---------- */
+.gd-page { background: var(--pg-surface); border: 1px solid var(--pg-border); border-radius: var(--pg-radius-md); margin: 0 0 18px; }
+.gd-page > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 18px; font-weight: 600; color: var(--pg-accent-text); }
+.gd-page > summary::-webkit-details-marker { display: none; }
+.gd-page > summary::before { content: ""; width: 7px; height: 7px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); transition: transform .15s; margin-left: 2px; }
+.gd-page[open] > summary::before { transform: rotate(45deg); }
+.gd-page[open] > summary { border-bottom: 1px solid var(--pg-track); }
+.gd-page-body { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 28px; padding: 18px; }
+.gd-page-body .gd-cap { margin-bottom: 6px; }
+@media (max-width: 760px) { .gd-page-body { grid-template-columns: minmax(0, 1fr); } }
+@media (prefers-reduced-motion: reduce) { .gd-page > summary::before { transition: none; } }
+
+@media (max-width: 899px) {
+  .gd { gap: 14px; }
+  .gd-col { gap: 14px; }
+  .gd-card { padding: 16px; }
+  .gd-try { width: 100%; min-height: 48px; }
+  .srv-main[data-tab] { padding-bottom: 12px; }
+  .gd-tabs { margin-top: 2px; }
+}
+
+/* Errors read as the board has them: «code — what it means», on one line that wraps. */
+.gd-errors dt, .gd-errors dd { display: inline; }
+.gd-errors dd::before { content: " — "; color: var(--pg-muted); }
+.wb-center > .gd-page { margin: 4px 28px 18px; }
+@media (max-width: 899px) { .wb-center > .gd-page { margin: 4px var(--pg-gutter) 14px; } }
