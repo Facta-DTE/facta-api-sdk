@@ -82,11 +82,16 @@ do {
 - **Rejected documents are not listed** (a rejection is not a fiscal document).
   If reconciliation shows a gap in your numbering, query that code with
   `getDocumentStatus`.
-- `listDocuments({ include: ["dte"] })` (each row with `archivoDte` and `resumen` in
-  one call, `summarizeArchivoDte`) is **coming**: it is implemented in the SDK repo
-  on branch `feat/list-include-dte` (unreleased, not merged into `dev` when this
-  skill was written). Do not use it until your installed version's `types.ts`
-  declares it; today, download each Archivo DTE with `downloadDocument`.
+- `listDocuments({ include: ["dte"], limit })` returns each row with its `archivoDte` and a
+  `resumen` (`{ receptor, lineas, primeraDescripcion, totalIva, totalPagar }`) in one call.
+  The page is 20 rows by default and **25 at most** (`include_limit_exceeded`, 400, with
+  `details.maximo`); it needs the `download` scope. A row the API cannot open
+  (`needs_local_decrypt`: documents encrypted in the app or imported) is completed locally
+  from your destinations when `unlockKey` is set, with bounded concurrency; otherwise (or on
+  failure) the row carries a `dteError` and the listing never fails. The PDF and ticket are
+  never in the list. `summarizeArchivoDte(archivoDte)` (exported, pure) reads the same summary
+  from a legal document you already hold. Check the installed `types.ts` for `include`: it
+  arrived with 0.5.0.
 
 ## E-mail and WhatsApp delivery: mark, then start
 

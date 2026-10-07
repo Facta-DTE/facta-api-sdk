@@ -21,7 +21,7 @@ Each one is documented in the SDK guides or contract; use this as a review list.
 | Mixing `exenta`/`no_sujeta` lines with `aplicarReteRenta` | `422 retention_mixed_class_unsupported` | Separate documents |
 | Re-serializing `documento` to archive or send | Bytes differ from what was signed | Use `jws`, `archivoJson`, `archivoDte` |
 | Expecting the old JSON from `downloadDocument(code, "json")` (≥ 0.5.0) | Archivo DTE arrives instead | `{ raw: true }` for the stored original |
-| Using `listDocuments({ include: ["dte"] })` before it ships | Compile or runtime failure | Check installed `types.ts`; download each Archivo DTE |
+| `listDocuments({ include: ["dte"] })` with `limit` above 25, or on an SDK older than 0.5.0 | `include_limit_exceeded` / compile error | Ask for 25 or fewer and follow `siguiente`; check the installed `types.ts` |
 | Delivery token sent to a browser, or used after 5 minutes | Leak / `entrega_vencida` | Server-only; deliver right after issuing |
 | Re-issuing because e-mail/WhatsApp failed, or because storage failed | Duplicate document | Those are states/warnings; repair storage with `retryDocumentStorage` |
 | `waitForDelivery` on a channel that was not marked | Waits until timeout | Wait only for marked channels |

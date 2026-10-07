@@ -81,6 +81,7 @@ En las tablas, «Reintento» significa que el SDK lo reintenta automáticamente.
 | Código | HTTP | Reintento | Significado | Qué hacer |
 | --- | --- | --- | --- | --- |
 | `invalid_request` | 400 (422 local) | no | Cuerpo ausente o que no es JSON, de más de 1 MB, un campo con forma equivocada o un código de generación que no es UUID (`details.field`). Localmente (422): un producto del catálogo con tipo de ítem o unidad de medida inválidos, o con una base de IVA que no corresponde al DTE. | Corrija la petición. No se gastó número. |
+| `include_limit_exceeded` | 400 | no | `listDocuments` con `include: ["dte"]` pidió más de 25 filas (`details.maximo`). | Pida 25 o menos y siga con `siguiente`. |
 | `validation_failed` | 422 | no | El documento no cumple el esquema oficial de Hacienda (`details.issues`). También lo lanzan localmente (422, antes de cualquier petición) las escrituras de catálogo. | Corrija los campos indicados. No se gastó número. |
 | `retention_mixed_class_unsupported` | 422 | no | Se pidió `aplicarReteRenta` en un documento con alguna línea `exenta` o `no_sujeta` (`items[].tipoVenta`). | No se firmó nada ni se gastó número. Emita las líneas exentas o no sujetas en otro documento, o no aplique la retención. |
 | `not_found` | 404 | no | No existe ese documento, cliente, producto o ruta para la empresa de la llave. También se lanza localmente cuando un `customerId`/`productId` no está en la foto del catálogo. | Revise el identificador y la empresa de la llave; sincronice el catálogo. |
@@ -89,6 +90,7 @@ En las tablas, «Reintento» significa que el SDK lo reintenta automáticamente.
 | `not_sealed` | 409 | no | Descarga JSON por defecto de un documento que todavía no tiene sello (contingencia). | Use `{ raw: true }` o espere el sello. Vea [archivo-dte.es.md](archivo-dte.es.md). |
 | `catalog_write_disabled` | 403 | no | La empresa no activó «Permitir administrar clientes y productos desde el API». | Actívelo en la aplicación. Vea [catalog-write.es.md](catalog-write.es.md). |
 | `catalog_encrypted` | 409 | no | El catálogo de la empresa sigue cifrado, así que la API no puede escribirlo. | Pase el catálogo a texto plano en la aplicación. |
+| `catalog_duplicate` | 409 | no | Ya existe un cliente con ese documento, o un producto con ese código. | `details.id` dice cuál; edítelo, o reactívelo si está desactivado. |
 
 ## Idempotencia
 

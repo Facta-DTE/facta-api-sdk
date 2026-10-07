@@ -53,6 +53,18 @@ const state = await facta.catalogState();
 console.log(state.catalogMode); // "encrypted" | "readable" | "plain" | null
 ```
 
+**The result is the same in every mode; only the latency differs.** Every customer and
+product has the same fields whichever way it was read: both spellings of each name
+(`nombre` and `name`...), the product's VAT treatment (`tipoVenta` / `sale_class`),
+the whole address (`distrito`, and `pais` when there is one), numbers as numbers and
+`activo` always present. `customerId` / `productId` at issue time resolve to the same
+line and receiver in all three modes (the SDK resolves locally from the decrypted
+snapshot, or the server does it). An encrypted catalog is slower: the SDK downloads and
+decrypts the snapshot. Without an `unlockKey` it fails with `unauthorized`, naming
+`unlockKey` in `details.missing`; it never returns a partial record.
+The only field that can differ is a timestamp (`creadoEn`, `actualizadoEn`), which a
+snapshot never held and which reads `null` there.
+
 `diagnose()` reports the same `catalogMode`. Deactivated records are left out of
 lists and searches; pass `includeInactive: true` to see them.
 
@@ -61,33 +73,40 @@ lists and searches; pass `includeInactive: true` to see them.
 ```ts
 const customer = await facta.createCustomer(
   {
-    name: "Laura Ortiz",
-    doc_type: "13",
-    doc_number: "04829316-5",
-    address: { departamento: "06", municipio: "14", complemento: "Colonia Escalón" },
-    email: "laura@example.com",
+    nombre: "Laura Ortiz",
+    tipoDocumento: "13",
+    numDocumento: "04829316-5",
+    direccion: { departamento: "06", municipio: "14", distrito: "01", complemento: "Colonia Escalón" },
+    correo: "laura@example.com",
   },
   { idempotencyKey: `crm-customer-${crmId}` },
 );
 
-await facta.updateCustomer(customer.id, { phone: "2222-3333" });
+await facta.updateCustomer(customer.id, { telefono: "2222-3333" });
 
 const product = await facta.createProduct({
-  description: "Disco de corte 4 1/2",
-  item_type: 1, // 1 good, 2 service, 3 both: required, never assumed
-  unit_price: 2.85,
-  vat_included: true,
+  descripcion: "Disco de corte 4 1/2",
+  tipoItem: 1, // 1 good, 2 service, 3 both: required, never assumed
+  precioUni: 2.85,
+  ivaIncluido: true,
+  tipoVenta: "gravada", // or "exenta" / "no_sujeta"; omitted reads as gravada
 });
 
-await facta.updateProduct(product.id, { unit_price: 3.1 });
+await facta.updateProduct(product.id, { precioUni: 3.1 });
 await facta.deactivateProduct(product.id);
 ```
 
+Field names are the ones the rest of the public API uses (`nombre`, `numDocumento`,
+`precioUni`, `tipoVenta`...). The stored spellings (`name`, `doc_number`,
+`unit_price`...) are still accepted as input, and every record the SDK returns
+carries both spellings, in every catalog mode.
+
 Rules the SDK checks before sending, and the server checks too: a customer needs a
-`name`; a DUI has 9 digits and a NIT 14 (dashes are accepted and removed before
-sending); an NRC has 1 to 8 digits; an address needs two-digit department and
-municipality codes and a `complemento`; a product needs `description`, `item_type`
-and a non-negative `unit_price`. The SDK never rejects a value the server would
+`nombre`; a DUI has 9 digits and a NIT 14 (dashes are accepted and removed before
+sending); an NRC has 1 to 8 digits; a `direccion` needs department, municipality and
+district codes and a `complemento`; a product needs `descripcion`, `tipoItem` and a
+`precioUni` greater than zero. `tipoVenta` is the VAT treatment of the product and it
+rides on every line issued from it. The SDK never rejects a value the server would
 accept. `FactaError` with `code: "validation_failed"` and `status: 422` lists the
 problems in `details.issues`.
 
