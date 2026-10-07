@@ -194,6 +194,10 @@ pnpm test
 pnpm pack:check
 ```
 
+## Agent skill for AI coding agents
+
+[`skills/facta-dte-api/`](skills/facta-dte-api/SKILL.md) is an installable agent skill (`SKILL.md` + references + type-checked starter templates) that teaches a coding agent how to integrate this SDK and the Facta DTE HTTP API correctly: keys, DTE types, idempotency, contingency, files and delivery, errors and the production checklist. Install and download instructions (English and Spanish): [skills/README.md](skills/README.md). `pnpm skill:pack` builds `dist/facta-dte-api-skill.zip`.
+
 ## Guides
 
 Every guide in `guides/`, in English and Spanish. The two React guides are English only.

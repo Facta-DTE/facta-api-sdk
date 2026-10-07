@@ -17,6 +17,11 @@
 - `downloadDocument(code, "json")` now returns the **Archivo DTE** by default (the signed document plus `firmaElectronica` and `selloRecibido`), not the stored holding JSON `{codigoGeneracion, ambiente, jws}`. Code that archived or verified the old shape from this call must pass `{ raw: true }` to keep receiving it. The result reports which one it got in `jsonFormat` (`"archivo-dte"` or `"raw"`, from `X-Facta-Json-Format`; absent on API servers that predate it).
 - `FactaDownloadButton`, `FactaReceipt` and the sealed window: «Descargar JSON» gives the Archivo DTE.
 
+### Added: agent skill for integrations
+
+- `skills/facta-dte-api/`: an installable agent skill (`SKILL.md`, `references/*.md`, type-checked `templates/`) for integrating the SDK and the HTTP API, grounded in the guides, the source and the OpenAPI contract, with an index of the playground's recipes. Not part of the npm package.
+- `scripts/pack-skill.mjs` (`pnpm skill:pack`) zips it deterministically into `dist/facta-dte-api-skill.zip`; `pnpm skill:check` compiles the templates (`tsconfig.skill.json`) and checks links, the frontmatter and that `references/errors.md` lists exactly the `FactaErrorCode` union. CI runs both and attaches the zip. Install guide in English and Spanish: `skills/README.md`.
+
 ### Added
 
 - `archivoDte?: string` on sealed results: the exact UTF-8 Archivo DTE. Absent in contingency.

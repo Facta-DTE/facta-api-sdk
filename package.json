@@ -74,12 +74,16 @@
     "test:react": "vitest run --config vitest.config.ts",
     "test:browser": "deno test --allow-read --allow-write --allow-net test/browser-*.test.ts test/architecture.test.ts",
     "typecheck:react": "tsc --noEmit -p tsconfig.react.json",
-    "build:preview": "node scripts/build-preview.mjs"
+    "build:preview": "node scripts/build-preview.mjs",
+    "skill:typecheck": "tsc -p tsconfig.skill.json",
+    "skill:check": "pnpm skill:typecheck && node scripts/check-skill.mjs",
+    "skill:pack": "node scripts/pack-skill.mjs"
   },
   "devDependencies": {
     "@testing-library/dom": "10.4.2",
     "@testing-library/react": "16.3.3",
     "@testing-library/user-event": "14.6.7",
+    "@types/express": "5.0.3",
     "@types/node": "22.19.11",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
