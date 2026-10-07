@@ -54,7 +54,7 @@ Both run on the same public API; only the key differs.
 | Use in | local, CI, tests | the production deploy only |
 
 Config pattern: one variable name, a different secret per deployment
-(`FACTA_API_KEY` holds a test key in dev/CI/staging-like deploys and a live key only
+(`FACTA_API_KEY` holds a test key in dev, CI and pre-production deploys and a live key only
 in the production deploy). At start-up gate on `await facta.status()`: expect
 `ambiente === "00"` in tests and CI, and `"01"` only in the production deploy;
 refuse to start on a mismatch (`config.expectedEnvironment` does the same check).
