@@ -41,6 +41,19 @@ import { buildSyncedDestinations, readDocumentIdentity } from "./byos-copies.ts"
 import { createReferenceClock, type ReferenceClock } from "./reference-clock.ts";
 import { DEFAULT_CLOCK_URL } from "./clock-config.ts";
 import { submitPrintJob, type PrintResult, type PrintTransport } from "./printing.ts";
+import {
+  EmergencyDesk,
+  emergencyWarningCodes,
+  EMERGENCY_STORE_INFO,
+  replicateEmergency,
+  type EmergencyEvent,
+  type EmergencyFiles,
+  type EmergencyInfo,
+  type EmergencyReplication,
+  type EmergencyReport,
+  type EmergencyStoreFn,
+  type EmergencyTrigger,
+} from "./emergency.ts";
 import { diagnoseStatus, type DiagnoseOptions, type DiagnosticsReport } from "./diagnostics.ts";
 import type {
   ArchiveArtifact,
@@ -175,6 +188,23 @@ export interface FactaRuntimeConfigV1 {
   /** Default `true`: replicate to the destinations synced from the Facta app. `false` opts out. */
   replicate?: boolean;
   printTransport?: PrintTransport;
+  /**
+   * The emergency safeguard: YOUR function, called only when Facta could not store a
+   * document durably (server warnings) or every replication failed. It receives the
+   * Archivo DTE, the stored original JSON, the PDF and what happened, once per
+   * document. The SDK ships no storage of its own; see guides/emergency.md.
+   */
+  emergencyStore?: EmergencyStoreFn;
+  /** Optional alert hook for the same emergencies; errors are swallowed. */
+  onEmergency?: (event: EmergencyEvent) => void | Promise<void>;
+}
+
+/** `facta.emergency`. */
+export interface FactaEmergencyApi {
+  /** Whether `runtime.emergencyStore` is set. */
+  readonly configured: boolean;
+  /** Re-try normal replication (configured and synced destinations, then the copy report) from files your store kept. */
+  replicate(files: EmergencyFiles, info: Pick<EmergencyInfo, "codigoGeneracion" | "numeroControl" | "fecEmi">): Promise<EmergencyReplication>;
 }
 
 /** Per-operation fields remain explicit; configured runtime adapters are fallbacks. */
@@ -468,6 +498,8 @@ export class Facta {
   readonly #runtime: FactaRuntimeConfigV1;
   readonly #secrets: readonly string[];
   readonly #clock: ReferenceClock | null;
+  readonly emergency: FactaEmergencyApi;
+  readonly #desk: EmergencyDesk;
   #catalogCache: { revision: number; snapshot: CatalogSnapshot; fetchedAt: string } | null = null;
   #catalogModeCache: { readable: boolean; at: number } | null = null;
   readonly #regionSetting: string | false | undefined;
@@ -494,6 +526,18 @@ export class Facta {
       throw new TypeError("Facta runtime config version must be 1.");
     }
     this.#runtime = options.runtime ?? { version: 1 };
+    const desk = new EmergencyDesk(this.#runtime.emergencyStore, this.#runtime.onEmergency, {
+      stamp: () => this.#stamp(),
+      download: (code, kind, opts) => this.downloadDocument(code, kind, { ...(opts.raw ? { raw: true as const } : {}), ...(opts.signal ? { signal: opts.signal } : {}) }),
+    });
+    this.#desk = desk;
+    this.emergency = {
+      get configured() { return desk.configured; },
+      replicate: (files, info) => replicateEmergency({
+        destinations: async (id) => await this.#emergencyDestinations(id),
+        reportCopy: (code, destination, pdfStored) => this.#postByosReport(code, destination, pdfStored),
+      }, files, info, () => this.#stamp()),
+    };
     if (typeof options.apiKey !== "string" || options.apiKey === "") {
       throw new FactaError("unauthorized", "API key is required.", 0);
     }
@@ -683,6 +727,12 @@ export class Facta {
         report.checks[report.checks.length - 1].state = "blocked";
       } else if (report.overall === "ready") report.overall = "attention";
     }
+    // Informational only: the store is optional, so this never changes `overall`.
+    report.checks.push({
+      id: "emergency-store",
+      state: "ok",
+      message: this.#runtime.emergencyStore === undefined ? EMERGENCY_STORE_INFO : "runtime.emergencyStore is configured.",
+    });
     report.storageReady = storageReady;
     report.region = this.#regionSetting === false ? null : (typeof this.#regionSetting === "string" ? this.#regionSetting : this.#region?.value ?? null);
     report.servedRegion = this.#servedRegion;
@@ -1038,7 +1088,53 @@ export class Facta {
     const { deliver, ...call } = options;
     const resolved = withDelivery(await this.#resolveCatalogRefs(request), deliver);
     throwIfAborted(options.signal);
-    return this.#request<IssueResult>("POST", "/v1/dte", resolved, call);
+    return await this.#guard(await this.#request<IssueResult>("POST", "/v1/dte", resolved, call), []);
+  }
+
+  /**
+   * Run the emergency safeguard when the server warned (or the caller found) that the
+   * document has no durable copy. It runs after the fiscal result exists and never
+   * throws: the sealed result always comes back, with `emergency` and `sdkWarnings`.
+   */
+  async #guard<T extends IssueResult>(result: T, extra: EmergencyTrigger[], signal?: AbortSignal): Promise<T> {
+    const warnings = emergencyWarningCodes(result);
+    const trigger: EmergencyTrigger | undefined = warnings.length ? "server_warning" : extra[0];
+    if (trigger === undefined) return result;
+    let report: EmergencyReport;
+    try {
+      report = await this.#desk.protect(result as never, trigger, { warnings, ...(signal ? { signal } : {}) });
+    } catch {
+      return result;
+    }
+    // Not configured is not a failure: the store is optional (the server e-mails the owner a backup).
+    if (report.reason === "not_configured") return { ...result, emergency: report };
+    const sdkWarnings = [...(result.sdkWarnings ?? []), { code: report.saved ? "emergency_saved" as const : "emergency_failed" as const, detail: report.detail }];
+    return { ...result, emergency: report, sdkWarnings };
+  }
+
+  async #emergencyDestinations(identity: { numeroControl: string; fecEmi: string | null }): Promise<RemoteArtifactDestination[]> {
+    const out: RemoteArtifactDestination[] = [...(this.#runtime.remoteDestinations ?? [])];
+    if (out.length > 0 || this.#runtime.replicate === false || this.#unlockKey === null || identity.fecEmi === null) return out;
+    const snapshot = await this.syncDestinations();
+    return buildSyncedDestinations(snapshot, {
+      environment: this.#environment(),
+      identity: { numeroControl: identity.numeroControl, fecEmi: identity.fecEmi },
+      fetch: this.#fetch,
+    }).destinations;
+  }
+
+  async #postByosReport(code: string, destination: RemoteArtifactDestination, pdfStored: boolean): Promise<boolean> {
+    const canonical = destination.canonicalCopy;
+    if (!canonical || !await this.#serverAcceptsByosReports()) return false;
+    const response = await this.#request<unknown>("POST", `/v1/storage/copies/${encodeURIComponent(code)}/byos`, {
+      secretId: canonical.secretId,
+      jsonPath: canonical.jsonPath,
+      pdfPath: pdfStored ? canonical.pdfPath : null,
+      verified: true,
+      pdfRegenerated: false,
+    });
+    const copy = isRecord(response) && isRecord(response.copy) ? response.copy : undefined;
+    return copy?.recorded === true;
   }
 
   /**
@@ -1495,6 +1591,11 @@ export class Facta {
     remote: RemoteOptions = {},
   ): Promise<ArchiveEmissionResult> {
     const artifacts: ArchiveEmissionResult["archive"]["artifacts"] = [];
+    const base = {
+      ...(emission.storage === undefined ? {} : { managedStorage: emission.storage }),
+      ...(emission.storageErrorCode === undefined ? {} : { storageErrorCode: emission.storageErrorCode }),
+    };
+    let result: ArchiveEmissionResult;
     try {
       await archive.markIssued(operation.id, emission);
       const archived = await this.#archiveArtifacts(
@@ -1506,12 +1607,34 @@ export class Facta {
         remote,
         emission,
       );
-      return { emission, ...(emission.storage === undefined ? {} : { managedStorage: emission.storage }), ...(emission.storageErrorCode === undefined ? {} : { storageErrorCode: emission.storageErrorCode }), ...(archived.warnings.length ? { warnings: archived.warnings } : {}), archive: archived.archive };
+      result = { emission, ...base, ...(archived.warnings.length ? { warnings: archived.warnings } : {}), archive: archived.archive };
     } catch (cause) {
       const detail = cause instanceof Error ? cause.message : String(cause);
       try { await archive.markNeedsAttention(operation.id, detail.slice(0, 500)); } catch { /* Preserve the successful fiscal result. */ }
-      return { emission, ...(emission.storage === undefined ? {} : { managedStorage: emission.storage }), ...(emission.storageErrorCode === undefined ? {} : { storageErrorCode: emission.storageErrorCode }), archive: { state: "needs_attention", operationId: operation.id, artifacts, detail } };
+      result = { emission, ...base, archive: { state: "needs_attention", operationId: operation.id, artifacts, detail } };
     }
+    return await this.#guardArchived(result, signal);
+  }
+
+  /** Emergency triggers of an archived emission: server warnings, no durable destination, or every destination failed. */
+  async #guardArchived(result: ArchiveEmissionResult, signal?: AbortSignal): Promise<ArchiveEmissionResult> {
+    const emission = result.emission;
+    if (emission === undefined) return result;
+    const managedOk = emission.storage?.json.state === "stored" || emission.storage?.json.state === "pending";
+    const copies = result.archive.remoteCopies ?? [];
+    const remoteStored = copies.some((copy) => copy.kind === "json" && copy.state === "stored");
+    const extra: EmergencyTrigger[] = [];
+    if (!managedOk && !remoteStored) {
+      if (copies.length > 0) extra.push("all_destinations_failed");
+      // The local archive is itself a destination: only a missing or incomplete one counts as «none».
+      else if (emission.storage !== undefined && result.archive.state !== "complete") extra.push("no_destination");
+    }
+    const guarded = await this.#guard(emission, extra, signal);
+    if (guarded === emission) return result;
+    const report = guarded.emergency!;
+    if (report.reason === "not_configured") return { ...result, emission: guarded, emergency: report };
+    const warning = { code: report.saved ? "emergency_saved" as const : "emergency_failed" as const, detail: report.detail };
+    return { ...result, emission: guarded, emergency: report, warnings: [...(result.warnings ?? []), warning] };
   }
 
   async #archiveArtifacts(
@@ -1840,11 +1963,11 @@ export class Facta {
    * Pass the document through UNCHANGED. The server checks a MAC over its
    * canonical hash, so a single altered cent is refused instead of signed.
    */
-  sign(prepared: PreparedDte, options: CallOptions = {}): Promise<IssueResult> {
-    return this.#request<IssueResult>("POST", "/v1/dte/sign", {
+  async sign(prepared: PreparedDte, options: CallOptions = {}): Promise<IssueResult> {
+    return await this.#guard(await this.#request<IssueResult>("POST", "/v1/dte/sign", {
       prepareToken: prepared.prepareToken,
       documento: prepared.documento,
-    }, options);
+    }, options), []);
   }
 
   /**

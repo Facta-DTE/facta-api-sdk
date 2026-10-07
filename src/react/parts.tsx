@@ -185,6 +185,17 @@ export function StorageRow({ result }: { result: IssueResult }) {
   );
 }
 
+/** The banner for a document that has no permanent copy; the download buttons stay below it. */
+export function EmergencyNotice({ result }: { result: IssueResult }) {
+  const { messages } = useCfg();
+  if (!result.emergency) return null;
+  return (
+    <Callout tone={result.emergency.saved ? "warning" : "danger"}>
+      <span role="alert" data-testid="facta-emergency">{result.emergency.saved ? messages.emergency.saved : messages.emergency.failed}</span>
+    </Callout>
+  );
+}
+
 export function IdRow({ label, value, shown, copy = true }: { label: string; value: string; shown?: string; copy?: boolean }) {
   return (
     <div className="facta-kv facta-kv--stack">
@@ -320,6 +331,7 @@ export function SealedContent({
           </>
         )}
       </div>
+      <EmergencyNotice result={result} />
       <Identifiers result={result} showStorage={showStorage} />
       {!compact && <Downloads result={result} />}
       <ObservationsList result={result} />
@@ -337,6 +349,7 @@ export function ContingencyContent({ result, showStorage }: { result: IssueResul
         <p className="facta-hero-text">{messages.contingency.body}</p>
       </div>
       <Callout tone="warning"><b>{messages.contingency.warningTitle}</b> {messages.contingency.warningBody}</Callout>
+      <EmergencyNotice result={result} />
       <Identifiers result={result} showStorage={showStorage} dateLabel={messages.contingency.signedAt} />
       {result.detalle && <p className="facta-text facta-text--small">{result.detalle}</p>}
       <Downloads result={result} />

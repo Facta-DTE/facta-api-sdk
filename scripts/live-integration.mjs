@@ -69,6 +69,7 @@ const { FileInvoiceArchive } = await import("../dist/node.js");
 const scratch = await mkdtemp(join(tmpdir(), "facta-sdk-integration-"));
 const archivePassphrase = Buffer.from(crypto.getRandomValues(new Uint8Array(48))).toString("base64url");
 
+const emergencyCalls = [];
 const checks = createValidationResults();
 let currentCheck = "status";
 let failureCode = null;
@@ -97,7 +98,7 @@ try {
       timeoutMs: 90_000,
       maxRetries: 1,
     },
-    runtime: { version: 1, archive },
+    runtime: { version: 1, archive, emergencyStore: async (_files, info) => { emergencyCalls.push(info.reason); } },
   });
 
   const health = await facta.status();
@@ -221,6 +222,11 @@ try {
   assert(fileRequests.every(({ url }) => url.searchParams.get("kind") === "ticket"), "inline JSON/PDF archival must not call a document file download endpoint");
   assert.equal(fileRequests.length, 1, "only the ticket may use the file download endpoint");
   checks["no-downloads"] = "Passed";
+  currentCheck = "emergency-idle";
+  assert.equal(emergencyCalls.length, 0, "the emergency safeguard must stay idle on a normal issue");
+  assert.equal(result.emergency, undefined, "a normal issue must not carry an emergency report");
+  assert.equal(result.emission.emergency, undefined, "a normal emission must not carry an emergency report");
+  checks["emergency-idle"] = "Passed";
   console.log("PASS archive: exact signed JSON, PDF, and ticket retained");
   await validateLiveManagedStorage(facta, { emission: result.emission, request, idempotencyKey, artifacts: { json: legalJson, pdf }, checks, onCheck: (check) => { currentCheck = check; } });
 

@@ -18,6 +18,7 @@ const LABELS = Object.freeze({
   pdf: "PDF received and validated",
   "inline-bytes": "Exact server bytes preserved",
   "no-downloads": "No repeated file downloads",
+  "emergency-idle": "Emergency safeguard idle on a normal issue",
   "managed-receipt": "Durable managed JSON/PDF receipts",
   "managed-readback": "Exact managed copy read-back",
   "managed-replay-repair": "Idempotent replay and copy repair accounting",

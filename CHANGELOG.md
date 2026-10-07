@@ -2,6 +2,16 @@
 
 ## 0.5.0 (unreleased)
 
+### Emergency safeguard
+
+- New `runtime.emergencyStore(files, info)`: your function, called only when Facta could not store a sealed document durably (server warnings `sin_almacenamiento_duradero`, `sin_copia_en_servidor`, `copia_solo_temporal`, or any `sin_*` / `*temporal*` code), when every replication destination failed, or when `issueAndArchive` finds no destination at all. Once per `codigoGeneracion`; never on a normal issue and never on a timer. The SDK ships no storage of its own and sends bytes nowhere else.
+- `files` is `{ archivoDte?, jsonRaw, pdf }` (from the response, or downloaded from the one-hour holding copy when the response lacks them); `info` is `{ codigoGeneracion, numeroControl, tipoDte, ambiente, fecEmi, reason, warnings, occurredAt }`.
+- Results carry `emergency: { saved, reason, trigger, detail }` and an `sdkWarnings` entry `emergency_saved` / `emergency_failed` (`ArchiveEmissionResult.warnings` too). Not configured gives `reason: "not_configured"` (no `sdkWarnings`); a throwing function gives `"store_failed"`. Neither ever fails or hides the sealed result.
+- `emergencyStore` is optional and a missing one raises no warning; `diagnose()` lists it as an informational `emergency-store` check that never changes `overall`. Without it the server still e-mails the company owner a backup copy when nothing could be stored.
+- Optional `runtime.onEmergency(event)` for alerting; `facta.emergency.replicate(files, info)` re-tries normal replication from files your store kept.
+- Server handler forwards `emergency: { saved, reason }` to the browser; React `FactaReceipt` and the sealed window show a banner and keep the downloads.
+- Depends on the server adding `advertencias` with those codes; until then the safeguard fires only on the SDK's own triggers. Guide: `guides/emergency.md` / `emergency.es.md`.
+
 ### Behaviour change: the default JSON download is the Archivo DTE
 
 - `downloadDocument(code, "json")` now returns the **Archivo DTE** by default (the signed document plus `firmaElectronica` and `selloRecibido`), not the stored holding JSON `{codigoGeneracion, ambiente, jws}`. Code that archived or verified the old shape from this call must pass `{ raw: true }` to keep receiving it. The result reports which one it got in `jsonFormat` (`"archivo-dte"` or `"raw"`, from `X-Facta-Json-Format`; absent on API servers that predate it).

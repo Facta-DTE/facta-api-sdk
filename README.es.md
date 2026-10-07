@@ -103,6 +103,14 @@ const readiness = await facta.diagnose();
 
 La fecha y la hora de un DTE las pone siempre el servidor de Facta, nunca este SDK. El reloj del SDK importa para dos cosas locales: la firma SigV4 de las subidas a almacenamientos compatibles con S3 (S3 rechaza una firma con más de 15 minutos de diferencia, `RequestTimeTooSkewed`) y las marcas de tiempo de los registros de archivo. `new Facta({ apiKey })` mantiene un reloj de referencia (`facta.clock`): tres muestras al primer uso y después responde el reloj monotónico, sin volver a preguntar mientras la incertidumbre sea menor de 500 ms. La opción `clock` acepta `true` (por defecto, `https://clock.factadte.com/`), una URL o `false` para usar la hora del equipo. Para compartirlo con un destino S3: `createS3ArtifactDestination({ ..., clock: facta.clock ?? false })`. Si el servicio no responde, se usa la hora del equipo y la operación continúa. Guía: [la hora de referencia](https://sdk.factadte.com/guias/reloj-de-referencia/).
 
+## Salvaguarda de emergencia
+
+Si Facta avisa que no pudo guardar un documento en ningún sitio duradero (o toda
+la replicación falla), `runtime.emergencyStore` recibe el JSON, el PDF y lo que
+pasó, una sola vez por documento. Es opcional: sin ella, el resultado trae
+`emergency: { saved: false, reason: "not_configured" }` y Facta envía una copia
+de respaldo al correo del dueño. Guía y ejemplo: [`guides/emergency.es.md`](guides/emergency.es.md).
+
 ## Métodos del cliente
 
 | Método | Uso | Envía `FACTA_SIGN_KEY` |

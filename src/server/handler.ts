@@ -674,6 +674,7 @@ export function createFactaHandler(options: FactaHandlerOptions): (req: Request)
         return json(200, {
           result: summarizeIssue(result, download, exposeDocument),
           storage,
+          ...(result.emergency === undefined ? {} : { emergency: { saved: result.emergency.saved, reason: result.emergency.reason } }),
           statusToken: await statusTokenFor(sessionSecret, session.nonce, result.codigoGeneracion),
           // Only when the host's own client asked the API for timings (`debug: { timings: true }`).
           ...(result.debug === undefined ? {} : { debug: result.debug }),

@@ -235,6 +235,12 @@ export interface SealedDte {
   entrega?: DeliveryOffer;
   /** Only with `debug: { timings: true }`. */
   debug?: DebugInfo;
+  /** Server warnings (e.g. `sin_almacenamiento_duradero`); the emergency safeguard reads them. */
+  advertencias?: Array<string | { codigo?: string; code?: string; mensaje?: string; detalle?: string }>;
+  /** Present only when the emergency safeguard ran. */
+  emergency?: import("./emergency.ts").EmergencyReport;
+  /** SDK-side notices; `emergency_saved` / `emergency_failed`. */
+  sdkWarnings?: Array<{ code: "emergency_saved" | "emergency_failed"; detail: string }>;
 }
 
 export interface DteInContingency {
@@ -258,6 +264,12 @@ export interface DteInContingency {
   entrega?: DeliveryOffer;
   /** Only with `debug: { timings: true }`. */
   debug?: DebugInfo;
+  /** Server warnings (e.g. `sin_almacenamiento_duradero`); the emergency safeguard reads them. */
+  advertencias?: Array<string | { codigo?: string; code?: string; mensaje?: string; detalle?: string }>;
+  /** Present only when the emergency safeguard ran. */
+  emergency?: import("./emergency.ts").EmergencyReport;
+  /** SDK-side notices; `emergency_saved` / `emergency_failed`. */
+  sdkWarnings?: Array<{ code: "emergency_saved" | "emergency_failed"; detail: string }>;
 }
 
 export type IssueResult = SealedDte | DteInContingency;
