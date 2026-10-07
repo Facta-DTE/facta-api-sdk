@@ -105,3 +105,7 @@
   .hl-stage { padding: 20px 16px; }
 }
 .hl-pos-hint { margin: 0; font-size: 13px; color: #9fb3a8; text-align: center; }
+
+/* Forms of the document, below the grid: playground look, never the example's skin. */
+.hl-forms { margin-top: 28px; display: grid; gap: 12px; }
+.hl-forms h2 { margin: 0; font-size: 20px; line-height: 1.25; }
