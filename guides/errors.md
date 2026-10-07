@@ -88,6 +88,7 @@ In the tables, "Retried" means retried automatically by the SDK.
 | `not_sealed` | 409 | no | Default JSON download of a document with no seal yet (contingency). | Use `{ raw: true }` or wait for the seal. See [archivo-dte.md](archivo-dte.md). |
 | `catalog_write_disabled` | 403 | no | The company did not enable «Permitir administrar clientes y productos desde el API». | Enable it in the app. See [catalog-write.md](catalog-write.md). |
 | `catalog_encrypted` | 409 | no | The company catalog is still encrypted, so the API cannot write it. | Switch the catalog to plain text in the app. |
+| `catalog_duplicate` | 409 | no | A customer with that document, or a product with that code, already exists. | `details.id` names it; edit it, or reactivate it if it is deactivated. |
 
 ## Idempotency
 

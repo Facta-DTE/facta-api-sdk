@@ -89,6 +89,7 @@ En las tablas, «Reintento» significa que el SDK lo reintenta automáticamente.
 | `not_sealed` | 409 | no | Descarga JSON por defecto de un documento que todavía no tiene sello (contingencia). | Use `{ raw: true }` o espere el sello. Vea [archivo-dte.es.md](archivo-dte.es.md). |
 | `catalog_write_disabled` | 403 | no | La empresa no activó «Permitir administrar clientes y productos desde el API». | Actívelo en la aplicación. Vea [catalog-write.es.md](catalog-write.es.md). |
 | `catalog_encrypted` | 409 | no | El catálogo de la empresa sigue cifrado, así que la API no puede escribirlo. | Pase el catálogo a texto plano en la aplicación. |
+| `catalog_duplicate` | 409 | no | Ya existe un cliente con ese documento, o un producto con ese código. | `details.id` dice cuál; edítelo, o reactívelo si está desactivado. |
 
 ## Idempotencia
 
