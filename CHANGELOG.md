@@ -24,6 +24,7 @@
 - `downloadDocument(code, "json", { raw: true })`; `raw` is rejected locally for `pdf` and `ticket`.
 - Error code `not_sealed` (HTTP 409): JSON download of a document with no Hacienda seal. Use `raw: true`.
 - React: optional `rawJson` prop on `FactaReceipt` and `FactaDownloadButton` adds «JSON original (raw)». Server handler: `capabilities.rawJson` (default `false`) gates `raw` in `documents.download`; the issue response includes `archivoDte` whenever downloads are allowed.
+- Guides, each in English and Spanish: `archivo-dte`, `region`, `timings`, `delivery`, `idempotency`, `prepare-sign`, `return-event`, `reference-clock`, `diagnose`, `errors` (every `FactaErrorCode` with HTTP status, retry behaviour and what to do) and `browser`. Both READMEs list every guide; `test/documentation.test.ts` checks Spanish/English parity for them and that every file in `guides/` is linked from `README.md`.
 
 ### Performance: regional pinning
 

@@ -137,7 +137,7 @@ const prepared = await facta.prepare(sale, { idempotencyKey: "order-1042" });
 const result = await facta.sign(prepared, { idempotencyKey: "order-1042" });
 ```
 
-Preparation reserves a control number. The prepared document and token must be passed unchanged to `sign`; an edited document is rejected. `prepare` does not use `signKey`, while `sign` does. See the [prepare/sign guide](guides/node.md).
+Preparation reserves a control number. The prepared document and token must be passed unchanged to `sign`; an edited document is rejected. `prepare` does not use `signKey`, while `sign` does. See the [prepare/sign guide](guides/prepare-sign.md).
 
 ## DTE types and fiscal payloads
 
@@ -183,7 +183,7 @@ console.log(file.jsonFormat, original.jsonFormat);                     // "archi
 
 Authenticated API failures use `FactaError`, with a stable `code`, HTTP `status`, safe `details`, `isRejection`, and optional `spent` control-number information. Branch on `code`, not localized message text. Local validation may throw `TypeError` or `RangeError`; archive and storage adapters can throw their own typed errors. Credential-like values are redacted from API error details.
 
-Retry only the same request with the same idempotency key. `operation_outcome_unknown` and archive integrity failures require inspection or reconciliation; they do not authorize issuing a replacement DTE. The [method reference](guides/reference.md) includes outcomes and recovery guidance for each public operation.
+Retry only the same request with the same idempotency key. `operation_outcome_unknown` and archive integrity failures require inspection or reconciliation; they do not authorize issuing a replacement DTE. The [method reference](guides/reference.md) includes outcomes and recovery guidance for each public operation, and the [error catalogue](guides/errors.md) lists every error code with its HTTP status, retry behaviour and what to do.
 
 ## Examples and checks
 
@@ -193,6 +193,33 @@ Typed examples live in [`examples/`](examples/dte-types.ts). The package's test 
 pnpm test
 pnpm pack:check
 ```
+
+## Guides
+
+Every guide in `guides/`, in English and Spanish. The two React guides are English only.
+
+| Topic | English | Español |
+| --- | --- | --- |
+| Method reference: every public method | [reference.md](guides/reference.md) | [reference.es.md](guides/reference.es.md) |
+| Node.js integration | [node.md](guides/node.md) | [node.es.md](guides/node.es.md) |
+| Deno integration | [deno.md](guides/deno.md) | [deno.es.md](guides/deno.es.md) |
+| Error catalogue: every code, HTTP status, retries | [errors.md](guides/errors.md) | [errors.es.md](guides/errors.es.md) |
+| Idempotency patterns and recovering uncertain results | [idempotency.md](guides/idempotency.md) | [idempotency.es.md](guides/idempotency.es.md) |
+| Prepare, review, then sign | [prepare-sign.md](guides/prepare-sign.md) | [prepare-sign.es.md](guides/prepare-sign.es.md) |
+| The Archivo DTE (what the receiver gets) | [archivo-dte.md](guides/archivo-dte.md) | [archivo-dte.es.md](guides/archivo-dte.es.md) |
+| Delivery by e-mail and WhatsApp | [delivery.md](guides/delivery.md) | [delivery.es.md](guides/delivery.es.md) |
+| Returns (Evento de Retorno) | [return-event.md](guides/return-event.md) | [return-event.es.md](guides/return-event.es.md) |
+| Diagnostics, `catalogState`, `diagnoseDestinations` | [diagnose.md](guides/diagnose.md) | [diagnose.es.md](guides/diagnose.es.md) |
+| Regional pinning | [region.md](guides/region.md) | [region.es.md](guides/region.es.md) |
+| Debug timings | [timings.md](guides/timings.md) | [timings.es.md](guides/timings.es.md) |
+| Reference clock | [reference-clock.md](guides/reference-clock.md) | [reference-clock.es.md](guides/reference-clock.es.md) |
+| Catalog snapshots and offline reads | [catalog.md](guides/catalog.md) | [catalog.es.md](guides/catalog.es.md) |
+| Catalog writes (customers and products) | [catalog-write.md](guides/catalog-write.md) | [catalog-write.es.md](guides/catalog-write.es.md) |
+| Storage adapters | [storage-adapters.md](guides/storage-adapters.md) | [storage-adapters.es.md](guides/storage-adapters.es.md) |
+| Emergency safeguard | [emergency.md](guides/emergency.md) | [emergency.es.md](guides/emergency.es.md) |
+| Headless browser client (`@facta-dte/api/browser`) | [browser.md](guides/browser.md) | [browser.es.md](guides/browser.es.md) |
+| Signing window for React | [react.md](guides/react.md) | — |
+| Signing window: server side and storage | [react-server.md](guides/react-server.md) | — |
 
 ## Documentation language
 
