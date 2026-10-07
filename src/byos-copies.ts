@@ -60,13 +60,16 @@ export function buildSyncedDestinations(
   snapshot: { destinos: Array<{ id: string; kind: string; label: string; secret: string }> },
   options: {
     environment: "00" | "01";
-    identity: DocumentIdentity;
+    /** Omit to build read-only destinations (no canonical write path, no `canonicalCopy`). */
+    identity?: DocumentIdentity;
     fetch?: typeof fetch;
   },
 ): { destinations: RemoteArtifactDestination[]; skipped: SyncedDestinationSkip[] } {
-  const jsonPath = canonicalArchivePath(options.environment, options.identity, "json");
-  const pdfPath = canonicalArchivePath(options.environment, options.identity, "pdf");
+  const identity = options.identity;
+  const jsonPath = identity ? canonicalArchivePath(options.environment, identity, "json") : null;
+  const pdfPath = identity ? canonicalArchivePath(options.environment, identity, "pdf") : null;
   const pathForArtifact = (artifact: ArchiveArtifact): string => {
+    if (jsonPath === null || pdfPath === null) throw new TypeError("These destinations were built to read, not to write.");
     if (artifact.kind === "json") return jsonPath;
     if (artifact.kind === "pdf") return pdfPath;
     throw new TypeError("Only the legal JSON and PDF are written to synced destinations.");
@@ -103,7 +106,7 @@ export function buildSyncedDestinations(
       destinations.push({
         ...destination,
         kinds: ["json", "pdf"],
-        canonicalCopy: { secretId: entry.id, jsonPath, pdfPath },
+        ...(jsonPath !== null && pdfPath !== null ? { canonicalCopy: { secretId: entry.id, jsonPath, pdfPath } } : {}),
       });
     } catch {
       // Never echo the error: it can quote the credential JSON.

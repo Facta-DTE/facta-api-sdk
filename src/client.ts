@@ -49,6 +49,7 @@ import {
   rowsOf,
 } from "./catalog-write.ts";
 import { buildSyncedDestinations, readDocumentIdentity } from "./byos-copies.ts";
+import { completeLocally, summarizeRows } from "./listed-dte.ts";
 import { createReferenceClock, type ReferenceClock } from "./reference-clock.ts";
 import { DEFAULT_CLOCK_URL } from "./clock-config.ts";
 import { submitPrintJob, type PrintResult, type PrintTransport } from "./printing.ts";
@@ -2275,10 +2276,25 @@ export class Facta {
   }
 
   /** List sealed/reconciliable documents using the server cursor. */
-  listDocuments(filters: ListDocumentsFilters = {}): Promise<DtePage> {
+  async listDocuments(filters: ListDocumentsFilters = {}): Promise<DtePage> {
+    const { include, ...rest } = filters;
+    const withDte = include?.includes("dte") === true;
     const query = new URLSearchParams();
-    for (const [key, value] of Object.entries(filters)) if (value !== undefined) query.set(key, String(value));
-    return this.#request<DtePage>("GET", `/v1/dte${query.size ? `?${query}` : ""}`);
+    for (const [key, value] of Object.entries(rest)) if (value !== undefined) query.set(key, String(value));
+    if (withDte) query.set("include", "dte");
+    const page = await this.#request<DtePage>("GET", `/v1/dte${query.size ? `?${query}` : ""}`);
+    if (!withDte || !Array.isArray(page.documentos)) return page;
+    // A server that predates the flag ignores it: rows then simply lack
+    // `archivoDte`, and nothing below touches them.
+    await completeLocally(page.documentos, {
+      unlockKeyConfigured: this.#unlockKey !== null,
+      open: async () => {
+        const snapshot = await this.syncDestinations();
+        return buildSyncedDestinations(snapshot, { environment: this.#environment(), fetch: this.#fetch }).destinations;
+      },
+    });
+    summarizeRows(page.documentos);
+    return page;
   }
 
   /** Invalidate a sealed document. This sends the signing key and is irreversible. */

@@ -514,6 +514,26 @@ export interface ListDocumentsFilters {
   tipoDte?: DteType;
   limit?: number;
   cursor?: string;
+  /**
+   * `["dte"]` adds the Archivo DTE (and a `resumen`) to every row, resolved in
+   * the same call. The page is 20 rows by default and 25 at most. Needs the
+   * `download` scope. Rows the API cannot open itself are completed locally with
+   * `unlockKey`; a row that still cannot be read carries `dteError`.
+   */
+  include?: Array<"dte">;
+}
+
+/** Why a row of `listDocuments({ include: ["dte"] })` has no `archivoDte`. */
+export interface ListedDteError {
+  /**
+   * `not_sealed` (contingency), `storage_unavailable`, `not_found`, `timeout`,
+   * `needs_local_decrypt` (only readable with `unlockKey`, which is not set or
+   * cannot reach the copy), `destinations_unavailable`, `destination_read_failed`.
+   */
+  code: string;
+  message: string;
+  /** Copies the SDK can read with `unlockKey` (`needs_local_decrypt`). */
+  destinos?: Array<{ id: string; rutaJson: string; verificada: boolean }>;
 }
 
 export interface ListedDte {
@@ -527,6 +547,12 @@ export interface ListedDte {
   totales?: { totalGravada?: number; totalIva?: number; totalPagar?: number };
   /** Null when this document’s receiver metadata cannot be opened by the API. */
   receptor?: { nombre?: string | null; numDocumento?: string | null } | null;
+  /** Only with `include: ["dte"]`: the Archivo DTE, same text as `downloadDocument(code, "json")`. */
+  archivoDte?: string;
+  /** Only with `archivoDte`: `summarizeArchivoDte(archivoDte)`. The receiver comes from the legal document. */
+  resumen?: import("./archivo-dte-summary.ts").DteResumen | null;
+  /** Only with `include: ["dte"]`, instead of `archivoDte`. */
+  dteError?: ListedDteError;
 }
 
 export interface DtePage {

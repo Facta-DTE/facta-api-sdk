@@ -17,6 +17,13 @@
 - `downloadDocument(code, "json")` now returns the **Archivo DTE** by default (the signed document plus `firmaElectronica` and `selloRecibido`), not the stored holding JSON `{codigoGeneracion, ambiente, jws}`. Code that archived or verified the old shape from this call must pass `{ raw: true }` to keep receiving it. The result reports which one it got in `jsonFormat` (`"archivo-dte"` or `"raw"`, from `X-Facta-Json-Format`; absent on API servers that predate it).
 - `FactaDownloadButton`, `FactaReceipt` and the sealed window: «Descargar JSON» gives the Archivo DTE.
 
+### Added: list documents with their DTE
+
+- `listDocuments({ include: ["dte"] })` (API `GET /v1/dte?include=dte`): each row carries `archivoDte` and `resumen` in one call; pages 20 by default, 25 max (`include_limit_exceeded`); needs the `download` scope. Rows the API cannot open (`needs_local_decrypt`) are completed locally from your destinations when `unlockKey` is set, with bounded concurrency; otherwise (or on failure) the row carries a clear `dteError` and the listing never fails. The PDF/ticket are never in the list.
+- `summarizeArchivoDte(archivoDte)` (exported, pure): `{ receptor, lineas, primeraDescripcion, totalIva, totalPagar }` read from the legal document, independent of the catalog's privacy mode.
+- Types `ListedDteError`, `DteResumen`; error code `include_limit_exceeded`; optional `read(path)` on `RemoteArtifactDestination`.
+- React: `FactaDocumentList` takes `includeDte` and shows the receiver (legal document) and concept in the receiver cell; the server handler accepts `include: ["dte"]` and projects `resumen` under the same recipient exposure and masking.
+
 ### Added
 
 - `archivoDte?: string` on sealed results: the exact UTF-8 Archivo DTE. Absent in contingency.
