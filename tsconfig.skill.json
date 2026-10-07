@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.build.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "emitDeclarationOnly": false,
+    "rootDir": ".",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@facta-dte/api": ["./mod.ts"],
+      "@facta-dte/api/server": ["./server.ts"],
+      "@facta-dte/api/browser": ["./browser.ts"],
+      "@facta-dte/api/node": ["./node.ts"],
+      "@facta-dte/api/react": ["./react.ts"]
+    }
+  },
+  "include": ["skills/facta-dte-api/templates/**/*.ts", "skills/facta-dte-api/templates/**/*.tsx"]
+}

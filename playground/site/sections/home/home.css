@@ -114,3 +114,5 @@
 .home-open-links { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 10px; }
 .home-open-links a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border: 1px solid var(--pg-border-strong); border-radius: 10px; background: var(--pg-surface); font-weight: 600; }
 .home-open-links a:hover { background: var(--pg-accent-soft); }
+
+.home-skill { margin-top: 32px; }

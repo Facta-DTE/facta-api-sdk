@@ -90,10 +90,15 @@ acaso.
 
 ## Idempotencia en los dos pasos
 
-Las dos rutas exigen `Idempotency-Key`, y la API agrupa las llaves por llave de
-API, no por ruta. Dé a cada paso su propia llave estable derivada del mismo
-identificador de negocio (`po-77:prepare`, `po-77:sign`), para que repetir
-cualquiera de los dos devuelva su respuesta guardada:
+Las dos rutas exigen `Idempotency-Key` (`sign` es tan irreversible como
+`prepare`, así que sin llave la respuesta es `idempotency_key_required`), y la
+API agrupa las llaves por llave de API, no por ruta. El servidor recuerda, por
+llave, un hash del método, la ruta y el cuerpo de la primera petición. **Nunca
+reutilice en `sign` la llave de `prepare`**: es otra ruta y otro cuerpo, así que
+la API contesta `idempotency_key_reuse` (422) y no firma. Dé a cada paso su
+propia llave estable derivada del mismo identificador de negocio
+(`po-77:prepare`, `po-77:sign`), para que repetir cualquiera de los dos devuelva
+su respuesta guardada:
 
 - repetir `prepare` con su llave y la misma petición devuelve el mismo
   `PreparedDte` (sin un segundo número);

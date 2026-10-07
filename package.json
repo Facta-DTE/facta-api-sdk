@@ -79,13 +79,17 @@
     "playground:typecheck": "tsc --noEmit -p playground/tsconfig.worker.json && tsc --noEmit -p playground/tsconfig.site.json",
     "playground:test": "vitest run --config playground/vitest.config.ts",
     "playground:smoke": "playwright test --config playground/playwright.config.ts",
-    "playground:deploy:check": "pnpm playground:build && wrangler deploy -c playground/wrangler.jsonc --env \"\" --dry-run --outdir playground/.wrangler/dry-run"
+    "playground:deploy:check": "pnpm playground:build && wrangler deploy -c playground/wrangler.jsonc --env \"\" --dry-run --outdir playground/.wrangler/dry-run",
+    "skill:typecheck": "tsc -p tsconfig.skill.json",
+    "skill:check": "pnpm skill:typecheck && node scripts/check-skill.mjs",
+    "skill:pack": "node scripts/pack-skill.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
     "@testing-library/dom": "10.4.2",
     "@testing-library/react": "16.3.3",
     "@testing-library/user-event": "14.6.7",
+    "@types/express": "5.0.3",
     "@types/node": "22.19.11",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",

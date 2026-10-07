@@ -686,6 +686,7 @@ export const esMessages: FactaMessages = {
     sign_vault_missing: "Aún no hay un certificado de firma configurado para esta cuenta.",
     invalid_request: "Los datos del documento no son válidos.",
     validation_failed: "Los datos del documento no cumplen los requisitos de Hacienda. Revise la información e intente de nuevo.",
+    retention_mixed_class_unsupported: "La retención de renta no se puede aplicar a un documento con líneas exentas o no sujetas. Emítalas en otro documento o no aplique la retención.",
     not_found: "No encontramos el documento.",
     not_sealed: "El documento todavía no tiene sello de Hacienda; use raw para el original.",
     method_not_allowed: "La operación no está disponible.",

@@ -63,7 +63,7 @@ An `IssueResult` is a discriminated union. Check `result.estado`: `"sellado"` me
 | `region` | Functions region sent as `x-region` so requests run next to the database. Default: read once from `/v1/status` (fallback `us-west-2` for older APIs). A string overrides, `false` disables; also `config.region` and the `FACTA_API_REGION` environment variable. `await facta.region()` returns it; `diagnose()` reports the served region. |
 | `maxRetries` | Retry limit for explicitly retryable transport/service failures; defaults to 3. |
 | `fetch` | Optional fetch implementation for an owning runtime or tests. |
-| `clock` | Reference clock for archive timestamps and S3 signing: `true` (default, the public `https://clock.factadte.com/`), a URL, or `false` for the device clock. Calibrated lazily, never blocks and never fails an operation. |
+| `clock` | Reference clock for archive timestamps and S3 signing: `true` (default, the public `https://clock.factadte.com/`), a URL, or `false` for the device clock. Calibrated lazily and never fails an operation. Archive methods (`issueAndArchive`, `recoverOperation`, `invalidateAndArchive`, `replicateArchive`) wait for the first calibration of a process: well under a second normally, about 6 s (two 3 s timeouts) when the service is unreachable; later calls answer locally. After a failure the SDK falls back to the device clock. |
 | `clockFetch` | Optional fetch used only to calibrate the clock. |
 | `config` | Optional versioned scalar configuration (`FactaConfigV1`). |
 | `runtime` | Optional default archive, invalidation archive, remote destinations, and print transport (`FactaRuntimeConfigV1`). |
@@ -132,12 +132,12 @@ An archive is sensitive data. `FileInvoiceArchive` uses authenticated encryption
 Use `prepare` and `sign` only when a human or approval system must review the canonical document before signing:
 
 ```ts
-const prepared = await facta.prepare(sale, { idempotencyKey: "order-1042" });
+const prepared = await facta.prepare(sale, { idempotencyKey: "order-1042:prepare" });
 // Review prepared.documento and prepared.totales without changing them.
-const result = await facta.sign(prepared, { idempotencyKey: "order-1042" });
+const result = await facta.sign(prepared, { idempotencyKey: "order-1042:sign" });
 ```
 
-Preparation reserves a control number. The prepared document and token must be passed unchanged to `sign`; an edited document is rejected. `prepare` does not use `signKey`, while `sign` does. See the [prepare/sign guide](guides/prepare-sign.md).
+Preparation reserves a control number. The prepared document and token must be passed unchanged to `sign`; an edited document is rejected. `prepare` does not use `signKey`, while `sign` does. Both routes require an idempotency key, and the API scopes keys by API key, not by route: use a different key for each step (never reuse the `prepare` key on `sign`, which the API refuses with `idempotency_key_reuse`). See the [prepare/sign guide](guides/prepare-sign.md).
 
 ## DTE types and fiscal payloads
 
@@ -193,6 +193,10 @@ Typed examples live in [`examples/`](examples/dte-types.ts). The package's test 
 pnpm test
 pnpm pack:check
 ```
+
+## Agent skill for AI coding agents
+
+[`skills/facta-dte-api/`](skills/facta-dte-api/SKILL.md) is an installable agent skill (`SKILL.md` + references + type-checked starter templates) that teaches a coding agent how to integrate this SDK and the Facta DTE HTTP API correctly: keys, DTE types, idempotency, contingency, files and delivery, errors and the production checklist. Install and download instructions (English and Spanish): [skills/README.md](skills/README.md). `pnpm skill:pack` builds `dist/facta-dte-api-skill.zip`.
 
 ## Guides
 

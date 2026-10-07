@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { CodeBlock } from "../../code-block.tsx";
+import { SkillCard } from "../../components/skill-card.tsx";
 import { Link } from "../../router.tsx";
 import { SOURCES, type SourcePath } from "../../shown-files.ts";
 import { githubFileUrl } from "../../source-links.ts";
@@ -72,6 +73,7 @@ export function Referencia() {
             vivo tiene su demostración; lo que no, dice por qué. Esta lista se compara con las exportaciones reales del paquete en cada cambio, así que no
             queda nada por adivinar.
           </p>
+          <SkillCard variant="compact" />
           <ul className="rf-legend" aria-label="Cómo se muestra cada capacidad">
             <li><b>{counts.live}</b> se pueden ejecutar o ver en vivo</li>
             <li><b>{counts.simulated}</b> con una simulación segura</li>

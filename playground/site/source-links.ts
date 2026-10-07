@@ -10,3 +10,10 @@ export const LICENSE_URL = `${REPO_URL}/blob/main/LICENSE`;
 
 /** `https://github.com/Facta-DTE/facta-api-sdk/blob/main/<path>` for a repository-relative path. */
 export const githubFileUrl = (path: string): string => `${REPO_URL}/blob/main/${path}`;
+
+// The agent skill (skills/facta-dte-api). The zip is a static asset built by `playground:build`
+// (playground/skill-zip-plugin.ts). The GitHub link points at `dev` until the skill reaches `main`:
+// switch SKILL_GITHUB_BRANCH to "main" then, and nothing else changes.
+export const SKILL_ZIP_URL = "/facta-dte-api-skill.zip";
+export const SKILL_GITHUB_BRANCH = "dev";
+export const SKILL_GITHUB_URL = `${REPO_URL}/tree/${SKILL_GITHUB_BRANCH}/skills/facta-dte-api`;

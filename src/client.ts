@@ -1361,7 +1361,7 @@ export class Facta {
     throwIfAborted(signal);
     await this.#clock?.ensure();
     const identity = await this.#archiveIdentity(signal);
-    const resolved = await this.#resolveCatalogRefs(request);
+    const resolved = withDelivery(await this.#resolveCatalogRefs(request), options.deliver);
     throwIfAborted(signal);
     const requestBytes = new TextEncoder().encode(JSON.stringify(resolved));
     const requestSha256 = await sha256Hex(requestBytes);
@@ -1802,11 +1802,11 @@ export class Facta {
         remote,
         emission,
       );
-      result = { emission, ...base, ...(archived.warnings.length ? { warnings: archived.warnings } : {}), archive: archived.archive };
+      result = { emission, ...(emission.entrega === undefined ? {} : { entrega: emission.entrega }), ...base, ...(archived.warnings.length ? { warnings: archived.warnings } : {}), archive: archived.archive };
     } catch (cause) {
       const detail = cause instanceof Error ? cause.message : String(cause);
       try { await archive.markNeedsAttention(operation.id, detail.slice(0, 500)); } catch { /* Preserve the successful fiscal result. */ }
-      result = { emission, ...base, archive: { state: "needs_attention", operationId: operation.id, artifacts, detail } };
+      result = { emission, ...(emission.entrega === undefined ? {} : { entrega: emission.entrega }), ...base, archive: { state: "needs_attention", operationId: operation.id, artifacts, detail } };
     }
     return await this.#guardArchived(result, signal);
   }
