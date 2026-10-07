@@ -86,8 +86,14 @@ export function resolveCatalogRefs(
         });
       }
     }
+    // The product's VAT treatment rides on the line unless the caller named one;
+    // only the types with a sale class take it (the server does the same).
+    const treatment = product.sale_class === "exenta" ? "exenta" : product.sale_class === "noSuj" ? "no_sujeta" : undefined;
+    const carriesTreatment = (explicit as { tipoVenta?: string }).tipoVenta === undefined && treatment !== undefined &&
+      ["01", "03", "05", "06"].includes(request.tipoDte);
     return {
       ...explicit,
+      ...(carriesTreatment ? { tipoVenta: treatment } : {}),
       descripcion: explicit.descripcion ?? String(product.description ?? ""),
       precioUni: explicit.precioUni ?? Number(product.unit_price),
       codigo: explicit.codigo ??
