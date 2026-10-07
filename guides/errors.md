@@ -81,6 +81,7 @@ In the tables, "Retried" means retried automatically by the SDK.
 | --- | --- | --- | --- | --- |
 | `invalid_request` | 400 (422 locally) | no | Missing or non-JSON body, over 1 MB, a field with the wrong shape, or a non-UUID generation code (`details.field`). Locally (422): a catalog product with an invalid item type, unit of measure, or a VAT basis that does not match the DTE. | Fix the request. No number was spent. |
 | `validation_failed` | 422 | no | The document fails Hacienda's official schema (`details.issues`). Also thrown locally (422, before any request) by catalog writes. | Fix the listed fields. No number was spent. |
+| `retention_mixed_class_unsupported` | 422 | no | `aplicarReteRenta` was requested on a document with an `exenta` or `no_sujeta` line (`items[].tipoVenta`). | Nothing was signed and no number was spent. Issue the exempt or non-subject lines in another document, or do not apply the withholding. |
 | `not_found` | 404 | no | No such document, customer, product or route for this key's company. Also thrown locally when a `customerId`/`productId` is not in the catalog snapshot. | Check the identifier and the key's company; sync the catalog. |
 | `method_not_allowed` | 405 | no | The route exists, but not with that method. | Only seen when calling the API outside the SDK's methods. |
 | `prepare_token_invalid` | 422 | no | The `prepareToken` expired (15 min), belongs to another key, or the document changed. | Call `prepare` again. See [prepare-sign.md](prepare-sign.md). |
@@ -158,13 +159,8 @@ These never come from the server; `status` is `0`.
 | `operation_outcome_unknown` | no | An invalidation may have completed, but its signed event cannot be recovered (safe window expired, or the API only confirms it was already invalidated). | Reconcile manually; do not invalidate again. |
 | `archive_integrity_error` | no | Local archive data failed an identity or digest check, or the API identity (endpoint, key, issuer, environment) differs from the one an operation was journaled with. | Keep the encrypted files; inspect before repairing. Use the original client and credentials. |
 
-## Codes outside the TypeScript union
+## Browser client codes
 
-The API contract also lists `retention_mixed_class_unsupported` (HTTP 422):
-`aplicarReteRenta` on a document with an `exenta` or `no_sujeta` line. Nothing
-was signed and no number was spent. The SDK passes the server's code through
-unchanged, so `error.code` can hold it even though `FactaErrorCode` does not
-declare it in this version; compare it as a string.
 
 The browser client (`@facta-dte/api/browser`) throws `FactaClientError`, which
 carries the same codes plus the handler's own `session_invalid`,

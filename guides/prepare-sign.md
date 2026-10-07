@@ -87,10 +87,14 @@ fiscal records, so keep the review short and avoid preparing speculatively.
 
 ## Idempotency for the two steps
 
-Both routes need an `Idempotency-Key`, and the API scopes keys by API key, not
-by route. Give each step its own stable key derived from the same business id
-(`po-77:prepare`, `po-77:sign`), so a replay of either step returns its stored
-answer:
+Both routes need an `Idempotency-Key` (`sign` is as irreversible as `prepare`,
+so a missing key is `idempotency_key_required`), and the API scopes keys by API
+key, not by route. The server remembers, per key, a hash of the method, route
+and body of the first request. **Never reuse the `prepare` key on `sign`**: it is
+a different route and body, so the API answers `idempotency_key_reuse` (422)
+and does not sign. Give each step its own stable key derived from the same
+business id (`po-77:prepare`, `po-77:sign`), so a replay of either step returns
+its stored answer:
 
 - replaying `prepare` with its key and the same request returns the same
   `PreparedDte` (no second number);
