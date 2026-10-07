@@ -83,9 +83,10 @@ export function QuotaMeter() {
   const id = useId();
   if (hour === null) return null;
   return (
-    <span className="pg-meter" data-testid="quota-meter" aria-labelledby={id}>
+    <span className="pg-meter" data-testid="quota-meter" aria-labelledby={id} title={`${hour.left} de ${hour.limit} esta hora`}>
       <span className="pg-meter-bar" aria-hidden><i style={{ width: `${(hour.left / hour.limit) * 100}%` }} /></span>
       <span className="pg-meter-text" id={id}>{hour.left} de {hour.limit} esta hora</span>
+      <span className="pg-meter-short" aria-hidden>{hour.left}/{hour.limit}</span>
     </span>
   );
 }

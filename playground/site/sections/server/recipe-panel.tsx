@@ -17,6 +17,7 @@ import { COVERAGE } from "../../../shared/sdk-coverage.ts";
 import { Link } from "../../router.tsx";
 import { RECIPE_GUIDES } from "./guides.ts";
 import { panelId, RecipeGuideView, RecipeTabBar, useRecipeTab } from "../guides/recipe-guide.tsx";
+import { CatalogFields } from "./catalog-fields.tsx";
 
 type Values = Record<string, string | boolean>;
 
@@ -278,16 +279,7 @@ function WhySameKey() {
 function CatalogPicks({ run, onPick }: { run: RunResponse; onPick(name: string, value: string): void }) {
   const result = run.result as { customers?: Array<{ id: string; name: string | null }>; products?: Array<{ id: string; description: string | null }> } | null;
   if (!result) return null;
-  return (
-    <div className="srv-picks">
-      {result.customers && result.customers.length > 0 && (
-        <div><h4>Clientes</h4>{result.customers.map((c) => <button type="button" className="srv-chip" key={c.id} onClick={() => onPick("customerId", c.id)}>{c.name ?? c.id}</button>)}</div>
-      )}
-      {result.products && result.products.length > 0 && (
-        <div><h4>Productos</h4>{result.products.map((p) => <button type="button" className="srv-chip" key={p.id} onClick={() => onPick("productId", p.id)}>{p.description ?? p.id}</button>)}</div>
-      )}
-    </div>
-  );
+  return <CatalogFields result={result} onPick={onPick} />;
 }
 
 export { RECIPE_SPECS };

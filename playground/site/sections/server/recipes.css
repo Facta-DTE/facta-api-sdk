@@ -112,3 +112,18 @@
 .srv-why h3 { margin: 0 0 6px; font-size: 14px; }
 .srv-why p { margin: 0 0 6px; font-size: 14px; color: var(--pg-text-2); max-width: none; }
 .srv-why p:last-child { margin-bottom: 0; }
+
+/* Catalog records: field table next to the JSON (catalog-fields.tsx). */
+.srv-catalog { display: grid; gap: 12px; margin-top: 12px; }
+.srv-catalog h4 { margin: 8px 0 4px; font-size: 13px; color: var(--pg-muted); }
+.srv-catalog-note { margin: 0; padding: 10px 14px; border-radius: var(--pg-radius-sm); background: var(--pg-bg); color: var(--pg-text-2); font-size: 13px; }
+.srv-record-item { display: inline-block; vertical-align: top; max-width: 100%; }
+.srv-record-item:has(.srv-record) { display: block; margin-bottom: 8px; }
+.srv-record { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin: 4px 0 8px; padding: 12px; border: 1px solid var(--pg-border); border-radius: var(--pg-radius); background: var(--pg-surface); }
+.srv-record h5 { margin: 0 0 6px; font-size: 14px; overflow-wrap: anywhere; }
+.srv-fields { width: 100%; border-collapse: collapse; font-size: 13px; }
+.srv-record-fields .pg-btn { margin-top: 10px; }
+.srv-fields th { text-align: left; font-weight: 600; font-size: 12px; letter-spacing: .03em; color: var(--pg-muted); padding: 8px 10px 8px 0; width: 42%; vertical-align: top; }
+.srv-fields td { padding: 8px 0; border-top: 1px solid var(--pg-track); overflow-wrap: anywhere; }
+.srv-fields tr + tr th { border-top: 1px solid var(--pg-track); }
+.srv-record-json { margin: 0; padding: 10px; max-height: 320px; overflow: auto; border-radius: var(--pg-radius-sm); background: var(--pg-bg); font-family: var(--pg-mono); font-size: 12px; }

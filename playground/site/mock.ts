@@ -6,6 +6,7 @@ import { createMockFetch, type Outcome } from "../../examples/react-preview/src/
 import { mockHoldingBase64, mockRecipeFiles, MOCK_CODE, MOCK_SEAL } from "./mock-dte.ts";
 import { ApiError, installMock, type CreatedSession, type IssuedDocument, type PlaygroundState } from "./api.ts";
 import { setTimingsEnabled, timingsEnabled } from "./timings.ts";
+import { maskCustomer, maskProduct } from "../server/catalog-mask.ts";
 import { TIMINGS_HEADER, type Timings } from "../shared/timings.ts";
 
 const OUTCOMES: Outcome[] = ["sealed", "sealed-copies-pending", "sealed-delivered", "sealed-delivering", "contingency", "rejected", "uncertain-then-sealed", "failed-retryable", "expired"];
@@ -206,6 +207,18 @@ function mockRegistry(slow: number, rateLimited: boolean, contingency: boolean, 
           ...(send ? {} : { continuation: "mock-continuation-token-0123456789-0123456789-0123456789" }),
           ...(timings === undefined ? {} : { timings }),
         });
+      }
+      if (body.recipe === "catalog-refs") {
+        // The same masking the Worker applies, over invented records.
+        const customers = [
+          { id: "cus_8f2a", name: "Ferretería Díaz S.A. de C.V.", doc_type: "36", doc_number: "0614-210389-102-4", nrc: "123456-7", activity_code: "47521", address: { departamento: "06", municipio: "14", distrito: "01", complemento: "Colonia Escalón, calle 5, casa 22", pais: "SV" }, phone: "2222-3344", email: "compras@ferreteriadiaz.com.sv" },
+          { id: "cus_91c4", name: "Ana Lucía Pérez", doc_type: "13", doc_number: "04829316-5", nrc: null, activity_code: null, address: null, phone: null, email: "ana.perez@example.com" },
+        ].map(maskCustomer);
+        const products = [
+          { id: "prd_01", code: "TOR-14", barcode: "7401001234567", description: "Tornillo 1/4 x 2 in (caja de 100)", item_type: 1, unit_of_measure: 59, unit_price: 12.5, vat_included: false, active: true, sale_class: "gravada" },
+          { id: "prd_02", code: "SRV-01", barcode: null, description: "Instalación a domicilio", item_type: 2, unit_of_measure: 99, unit_price: 30, vat_included: true, active: true },
+        ].map(maskProduct);
+        return json(200, { recipe: body.recipe, stage: "run", runId: "mock-run-0001", ok: true, totalMs: 640, steps: [{ method: "GET", endpoint: "/v1/status", status: 200, ms: 90 }], result: { catalogMode: "encrypted", customers, products, result: null }, files: [], issued: [], invalidated: [] });
       }
       return json(200, {
         recipe: body.recipe, stage: body.stage ?? "run", runId: "mock-run-0001", ok: true, totalMs: 1180,

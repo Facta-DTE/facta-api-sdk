@@ -16,6 +16,7 @@ import * as statusRecovery from "./status-recovery.ts";
 import * as invalidate from "./invalidate.ts";
 import * as documentsStorage from "./documents-storage.ts";
 import * as catalogRefs from "./catalog-refs.ts";
+import { maskCustomer, maskProduct } from "../catalog-mask.ts";
 import * as orderWebhook from "./order-webhook.ts";
 import * as deliverEmail from "./deliver-email.ts";
 import * as archivoDte from "./archivo-dte.ts";
@@ -282,7 +283,13 @@ const catalogDef: RecipeDef = {
       quotaKeys: productId === undefined ? [] : [key],
       async exec(facta) {
         const out = await catalogRefs.run(facta, input);
-        return { result: out, issued: codeOf(out.result) };
+        // The catalog is the real one: customers leave the Worker masked, with every key kept.
+        const shown = {
+          ...out,
+          customers: out.customers.map((c) => maskCustomer(c as unknown as Record<string, unknown>)),
+          products: out.products.map((p) => maskProduct(p as unknown as Record<string, unknown>)),
+        };
+        return { result: shown, issued: codeOf(out.result) };
       },
     };
   },
