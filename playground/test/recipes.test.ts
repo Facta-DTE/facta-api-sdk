@@ -366,6 +366,29 @@ describe("redact", () => {
   });
 });
 
+describe("redact · the delivery token", () => {
+  it("strips every `token` by default, wherever it sits", () => {
+    expect(redact({ entrega: { token: "t1", venceEn: "x" }, issued: { entrega: { token: "t2" } } })).toEqual({ entrega: { venceEn: "x" }, issued: { entrega: {} } });
+  });
+
+  it("keeps ONLY the token at the exact path named, and other tokens still go", () => {
+    const out = redact(
+      { entrega: { token: "mine", venceEn: "x" }, issued: { entrega: { token: "dup" } }, prepareToken: "p", other: { token: "o" }, list: [{ entrega: { token: "in-array" } }] },
+      { keepAt: ["entrega.token"] },
+    );
+    expect(out).toEqual({ entrega: { token: "mine", venceEn: "x" }, issued: { entrega: {} }, other: {}, list: [{ entrega: {} }] });
+    // The key rule still wins for credentials at a kept path's siblings.
+    expect(redact({ entrega: { token: "mine", apiKey: "k" } }, { keepAt: ["entrega.token"] })).toEqual({ entrega: { token: "mine" } });
+  });
+
+  it("only the deliver-email issue stage asks for it (no other recipe passes keepAt)", () => {
+    const source = readFileSync(new URL("../server/recipes/index.ts", import.meta.url), "utf8");
+    expect(source.match(/keepAt:/g)).toHaveLength(1);
+    expect(source).toContain('keepAt: ["entrega.token"]');
+    expect(readFileSync(new URL("../server/router.ts", import.meta.url), "utf8")).not.toContain("keepAt");
+  });
+});
+
 describe("generated copies and project", () => {
   const source = readFileSync(new URL("../server/recipes/issue-idempotent.ts", import.meta.url), "utf8");
 

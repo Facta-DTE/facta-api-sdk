@@ -216,7 +216,10 @@ function mockRegistry(slow: number, rateLimited: boolean, contingency: boolean, 
       const own: Array<[string, number, number]> = [["Verificación de Turnstile", 0, 41], ["Armado de la receta", 42, 4], ["Límites de correo", 47, 12], ["Límite de emisiones (solo comprobar)", 60, 9]];
       const timings = wantsTimings ? mockTimings(send ? own.slice(0, 3) : own, 1300, false) : undefined;
       if (mail) {
-        const sealedAt = "2026-10-06T10:42:11-06:00";
+        // A real five-minute window, so the countdown on the page runs. `?outcome=contingency` has no token;
+        // `?send=expired` makes the second call answer `entrega_vencida` (410).
+        const dueAt = new Date(Date.now() + 5 * 60_000).toISOString();
+        if (send && new URLSearchParams(window.location.search).get("send") === "expired") return json(410, { error: { code: "entrega_vencida", message: "El token de entrega venció.", retryable: false } });
         const calls = send
           ? [{ method: "POST", endpoint: "/v1/dte/7C1E4B6A-92D3-4F08-A1B7-5E30C9D2F777/entrega/correo", status: 200, ms: 410 }, { method: "GET", endpoint: "/v1/dte/7C1E4B6A-92D3-4F08-A1B7-5E30C9D2F777/entrega", status: 200, ms: 160 }]
           : [{ method: "POST", endpoint: "/v1/dte", status: 200, ms: 1180, request: { tipoDte: "01", entrega: { correo: "c•••@example.com" } } }];
@@ -224,9 +227,9 @@ function mockRegistry(slow: number, rateLimited: boolean, contingency: boolean, 
           recipe: body.recipe, stage: body.stage ?? "issue", runId: "mock-run-0001", ok: true, totalMs: send ? 640 : 1180, steps: calls,
           result: send
             ? { codigoGeneracion: MOCK_CODE, destino: "c•••@example.com", channel: { estado: "enviado", destino: "c•••@example.com" }, delivery: { codigoGeneracion: MOCK_CODE, canales: { correo: { estado: "enviado", destino: "c•••@example.com" } }, settled: true } }
-            : { issued: { estado: "sellado", numeroControl: "DTE-01-M001P001-000000000000215", selloRecibido: MOCK_SEAL, documento: "[omitido]", jws: "[omitido: 700 caracteres]" }, entrega: { tokenRecibido: true, venceEn: sealedAt, canales: { correo: { estado: "pendiente", destino: "c•••@example.com" } } } },
+            : { issued: { estado: "sellado", numeroControl: "DTE-01-M001P001-000000000000215", selloRecibido: MOCK_SEAL, documento: "[omitido]", jws: "[omitido: 700 caracteres]" }, entrega: { tokenRecibido: !contingency, ...(contingency ? {} : { token: "fdt_mock_8hQ2x1LkPz9VbT4mYw7NcR0aSdE6uJgF" }), venceEn: contingency ? null : dueAt, canales: { correo: { estado: "pendiente", destino: "c•••@example.com" } } } },
           files: send ? [] : mockRecipeFiles(false), issued: send ? [] : [{ codigoGeneracion: MOCK_CODE, tipoDte: "01" }], invalidated: [],
-          ...(send ? {} : { continuation: "mock-continuation-token-0123456789-0123456789-0123456789" }),
+          ...(send || contingency ? {} : { continuation: "mock-continuation-token-0123456789-0123456789-0123456789" }),
           ...(timings === undefined ? {} : { timings }),
         });
       }

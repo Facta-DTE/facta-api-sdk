@@ -44,6 +44,8 @@ export interface ExecOutcome {
   continuation?: string;
   /** Bulky members to keep in the redacted result (e.g. the canonical `documento`). */
   keep?: string[];
+  /** Exact result paths whose `token` member is shown on purpose (see `RedactOptions.keepAt`). */
+  keepAt?: string[];
 }
 
 export interface RunOutput {
@@ -238,7 +240,7 @@ export async function execute(
       error = { code: "recipe_failed", status: 0, message: name === "AbortError" || name === "TimeoutError" ? "La llamada se canceló por tiempo." : "La receta no pudo completarse." };
     }
   }
-  const options: RedactOptions = { ...redaction, ...(outcome?.keep ? { keep: outcome.keep } : {}) };
+  const options: RedactOptions = { ...redaction, ...(outcome?.keep ? { keep: outcome.keep } : {}), ...(outcome?.keepAt ? { keepAt: outcome.keepAt } : {}) };
   const output: RunOutput = {
     ok: error === undefined,
     steps: recorder.steps,
