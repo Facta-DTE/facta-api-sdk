@@ -154,6 +154,7 @@ The type system helps construct payloads but does not replace server-side tax va
 - [Catalog snapshots and offline reads](guides/catalog.md)
 - [Create, edit and deactivate customers and products](guides/catalog-write.md)
 - [Storage adapters](guides/storage-adapters.md)
+- [Emergency safeguard](guides/emergency.md): `runtime.emergencyStore` saves the JSON and PDF when Facta could not store them durably
 - [Node integration](guides/node.md)
 - [Deno integration](guides/deno.md)
 

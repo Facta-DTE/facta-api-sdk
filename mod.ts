@@ -5,6 +5,7 @@ export {
   Facta,
   type FactaArchiveEmissionOptions,
   type FactaConfigV1,
+  type FactaEmergencyApi,
   type FactaInvalidationArchiveOptions,
   type FactaOptions,
   type FactaRuntimeConfigV1,
@@ -92,3 +93,14 @@ export {
   createBridgeArtifactDestination,
   type LocalBridgeArtifactConfig,
 } from "./src/bridge-artifact-destination.ts";
+export {
+  type EmergencyEvent,
+  type EmergencyFiles,
+  type EmergencyInfo,
+  type EmergencyReason,
+  type EmergencyReplication,
+  type EmergencyReport,
+  type EmergencyStoreFn,
+  type EmergencyTrigger,
+  emergencyWarningCodes,
+} from "./src/emergency.ts";

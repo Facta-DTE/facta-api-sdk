@@ -162,7 +162,7 @@ export interface InvalidationArchiveResult {
 
 /** Non-fatal problem after a document was sealed. The sealed document is never affected. */
 export interface ArchiveWarning {
-  code: "byos_not_replicated" | "copy_report_failed";
+  code: "byos_not_replicated" | "copy_report_failed" | "emergency_saved" | "emergency_failed";
   /** Destination the warning is about; absent when the destinations could not be resolved at all. */
   destinationId?: string;
   /** Safe, credential-free explanation. */
@@ -170,6 +170,8 @@ export interface ArchiveWarning {
 }
 
 export interface ArchiveEmissionResult {
+  /** Present only when the emergency safeguard ran (see `runtime.emergencyStore`). */
+  emergency?: import("./emergency.ts").EmergencyReport;
   /** Typed, non-throwing problems with BYOS replication or reporting; retry with `recoverOperation`. */
   warnings?: ArchiveWarning[];
   /** Omitted when restart recovery finds the existing DTE by generation code. */

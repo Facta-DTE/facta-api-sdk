@@ -91,7 +91,7 @@ Deno.test("package Markdown links resolve to files or in-page anchors", async ()
 });
 
 Deno.test("runtime and catalog guides have equivalent Spanish and English structure", async () => {
-  for (const stem of ["catalog", "catalog-write", "storage-adapters", "node", "deno"]) {
+  for (const stem of ["catalog", "catalog-write", "storage-adapters", "node", "deno", "emergency"]) {
     const english = await Deno.readTextFile(`guides/${stem}.md`);
     const spanish = await Deno.readTextFile(`guides/${stem}.es.md`);
     const count = (text: string, pattern: RegExp) => [...text.matchAll(pattern)].length;
