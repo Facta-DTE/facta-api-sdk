@@ -4,6 +4,7 @@ const LABELS = Object.freeze({
   catalog: "Encrypted catalog snapshot opened locally",
   "customer-catalog": "Authorized customer catalog reads",
   "product-catalog": "Authorized product catalog reads",
+  "catalog-write-gate": "Catalog writes refused while the company catalog is encrypted",
   destinations: "Encrypted destination snapshot opened locally",
   "dte-01": "DTE 01 final consumer invoice",
   "dte-03": "DTE 03 credit fiscal invoice",
@@ -36,6 +37,9 @@ const STATES = new Set([
   "Passed (test fixture sealed)",
   "Passed (e-mail sent)", "Warning (mail quota reached)", "Warning (mail provider unavailable)",
   "Not run (no test inbox configured)",
+  "Passed (writes refused for the encrypted CI company)",
+  "Warning (key lacks catalog:write)",
+  "Warning (catalog write routes not deployed on staging yet)",
 ]);
 const ERROR_CODES = new Set([
   // Stable public API codes from the server error taxonomy.
@@ -51,7 +55,8 @@ const ERROR_CODES = new Set([
   "archive_integrity_error", "network_error", "operation_outcome_unknown",
   // Legacy/local codes kept from dev.
   "forbidden", "rate_limit_exceeded",
-  "readiness_blocked", "catalog_read_failed",
+  "readiness_blocked", "catalog_read_failed", "catalog_write_gate_failed",
+  "catalog_write_disabled", "catalog_encrypted",
   "storage_unsupported", "storage_unavailable", "storage_contract_invalid",
   "fixture_required", "fixture_invalid", "permission_missing", "related_document_invalid",
   "idempotency_window_expired", "assertion_failed",

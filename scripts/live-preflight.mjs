@@ -57,3 +57,38 @@ export async function validateLiveCatalogReads(facta, snapshot, checks, onCheck 
     checks["product-catalog"] = "Passed";
   }
 }
+
+const PROBE_ID = "00000000-0000-4000-8000-000000000000";
+
+/**
+ * The CI key's company keeps its catalog encrypted, so the catalog write routes must refuse. The
+ * probe deactivates an id that does not exist: even if a server wrongly allowed the write, nothing
+ * real is touched. Plain mode is never switched on for a real company.
+ *
+ * Until the routes are deployed (404/405/501) or while the key lacks the scope, the check only
+ * warns; any other outcome, including a success, fails the run.
+ */
+export async function validateLiveCatalogWriteGate(facta, checks, onCheck = (_check) => {}) {
+  onCheck("catalog-write-gate");
+  try {
+    await facta.deactivateCustomer(PROBE_ID);
+  } catch (cause) {
+    const code = cause?.code;
+    if (code === "catalog_write_disabled" || code === "catalog_encrypted") {
+      checks["catalog-write-gate"] = "Passed (writes refused for the encrypted CI company)";
+      return;
+    }
+    if (code === "forbidden_scope") {
+      checks["catalog-write-gate"] = "Warning (key lacks catalog:write)";
+      return;
+    }
+    if (cause?.status === 404 || cause?.status === 405 || cause?.status === 501 || code === "not_found" || code === "method_not_allowed") {
+      checks["catalog-write-gate"] = "Warning (catalog write routes not deployed on staging yet)";
+      return;
+    }
+    checks["catalog-write-gate"] = "Failed";
+    throw Object.assign(new Error("Catalog write gate answered unexpectedly."), { code: "catalog_write_gate_failed" });
+  }
+  checks["catalog-write-gate"] = "Failed";
+  throw Object.assign(new Error("Catalog write was accepted for the encrypted CI company."), { code: "catalog_write_gate_failed" });
+}

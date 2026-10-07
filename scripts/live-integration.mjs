@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { createValidationResults, renderLiveReport, safeFailureCode } from "./live-report.mjs";
 import { validateLiveManagedStorage } from "./live-managed-storage.mjs";
 import { emailDeliveryReportState, emailDeliveryVerdict, emailDeliveryWarningLines } from "./live-delivery.mjs";
-import { requireLiveSnapshots, validateLiveCatalogReads } from "./live-preflight.mjs";
+import { requireLiveSnapshots, validateLiveCatalogReads, validateLiveCatalogWriteGate } from "./live-preflight.mjs";
 import {
   assertRelatedTestDocuments,
   assertLiveRunWithinIdempotencyWindow,
@@ -139,6 +139,8 @@ try {
   assert(storageCapability.managed.ready, "Full managed live validation requires ready managed storage.");
   const snapshots = await requireLiveSnapshots(facta, checks, (check) => { currentCheck = check; }, storageCapability.managed.ready && !storageCapability.byos.ready);
   await validateLiveCatalogReads(facta, snapshots.catalog, checks, (check) => { currentCheck = check; });
+  await validateLiveCatalogWriteGate(facta, checks, (check) => { currentCheck = check; });
+  console.log(`${checks["catalog-write-gate"].startsWith("Warning") ? "WARN" : "PASS"} catalog write gate: ${checks["catalog-write-gate"]}`);
   console.log("PASS snapshots: catalog and required BYOS destinations verified locally");
   currentCheck = "preflight";
 
