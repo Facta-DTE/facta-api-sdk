@@ -336,7 +336,7 @@ export const RECIPE_GUIDES: Record<string, RecipeGuide> = {
       },
       {
         title: "Listar clientes y productos.",
-        text: "Lee la copia local del catálogo, que el SDK abre con su `unlockKey`, y muestra los primeros 25 de cada uno con su id. Pulse uno para llenar el formulario.",
+        text: "Lee la copia local del catálogo, que el SDK abre con su `unlockKey`, y muestra los primeros 25 de cada uno con **todos sus campos** (cliente: documento, NRC, actividad, dirección, correo y teléfono; producto: código, unidad, precio, IVA). Aquí los datos personales salen enmascarados; en su servidor llegan completos. Pulse uno para ver su detalle y usar su id.",
         sdk: ["facta.listCustomers()", "facta.listProducts()"],
         http: ["GET /v1/vault/destinations"],
       },
