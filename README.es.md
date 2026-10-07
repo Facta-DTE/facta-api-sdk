@@ -73,6 +73,33 @@ completion. It refuses non-loopback Supabase URLs and does not reset or migrate
 the local database. This repository-only validation script is not included in
 the published package.
 
+## Guías
+
+Todas las guías de `guides/`, en español y en inglés. Las dos guías de React están solo en inglés.
+
+| Tema | Español | English |
+| --- | --- | --- |
+| Referencia de métodos: cada método público | [reference.es.md](guides/reference.es.md) | [reference.md](guides/reference.md) |
+| Integración con Node.js | [node.es.md](guides/node.es.md) | [node.md](guides/node.md) |
+| Integración con Deno | [deno.es.md](guides/deno.es.md) | [deno.md](guides/deno.md) |
+| Catálogo de errores: cada código, estado HTTP y reintentos | [errors.es.md](guides/errors.es.md) | [errors.md](guides/errors.md) |
+| Patrones de idempotencia y recuperación de resultados inciertos | [idempotency.es.md](guides/idempotency.es.md) | [idempotency.md](guides/idempotency.md) |
+| Preparar, revisar y luego firmar | [prepare-sign.es.md](guides/prepare-sign.es.md) | [prepare-sign.md](guides/prepare-sign.md) |
+| El Archivo DTE (lo que recibe el receptor) | [archivo-dte.es.md](guides/archivo-dte.es.md) | [archivo-dte.md](guides/archivo-dte.md) |
+| Entrega por correo y WhatsApp | [delivery.es.md](guides/delivery.es.md) | [delivery.md](guides/delivery.md) |
+| Devoluciones (Evento de Retorno) | [return-event.es.md](guides/return-event.es.md) | [return-event.md](guides/return-event.md) |
+| Diagnóstico, `catalogState`, `diagnoseDestinations` | [diagnose.es.md](guides/diagnose.es.md) | [diagnose.md](guides/diagnose.md) |
+| Fijación de región | [region.es.md](guides/region.es.md) | [region.md](guides/region.md) |
+| Tiempos de depuración | [timings.es.md](guides/timings.es.md) | [timings.md](guides/timings.md) |
+| Reloj de referencia | [reference-clock.es.md](guides/reference-clock.es.md) | [reference-clock.md](guides/reference-clock.md) |
+| Fotos del catálogo y lecturas sin conexión | [catalog.es.md](guides/catalog.es.md) | [catalog.md](guides/catalog.md) |
+| Escritura del catálogo (clientes y productos) | [catalog-write.es.md](guides/catalog-write.es.md) | [catalog-write.md](guides/catalog-write.md) |
+| Adaptadores de almacenamiento | [storage-adapters.es.md](guides/storage-adapters.es.md) | [storage-adapters.md](guides/storage-adapters.md) |
+| Salvaguarda de emergencia | [emergency.es.md](guides/emergency.es.md) | [emergency.md](guides/emergency.md) |
+| Cliente de navegador sin interfaz (`@facta-dte/api/browser`) | [browser.es.md](guides/browser.es.md) | [browser.md](guides/browser.md) |
+| Ventana de firma para React | — | [react.md](guides/react.md) |
+| Ventana de firma: lado del servidor y almacenamiento | — | [react-server.md](guides/react-server.md) |
+
 ## Configuración tipada versionada
 
 `FactaOptions` conserva las opciones planas por compatibilidad. Para guardar defaults de comportamiento, usa `config: { version: 1, ... }`; si el mismo campo aparece en ambos lugares, la opción plana gana. Credenciales (`apiKey`, `signKey`, `unlockKey`) permanecen fuera de `config` para evitar serializarlas junto con perfiles.
@@ -103,6 +130,14 @@ const readiness = await facta.diagnose();
 
 La fecha y la hora de un DTE las pone siempre el servidor de Facta, nunca este SDK. El reloj del SDK importa para dos cosas locales: la firma SigV4 de las subidas a almacenamientos compatibles con S3 (S3 rechaza una firma con más de 15 minutos de diferencia, `RequestTimeTooSkewed`) y las marcas de tiempo de los registros de archivo. `new Facta({ apiKey })` mantiene un reloj de referencia (`facta.clock`): tres muestras al primer uso y después responde el reloj monotónico, sin volver a preguntar mientras la incertidumbre sea menor de 500 ms. La opción `clock` acepta `true` (por defecto, `https://clock.factadte.com/`), una URL o `false` para usar la hora del equipo. Para compartirlo con un destino S3: `createS3ArtifactDestination({ ..., clock: facta.clock ?? false })`. Si el servicio no responde, se usa la hora del equipo y la operación continúa. Guía: [la hora de referencia](https://sdk.factadte.com/guias/reloj-de-referencia/).
 
+## Salvaguarda de emergencia
+
+Si Facta avisa que no pudo guardar un documento en ningún sitio duradero (o toda
+la replicación falla), `runtime.emergencyStore` recibe el JSON, el PDF y lo que
+pasó, una sola vez por documento. Es opcional: sin ella, el resultado trae
+`emergency: { saved: false, reason: "not_configured" }` y Facta envía una copia
+de respaldo al correo del dueño. Guía y ejemplo: [`guides/emergency.es.md`](guides/emergency.es.md).
+
 ## Métodos del cliente
 
 | Método | Uso | Envía `FACTA_SIGN_KEY` |
@@ -116,6 +151,8 @@ La fecha y la hora de un DTE las pone siempre el servidor de Facta, nunca este S
 | `syncCatalog()` | Descarga el snapshot cifrado y abre clientes/productos localmente. | No |
 | `listCustomers()`, `getCustomer(id)`, `searchCustomers(query)` | Lee o busca clientes ya autorizados para esta llave desde el snapshot descifrado localmente. | No |
 | `listProducts()`, `getProduct(id)`, `searchProducts(query)` | Lee o busca productos del snapshot descifrado localmente. | No |
+| `createCustomer(input)`, `updateCustomer(id, cambios)`, `deactivateCustomer(id)` | Alta, edición y desactivación de clientes por el API. Requiere `catalog:write` y que la empresa pase su catálogo a texto plano y lo habilite. Ver la [guía](guides/catalog-write.es.md). | Alta con `idempotencyKey` |
+| `createProduct(input)`, `updateProduct(id, cambios)`, `deactivateProduct(id)` | Lo mismo para productos. No hay borrado definitivo. | Alta con `idempotencyKey` |
 | `issue(request, options?)` | Prepara, firma y transmite un DTE en una operación. | Sí |
 | `deliverEmail(codigoGeneracion, token)`, `deliverWhatsApp(codigoGeneracion, token)` | Inician la entrega por correo o WhatsApp de un DTE sellado con el token de entrega de `issue(…, { deliver })` (válido 5 minutos). | No |
 | `getDelivery(codigoGeneracion)`, `waitForDelivery(codigoGeneracion, options?)` | Leen el estado de cada canal; `waitForDelivery` consulta hasta que todos sean finales. | No |

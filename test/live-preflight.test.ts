@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@1";
-import { requireLiveSnapshots, validateLiveCatalogReads } from "../scripts/live-preflight.mjs";
+import { requireLiveSnapshots, validateLiveCatalogReads, validateLiveCatalogWriteGate } from "../scripts/live-preflight.mjs";
 import { createValidationResults } from "../scripts/live-report.mjs";
 
 Deno.test("full live gate opens both snapshots before fiscal work", async () => {
@@ -70,4 +70,29 @@ Deno.test("catalog live checks exercise list, get, and search without returning 
   assertEquals(checks["customer-catalog"], "Passed");
   assertEquals(checks["product-catalog"], "Passed");
   assertEquals(JSON.stringify(checks).includes("PRIVATE"), false);
+});
+
+const gate = async (outcome: { code?: string; status?: number } | "accepted") => {
+  const checks = createValidationResults();
+  const facta = {
+    deactivateCustomer: () => outcome === "accepted" ? Promise.resolve({ id: "x" }) : Promise.reject(Object.assign(new Error("x"), outcome)),
+  };
+  const error = await validateLiveCatalogWriteGate(facta, checks).then(() => null, (cause) => cause as Error & { code: string });
+  return { state: checks["catalog-write-gate"], code: error?.code ?? null };
+};
+
+Deno.test("catalog write gate passes when the encrypted CI company refuses writes", async () => {
+  assertEquals((await gate({ code: "catalog_write_disabled", status: 403 })).state, "Passed (writes refused for the encrypted CI company)");
+  assertEquals((await gate({ code: "catalog_encrypted", status: 409 })).code, null);
+});
+
+Deno.test("catalog write gate only warns before the routes are deployed or without the scope", async () => {
+  assertEquals((await gate({ code: "not_found", status: 404 })).state, "Warning (catalog write routes not deployed on staging yet)");
+  assertEquals((await gate({ code: "method_not_allowed", status: 405 })).code, null);
+  assertEquals((await gate({ code: "forbidden_scope", status: 403 })).state, "Warning (key lacks catalog:write)");
+});
+
+Deno.test("catalog write gate fails on a success or an unexpected error", async () => {
+  assertEquals(await gate("accepted"), { state: "Failed", code: "catalog_write_gate_failed" });
+  assertEquals((await gate({ code: "internal_error", status: 500 })).code, "catalog_write_gate_failed");
 });

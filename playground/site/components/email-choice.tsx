@@ -20,14 +20,14 @@ export const emailReady = (value: EmailChoiceValue) => !value.send || looksLikeA
  * «Enviar el documento por correo» with the address the visitor types. Any address is allowed; the
  * server verifies the visitor is not a bot and limits the sends, so the field only explains the rules.
  */
-export function EmailChoice({ value, onChange, disabled }: { value: EmailChoiceValue; onChange(value: EmailChoiceValue): void; disabled?: boolean }) {
+export function EmailChoice({ value, onChange, disabled, label = "Enviar el documento por correo", className }: { value: EmailChoiceValue; onChange(value: EmailChoiceValue): void; disabled?: boolean; /** The checkbox text; an example may use its own voice («Quiero mi factura por correo»). */ label?: string; className?: string }) {
   const id = useId();
   const invalid = value.send && value.address.trim() !== "" && !looksLikeAddress(value.address);
   return (
-    <div className="pg-email-choice">
+    <div className={`pg-email-choice${className === undefined ? "" : ` ${className}`}`}>
       <label className="pg-check">
         <input type="checkbox" checked={value.send} disabled={disabled} onChange={(event) => onChange({ ...value, send: event.target.checked })} />
-        Enviar el documento por correo
+        {label}
       </label>
       {value.send && (
         <div className={`pg-field${invalid ? " pg-field--invalid" : ""}`}>

@@ -13,6 +13,8 @@ import { TimingsPanel, TimingsToggle } from "../../components/timings.tsx";
 import { excerptOf } from "./subtitles.ts";
 import { highlight } from "../../components/highlight.tsx";
 import { recipePath, recipeSource } from "./sources.ts";
+import { COVERAGE } from "../../../shared/sdk-coverage.ts";
+import { Link } from "../../router.tsx";
 
 type Values = Record<string, string | boolean>;
 
@@ -85,6 +87,7 @@ export function RecipePanel({ spec, number, mine, onIssued }: { spec: RecipeSpec
   const [fullCode, setFullCode] = useState(false);
   const { copied, copy } = useCopy();
   const source = recipeSource(spec.file);
+  const inReference = COVERAGE.find((entry) => (entry.demo.kind === "recipe" || entry.demo.kind === "simulated") && entry.demo.recipe === spec.id);
 
   useEffect(() => {
     if (spec.id === "order-webhook" && firstProduct !== undefined) setValues(defaults(spec, firstProduct));
@@ -143,6 +146,8 @@ export function RecipePanel({ spec, number, mine, onIssued }: { spec: RecipeSpec
           <div className="srv-crumb">Solo servidor · receta {number}</div>
           <h1 id={`r-${spec.id}`}>{spec.title}</h1>
           <p>{spec.summary}</p>
+          {inReference !== undefined && <p className="pg-hint"><Link to={`/referencia#${inReference.id}`}>Ver en la referencia del SDK: {inReference.title}</Link></p>}
+          {spec.notice !== undefined && <p className="pg-note" role="note">{spec.notice}</p>}
           {spec.consumesQuota && <p className="pg-hint">Esta receta cuenta contra su límite de emisiones; repetir la misma llave no cuenta otra vez.</p>}
           {spec.id === "deliver-email" && <WhyTwoCalls />}
           {spec.id === "issue-idempotent" && <WhySameKey />}

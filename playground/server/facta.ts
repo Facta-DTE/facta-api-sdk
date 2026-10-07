@@ -10,6 +10,7 @@ import { maskAddress, recipientKey } from "./delivery.ts";
 import { stashToken } from "./gates.ts";
 import { documentKey, withApiBudget } from "./api-budget.ts";
 import { apiCacheOf, FINAL_TTL_MS } from "./api-cache.ts";
+import { refuseCatalogWrites } from "./catalog-writes.ts";
 
 export interface FactaParts {
   facta: FactaLike;
@@ -107,7 +108,8 @@ export function createFactaParts(env: PlaygroundEnv, visitorOf: VisitorOf, facta
       ...(debug ? { debug: { timings: true } } : {}),
     });
     if (raw instanceof Facta) raws[debug ? "debug" : "plain"] = raw;
-    return timed(withApiBudget(raw, { cache }), steps);
+    // The catalog is read-only here, whatever a caller tries (catalog-writes.ts).
+    return refuseCatalogWrites(timed(withApiBudget(raw, { cache }), steps));
   };
   const facta = build(false);
   const debugFacta = factaOverride === undefined ? build(true) : facta;

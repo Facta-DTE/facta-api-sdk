@@ -9,6 +9,7 @@
 import type { DteRequest, Recipient } from "../../src/types.ts";
 import type { InvalidationPerson } from "../../src/types.ts";
 import { customerFits } from "./sale.ts";
+import demoFixtures from "../fixtures/demo.json";
 
 export interface DemoCustomer {
   id: string;
@@ -112,6 +113,18 @@ export function parseFixtures(raw: string | undefined): PlaygroundFixtures {
     invalidation = { responsable: read(inv.responsable), solicita: read(inv.solicita) };
   }
   return { customers, products, requests, invalidation };
+}
+
+/**
+ * The data the playground uses when `FACTA_DTE_FIXTURES_JSON` is unset or empty: `fixtures/demo.json`, committed and
+ * entirely fictitious (invented names, numbers that pass the DUI/NIT check digits, a foreign receiver, the people who
+ * sign an invalidation). A secret, when present, replaces it completely.
+ */
+export const DEMO_FIXTURES: PlaygroundFixtures = parseFixtures(JSON.stringify(demoFixtures));
+
+/** The fixtures of an environment: the secret when set, the committed demo data otherwise. */
+export function loadFixturesOf(raw: string | undefined): PlaygroundFixtures {
+  return raw === undefined || raw.trim() === "" ? DEMO_FIXTURES : parseFixtures(raw);
 }
 
 /** What the browser may know about the demo data: labels, prices and whether a customer is a taxpayer (has an NRC), never receptor fields. */

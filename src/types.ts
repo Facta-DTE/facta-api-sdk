@@ -114,8 +114,19 @@ export interface CatalogSnapshot {
   products: CatalogProduct[];
 }
 
+/** How the key's company stores the catalog the API can see. */
+export type CatalogMode = "encrypted" | "readable" | "plain";
+
 /** Public synchronization facts for this process-local catalog cache. */
 export interface CatalogState {
+  /**
+   * How this key reaches the catalog, from `/v1/status`: `encrypted` (decrypt the key's snapshot
+   * with `unlockKey`), `readable` (the owner published a readable snapshot) or `plain` (the company
+   * catalog is stored unencrypted and is read and written through the API). `null` when the
+   * server did not say (older API) or status could not be read.
+   */
+  catalogMode: CatalogMode | null;
+  /** `plain` reads are always live, so they report `fresh`. */
   freshness: "fresh" | "stale" | "missing";
   localRevision: number | null;
   fetchedAt: string | null;
@@ -129,6 +140,53 @@ export interface CatalogState {
 /** Explicit opt-in for non-fiscal catalog reads from the last process-local snapshot. */
 export interface CatalogReadOptions {
   allowStale?: boolean;
+  /** Include deactivated records (`active: false`). Default false. */
+  includeInactive?: boolean;
+  /** Abort the read (only used when the catalog is read through the API). */
+  signal?: AbortSignal;
+}
+
+/** Options of a catalog write. */
+export interface CatalogWriteOptions {
+  /** Create only: reuse the same key to make a retried create safe. One is minted when omitted. */
+  idempotencyKey?: string;
+  signal?: AbortSignal;
+}
+
+/**
+ * Fields of a customer you can create or change. Names match the stored customer
+ * (`CatalogCustomer`). Numbers may be typed with dashes; the SDK sends digits only.
+ */
+export interface CustomerInput {
+  /** Required on create. */
+  name?: string;
+  /** Document type code: `36` NIT, `13` DUI, `37` other, `03` passport, `02` residence card. */
+  doc_type?: string | null;
+  /** DUI: 9 digits. NIT: 14 digits. */
+  doc_number?: string | null;
+  /** 1 to 8 digits. */
+  nrc?: string | null;
+  /** Economic activity code. */
+  activity_code?: string | null;
+  /** Department and municipality codes (two digits each). */
+  address?: Address | null;
+  phone?: string | null;
+  email?: string | null;
+}
+
+/** Fields of a product you can create or change. Names match `CatalogProduct`. */
+export interface ProductInput {
+  /** Required on create. */
+  description?: string;
+  /** Required on create: `1` good, `2` service, `3` both. Never defaulted. */
+  item_type?: 1 | 2 | 3;
+  /** Required on create. Not negative. */
+  unit_price?: number;
+  /** Unit-of-measure code; the server defaults it when omitted. */
+  unit_of_measure?: number;
+  code?: string | null;
+  barcode?: string | null;
+  vat_included?: boolean;
 }
 
 /** Decrypted customer fields shared with this API key. */
@@ -159,11 +217,9 @@ export interface CatalogProduct {
   [field: string]: unknown;
 }
 
-export interface CatalogSearchOptions {
-  /** Maximum number of local matches. Defaults to 50; valid range is 1–500. */
+export interface CatalogSearchOptions extends CatalogReadOptions {
+  /** Maximum number of matches. Defaults to 50; valid range is 1–500. */
   limit?: number;
-  /** Permit the last process-local snapshot if status is unreachable or sync is pending. */
-  allowStale?: boolean;
 }
 
 /** Computed by the server. Read them; never recompute them. */
@@ -235,6 +291,12 @@ export interface SealedDte {
   entrega?: DeliveryOffer;
   /** Only with `debug: { timings: true }`. */
   debug?: DebugInfo;
+  /** Server warnings (e.g. `sin_almacenamiento_duradero`); the emergency safeguard reads them. */
+  advertencias?: Array<string | { codigo?: string; code?: string; mensaje?: string; detalle?: string }>;
+  /** Present only when the emergency safeguard ran. */
+  emergency?: import("./emergency.ts").EmergencyReport;
+  /** SDK-side notices; `emergency_saved` / `emergency_failed`. */
+  sdkWarnings?: Array<{ code: "emergency_saved" | "emergency_failed"; detail: string }>;
 }
 
 export interface DteInContingency {
@@ -258,6 +320,12 @@ export interface DteInContingency {
   entrega?: DeliveryOffer;
   /** Only with `debug: { timings: true }`. */
   debug?: DebugInfo;
+  /** Server warnings (e.g. `sin_almacenamiento_duradero`); the emergency safeguard reads them. */
+  advertencias?: Array<string | { codigo?: string; code?: string; mensaje?: string; detalle?: string }>;
+  /** Present only when the emergency safeguard ran. */
+  emergency?: import("./emergency.ts").EmergencyReport;
+  /** SDK-side notices; `emergency_saved` / `emergency_failed`. */
+  sdkWarnings?: Array<{ code: "emergency_saved" | "emergency_failed"; detail: string }>;
 }
 
 export type IssueResult = SealedDte | DteInContingency;
@@ -592,12 +660,13 @@ export interface Status {
     tiposDte: DteType[];
     venceEl: string | null;
     /**
+     * `plain`: the company catalog is unencrypted and the API reads and writes it.
      * `readable`: the owner enabled «Catálogo legible por la API», so the
      * server resolves `customerId` / `productId` and the SDK just sends the
      * ids. `encrypted` (or absent on older servers): the SDK resolves them
      * locally from the encrypted catalog and needs the unlock key.
      */
-    catalogMode?: "encrypted" | "readable";
+    catalogMode?: CatalogMode;
   };
   /** Freshness of the published readable catalog; null unless `catalogMode` is readable. */
   catalogoLegible?: { publicado: boolean; revisionPublicada: number | null; revisionActual: number } | null;

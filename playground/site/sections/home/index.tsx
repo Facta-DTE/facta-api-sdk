@@ -5,6 +5,7 @@ import { CodeBlock } from "../../code-block.tsx";
 import { highlight } from "../../components/highlight.tsx";
 import { Meter, StatusChip, useQuotaView } from "../../components/ui.tsx";
 import { Link } from "../../router.tsx";
+import { RECIPE_SPECS } from "../../../server/recipes/specs.ts";
 import { usePlayground } from "../../state.tsx";
 import { useDownload } from "../registro/downloads.ts";
 import { lacksCurrent, money, needsEnrich, TYPE_NAMES, tail, totalOf, useRegistry, whenOf } from "../registro/registry-data.ts";
@@ -208,10 +209,14 @@ export function Home() {
           <Integration pill="@facta-dte/api/browser" title="Mi propia interfaz" text="Su diseño, su formulario, su punto de venta. El SDK solo lleva el flujo de emisión y los estados." chip="const { issue, state } = useFactaIssue(token)" to="/implementacion" cta="Ver los ejemplos" />
           <Integration pill="@facta-dte/api" title="Solo servidor" text="Sin navegador: su backend recibe un pedido y devuelve un documento sellado. Recetas que se ejecutan aquí mismo." chip="await facta.issue(venta, { idempotencyKey })" to="/servidor" cta="Ver las recetas" />
         </div>
+        <p className="home-ref">
+          ¿Busca un método, una opción o un código de error? <Link to="/referencia">Todo lo que puede hacer el SDK</Link>, con su explicación, su código y su guía.
+        </p>
         <nav className="home-plinks" aria-label="Secciones">
           <PhoneLink to="/pantallas" icon={ICONS.react} title="Pantallas React" text="La ventana, el recibo, las listas" />
           <PhoneLink to="/implementacion" icon={ICONS.own} title="Mi propia interfaz" text="Checkout, punto de venta, CCF" />
-          <PhoneLink to="/servidor" icon={ICONS.server} title="Solo servidor" text="Ocho recetas que se ejecutan aquí" />
+          <PhoneLink to="/servidor" icon={ICONS.server} title="Solo servidor" text={`${RECIPE_SPECS.length} recetas que se ejecutan aquí`} />
+          <PhoneLink to="/referencia" icon="{}" title="Referencia del SDK" text="Todo lo que puede hacer, buscable" />
         </nav>
       </section>
 

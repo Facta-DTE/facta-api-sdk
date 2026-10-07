@@ -1,5 +1,7 @@
 # Facta DTE playground: a live examples site on the staging API
 
+Update 7-Oct-2026: «Referencia del SDK» (`/referencia`), a machine-checked coverage list, eight more recipes, committed demo fixtures and a server-side refusal of catalog writes; see `playground/README.md`.
+
 Status: plan approved 6-Oct-2026 (D-1..D-7 as recommended). Batch A (foundation) is implemented in `playground/`; see `playground/README.md`.
 
 ## Original prompt (Marvin, verbatim)

@@ -42,6 +42,7 @@ export {
   toNodeHandler,
 } from "./src/server/handler.ts";
 export {
+  CATALOG_WRITE_ACTIONS,
   type FactaCapabilities,
   type FactaDownloadKind,
   type FactaServiceState,

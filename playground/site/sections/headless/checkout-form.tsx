@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createFactaClient, createIssueFlow, formatMoney, initialFlowState, type FlowState, type IssueFlow } from "../../../../browser.ts";
 import { createSession } from "../../api.ts";
+import { EMPTY_EMAIL, EmailChoice, emailReady, looksLikeAddress, type EmailChoiceValue } from "../../components/email-choice.tsx";
 import { Outcome } from "./outcome.tsx";
 
 // Example 1: a checkout form on the browser client alone. No provider, no hook:
@@ -12,6 +13,8 @@ export function CheckoutForm({ disabled }: { disabled: boolean }) {
   const [problem, setProblem] = useState<string | null>(null);
   const [qty, setQty] = useState(2);
   const [price, setPrice] = useState(8.5);
+  // «Quiero mi factura por correo» needs an address: the visitor types it, any address, and the server limits the sends.
+  const [mail, setMail] = useState<EmailChoiceValue>(EMPTY_EMAIL);
   const flow = useRef<IssueFlow | null>(null);
   useEffect(() => () => flow.current?.destroy(), []);
 
@@ -19,12 +22,16 @@ export function CheckoutForm({ disabled }: { disabled: boolean }) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     setProblem(null);
+    if (mail.send && !looksLikeAddress(mail.address)) {
+      setProblem("Escriba un correo válido para recibir su factura.");
+      return;
+    }
     try {
       // The server builds the fiscal request from this small description.
       const { session } = await createSession({
         tipoDte: "01",
         lines: [{ descripcion: String(data.get("item")), cantidad: qty, precioUni: price, tipoItem: 1 }],
-        sendEmail: data.get("mail") === "on",
+        ...(mail.send ? { sendEmail: true, emailTo: mail.address.trim() } : {}),
       });
       flow.current?.destroy();
       flow.current = createIssueFlow({ client, session, run: "auto" });
@@ -45,8 +52,8 @@ export function CheckoutForm({ disabled }: { disabled: boolean }) {
         <label>Precio<input type="number" min={0.01} step="0.01" value={price} onChange={(e) => setPrice(Number(e.target.value))} required /></label>
       </div>
       <p className="hl-form-total"><span>Total</span><b>{formatMoney(qty * price)}</b></p>
-      <label className="hl-form-check"><input name="mail" type="checkbox" />Quiero mi factura por correo</label>
-      <button type="submit" disabled={disabled}>Pagar y facturar</button>
+      <EmailChoice className="hl-form-check" value={mail} onChange={setMail} label="Quiero mi factura por correo" />
+      <button type="submit" disabled={disabled || !emailReady(mail)}>Pagar y facturar</button>
       {problem && <p role="alert" className="pg-error">{problem}</p>}
       {state && <Outcome state={state} skin="form" onRetry={() => void flow.current?.retry()} />}
     </form>

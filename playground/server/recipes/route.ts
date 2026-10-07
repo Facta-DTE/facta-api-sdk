@@ -140,7 +140,7 @@ export async function handleRecipeRun(request: Request, deps: RecipeRouteDeps): 
   }
   // The count: once, and only for a run that sealed (or put in contingency) a document or invalidated one.
   // A rejection, a rate limit or any failure before or at the API costs the visitor nothing.
-  if (output.ok && ((outcome?.issued?.length ?? 0) > 0 || (outcome?.invalidated?.length ?? 0) > 0)) {
+  if (output.ok && ((outcome?.issued?.length ?? 0) > 0 || (outcome?.invalidated?.length ?? 0) > 0 || (outcome?.returned?.length ?? 0) > 0)) {
     for (const key of bound.quotaKeys) await deps.consume(visitor.id, key, true);
   }
   // Record what this run issued or invalidated in the visitor's own ledger (issued-codes.ts).

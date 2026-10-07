@@ -26,6 +26,10 @@ export type FactaErrorCode =
   | "method_not_allowed"
   /** JSON download of a document that has no Hacienda seal yet, e.g. contingency (HTTP 409). Retry with `raw: true` for the original. */
   | "not_sealed"
+  /** The company did not enable «Permitir administrar clientes y productos desde el API» (HTTP 403). */
+  | "catalog_write_disabled"
+  /** The company catalog is still encrypted, so the API cannot write it (HTTP 409). */
+  | "catalog_encrypted"
   | "idempotency_key_required"
   | "idempotency_key_reuse"
   | "idempotency_in_flight"

@@ -150,6 +150,34 @@ Bindings: `ASSETS` (the built site) and `QUOTA` (Durable Object `QuotaCounter`, 
    DNS: Edit for `factadte.com`) and `CLOUDFLARE_ACCOUNT_ID`. Until they exist, `playground-deploy.yml`
    validates and skips the upload.
 
+## SDK coverage («Referencia del SDK», 7-Oct-2026)
+
+`/referencia` is a searchable catalogue of everything `@facta-dte/api` can do: each capability has a plain-Spanish explanation, where it
+runs live (a recipe on staging, a React screen, a headless example, or a simulation) or why it does not, the code (the very file the playground
+runs, or a clearly labelled illustrative snippet) and links to its guides and sources.
+
+* **One list:** `shared/sdk-coverage.ts`. Entries cover keys by pattern (`mod:Name`, `Facta#method`, `FactaOptions.prop`, `error:code`, `action:name`).
+* **Machine-checked:** `test/sdk-coverage.test.ts` enumerates the real surface with the TypeScript compiler (`test/sdk-surface.ts`: every export of
+  `.`, `./server`, `./browser`, `./react`, `./node`, every public member of `Facta`, the option bags, every `FactaErrorCode`, every handler action) and fails
+  when something has no entry, when a pattern matches nothing, when a recipe is not referenced, or when a guide or source file is missing.
+  When the SDK grows, the test names exactly what to add.
+* **Recipes added for it:** `archivo-dte`, `region-timings`, `diagnose`, `delivery-status`, `register-return`, `reference-clock`, `service-info`,
+  `emergency-store` (a **simulation**: an in-memory API answers with the warning you pick; no network, no storage, no ledger).
+  `register-return` runs on staging and counts like an issue; a sealed return blocks invalidating that document.
+* **Catalog writes are documented, never executed.** `createCustomer`/`updateCustomer`/`deactivateCustomer` and the product equivalents have cards with code,
+  prerequisites (plain catalog, the Cuenta → API checkbox, scope `catalog:write`) and the privacy implication. The Worker refuses them in three places
+  (`server/catalog-writes.ts`): `POST /api/facta` answers 403 `catalog_write_not_allowed` («Disponible en el SDK; el playground no modifica el catálogo.»),
+  both Facta clients the Worker builds throw on the six methods, and `capabilities.catalog` stays `"read"`.
+
+## Demo fixtures
+
+`FACTA_DTE_FIXTURES_JSON` is optional now. When it is unset or empty the Worker uses `fixtures/demo.json`, committed and entirely fictitious:
+invented companies («Comercial Demo, S.A. de C.V.», «Servicios Profesionales Demo, S.A.S. de C.V.»), a natural person, an excluded-subject supplier, a foreign
+receiver (Demo Imports LLC), four products, and the people who sign an invalidation. DUI and NIT numbers pass their check digits (the SDK itself only checks
+lengths; `test/demo-fixtures.test.ts` verifies the digits), e-mails use the reserved `.example` domain, and no real person or company appears.
+That unblocks the Crédito fiscal, Sujeto excluido, Exportación and anulación flows. **Hacienda's test service may still reject a fictitious NRC or
+activity code**; the UI then shows Hacienda's answer as it comes. A secret replaces the file completely.
+
 ## Safety notes
 
 * **Anonymous visitors, signed cookie.** `GET /api/state` mints `facta_pg_visitor` (random id, HMAC with

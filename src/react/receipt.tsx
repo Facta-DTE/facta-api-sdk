@@ -5,7 +5,7 @@ import { fill, formatDateTime, formatMoney, type Environment, type IssueResult }
 import { CheckIcon, ClockIcon, SealGlyph } from "./icons.tsx";
 import { DeliveryRows } from "./delivery.tsx";
 import { FactaRoot, useCfg, type FactaLook } from "./look.tsx";
-import { Downloads, IdRow, ObservationsList, StorageRow } from "./parts.tsx";
+import { Downloads, EmergencyNotice, IdRow, ObservationsList, StorageRow } from "./parts.tsx";
 
 export interface FactaReceiptProps extends FactaLook {
   /** A sealed (or contingency) result you already hold, e.g. from `onIssued`. */
@@ -51,6 +51,7 @@ function ReceiptCard({ result, environment, reference, rawJson }: Pick<FactaRece
           <b {...sp("total", "facta-total")}>{formatMoney(total)}</b>
         </div>
       )}
+      <EmergencyNotice result={result} />
       <dl {...sp("identifiers", "facta-block facta-details")}>
         <IdRow label={m.controlNumber} value={result.numeroControl} copy={false} />
         <IdRow label={m.generationCode} value={result.codigoGeneracion} />

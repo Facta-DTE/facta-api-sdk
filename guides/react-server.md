@@ -163,7 +163,8 @@ const handler = createFactaHandler({
   capabilities: {
     documents: "read",          // documents.list · .get · .copies · .holding
     downloads: ["pdf", "json"], // true allows pdf, json and ticket
-    catalog: "read",            // customers and products (needs `unlockKey`)
+    catalog: "read",            // customers and products (an encrypted catalog needs `unlockKey`; a plain one does not)
+    // catalog: "write",        // also create/edit/deactivate: see the catalog write guide; needs an authorize function
     status: true,               // service.status: online | contingency | degraded | offline
     storage: "read",            // storage.status
     rawJson: false,             // true lets the browser ask documents.download for the stored original JSON (`raw`); default is the Archivo DTE
