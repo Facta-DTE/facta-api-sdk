@@ -24,6 +24,7 @@
 - `downloadDocument(code, "json", { raw: true })`; `raw` is rejected locally for `pdf` and `ticket`.
 - Error code `not_sealed` (HTTP 409): JSON download of a document with no Hacienda seal. Use `raw: true`.
 - React: optional `rawJson` prop on `FactaReceipt` and `FactaDownloadButton` adds «JSON original (raw)». Server handler: `capabilities.rawJson` (default `false`) gates `raw` in `documents.download`; the issue response includes `archivoDte` whenever downloads are allowed.
+- Guides, each in English and Spanish: `archivo-dte`, `region`, `timings`, `delivery`, `idempotency`, `prepare-sign`, `return-event`, `reference-clock`, `diagnose`, `errors` (every `FactaErrorCode` with HTTP status, retry behaviour and what to do) and `browser`. Both READMEs list every guide; `test/documentation.test.ts` checks Spanish/English parity for them and that every file in `guides/` is linked from `README.md`.
 
 ### Performance: regional pinning
 
@@ -45,6 +46,13 @@ Needs a company whose catalog is plain text, the switch «Permitir administrar c
 - `catalogState()` and `diagnose()` report `catalogMode`; `Status.llave.catalogMode` accepts `"plain"`.
 - Server handler: `capabilities.catalog: "write"` (default off) adds the six `catalog.customers|products.create|update|deactivate` actions; it requires an `authorize` function and refuses `"session-only"`.
 - Live integration: a «catalog write gate» check expects `catalog_write_disabled` from the encrypted CI company; it only warns until the routes are on staging.
+
+### Fixed
+
+- `issueAndArchive(request, { deliver })` never sent `entrega`, so no delivery token came back and nothing was delivered. It now sends it exactly like `issue()`, journals it with the request (a recovery replays it) and returns it as `result.entrega` (also in `result.emission.entrega`).
+- `FactaErrorCode` lacked `retention_mixed_class_unsupported` (HTTP 422: `aplicarReteRenta` on a document with an `exenta` or `no_sujeta` line), which the API contract lists. `test/error-codes.test.ts` now compares the contract's error enum (snapshot in `test/fixtures/openapi.yaml`) with the type.
+- README example reused one idempotency key for `prepare` and `sign`; the API refuses that with `idempotency_key_reuse`. Examples use one key per step and the prepare/sign guide states the rule.
+- README said the reference clock «never blocks»; archive methods wait for its first calibration (about 6 s when the service is unreachable).
 
 ### Unchanged
 

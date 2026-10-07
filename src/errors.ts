@@ -22,6 +22,8 @@ export type FactaErrorCode =
   | "sign_vault_missing"
   | "invalid_request"
   | "validation_failed"
+  /** `aplicarReteRenta` on a document with an `exenta` or `no_sujeta` line (HTTP 422). Nothing was signed and no number spent. */
+  | "retention_mixed_class_unsupported"
   | "not_found"
   | "method_not_allowed"
   /** JSON download of a document that has no Hacienda seal yet, e.g. contingency (HTTP 409). Retry with `raw: true` for the original. */

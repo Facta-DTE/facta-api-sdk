@@ -176,6 +176,8 @@ export interface ArchiveEmissionResult {
   warnings?: ArchiveWarning[];
   /** Omitted when restart recovery finds the existing DTE by generation code. */
   emission?: IssueResult;
+  /** `emission.entrega` lifted to the top: the delivery token when `deliver` was requested. Bearer secret for five minutes. */
+  entrega?: import("./types.ts").DeliveryOffer;
   managedStorage?: ManagedStorageReceipt;
   storageErrorCode?: "storage_contract_invalid";
   archive: {

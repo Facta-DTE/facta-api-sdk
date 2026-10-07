@@ -41,8 +41,9 @@ export interface S3ArtifactDestinationOptions {
    * a wrong clock cannot write. Default: this destination keeps its own
    * lazily calibrated reference clock (`https://clock.factadte.com/`); pass
    * `facta.clock` to share the client's one, a URL to use another endpoint, or
-   * `false` to sign with the device clock. A calibration never blocks: if the
-   * clock service is unreachable the device clock is used, as before.
+   * `false` to sign with the device clock. A calibration never fails a request: the
+   * first one waits for it (about 6 s when the clock service is unreachable) and
+   * then the device clock is used, as before.
    */
   clock?: S3ClockSource | string | false;
   /** Fetch used only for clock calibration. Defaults to `fetch`. */

@@ -279,6 +279,27 @@ Deno.test("runtime archive defaults store exact JSON/PDF/JWS/ticket bytes after 
   assertEquals(calls.find((call) => call.url.includes("kind=ticket"))?.url.endsWith("kind=ticket&paperWidthMm=80"), true);
 });
 
+Deno.test("issueAndArchive sends `deliver` as `entrega` and returns the delivery offer", async () => {
+  const archive = new MemoryArchive();
+  const offer = { token: "delivery-token", venceEn: "2026-09-30T12:05:00Z", canales: { correo: { estado: "pendiente" as const } } };
+  const { fetch: inner } = transport(200, 200, { ...issuance, entrega: offer });
+  const bodies: unknown[] = [];
+  const fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input).endsWith("/v1/dte") && init?.method === "POST") bodies.push(JSON.parse(String(init.body)));
+    return inner(input, init);
+  }) as typeof globalThis.fetch;
+  const facta = new Facta({ region: false, apiKey: "facta_test_x.secret", fetch, runtime: { version: 1, archive } });
+  const result = await facta.issueAndArchive(request, {
+    operationId: "sale-deliver",
+    idempotencyKey: "sale-deliver",
+    deliver: { email: "buyer@example.com" },
+  });
+  assertEquals((bodies[0] as { entrega?: unknown }).entrega, { correo: "buyer@example.com" });
+  assertEquals((archive.operation?.request as { entrega?: unknown }).entrega, { correo: "buyer@example.com" });
+  assertEquals(result.entrega?.token, "delivery-token");
+  assertEquals(result.entrega, result.emission?.entrega);
+});
+
 Deno.test("old API responses fall back to JSON/PDF downloads when inline files are unavailable", async () => {
   const archive = new MemoryArchive();
   const oldResponse = { ...issuance, archivoJson: undefined, representacionGrafica: undefined };
