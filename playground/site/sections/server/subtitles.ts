@@ -8,6 +8,14 @@ export const RECIPE_SUBTITLES: Record<string, string> = {
   "catalog-refs": "customerId y productId",
   "order-webhook": "Un webhook que devuelve un DTE sellado",
   "deliver-email": "deliverEmail y waitForDelivery",
+  "archivo-dte": "downloadDocument, raw y archivoDteOf",
+  "region-timings": "region(), servedRegion y debug",
+  "diagnose": "diagnose() y catalogState()",
+  "delivery-status": "getDelivery",
+  "register-return": "registerReturn",
+  "reference-clock": "facta.clock y createReferenceClock",
+  "service-info": "status(), environment y getContract()",
+  "emergency-store": "runtime.emergencyStore, simulada",
 };
 
 // The rail uses short names; the full title stays on the page.
@@ -20,6 +28,14 @@ export const RECIPE_SHORT_TITLES: Record<string, string> = {
   "catalog-refs": "Catálogo",
   "order-webhook": "Pedido entrante",
   "deliver-email": "Entregar por correo",
+  "archivo-dte": "Archivo DTE y raw",
+  "region-timings": "Región y tiempos",
+  "diagnose": "Diagnóstico",
+  "delivery-status": "Estado de la entrega",
+  "register-return": "Retorno",
+  "reference-clock": "Reloj de referencia",
+  "service-info": "Estado y contrato",
+  "emergency-store": "Emergencia (simulada)",
 };
 
 /** The short excerpt the phone shows: the body of the recipe's exported function. */

@@ -143,6 +143,7 @@ export function RecipePanel({ spec, number, mine, onIssued }: { spec: RecipeSpec
           <div className="srv-crumb">Solo servidor · receta {number}</div>
           <h1 id={`r-${spec.id}`}>{spec.title}</h1>
           <p>{spec.summary}</p>
+          {spec.notice !== undefined && <p className="pg-note" role="note">{spec.notice}</p>}
           {spec.consumesQuota && <p className="pg-hint">Esta receta cuenta contra su límite de emisiones; repetir la misma llave no cuenta otra vez.</p>}
           {spec.id === "deliver-email" && <WhyTwoCalls />}
           {spec.id === "issue-idempotent" && <WhySameKey />}

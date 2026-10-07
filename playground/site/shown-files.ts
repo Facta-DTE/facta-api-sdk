@@ -24,6 +24,14 @@ import router from "../server/router.ts?raw";
 import sale from "../server/sale.ts?raw";
 import deliveryServer from "../server/delivery.ts?raw";
 import orderKey from "../server/order-key.ts?raw";
+import archivoDteRecipe from "../server/recipes/archivo-dte.ts?raw";
+import regionTimingsRecipe from "../server/recipes/region-timings.ts?raw";
+import diagnoseRecipe from "../server/recipes/diagnose.ts?raw";
+import deliveryStatusRecipe from "../server/recipes/delivery-status.ts?raw";
+import registerReturnRecipe from "../server/recipes/register-return.ts?raw";
+import referenceClockRecipe from "../server/recipes/reference-clock.ts?raw";
+import serviceInfoRecipe from "../server/recipes/service-info.ts?raw";
+import emergencyStoreRecipe from "../server/recipes/emergency-store.ts?raw";
 import catalogRefs from "../server/recipes/catalog-refs.ts?raw";
 import deliverEmail from "../server/recipes/deliver-email.ts?raw";
 import documentsStorage from "../server/recipes/documents-storage.ts?raw";
@@ -68,6 +76,14 @@ export const SOURCES = {
   [`${R}order-webhook.ts`]: orderWebhook,
   [`${R}prepare-sign.ts`]: prepareSign,
   [`${R}status-recovery.ts`]: statusRecovery,
+  [`${R}archivo-dte.ts`]: archivoDteRecipe,
+  [`${R}region-timings.ts`]: regionTimingsRecipe,
+  [`${R}diagnose.ts`]: diagnoseRecipe,
+  [`${R}delivery-status.ts`]: deliveryStatusRecipe,
+  [`${R}register-return.ts`]: registerReturnRecipe,
+  [`${R}reference-clock.ts`]: referenceClockRecipe,
+  [`${R}service-info.ts`]: serviceInfoRecipe,
+  [`${R}emergency-store.ts`]: emergencyStoreRecipe,
 } as const satisfies Record<string, string>;
 
 export type SourcePath = keyof typeof SOURCES;

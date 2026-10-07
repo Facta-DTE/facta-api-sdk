@@ -4,11 +4,9 @@
 // (a timeout, a restart, a double click) and the API answers with the SAME
 // document instead of issuing a second one. Use your own order number as the key.
 //
-// DISPONIBLE DESDE LA PRÓXIMA VERSIÓN DEL SDK (todavía no corre con la versión publicada):
-//   the sealed response will carry `result.archivoDte`, the exact text of the Archivo DTE
-//   (document + firmaElectronica + selloRecibido) that your customer receives. In contingency there is
-//   no `archivoDte`: the document has no Hacienda seal yet.
-//   Today the playground builds it from document + jws + selloRecibido; see shared/archivo-dte.ts.
+// The sealed result carries `result.archivoDte`: the exact text of the Archivo DTE (document + firmaElectronica +
+// selloRecibido) that your customer receives. A document in contingency has no `archivoDte`: it has no Hacienda seal yet.
+// See recipe 9 (archivo-dte.ts) for the two JSON files.
 import type { DteRequest, Facta, IssueResult } from "../../../mod.ts";
 
 export interface Input {

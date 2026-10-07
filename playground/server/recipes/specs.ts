@@ -36,6 +36,8 @@ export interface RecipeSpec {
   retry?: boolean;
   /** Needs the key's unlock key (catalog). */
   needsCatalog?: boolean;
+  /** A notice shown above the form (for example: «this recipe is a simulation»). */
+  notice?: string;
 }
 
 // Every type the API issues. Notes need a document issued here; the others use the demo receivers.
@@ -174,6 +176,87 @@ export const RECIPE_SPECS: RecipeSpec[] = [
     stages: [{ id: "issue", label: "1. Emitir y marcar el correo" }, { id: "send", label: "2. Enviar con el token" }],
     consumesQuota: true,
     retry: true,
+  },
+  {
+    id: "archivo-dte",
+    title: "El Archivo DTE y el JSON original",
+    summary: "Descarga de un documento suyo el Archivo DTE (el JSON que recibe su cliente: documento, firma y sello) y el original almacenado con raw: true, y comprueba con archivoDteOf que se pueden reconstruir los mismos bytes.",
+    file: "archivo-dte.ts",
+    fields: [{ name: "code", label: "Documento", kind: "issued", required: true, help: "Un documento en contingencia no tiene sello: la descarga normal contesta not_sealed y solo existe el original." }],
+    consumesQuota: false,
+  },
+  {
+    id: "region-timings",
+    title: "Región y tiempos de la API",
+    summary: "region() y servedRegion dicen dónde corre la API y cuál región respondió; debug: { timings: true } pide a la API sus tiempos por paso y los devuelve en result.debug. Es una ayuda para depurar, apagada por defecto.",
+    file: "region-timings.ts",
+    fields: [],
+    consumesQuota: false,
+  },
+  {
+    id: "diagnose",
+    title: "Diagnóstico y estado del catálogo",
+    summary: "diagnose() revisa si esta llave puede emitir, consultar, descargar y archivar, y dice qué hacer; catalogState() dice cómo llega la llave al catálogo y si la copia local está al día. Ninguna abre bóvedas ni reserva correlativos.",
+    file: "diagnose.ts",
+    fields: [],
+    consumesQuota: false,
+  },
+  {
+    id: "delivery-status",
+    title: "Estado de la entrega",
+    summary: "getDelivery lee el estado de cada canal (correo, WhatsApp) de un documento suyo. A diferencia del token de entrega, que dura cinco minutos, el estado se puede consultar siempre.",
+    file: "delivery-status.ts",
+    fields: [{ name: "code", label: "Documento", kind: "issued", required: true }],
+    consumesQuota: false,
+  },
+  {
+    id: "register-return",
+    title: "Registrar un retorno",
+    summary: "El Evento de Retorno devuelve unidades de una línea de una Factura (01), Exportación (11) o Sujeto excluido (14) que usted emitió aquí. No gasta correlativo, no anula nada y se firma con el certificado del emisor. Después de un retorno sellado el documento ya no se puede anular.",
+    file: "register-return.ts",
+    fields: [
+      { name: "code", label: "Documento (01, 11 o 14)", kind: "issued", required: true },
+      { name: "linea", label: "Línea que regresa (se cuenta desde 1)", kind: "number", default: 1 },
+      { name: "cantidad", label: "Unidades que regresan", kind: "number", default: 1 },
+    ],
+    consumesQuota: true,
+    retry: true,
+  },
+  {
+    id: "reference-clock",
+    title: "El reloj de referencia",
+    summary: "El SDK calibra un reloj contra clock.factadte.com para las marcas de tiempo que escribe él mismo (archivos locales, firmas de S3). Nunca toca la fecha ni la hora de un documento, que las pone el servidor de Facta.",
+    file: "reference-clock.ts",
+    fields: [],
+    consumesQuota: false,
+  },
+  {
+    id: "service-info",
+    title: "Estado, llave y contrato",
+    summary: "status() es la comprobación de salud (sin costo para el límite de la llave), environment sale del prefijo de la llave sin ninguna llamada, y getContract() devuelve el documento OpenAPI que publica el servidor.",
+    file: "service-info.ts",
+    fields: [],
+    consumesQuota: false,
+  },
+  {
+    id: "emergency-store",
+    title: "Salvaguarda de emergencia (simulada)",
+    summary: "runtime.emergencyStore es una función suya que el SDK llama solo cuando Facta no pudo guardar un documento en almacenamiento duradero. Aquí la emergencia es simulada: una API en memoria responde con la advertencia que usted elija y se ve qué recibe su función.",
+    file: "emergency-store.ts",
+    fields: [
+      {
+        name: "scenario", label: "Advertencia que simula el servidor", kind: "select", default: "sin_almacenamiento_duradero",
+        options: [
+          { value: "sin_almacenamiento_duradero", label: "sin_almacenamiento_duradero · solo queda la copia temporal" },
+          { value: "copia_solo_temporal", label: "copia_solo_temporal · falló la escritura administrada" },
+          { value: "sin_copia_en_servidor", label: "sin_copia_en_servidor · crítica: ni la copia temporal" },
+        ],
+      },
+      { name: "storeFails", label: "Que su función falle", kind: "checkbox", default: false, help: "Se ve emergency_failed y reason store_failed; el documento sellado no se pierde ni se convierte en error." },
+      { name: "notConfigured", label: "Sin función configurada", kind: "checkbox", default: false, help: "emergencyStore es opcional: sin ella, reason es not_configured." },
+    ],
+    consumesQuota: false,
+    notice: "Simulación: no usa la API de Facta, no emite nada y no escribe en ningún almacenamiento. El playground nunca provoca una emergencia real.",
   },
 ];
 

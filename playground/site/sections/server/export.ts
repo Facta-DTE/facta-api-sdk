@@ -5,7 +5,8 @@
 
 import { makeZip } from "./zip.ts";
 
-export const PACKAGE_VERSION = "0.3.0";
+/** The recipes use 0.5.0 features (Archivo DTE and raw, region, timings, delivery status, return, reference clock). */
+export const PACKAGE_VERSION = "0.5.0";
 export const STAGING_API_URL = "https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1";
 
 /** The recipe source with the checkout import pointing at the published package. */
@@ -67,6 +68,9 @@ Proyecto listo para ejecutar con Node.js 22 o superior.
 2. Copie \`.env.example\` a \`.env\` y escriba SU PROPIA llave de pruebas (\`facta_test_…\`) y su llave de firma.
    Nunca use una llave de producción y no suba \`.env\` a un repositorio.
 3. \`pnpm start\`.
+
+Estas recetas usan funciones de la versión 0.5.0 del SDK. Si esa versión todavía no está publicada en npm, instale desde
+el repositorio: \`pnpm add github:Facta-DTE/facta-api-sdk\`.
 
 La receta usa el ambiente de pruebas (00). Cada emisión gasta un correlativo de pruebas y no tiene valor fiscal.
 El documento de ejemplo es mínimo: ajuste \`sample\` con sus propios datos.

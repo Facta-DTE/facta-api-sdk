@@ -18,6 +18,14 @@ import * as documentsStorage from "./documents-storage.ts";
 import * as catalogRefs from "./catalog-refs.ts";
 import * as orderWebhook from "./order-webhook.ts";
 import * as deliverEmail from "./deliver-email.ts";
+import * as archivoDte from "./archivo-dte.ts";
+import * as regionTimings from "./region-timings.ts";
+import * as diagnose from "./diagnose.ts";
+import * as deliveryStatus from "./delivery-status.ts";
+import * as registerReturn from "./register-return.ts";
+import * as referenceClock from "./reference-clock.ts";
+import * as serviceInfo from "./service-info.ts";
+import * as emergencyStore from "./emergency-store.ts";
 
 export class RecipeError extends Error {
   override readonly name = "RecipeError";
@@ -401,6 +409,81 @@ const deliverEmailDef: RecipeDef = {
   },
 };
 
+const archivoDteDef: RecipeDef = {
+  stages: ["run"],
+  async bind(ctx) {
+    const code = (await ownedCode(ctx, true))!;
+    const input: archivoDte.Input = { codigoGeneracion: code };
+    return { quotaKeys: [], async exec(facta) { return { result: await archivoDte.run(facta, input) }; } };
+  },
+};
+
+/** A recipe that reads the API and needs no parameter: nothing is counted and nothing is recorded. */
+const readOnlyDef = (run: (facta: Facta) => Promise<unknown>): RecipeDef => ({
+  stages: ["run"],
+  async bind() {
+    return { quotaKeys: [], async exec(facta) { return { result: await run(facta) }; } };
+  },
+});
+
+const deliveryStatusDef: RecipeDef = {
+  stages: ["run"],
+  async bind(ctx) {
+    const code = (await ownedCode(ctx, true))!;
+    const input: deliveryStatus.Input = { codigoGeneracion: code };
+    return { quotaKeys: [], async exec(facta) { return { result: await deliveryStatus.run(facta, input) }; } };
+  },
+};
+
+function positiveInteger(params: Record<string, unknown>, name: string, max: number): number {
+  const value = params[name] === undefined || params[name] === "" ? 1 : Number(params[name]);
+  if (!Number.isInteger(value) || value < 1 || value > max) throw new RecipeError("param_invalid", `El campo «${name}» debe ser un entero entre 1 y ${max}.`);
+  return value;
+}
+
+const returnDef: RecipeDef = {
+  stages: ["run"],
+  async bind(ctx) {
+    const code = (await ownedCode(ctx, true))!;
+    // The API applies a return to a Factura (01), an Exportación (11) or a Sujeto excluido (14), never to anything else.
+    const doc = (await ctx.ownedDocs()).find((d) => d.codigoGeneracion.toUpperCase() === code.toUpperCase());
+    if (doc === undefined || !["01", "11", "14"].includes(doc.tipoDte)) {
+      throw new RecipeError("return_type_not_allowed", "El retorno solo se aplica a una Factura (01), una Exportación (11) o un Sujeto excluido (14) que usted emitió aquí.");
+    }
+    const linea = positiveInteger(ctx.params, "linea", 50);
+    const cantidad = positiveInteger(ctx.params, "cantidad", 1000);
+    const input: registerReturn.Input = {
+      codigoGeneracion: code,
+      request: { items: [{ linea, cantidad }] },
+      // A retry of the same run reuses the key: the API answers with the same event instead of returning the units twice.
+      idempotencyKey: `${ctx.baseKey}.return`,
+    };
+    return {
+      // It costs a call to Hacienda's test service, so it counts like an issue, once, when the event is sealed.
+      quotaKeys: [input.idempotencyKey],
+      async exec(facta) {
+        const result = await registerReturn.run(facta, input);
+        return { result, ...(result.estado === "sellado" ? { returned: [code] } : {}) };
+      },
+    };
+  },
+};
+
+const SCENARIOS = ["sin_almacenamiento_duradero", "copia_solo_temporal", "sin_copia_en_servidor"] as const;
+
+const emergencyDef: RecipeDef = {
+  stages: ["run"],
+  async bind(ctx) {
+    const input: emergencyStore.Input = {
+      scenario: oneOf(ctx.params, "scenario", SCENARIOS),
+      storeFails: ctx.params.storeFails === true,
+      notConfigured: ctx.params.notConfigured === true,
+    };
+    // Nothing leaves the Worker: the «API» is an in-memory function inside the recipe.
+    return { quotaKeys: [], async exec(facta) { return { result: await emergencyStore.run(facta, input) }; } };
+  },
+};
+
 export const RECIPES: Readonly<Record<string, RecipeDef>> = {
   "issue-idempotent": issueDef,
   "prepare-sign": prepareSignDef,
@@ -410,4 +493,12 @@ export const RECIPES: Readonly<Record<string, RecipeDef>> = {
   "catalog-refs": catalogDef,
   "order-webhook": orderDef,
   "deliver-email": deliverEmailDef,
+  "archivo-dte": archivoDteDef,
+  "region-timings": readOnlyDef(regionTimings.run),
+  "diagnose": readOnlyDef(diagnose.run),
+  "delivery-status": deliveryStatusDef,
+  "register-return": returnDef,
+  "reference-clock": readOnlyDef(referenceClock.run),
+  "service-info": readOnlyDef(serviceInfo.run),
+  "emergency-store": emergencyDef,
 };

@@ -3,12 +3,8 @@
 // Reading never issues anything. `listDocuments` pages with a cursor (`siguiente`);
 // this recipe returns the first page without the receiver, which most screens do not need.
 //
-// DISPONIBLE DESDE LA PRÓXIMA VERSIÓN DEL SDK (todavía no corre con la versión publicada):
-//   the JSON download will return the Archivo DTE by default (document + firmaElectronica + selloRecibido),
-//   and the stored original is asked for with the `raw` flag:
-//     const dte = await facta.downloadDocument(code, { kind: "json" });
-//     const original = await facta.downloadDocument(code, { kind: "json", raw: true });
-//   Today the playground builds the Archivo DTE from document + jws + selloRecibido; see shared/archivo-dte.ts.
+// The JSON download is the Archivo DTE by default (document + firmaElectronica + selloRecibido); the stored original is
+// asked for with `raw`: `facta.downloadDocument(code, "json", { raw: true })`. See recipe 9 (archivo-dte.ts).
 import { FactaError, type Facta, type ListedDte } from "../../../mod.ts";
 
 export interface Input {
