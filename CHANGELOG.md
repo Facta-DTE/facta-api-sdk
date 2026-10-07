@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.1 (2026-10-07)
+
+- The agent skill (`skills/facta-dte-api`) now always targets Facta's public API (the SDK default base URL) and documents both environments: `facta_test_` keys for pruebas (`00`) and `facta_live_` keys for producción (`01`), switched by key and never by URL, with a `status()` gate and a warning that a live key issues real fiscal documents.
+
 ## 0.5.0 (unreleased)
 
 ### Emergency safeguard

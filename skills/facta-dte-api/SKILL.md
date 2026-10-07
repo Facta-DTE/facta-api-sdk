@@ -33,10 +33,33 @@ sources, it is not in the skill: say so to the developer instead of guessing.
    "contingencia"`) is a success.** A delivery or storage problem is a state or a
    warning, never a reason to re-issue.
 6. **Never recompute totals.** Show what the server returned (`totales`).
-7. **Start in the test environment** (a `facta_test_` key, environment `00`).
-   Production is a different key (`facta_live_`, environment `01`).
-8. **Do not invent.** If a method, field or code is not in the references, check
+7. **Start in the test environment**: a `facta_test_` key on the same public API
+   (environment `00`). Production is a different key (`facta_live_`, environment `01`).
+8. **Always use Facta's public API.** Omit `baseUrl`: the SDK default is the
+   production host. Never configure a staging or internal URL. Choose the
+   environment with the key: `facta_test_` = pruebas (`00`), `facta_live_` =
+   producción (`01`). Never switch by URL.
+9. **Do not invent.** If a method, field or code is not in the references, check
    `src/types.ts` / `src/client.ts` in the installed package before using it.
+
+## Ambientes (pruebas and producción)
+
+Both run on the same public API; only the key differs.
+
+| | Pruebas | Producción |
+| --- | --- | --- |
+| Key | `facta_test_…` | `facta_live_…` |
+| `status().ambiente` | `"00"` (Hacienda test) | `"01"` |
+| Documents | No fiscal value | Real fiscal documents |
+| Use in | local, CI, tests | the production deploy only |
+
+Config pattern: one variable name, a different secret per deployment
+(`FACTA_API_KEY` holds a test key in dev/CI/staging-like deploys and a live key only
+in the production deploy). At start-up gate on `await facta.status()`: expect
+`ambiente === "00"` in tests and CI, and `"01"` only in the production deploy;
+refuse to start on a mismatch (`config.expectedEnvironment` does the same check).
+**A live key issues real fiscal documents and spends real control numbers**: never
+put one in a test job, a seed script or a developer machine.
 
 ## Which reference to read
 
@@ -97,8 +120,8 @@ try {
   the key allow? (`await facta.status()` → `llave.tiposDte`, `llave.alcances`.)
 - Does the company's catalog use `customerId` / `productId`, and in which mode?
   (`encrypted`, `readable`, `plain` — see the catalog reference.)
-- Is the SDK version installed the one with the method you need? `0.5.0` may be
-  unreleased; see setup. When in doubt, read `node_modules/@facta-dte/api/src/types.ts`.
+- Is the SDK version installed the one with the method you need? `0.5.0` or later is
+  needed for the newest methods; see setup. When in doubt, read `node_modules/@facta-dte/api/src/types.ts`.
 
 ## Spanish
 
