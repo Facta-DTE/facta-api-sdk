@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createFactaClient, createIssueFlow, formatMoney, initialFlowState, type FlowState, type IssueFlow } from "../../../../browser.ts";
 import { createSession } from "../../api.ts";
 import { EMPTY_EMAIL, EmailChoice, emailReady, looksLikeAddress, type EmailChoiceValue } from "../../components/email-choice.tsx";
-import { Outcome } from "./outcome.tsx";
+import { Outcome, type IssuedDocument } from "./outcome.tsx";
 import { OrderField, RepeatBanner, RepeatCard } from "../../components/order-field.tsx";
 import { newOrderNumber, ORDER_NUMBER } from "../../order-number.ts";
 import { SALE_SCOPE } from "../../order-session.ts";
@@ -11,7 +11,7 @@ import { SALE_SCOPE } from "../../order-session.ts";
 // createIssueFlow is the state machine, subscribe() feeds our own state.
 const client = createFactaClient({ endpoint: "/api/facta" });
 
-export function CheckoutForm({ disabled }: { disabled: boolean }) {
+export function CheckoutForm({ disabled, onDocument }: { disabled: boolean; onDocument?: (document: IssuedDocument | null) => void }) {
   const [state, setState] = useState<FlowState | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [qty, setQty] = useState(2);
@@ -64,7 +64,7 @@ export function CheckoutForm({ disabled }: { disabled: boolean }) {
       <button type="submit" disabled={disabled || !emailReady(mail) || !orderValid}>Pagar y facturar</button>
       {problem && <p role="alert" className="pg-error">{problem}</p>}
       <RepeatCard />
-      {state && <Outcome state={state} skin="form" onRetry={() => void flow.current?.retry()} />}
+      {state && <Outcome onDocument={onDocument} state={state} skin="form" onRetry={() => void flow.current?.retry()} />}
     </form>
   );
 }

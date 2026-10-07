@@ -1,4 +1,4 @@
-import { DocumentForms } from "../../components/document-forms.tsx";
+import { useEffect } from "react";
 import { formatMoney, truncateMiddle, type FlowState } from "../../../../browser.ts";
 
 // Shared by the three examples: draws every state of the issuance flow with plain
@@ -11,8 +11,19 @@ const WAITING: Record<string, string> = {
   verifying: "Sin respuesta clara. Verificando sin duplicar el documento…",
 };
 
-export function Outcome({ state, skin, onRetry }: { state: FlowState; skin: string; onRetry?: () => void }) {
+/** The sealed (or contingency) document of an example, handed up so the page can show its three forms OUTSIDE the themed card. */
+export interface IssuedDocument { code: string; estado: "sellado" | "contingencia"; seal: string | null }
+
+export function Outcome({ state, skin, onRetry, onDocument }: { state: FlowState; skin: string; onRetry?: () => void; onDocument?: ((document: IssuedDocument | null) => void) | undefined }) {
   const { step, result, error } = state;
+  const code = result != null && (step === "sealed" || step === "contingency") ? result.codigoGeneracion : null;
+  const estado = step === "contingency" ? "contingencia" : "sellado";
+  const seal = result?.selloRecibido ?? null;
+  useEffect(() => {
+    if (code === null) return;
+    onDocument?.({ code, estado, seal });
+    return () => onDocument?.(null);
+  }, [code, estado, seal, onDocument]);
   const tone = step === "sealed" ? "ok" : step === "contingency" ? "warn" : error ? "bad" : "busy";
   return (
     <div className={`hl-outcome hl-skin-${skin} hl-${tone}`} data-step={step} role="status" aria-live="polite">
@@ -30,9 +41,6 @@ export function Outcome({ state, skin, onRetry }: { state: FlowState; skin: stri
           {result.selloRecibido && <><dt>Sello</dt><dd>{truncateMiddle(result.selloRecibido)}</dd></>}
           {(result.totales?.totalPagar ?? result.totales?.montoTotalOperacion) !== undefined && <><dt>Total</dt><dd>{formatMoney((result.totales?.totalPagar ?? result.totales?.montoTotalOperacion)!)}</dd></>}
         </dl>
-      )}
-      {result && (step === "sealed" || step === "contingency") && (
-        <DocumentForms code={result.codigoGeneracion} estado={step === "contingency" ? "contingencia" : "sellado"} seal={result.selloRecibido ?? null} showHow={false} title="El mismo documento, en las formas que puede entregar su sistema." />
       )}
       {step === "contingency" && <p>El documento ya tiene número; se enviará cuando Hacienda vuelva a responder.</p>}
       {error && <p>{step === "expired" ? "Prepare la venta de nuevo para obtener otra sesión." : error.explanation}</p>}

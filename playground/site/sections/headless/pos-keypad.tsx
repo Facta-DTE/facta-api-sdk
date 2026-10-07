@@ -2,13 +2,13 @@ import { useState } from "react";
 import { formatMoney } from "../../../../browser.ts";
 import { useFactaIssue } from "../../../../react.ts";
 import { createSession } from "../../api.ts";
-import { Outcome } from "./outcome.tsx";
+import { Outcome, type IssuedDocument } from "./outcome.tsx";
 
 // Example 2: a point-of-sale keypad. Our own buttons and display; the SDK only
 // contributes the hook that issues and reports each state.
 const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "00", "0", "⌫"];
 
-export function PosKeypad({ disabled }: { disabled: boolean }) {
+export function PosKeypad({ disabled, onDocument }: { disabled: boolean; onDocument?: (document: IssuedDocument | null) => void }) {
   const [cents, setCents] = useState(0);
   const [session, setSession] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -35,7 +35,7 @@ export function PosKeypad({ disabled }: { disabled: boolean }) {
   if (session !== null) {
     return (
       <div className="hl-pos">
-        <Outcome state={issue.state} skin="pos" onRetry={issue.retry} />
+        <Outcome onDocument={onDocument} state={issue.state} skin="pos" onRetry={issue.retry} />
         <button type="button" className="hl-pos-new" onClick={done}>Nueva venta</button>
       </div>
     );

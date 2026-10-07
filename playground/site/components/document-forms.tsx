@@ -18,6 +18,8 @@ const client = createFactaClient({ endpoint: "/api/facta", fetch: (input, init) 
 
 type Form = "carta" | "ticket" | "json";
 const FORM_LABEL: Record<Form, string> = { carta: "Hoja carta (PDF)", ticket: "Ticket", json: "JSON DTE" };
+/** Shorter wording for containers under 420 px (the CSS swaps them), so three segments never clip. */
+const FORM_SHORT: Record<Form, string> = { carta: "Carta", ticket: "Ticket", json: "JSON" };
 
 interface Loaded { url: string; filename: string; text?: string }
 
@@ -134,7 +136,7 @@ export function DocumentForms({ code, estado, kind = "document", seal = null, ea
       <header className="docforms-head">
         <p className="docforms-lead">{title ?? "El mismo documento tiene tres formas: la hoja carta (PDF), el ticket para impresora térmica de punto de venta y el JSON DTE. El ticket se dibuja al ancho de su rollo; su contenido legal es el mismo."}</p>
         <div role="tablist" aria-label="Forma del documento" className="docforms-seg">
-          {forms.map((f) => <button key={f} type="button" role="tab" aria-selected={form === f} onClick={() => setForm(f)}>{FORM_LABEL[f]}</button>)}
+          {forms.map((f) => <button key={f} type="button" role="tab" aria-selected={form === f} aria-label={FORM_LABEL[f]} onClick={() => setForm(f)}><span className="df-long">{FORM_LABEL[f]}</span><span className="df-short" aria-hidden="true">{FORM_SHORT[f]}</span></button>)}
         </div>
       </header>
 
@@ -162,7 +164,7 @@ export function DocumentForms({ code, estado, kind = "document", seal = null, ea
           <div className="docforms-view" aria-busy={loading}>
             {shown && <p className="docforms-unavailable" role="status">{noTicket}</p>}
             {!shown && !asked && (
-              <button type="button" className="pg-secondary" onClick={() => setAsked(true)}>Ver vista previa</button>
+              <button type="button" className="docforms-btn" onClick={() => setAsked(true)}>Ver vista previa</button>
             )}
             {!shown && asked && loading && <p className="pg-note" role="status"><Busy>{`Dibujando el ${form === "ticket" ? `ticket de ${ticketWidth} mm` : form === "carta" ? "PDF" : "JSON"}…`}</Busy></p>}
             {!shown && asked && !loading && problem !== null && <p className="pg-error" role="alert">{problem}</p>}
@@ -176,8 +178,8 @@ export function DocumentForms({ code, estado, kind = "document", seal = null, ea
                   <div className="docforms-nopreview" role="status">
                     <p>Este dispositivo no muestra PDF dentro de la página. El archivo es el mismo: ábralo o descárguelo.</p>
                     <div className="docforms-actions">
-                      <a className="pg-btn" href={loaded.url} target="_blank" rel="noreferrer">Abrir el {form === "ticket" ? "ticket" : "PDF"}</a>
-                      <a className="pg-btn" href={loaded.url} download={loaded.filename}>Descargar</a>
+                      <a className="docforms-btn" href={loaded.url} target="_blank" rel="noreferrer">Abrir el {form === "ticket" ? "ticket" : "PDF"}</a>
+                      <a className="docforms-btn" href={loaded.url} download={loaded.filename}>Descargar</a>
                     </div>
                   </div>
                 )
@@ -189,11 +191,11 @@ export function DocumentForms({ code, estado, kind = "document", seal = null, ea
           <div className="docforms-card">
             <h3>Descargar</h3>
             <div className="docforms-actions">
-              <button type="button" className="pg-primary" disabled={busy !== null || noTicket !== null || width === null} aria-describedby={noTicket !== null ? "docforms-why" : undefined} onClick={() => void save("ticket")}>
+              <button type="button" className="docforms-btn docforms-btn--primary" disabled={busy !== null || noTicket !== null || width === null} aria-describedby={noTicket !== null ? "docforms-why" : undefined} onClick={() => void save("ticket")}>
                 {busy === "ticket" ? <Busy>Preparando…</Busy> : ticketLabel(ticketWidth)}
               </button>
-              <button type="button" className="pg-secondary" disabled={busy !== null} onClick={() => void save("carta")}>{busy === "carta" ? <Busy>Preparando…</Busy> : "PDF carta"}</button>
-              <button type="button" className="pg-secondary" disabled={busy !== null} onClick={() => void save("json")}>{busy === "json" ? <Busy>Preparando…</Busy> : "JSON DTE"}</button>
+              <button type="button" className="docforms-btn" disabled={busy !== null} onClick={() => void save("carta")}>{busy === "carta" ? <Busy>Preparando…</Busy> : "PDF carta"}</button>
+              <button type="button" className="docforms-btn" disabled={busy !== null} onClick={() => void save("json")}>{busy === "json" ? <Busy>Preparando…</Busy> : "JSON DTE"}</button>
             </div>
             {noTicket !== null
               ? <p id="docforms-why" className="pg-hint">{noTicket}</p>
