@@ -15,5 +15,5 @@ export const githubFileUrl = (path: string): string => `${REPO_URL}/blob/main/${
 // (playground/skill-zip-plugin.ts). The GitHub link points at `dev` until the skill reaches `main`:
 // switch SKILL_GITHUB_BRANCH to "main" then, and nothing else changes.
 export const SKILL_ZIP_URL = "/facta-dte-api-skill.zip";
-export const SKILL_GITHUB_BRANCH = "dev";
+export const SKILL_GITHUB_BRANCH = "main";
 export const SKILL_GITHUB_URL = `${REPO_URL}/tree/${SKILL_GITHUB_BRANCH}/skills/facta-dte-api`;
