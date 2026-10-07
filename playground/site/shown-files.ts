@@ -21,6 +21,7 @@ import credit from "./sections/headless/credit-switch.tsx?raw";
 import outcome from "./sections/headless/outcome.tsx?raw";
 import pos from "./sections/headless/pos-keypad.tsx?raw";
 import router from "../server/router.ts?raw";
+import factaServer from "../server/facta.ts?raw";
 import sale from "../server/sale.ts?raw";
 import deliveryServer from "../server/delivery.ts?raw";
 import orderKey from "../server/order-key.ts?raw";
@@ -65,6 +66,7 @@ export const SOURCES = {
   [`${S}headless/outcome.tsx`]: outcome,
   [`${S}headless/pos-keypad.tsx`]: pos,
   "playground/server/router.ts": router,
+  "playground/server/facta.ts": factaServer,
   "playground/server/sale.ts": sale,
   "playground/server/delivery.ts": deliveryServer,
   "playground/server/order-key.ts": orderKey,
