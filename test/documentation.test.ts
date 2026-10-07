@@ -16,6 +16,12 @@ Deno.test("method reference covers every public Facta client method", () => {
     "listProducts",
     "getProduct",
     "searchProducts",
+    "createCustomer",
+    "updateCustomer",
+    "deactivateCustomer",
+    "createProduct",
+    "updateProduct",
+    "deactivateProduct",
     "issue",
     "issueAndArchive",
     "recoverOperation",
@@ -54,7 +60,7 @@ Deno.test("method reference covers every public Facta client method", () => {
       `Expected the method reference to document ${method}`,
     );
   }
-  assert(publicMethods.length === 37, "Update the method coverage list with the public API");
+  assert(publicMethods.length === 43, "Update the method coverage list with the public API");
 });
 
 Deno.test("package Markdown links resolve to files or in-page anchors", async () => {
@@ -85,7 +91,7 @@ Deno.test("package Markdown links resolve to files or in-page anchors", async ()
 });
 
 Deno.test("runtime and catalog guides have equivalent Spanish and English structure", async () => {
-  for (const stem of ["catalog", "storage-adapters", "node", "deno"]) {
+  for (const stem of ["catalog", "catalog-write", "storage-adapters", "node", "deno"]) {
     const english = await Deno.readTextFile(`guides/${stem}.md`);
     const spanish = await Deno.readTextFile(`guides/${stem}.es.md`);
     const count = (text: string, pattern: RegExp) => [...text.matchAll(pattern)].length;

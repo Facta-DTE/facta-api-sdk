@@ -116,6 +116,8 @@ La fecha y la hora de un DTE las pone siempre el servidor de Facta, nunca este S
 | `syncCatalog()` | Descarga el snapshot cifrado y abre clientes/productos localmente. | No |
 | `listCustomers()`, `getCustomer(id)`, `searchCustomers(query)` | Lee o busca clientes ya autorizados para esta llave desde el snapshot descifrado localmente. | No |
 | `listProducts()`, `getProduct(id)`, `searchProducts(query)` | Lee o busca productos del snapshot descifrado localmente. | No |
+| `createCustomer(input)`, `updateCustomer(id, cambios)`, `deactivateCustomer(id)` | Alta, edición y desactivación de clientes por el API. Requiere `catalog:write` y que la empresa pase su catálogo a texto plano y lo habilite. Ver la [guía](guides/catalog-write.es.md). | Alta con `idempotencyKey` |
+| `createProduct(input)`, `updateProduct(id, cambios)`, `deactivateProduct(id)` | Lo mismo para productos. No hay borrado definitivo. | Alta con `idempotencyKey` |
 | `issue(request, options?)` | Prepara, firma y transmite un DTE en una operación. | Sí |
 | `deliverEmail(codigoGeneracion, token)`, `deliverWhatsApp(codigoGeneracion, token)` | Inician la entrega por correo o WhatsApp de un DTE sellado con el token de entrega de `issue(…, { deliver })` (válido 5 minutos). | No |
 | `getDelivery(codigoGeneracion)`, `waitForDelivery(codigoGeneracion, options?)` | Leen el estado de cada canal; `waitForDelivery` consulta hasta que todos sean finales. | No |

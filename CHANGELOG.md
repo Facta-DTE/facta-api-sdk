@@ -22,6 +22,18 @@
 - New `facta.region()`, `facta.servedRegion`, `diagnose().region` / `.servedRegion` (from `x-sb-edge-region`), and optional `Status.region` / `Status.servedRegion`.
 - Client code that counts requests will see one extra `GET /v1/status` before the first call; pass `region: false` to avoid it.
 
+### Customers and products managed from the API
+
+Needs a company whose catalog is plain text, the switch «Permitir administrar clientes y productos desde el API» (Cuenta → API) and a key with scope `catalog:write`. Guide: `guides/catalog-write.md`.
+
+- New `createCustomer`, `updateCustomer`, `deactivateCustomer`, `createProduct`, `updateProduct`, `deactivateProduct` (types `CustomerInput`, `ProductInput`, `CatalogWriteOptions`). Create accepts `idempotencyKey`. No hard delete: `DELETE` deactivates.
+- Fields are checked locally before sending with the server's own rules and never stricter (DUI 9 digits, NIT 14, NRC 1–8, address codes, `item_type` required and never defaulted); dashes in numbers are removed. A refusal is `FactaError` `validation_failed` (422) with `details.issues`.
+- New error codes `catalog_write_disabled` (403) and `catalog_encrypted` (409), with Spanish messages that say where to enable the feature (Cuenta → API, the checkbox) and that the catalog becomes readable by Facta DTE.
+- Reads work in every catalog mode. The mode (`encrypted`, `readable`, `plain`) is read from `/v1/status` together with the region discovery, so there is no extra request. `encrypted` keeps decrypting the key snapshot with `unlockKey`; `readable` and `plain` read through `GET /v1/customers` and `GET /v1/products` with no `unlockKey`. `listCustomers`, `getCustomer`, `searchCustomers` and the product reads keep their signatures; they gain `includeInactive`.
+- `catalogState()` and `diagnose()` report `catalogMode`; `Status.llave.catalogMode` accepts `"plain"`.
+- Server handler: `capabilities.catalog: "write"` (default off) adds the six `catalog.customers|products.create|update|deactivate` actions; it requires an `authorize` function and refuses `"session-only"`.
+- Live integration: a «catalog write gate» check expects `catalog_write_disabled` from the encrypted CI company; it only warns until the routes are on staging.
+
 ### Unchanged
 
 - `archivoJson`, `jws`, `documento`, local archives, remote replication and copy reports store and report exactly what they did before.

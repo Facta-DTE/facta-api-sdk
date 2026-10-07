@@ -132,7 +132,8 @@ The unlock key is never sent over HTTP. Later catalog reads compare the
 snapshot revision with `/v1/status`; if it changed, the SDK downloads and opens
 the new snapshot. The SDK keeps the snapshot in memory only. New customers
 imported from CSV appear in a later snapshot according to the key’s selection;
-the API/SDK does not write to the catalog.
+the encrypted-snapshot path does not write to the catalog (catalog writes need a
+plain-text catalog: see the [catalog write guide](catalog-write.md)).
 
 Before reserving a control number, `diagnose()` also checks the associated
 certificate’s public status. It uses only the fingerprint, validity, NIT, and
