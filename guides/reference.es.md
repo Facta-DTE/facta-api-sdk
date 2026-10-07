@@ -240,6 +240,8 @@ const todoElCatalogoActivo = await facta.listProducts();
 | `updateProduct(id, changes, options?)` | Cambia solo los campos indicados. |
 | `deactivateProduct(id, options?)` | Desactiva el producto; los documentos ya emitidos no cambian. |
 
+`listCustomers`, `getCustomer`, `listProducts` y `getProduct` devuelven los registros **completos** del snapshot de la llave, no solo nombre y precio: un `CatalogCustomer` trae `id`, `name`, `doc_type`, `doc_number`, `nrc`, `activity_code`, `address` (`departamento`, `municipio`, `distrito`, `complemento`, `pais`), `phone`, `email` y cualquier otro campo que guarde la cuenta; un `CatalogProduct` trae `id`, `code`, `barcode`, `description`, `item_type`, `unit_of_measure`, `unit_price`, `vat_included`, `active` y, si existe, `sale_class` (tipos en `src/types.ts`). Las acciones `catalog.*` del handler para el navegador son, a propósito, una proyección de pantalla más pequeña.
+
 Las lecturas eligen su camino según `catalogMode`, que el SDK aprende una vez de `/v1/status`: con `encrypted` descifran el snapshot con `unlockKey`; con `readable` o `plain` leen por el API y no necesitan `unlockKey`. Las escrituras se explican en la [guía de escritura del catálogo](catalog-write.es.md).
 
 Las búsquedas ignoran mayúsculas y acentos, y solo consultan los campos

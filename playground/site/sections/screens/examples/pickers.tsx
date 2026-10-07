@@ -25,6 +25,9 @@ export function PickersExample({ state }: { state: PlaygroundState }) {
       <FactaCustomerPicker {...CATALOG_SEARCH} value={customer} onChange={setCustomer} />
       <FactaProductPicker {...CATALOG_SEARCH} onSelect={(product) => setProducts((list) => [...list, product])} />
       <p className="pg-note">
+        Los selectores del navegador muestran una proyección corta (nombre, documento enmascarado). <code>listCustomers</code>, <code>getCustomer</code>, <code>listProducts</code> y <code>getProduct</code> devuelven los registros completos (<code>CatalogCustomer</code> y <code>CatalogProduct</code>): véalos en la receta «Catálogo» de «Solo servidor».
+      </p>
+      <p className="pg-note">
         Id del cliente: <code>{customer?.id ?? "—"}</code> · ids de productos: <code>{products.map((p) => p.id).join(", ") || "—"}</code>
       </p>
     </div>
