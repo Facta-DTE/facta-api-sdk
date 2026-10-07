@@ -280,7 +280,7 @@ function realFacta(answer: { status: number; body: unknown } | "network") {
       headers: { "content-type": "application/json" },
     }));
   }) as unknown as typeof globalThis.fetch;
-  return new Facta({ apiKey: API_KEY, signKey: SIGN_KEY, unlockKey: UNLOCK_KEY, maxRetries: 0, fetch });
+  return new Facta({ region: false, apiKey: API_KEY, signKey: SIGN_KEY, unlockKey: UNLOCK_KEY, maxRetries: 0, fetch });
 }
 
 Deno.test("mh_rejected keeps the observaciones verbatim and the spent correlative", async () => {
@@ -346,7 +346,7 @@ Deno.test("no response or error ever contains apiKey, signKey, unlockKey or the 
   const sealedFetch = (() =>
     Promise.resolve(new Response(JSON.stringify({ ...SEALED, note: "ok" }), { status: 200, headers: { "content-type": "application/json" } }))
   ) as unknown as typeof globalThis.fetch;
-  const leaky = new Facta({ apiKey: API_KEY, signKey: SIGN_KEY, unlockKey: UNLOCK_KEY, maxRetries: 0, fetch: sealedFetch });
+  const leaky = new Facta({ region: false, apiKey: API_KEY, signKey: SIGN_KEY, unlockKey: UNLOCK_KEY, maxRetries: 0, fetch: sealedFetch });
   const failing = realFacta({
     status: 500,
     body: { error: { code: "internal_error", message: `bad ${API_KEY} ${SIGN_KEY} ${UNLOCK_KEY} ${SECRET}`, details: { observaciones: [`x ${SIGN_KEY}`] } } },
@@ -683,7 +683,7 @@ Deno.test("a rejection with a spent correlative carries a statusToken", async ()
 });
 
 Deno.test("the client derives the environment from the key prefix without exposing the key", () => {
-  const env = (apiKey: string) => new Facta({ apiKey }).environment;
+  const env = (apiKey: string) => new Facta({ region: false, apiKey }).environment;
   assertEquals(env("facta_test_a.bbbbbbbbbbbbbbbb"), "00");
   assertEquals(env("facta_live_a.bbbbbbbbbbbbbbbb"), "01");
   assertEquals(env("other"), null);
@@ -692,10 +692,35 @@ Deno.test("the client derives the environment from the key prefix without exposi
 Deno.test("session.describe returns the environment for the Pruebas chip", async () => {
   const test = createFactaHandler({ facta: realFacta("network"), sessionSecret: SECRET, authorize: "session-only" });
   assertEquals((await (await post(test, { action: "session.describe", session: await session() })).json()).environment, "00");
-  const live = new Facta({ apiKey: "facta_live_a.bbbbbbbbbbbbbbbb" });
+  const live = new Facta({ region: false, apiKey: "facta_live_a.bbbbbbbbbbbbbbbb" });
   const liveHandler = createFactaHandler({ facta: live, sessionSecret: SECRET, authorize: "session-only" });
   const body = await (await post(liveHandler, { action: "session.describe", session: await session() })).text();
   assertEquals(JSON.parse(body).environment, "01");
   assertEquals(body.includes("bbbbbbbb"), false);
   assertEquals((await (await post(make().handler, { action: "session.describe", session: await session() })).json()).environment, null);
+});
+
+Deno.test("issue passes archivoDte through, or builds it for an API that predates the field", async () => {
+  const given = make({}, { issue: { ...SEALED, archivoDte: "{\"archivo\":true}" } });
+  const withField = (await (await post(given.handler, { action: "issue", session: await session() })).json()).result;
+  assertEquals(withField.archivoDte, "{\"archivo\":true}");
+  const old = make();
+  const built = (await (await post(old.handler, { action: "issue", session: await session() })).json()).result;
+  const parsed = JSON.parse(built.archivoDte);
+  assertEquals(parsed.firmaElectronica, "header.payload.sig");
+  assertEquals(parsed.selloRecibido, "2026ABC");
+  assertEquals("jws" in built || "documento" in built, false);
+  const none = make({}, { issue: CONTINGENCY });
+  assertEquals("archivoDte" in (await (await post(none.handler, { action: "issue", session: await session() })).json()).result, false);
+  const dropped = make();
+  assertEquals("archivoDte" in (await (await post(dropped.handler, { action: "issue", session: await session({ download: false }) })).json()).result, false);
+});
+
+Deno.test("an emergency on the result reaches the browser as a sibling, without paths or files", async () => {
+  const emergency = { saved: false, reason: "not_configured", trigger: "server_warning", detail: "keep the files" };
+  const { handler } = make({}, { issue: { ...SEALED, emergency } });
+  const body = await (await post(handler, { action: "issue", session: await session() })).json();
+  assertEquals(body.emergency, { saved: false, reason: "not_configured" });
+  const normal = make({}, { issue: SEALED });
+  assertEquals((await (await post(normal.handler, { action: "issue", session: await session() })).json()).emergency, undefined);
 });

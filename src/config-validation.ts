@@ -9,6 +9,7 @@ const CONFIG_KEYS = new Set([
   "timeoutMs",
   "maxRetries",
   "baseUrl",
+  "region",
 ]);
 
 export function validateFactaConfig(
@@ -79,6 +80,12 @@ export function validateFactaConfig(
     throw new TypeError(
       "config.timeoutMs must be an integer from 1 through 300000.",
     );
+  }
+  if (
+    record["region"] !== undefined && record["region"] !== false &&
+    (typeof record["region"] !== "string" || !/^[a-z]{2}(?:-[a-z]+)+-\d+$/.test(record["region"]))
+  ) {
+    throw new TypeError("config.region must be a region such as 'us-west-2', or false.");
   }
   if (record["baseUrl"] !== undefined) {
     if (typeof record["baseUrl"] !== "string") {

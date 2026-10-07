@@ -162,6 +162,11 @@ cache: `useFactaDocuments(filters)` (`items`, `loadMore`, `hasMore`, `loading`,
 while the tab is hidden), `useFactaStorage()` and `useFactaActions()`
 (`download`, `retryStorage`, `invalidate(sessionToken)`, `copyCode`).
 
+«Descargar JSON» in `FactaReceipt`, `FactaDownloadButton` and the sealed window
+gives the Archivo DTE (document + `firmaElectronica` + `selloRecibido`). Pass
+`rawJson` to `FactaReceipt` or `FactaDownloadButton` to add «JSON original
+(raw)», the stored original; the handler must also set `capabilities.rawJson`.
+
 `FactaClient` in `@facta-dte/api/browser` has the same reads for any framework:
 `listDocuments`, `getDocument`, `downloadDocument`, `getDocumentCopies`,
 `retryDocumentStorage`, `searchCustomers`, `searchProducts`, `getServiceStatus`,

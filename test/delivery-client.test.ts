@@ -5,7 +5,8 @@
 import { assert, assertEquals, assertRejects, assertThrows } from "jsr:@std/assert@1";
 import { Facta } from "../src/client.ts";
 import { FactaError } from "../src/errors.ts";
-import { deliveryRequestFor } from "../src/delivery.ts";
+import { DELIVERY_LIMIT_REASONS, deliveryRequestFor, isDeliveryLimitReason } from "../src/delivery.ts";
+import * as root from "../mod.ts";
 
 const CG = "7875BC7A-9580-441D-94E4-FA455E9D8BD0";
 const TOKEN = "fdt_SECRET-delivery-token-value";
@@ -30,7 +31,7 @@ function fakeFetch(answers: Array<{ status: number; body: unknown }>) {
   return { fetch, calls };
 }
 
-const client = (fetch: typeof globalThis.fetch) => new Facta({ apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch, maxRetries: 0 });
+const client = (fetch: typeof globalThis.fetch) => new Facta({ region: false, apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch, maxRetries: 0 });
 const VENTA = { tipoDte: "01" as const, items: [{ descripcion: "x", cantidad: 1, precioUni: 10 }] };
 const SEALED = {
   estado: "sellado",
@@ -150,4 +151,53 @@ Deno.test("esperando_sello is not waited for", async () => {
   const done = await client(fetch).waitForDelivery(CG, { intervalMs: 1 });
   assertEquals(done.settled, true);
   assertEquals(calls.length, 1);
+});
+
+// Running out of e-mail quota, or the provider being rate-limited or down, is a
+// warning about delivery, never a failed issuance: the document is sealed.
+const QUOTA = { estado: "fallido", motivo: "quota_exceeded", destino: "m•••@ejemplo.com" };
+
+Deno.test("isDeliveryLimitReason names the quota and provider-outage reasons only", () => {
+  assertEquals([...DELIVERY_LIMIT_REASONS].sort(), ["provider_unavailable", "quota_exceeded"]);
+  assertEquals(isDeliveryLimitReason("quota_exceeded"), true);
+  assertEquals(isDeliveryLimitReason("provider_unavailable"), true);
+  for (const other of ["smtp_rejected", "invalid_address", "document_rejected", "wallet_empty", "", null, undefined, 42]) {
+    assertEquals(isDeliveryLimitReason(other), false, String(other));
+  }
+  assertEquals(root.isDeliveryLimitReason, isDeliveryLimitReason);
+  assertEquals(root.DELIVERY_LIMIT_REASONS, DELIVERY_LIMIT_REASONS);
+});
+
+Deno.test("issue resolves with the sealed document when the e-mail channel already reports quota_exceeded", async () => {
+  const { fetch } = fakeFetch([{ status: 200, body: { ...SEALED, entrega: { ...SEALED.entrega, canales: { correo: QUOTA } } } }]);
+  const result = await client(fetch).issue(VENTA, { deliver: { email: "cliente@ejemplo.com" } });
+  assertEquals(result.estado, "sellado");
+  assertEquals(result.entrega?.canales.correo?.motivo, "quota_exceeded");
+});
+
+Deno.test("deliverEmail resolves (not rejects) with a quota_exceeded or provider_unavailable state", async () => {
+  const { fetch } = fakeFetch([
+    { status: 200, body: { canal: "correo", ...QUOTA } },
+    { status: 200, body: { canal: "correo", estado: "fallido", motivo: "provider_unavailable" } },
+  ]);
+  const facta = client(fetch);
+  const first = await facta.deliverEmail(CG, TOKEN);
+  const second = await facta.deliverEmail(CG, TOKEN);
+  assertEquals([first.estado, first.motivo], ["fallido", "quota_exceeded"]);
+  assertEquals([second.estado, second.motivo], ["fallido", "provider_unavailable"]);
+});
+
+Deno.test("waitForDelivery resolves settled with the terminal quota_exceeded / provider_unavailable state", async () => {
+  for (const motivo of ["quota_exceeded", "provider_unavailable"]) {
+    const { fetch, calls } = fakeFetch([
+      { status: 200, body: { canales: { correo: { estado: "en_proceso" } } } },
+      { status: 200, body: { canales: { correo: { estado: "fallido", motivo } } } },
+    ]);
+    const done = await client(fetch).waitForDelivery(CG, { channels: ["correo"], intervalMs: 1, timeoutMs: 5_000 });
+    assertEquals(done.settled, true);
+    assertEquals(done.canales.correo?.estado, "fallido");
+    assertEquals(done.canales.correo?.motivo, motivo);
+    assert(isDeliveryLimitReason(done.canales.correo?.motivo));
+    assertEquals(calls.length, 2);
+  }
 });

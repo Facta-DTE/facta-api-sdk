@@ -10,6 +10,7 @@
 import { FactaError } from "../errors.ts";
 import type { Facta } from "../client.ts";
 import type { ArchiveEmissionResult } from "../archive.ts";
+import { archivoDteOf } from "../archivo-dte.ts";
 import type {
   DeliverOptions,
   DeliveryChannel,
@@ -27,6 +28,8 @@ import {
   type FactaCapabilities,
   type FactaInvalidationAction,
   type FactaReadAction,
+  CATALOG_WRITE_ACTIONS,
+  type FactaCatalogWriteAction,
   INVALIDATION_ACTIONS,
   READ_ACTIONS,
   validateCapabilities,
@@ -235,6 +238,9 @@ function summarizeIssue(result: IssueResult, download: boolean, exposeDocument: 
     out.totales = result.totales;
     out.observaciones = result.observaciones ?? [];
     if (download && result.representacionGrafica != null) out.representacionGrafica = result.representacionGrafica;
+    // The server's own field, or built from the same pieces for an API that predates it.
+    const archivoDte = download ? archivoDteOf(result) : null;
+    if (archivoDte !== null) out.archivoDte = archivoDte;
   } else {
     out.detalle = result.detalle;
   }
@@ -471,6 +477,11 @@ export function createFactaHandler(options: FactaHandlerOptions): (req: Request)
   const secretText = typeof sessionSecret === "string" ? sessionSecret : null;
   const deliveryTimeout = options.deliveryStartTimeoutMs ?? DEFAULT_DELIVERY_START_TIMEOUT_MS;
   const capabilities = validateCapabilities(options.capabilities);
+  // A catalog write changes the company's records. Reads under "session-only" are tolerable
+  // because a session already stands for one purchase; a write has no session at all.
+  if (capabilities.catalog === "write" && authorize === "session-only") {
+    throw new TypeError('capabilities.catalog "write" requires an authorize function; "session-only" would let anyone edit the catalog.');
+  }
   const data = createDataActions({
     facta,
     capabilities,
@@ -490,7 +501,7 @@ export function createFactaHandler(options: FactaHandlerOptions): (req: Request)
     if (!allowed) throw new HandlerError("unauthorized", "Not authorized.", 403);
   }
 
-  function declared(action: FactaReadAction | FactaInvalidationAction): void {
+  function declared(action: FactaReadAction | FactaInvalidationAction | FactaCatalogWriteAction): void {
     if (!allows(capabilities, action)) {
       throw new HandlerError("action_not_allowed", "This action is not enabled on this handler.", 403);
     }
@@ -599,6 +610,12 @@ export function createFactaHandler(options: FactaHandlerOptions): (req: Request)
       const forced = readAction === "documents.list" && options.scope ? await options.scope(req, context) : {};
       return json(200, await data.read(readAction, body, forced));
     }
+    if ((CATALOG_WRITE_ACTIONS as readonly string[]).includes(action)) {
+      const writeAction = action as FactaCatalogWriteAction;
+      declared(writeAction);
+      await check(req, { action: writeAction });
+      return json(200, await data.write(writeAction, body));
+    }
     if ((INVALIDATION_ACTIONS as readonly string[]).includes(action)) {
       const invAction = action as FactaInvalidationAction;
       declared(invAction);
@@ -670,7 +687,10 @@ export function createFactaHandler(options: FactaHandlerOptions): (req: Request)
         return json(200, {
           result: summarizeIssue(result, download, exposeDocument),
           storage,
+          ...(result.emergency === undefined ? {} : { emergency: { saved: result.emergency.saved, reason: result.emergency.reason, ...(result.emergency.critical ? { critical: true } : {}) } }),
           statusToken: await statusTokenFor(sessionSecret, session.nonce, result.codigoGeneracion),
+          // Only when the host's own client asked the API for timings (`debug: { timings: true }`).
+          ...(result.debug === undefined ? {} : { debug: result.debug }),
           ...delivery,
         });
       }

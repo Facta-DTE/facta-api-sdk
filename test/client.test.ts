@@ -56,7 +56,7 @@ const VENTA = {
 
 Deno.test("la llave viaja en X-Facta-Key y nunca en Authorization", async () => {
   const { fetch, calls } = fakeFetch([{ status: 200, body: SEALED }]);
-  await new Facta({ apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch }).issue(VENTA);
+  await new Facta({ region: false, apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch }).issue(VENTA);
   assertEquals(calls[0].headers["X-Facta-Key"], "facta_test_a.bbbbbbbbbbbbbbbb");
   assertEquals(calls[0].headers["Authorization"], undefined);
 });
@@ -81,7 +81,7 @@ Deno.test("server error text redacts configured secrets and credential fields", 
     },
   }]);
   const error = await assertRejects(
-    () => new Facta({ apiKey, signKey, unlockKey, fetch }).issue(VENTA),
+    () => new Facta({ region: false, apiKey, signKey, unlockKey, fetch }).issue(VENTA),
     FactaError,
   );
   assertEquals(error.message.includes(apiKey), false);
@@ -97,7 +97,7 @@ Deno.test("server error text redacts configured secrets and credential fields", 
 Deno.test("network errors do not expose runtime exception text", async () => {
   const secret = "transport-leaked-credential";
   const error = await assertRejects(
-    () => new Facta({
+    () => new Facta({ region: false,
       apiKey: "facta_test_a.bbbbbbbbbbbbbbbb",
       maxRetries: 0,
       fetch: (() => Promise.reject(new Error(`fetch failed for ${secret}`))) as typeof globalThis.fetch,
@@ -118,7 +118,7 @@ Deno.test("caller abort stops the request without retrying or exposing fetch err
     return Promise.resolve(new Response("{}", { status: 200 }));
   }) as typeof globalThis.fetch;
   const error = await assertRejects(
-    () => new Facta({ apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch }).issue(VENTA, { signal: controller.signal }),
+    () => new Facta({ region: false, apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch }).issue(VENTA, { signal: controller.signal }),
     DOMException,
   );
   assertEquals(error.name, "AbortError");
@@ -130,7 +130,7 @@ Deno.test("a pre-aborted fiscal request never reaches fetch", async () => {
   const controller = new AbortController();
   controller.abort();
   let calls = 0;
-  const error = await assertRejects(() => new Facta({
+  const error = await assertRejects(() => new Facta({ region: false,
     apiKey: "facta_test_a.bbbbbbbbbbbbbbbb",
     fetch: (() => { calls += 1; return Promise.resolve(new Response("{}")); }) as typeof globalThis.fetch,
   }).issue(VENTA, { signal: controller.signal }), DOMException);
@@ -145,7 +145,7 @@ Deno.test("aborting during retry backoff prevents the next attempt", async () =>
     calls += 1;
     return Promise.resolve(new Response(JSON.stringify({ error: { code: "idempotency_in_flight", message: "wait" } }), { status: 409 }));
   }) as typeof globalThis.fetch;
-  const pending = new Facta({ apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch, maxRetries: 2 })
+  const pending = new Facta({ region: false, apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch, maxRetries: 2 })
     .issue(VENTA, { signal: controller.signal });
   setTimeout(() => controller.abort(), 10);
   const error = await assertRejects(() => pending, DOMException);
@@ -155,14 +155,14 @@ Deno.test("aborting during retry backoff prevents the next attempt", async () =>
 
 Deno.test("toda emisión lleva Idempotency-Key aunque no se la pidan", async () => {
   const { fetch, calls } = fakeFetch([{ status: 200, body: SEALED }]);
-  await new Facta({ apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch }).issue(VENTA);
+  await new Facta({ region: false, apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch }).issue(VENTA);
   assertEquals(typeof calls[0].headers["Idempotency-Key"], "string");
   assertEquals(calls[0].headers["Idempotency-Key"].length > 8, true);
 });
 
 Deno.test("una consulta NO manda Idempotency-Key: no gasta nada", async () => {
   const { fetch, calls } = fakeFetch([{ status: 200, body: { estado: "sellado" } }]);
-  await new Facta({ apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch }).getDocumentStatus("A1");
+  await new Facta({ region: false, apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch }).getDocumentStatus("A1");
   assertEquals(calls[0].headers["Idempotency-Key"], undefined);
 });
 
@@ -173,7 +173,7 @@ Deno.test("el reintento REUSA la misma Idempotency-Key", async () => {
     { status: 409, body: { error: { code: "idempotency_in_flight", message: "espera" } } },
     { status: 200, body: SEALED },
   ]);
-  const facta = new Facta({ apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch, maxRetries: 2 });
+  const facta = new Facta({ region: false, apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch, maxRetries: 2 });
   const dte = await facta.issue(VENTA);
   assertEquals(calls.length, 2);
   assertEquals(calls[0].headers["Idempotency-Key"], calls[1].headers["Idempotency-Key"]);
@@ -182,7 +182,7 @@ Deno.test("el reintento REUSA la misma Idempotency-Key", async () => {
 
 Deno.test("una Idempotency-Key propia gana sobre la generada", async () => {
   const { fetch, calls } = fakeFetch([{ status: 200, body: SEALED }]);
-  await new Facta({ apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch })
+  await new Facta({ region: false, apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch })
     .issue(VENTA, { idempotencyKey: "ticket-00417" });
   assertEquals(calls[0].headers["Idempotency-Key"], "ticket-00417");
 });
@@ -202,7 +202,7 @@ Deno.test("un rechazo del MH no se reintenta jamás y nombra el número gastado"
       },
     },
   }]);
-  const facta = new Facta({ apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch });
+  const facta = new Facta({ region: false, apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch });
   const error = await assertRejects(() => facta.issue(VENTA), FactaError);
   assertEquals(calls.length, 1, "un rechazo reintentado quemaría otro correlativo");
   assertEquals(error.isRejection, true);
@@ -215,7 +215,7 @@ Deno.test("un 4xx del cliente no se reintenta", async () => {
     status: 422,
     body: { error: { code: "validation_failed", message: "mal", details: { issues: [] } } },
   }]);
-  const facta = new Facta({ apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch });
+  const facta = new Facta({ region: false, apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch });
   const error = await assertRejects(() => facta.issue(VENTA), FactaError);
   assertEquals(calls.length, 1);
   assertEquals(error.code, "validation_failed");
@@ -230,7 +230,7 @@ Deno.test("un 202 de contingencia es un resultado, no un error", async () => {
     status: 202,
     body: { estado: "contingencia", numeroControl: "DTE-03-M001P001-000000000000180" },
   }]);
-  const facta = new Facta({ apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch });
+  const facta = new Facta({ region: false, apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch });
   const result = await facta.issue(VENTA);
   assertEquals(result.estado, "contingencia");
 });
@@ -238,7 +238,7 @@ Deno.test("un 202 de contingencia es un resultado, no un error", async () => {
 Deno.test("sign manda el documento tal cual lo devolvió prepare", async () => {
   const documento = { identificacion: { tipoDte: "03" }, resumen: { totalPagar: 45.2 } };
   const { fetch, calls } = fakeFetch([{ status: 200, body: SEALED }]);
-  const facta = new Facta({ apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch });
+  const facta = new Facta({ region: false, apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch });
   await facta.sign({
     estado: "preparado",
     codigoGeneracion: "A1",
@@ -258,7 +258,7 @@ Deno.test("sign manda el documento tal cual lo devolvió prepare", async () => {
 Deno.test("una llave vacía falla al construir, antes de gastar una petición", () => {
   let threw = false;
   try {
-    new Facta({ apiKey: "" });
+    new Facta({ region: false, apiKey: "" });
   } catch (error) {
     threw = error instanceof FactaError;
   }
@@ -272,7 +272,7 @@ const UNLOCK_KEY = `factauk_${"B".repeat(43)}`;
 
 Deno.test("la contraseña de firma viaja SOLO en las rutas que firman", async () => {
   const { fetch, calls } = fakeFetch([{ status: 200, body: SEALED }]);
-  const facta = new Facta({ apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", signKey: SIGN_KEY, fetch });
+  const facta = new Facta({ region: false, apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", signKey: SIGN_KEY, fetch });
 
   await facta.issue(VENTA);
   assertEquals(calls[0].headers["X-Facta-Sign-Key"], SIGN_KEY);
@@ -295,7 +295,7 @@ Deno.test("sin contraseña de firma el cliente sigue sirviendo para getDocumentS
   // en el constructor haría imposible el caso «solo lectura», que es el que
   // debería usar la mitad de los integradores.
   const { fetch, calls } = fakeFetch([{ status: 200, body: { ok: true } }]);
-  await new Facta({ apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch }).status();
+  await new Facta({ region: false, apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch }).status();
   assertEquals(calls[0].headers["X-Facta-Sign-Key"], undefined);
 });
 
@@ -305,7 +305,7 @@ Deno.test("mandar la llave de apertura como contraseña de firma se rechaza al c
   // del cliente ya habría viajado.
   let refused = false;
   try {
-    new Facta({ apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", signKey: UNLOCK_KEY });
+    new Facta({ region: false, apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", signKey: UNLOCK_KEY });
   } catch (cause) {
     refused = cause instanceof FactaError;
   }
@@ -318,7 +318,7 @@ Deno.test("las operaciones de consulta construyen las rutas y filtros del contra
     { status: 200, body: { documentos: [] } },
     { status: 200, body: { ok: true } },
   ]);
-  const facta = new Facta({ apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", signKey: SIGN_KEY, fetch });
+  const facta = new Facta({ region: false, apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", signKey: SIGN_KEY, fetch });
   await facta.listDocuments({ estado: "sellado", limit: 10, cursor: "next value" });
   await facta.listHolding(10);
   await facta.getContract();
@@ -329,7 +329,7 @@ Deno.test("las operaciones de consulta construyen las rutas y filtros del contra
 
 Deno.test("descargar ticket transmite el ancho y no vuelve a issue", async () => {
   const { fetch, calls } = fakeFetch([{ status: 200, body: { bytes: [] } }]);
-  const facta = new Facta({ apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch });
+  const facta = new Facta({ region: false, apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch });
   await facta.downloadDocument("ABC-123", "ticket", { paperWidthMm: 58 });
   assertEquals(calls.length, 1);
   assertEquals(calls[0].method, "GET");
@@ -339,7 +339,7 @@ Deno.test("descargar ticket transmite el ancho y no vuelve a issue", async () =>
 
 Deno.test("ticket width validation happens before any request", async () => {
   const { fetch, calls } = fakeFetch([{ status: 200, body: {} }]);
-  const facta = new Facta({ apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch });
+  const facta = new Facta({ region: false, apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch });
   await assertRejects(() => facta.downloadDocument("ABC-123", "ticket", { paperWidthMm: 58.5 }), TypeError);
   await assertRejects(() => facta.downloadDocument("ABC-123", "pdf", { paperWidthMm: 80 }), TypeError);
   assertEquals(calls.length, 0);
@@ -370,7 +370,7 @@ Deno.test("storage capability, copy status, and repair use additive API routes",
     { status: 200, body: { capabilityVersion: 1, copies } },
     { status: 200, body: { codigoGeneracion: generationCode, storage: receipt } },
   ]);
-  const facta = new Facta({ apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch });
+  const facta = new Facta({ region: false, apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch });
   assertEquals((await facta.getStorageStatus()).managed.ready, true);
   assertEquals(await facta.getDocumentCopies({ generationCode }), copies);
   assertEquals(await facta.retryDocumentStorage(generationCode), receipt);
@@ -387,7 +387,7 @@ Deno.test("older storage routes report unsupported instead of malformed success"
     status: 404,
     body: { error: { code: "not_found", message: "route not found" } },
   }]);
-  const facta = new Facta({ apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch });
+  const facta = new Facta({ region: false, apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch });
   const error = await assertRejects(() => facta.getStorageStatus(), FactaError);
   assertEquals(error.code, "storage_unsupported");
 });
@@ -399,20 +399,20 @@ function factaBase(_client: Facta): string {
 
 Deno.test("versioned client config supplies base URL and ticket width defaults", async () => {
   const { fetch, calls } = fakeFetch([{ status: 200, body: { bytes: [] } }]);
-  const facta = new Facta({
+  const facta = new Facta({ region: false,
     apiKey: "facta_test_a.bbbbbbbbbbbbbbbb",
     fetch,
     config: { version: 1, baseUrl: "https://api.example.test/api-v1", ticketPaperWidthMm: 58 },
   });
   await facta.downloadDocument("ABC-123", "ticket");
   assertEquals(calls[0].url, "https://api.example.test/api-v1/v1/dte/ABC-123/file?kind=ticket&paperWidthMm=58");
-  assertThrows(() => new Facta({ apiKey: "key", config: { version: 2 } as never }), TypeError);
+  assertThrows(() => new Facta({ region: false, apiKey: "key", config: { version: 2 } as never }), TypeError);
 });
 
 
 Deno.test("legacy flat options override matching versioned config values", async () => {
   const { fetch, calls } = fakeFetch([{ status: 200, body: { ok: true } }]);
-  const facta = new Facta({
+  const facta = new Facta({ region: false,
     apiKey: "facta_test_a.bbbbbbbbbbbbbbbb",
     fetch,
     baseUrl: "https://legacy.example.test/api-v1",
@@ -424,11 +424,11 @@ Deno.test("legacy flat options override matching versioned config values", async
 
 Deno.test("flat network options use the same validation as versioned config", () => {
   assertThrows(
-    () => new Facta({ apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", baseUrl: "javascript:alert(1)" }),
+    () => new Facta({ region: false, apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", baseUrl: "javascript:alert(1)" }),
     TypeError,
   );
   assertThrows(
-    () => new Facta({ apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", timeoutMs: 0 }),
+    () => new Facta({ region: false, apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", timeoutMs: 0 }),
     TypeError,
   );
 });
@@ -439,7 +439,7 @@ Deno.test("query and listing preserve unavailable historical receiver metadata w
     { status: 200, body: document },
     { status: 200, body: { documentos: [document, { ...document, receptor: null }], siguiente: null } },
   ]);
-  const facta = new Facta({ apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch });
+  const facta = new Facta({ region: false, apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch });
   assertEquals((await facta.getDocumentStatus(document.codigoGeneracion)).receptor, { nombre: null, numDocumento: null });
   const listed = await facta.listDocuments();
   assertEquals(listed.documentos[0].receptor, { nombre: null, numDocumento: null });
@@ -450,7 +450,7 @@ Deno.test("query and listing preserve unavailable historical receiver metadata w
 
 Deno.test("malformed attached receipt preserves fiscal success with a typed storage error and no retry", async () => {
   const { fetch, calls } = fakeFetch([{ status: 200, body: { ...SEALED, storage: { destination: "managed" } } }]);
-  const result = await new Facta({ apiKey: "facta_test_a.secret", fetch }).issue(VENTA, { idempotencyKey: "stable-order" });
+  const result = await new Facta({ region: false, apiKey: "facta_test_a.secret", fetch }).issue(VENTA, { idempotencyKey: "stable-order" });
   assertEquals(result.estado, "sellado");
   assertEquals(result.storage, undefined);
   assertEquals(result.storageErrorCode, "storage_contract_invalid");
@@ -462,7 +462,7 @@ Deno.test("copies reject malformed hashes, negative bytes, wrong environment and
   const copy = { generationCode, kind: "json", environment: "00", state: "stored", bytes: 12, sha256: "a".repeat(64), issuedDate: "2026-10-03", storedAt: "2026-10-03T12:00:00Z" };
   for (const override of [{ sha256: "bad" }, { bytes: -1 }, { environment: "01" }, { generationCode: "44444444-4444-4444-8444-444444444444" }, { storedAt: null }]) {
     const { fetch } = fakeFetch([{ status: 200, body: { capabilityVersion: 1, copies: [{ ...copy, ...override }] } }]);
-    const error = await assertRejects(() => new Facta({ apiKey: "facta_test_a.secret", fetch }).getDocumentCopies({ generationCode }), FactaError);
+    const error = await assertRejects(() => new Facta({ region: false, apiKey: "facta_test_a.secret", fetch }).getDocumentCopies({ generationCode }), FactaError);
     assertEquals(error.code, "storage_contract_invalid");
   }
 });
@@ -473,7 +473,7 @@ Deno.test("repair rejects contradictory receipts and mismatched environments wit
   const receipt = { operationId: generationCode, environment: "00", destination: "managed", json: artifact, pdf: artifact };
   for (const invalid of [{ ...receipt, destination: "none" }, { ...receipt, environment: "01" }, { ...receipt, json: { ...artifact, sha256: null } }, { ...receipt, pdf: { ...artifact, bytes: -1 } }]) {
     const { fetch, calls } = fakeFetch([{ status: 200, body: { storage: invalid } }]);
-    const error = await assertRejects(() => new Facta({ apiKey: "facta_test_a.secret", fetch }).retryDocumentStorage(generationCode), FactaError);
+    const error = await assertRejects(() => new Facta({ region: false, apiKey: "facta_test_a.secret", fetch }).retryDocumentStorage(generationCode), FactaError);
     assertEquals(error.code, "storage_contract_invalid");
     assertEquals(calls.every((call) => call.url.endsWith('/repair')), true);
   }
@@ -486,7 +486,7 @@ Deno.test("explicit managed downloads demand source proof and never accept holdi
       calls.push(String(url));
       return new Response("%PDF-exact", { headers: { "content-type": "application/pdf", ...(source ? { "x-facta-storage-source": source } : {}) } });
     }) as typeof globalThis.fetch;
-    const facta = new Facta({ apiKey: "facta_test_a.secret", fetch });
+    const facta = new Facta({ region: false, apiKey: "facta_test_a.secret", fetch });
     if (source === "managed") {
       assertEquals((await facta.downloadDocument("existing", "pdf", { source: "managed" })).storageSource, "managed");
     } else {
@@ -498,4 +498,34 @@ Deno.test("explicit managed downloads demand source proof and never accept holdi
     await assertRejects(() => facta.downloadDocument("existing", "ticket", { source: "managed" }), TypeError);
     assertEquals(calls.length, count);
   }
+});
+
+Deno.test("downloadDocument json sends raw only when asked and reports the format from the header", async () => {
+  const calls: string[] = [];
+  const formats = ["archivo-dte", "raw", null];
+  const fetch = ((url: string | URL | Request) => {
+    calls.push(String(url));
+    const format = formats[calls.length - 1];
+    return Promise.resolve(new Response("{}", { status: 200, headers: { "Content-Type": "application/json", ...(format ? { "X-Facta-Json-Format": format } : {}) } }));
+  }) as unknown as typeof globalThis.fetch;
+  const facta = new Facta({ region: false, apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch });
+  const archivo = await facta.downloadDocument("ABC-123", "json");
+  const raw = await facta.downloadDocument("ABC-123", "json", { raw: true });
+  const old = await facta.downloadDocument("ABC-123", "json", { raw: true });
+  assertEquals(calls[0].endsWith("/v1/dte/ABC-123/file?kind=json"), true);
+  assertEquals(calls[1].endsWith("/v1/dte/ABC-123/file?kind=json&raw=true"), true);
+  assertEquals(archivo.jsonFormat, "archivo-dte");
+  assertEquals(raw.jsonFormat, "raw");
+  assertEquals("jsonFormat" in old, false);
+});
+
+Deno.test("raw is local-only valid for JSON and not_sealed surfaces as its own error code", async () => {
+  const { fetch, calls } = fakeFetch([{ status: 409, body: { error: { code: "not_sealed", message: "sin sello" } } }]);
+  const facta = new Facta({ region: false, apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch });
+  await assertRejects(() => facta.downloadDocument("ABC-123", "pdf", { raw: true }), TypeError);
+  await assertRejects(() => facta.downloadDocument("ABC-123", "ticket", { raw: false }), TypeError);
+  assertEquals(calls.length, 0);
+  const error = await assertRejects(() => facta.downloadDocument("ABC-123", "json")) as FactaError;
+  assertEquals(error.code, "not_sealed");
+  assertEquals(error.status, 409);
 });

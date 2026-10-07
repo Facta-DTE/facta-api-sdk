@@ -144,13 +144,15 @@ function serverFilters(filters: DocumentFilters): Omit<DocumentFilters, "buscar"
   for (const key of ["desde", "hasta", "estado", "tipoDte"] as const) {
     if (filters[key]) out[key] = filters[key];
   }
+  if (filters.include?.length) out["include"] = filters.include;
   return out;
 }
 
 export function useFactaDocuments(filters: DocumentFilters = {}, options: UseFactaDocumentsOptions = {}): UseFactaDocuments {
   const { client } = useDataContext();
-  const pageSize = Math.min(100, Math.max(1, options.pageSize ?? 25));
   const server = serverFilters(filters);
+  // With `include: ["dte"]` every row costs a read, so the API caps the page at 25.
+  const pageSize = Math.min(server.include ? 25 : 100, Math.max(1, options.pageSize ?? 25));
   const key = `docs:${JSON.stringify(server)}:${pageSize}`;
   const first = useCachedQuery(key, () => client.listDocuments({ ...server, limit: pageSize }), {
     staleMs: options.staleMs ?? 15_000,
@@ -373,7 +375,7 @@ export async function copyText(value: string): Promise<void> {
 
 export interface UseFactaActions {
   /** Fetch the file and hand it to the browser as a download. */
-  download(codigoGeneracion: string, kind: DownloadKind, options?: { paperWidthMm?: number }): Promise<DownloadedFile>;
+  download(codigoGeneracion: string, kind: DownloadKind, options?: { paperWidthMm?: number; raw?: boolean }): Promise<DownloadedFile>;
   /** Retry the managed copies of a document; refreshes the copies the detail shows. */
   retryStorage(codigoGeneracion: string): Promise<StorageRetryResult>;
   /** Open the invalidation dialog for a session made by your server. Rejects with `FactaWindowError` when closed without invalidating. */

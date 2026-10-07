@@ -100,7 +100,7 @@ export interface FactaClient {
 export interface FactaDataClient {
   listDocuments(filters?: DocumentFilters & { limit?: number; cursor?: string }, signal?: AbortSignal): Promise<DocumentPage>;
   getDocument(codigoGeneracion: string): Promise<DocumentDetail>;
-  downloadDocument(codigoGeneracion: string, kind: DownloadKind, options?: { paperWidthMm?: number }): Promise<DownloadedFile>;
+  downloadDocument(codigoGeneracion: string, kind: DownloadKind, options?: { paperWidthMm?: number; raw?: boolean }): Promise<DownloadedFile>;
   getDocumentCopies(codigoGeneracion: string): Promise<CopyRow[]>;
   retryDocumentStorage(codigoGeneracion: string): Promise<StorageRetryResult>;
   listHolding(): Promise<HoldingRow[]>;
@@ -195,6 +195,7 @@ export function createFactaClient(options: FactaClientOptions): FactaFullClient 
       const r = await call<{
         result: IssueSummary;
         storage?: StorageSummary;
+        emergency?: { saved: boolean; reason: string; critical?: boolean };
         statusToken?: string;
         deliveryHandle?: string;
         delivery?: DeliveryView;
@@ -202,6 +203,7 @@ export function createFactaClient(options: FactaClientOptions): FactaFullClient 
       return {
         ...r.result,
         ...(r.storage ? { storage: r.storage } : {}),
+        ...(r.emergency && typeof r.emergency.saved === "boolean" ? { emergency: { saved: r.emergency.saved, reason: String(r.emergency.reason), ...(r.emergency.critical === true ? { critical: true } : {}) } } : {}),
         ...(typeof r.statusToken === "string" ? { statusToken: r.statusToken } : {}),
         ...(typeof r.deliveryHandle === "string" && r.delivery && typeof r.delivery === "object"
           ? { deliveryHandle: r.deliveryHandle, delivery: r.delivery }

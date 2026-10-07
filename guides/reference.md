@@ -44,6 +44,39 @@ business order when recovery must survive a process restart. Aborting a
 request stops retries, but it does not prove that a request already accepted
 by the server was cancelled.
 
+### Regional pinning
+
+Supabase Edge Functions run near the caller, while the Facta database is in
+`us-west-2`; a function far from it pays a cross-country round trip per query
+(`POST /v1/dte` measured 7.2 s on average, 4.3 s once pinned). The client sends
+`x-region` on every request. The value is, in order: the `region` option,
+`config.region`, `FACTA_API_REGION`, the `region` that `GET /v1/status`
+advertises (read once per client, lazily, shared by concurrent first calls),
+then a built-in default (`us-west-2` for test and live keys). `region: false`
+(or `FACTA_API_REGION=false`) turns it off. A failed discovery never fails an
+operation: no header is sent and discovery is retried after 60 s.
+`await facta.region()` returns the value in use (`null` when off), and
+`facta.servedRegion` / `diagnose().servedRegion` report the region that actually
+answered (`x-sb-edge-region`). The browser client needs nothing: it talks to your
+server, whose `Facta` instance does the pinning.
+
+### Debug timings (a debugging aid)
+
+`new Facta({ debug: { timings: true } })`, or `{ debug: { timings: true } }` in
+the options of one call, sends `X-Facta-Debug: timings`. The API then answers
+with `debug: { timings: [{ step, ms, startedAtMs }], totalMs }` (and a
+`Server-Timing` header), and the SDK exposes it as `result.debug`; when the body
+has no `debug` member the SDK reads the `Server-Timing` header instead
+(`debug.source` says which). It is off by default, the API adds nothing without
+the flag, and a per-call `debug: { timings: false }` turns a client-wide flag
+off. Use it to find where a slow call spends its time; do not leave it on in
+production code.
+
+```ts
+const result = await facta.issue(request, { idempotencyKey: order.id, debug: { timings: true } });
+for (const { step, ms } of result.debug?.timings ?? []) console.log(step, ms);
+```
+
 The common authenticated failure type is `FactaError`, with `code`, `status`,
 `details`, `isRejection`, and `spent`. Classify by `code`, not localized
 message text. Local validation and adapter/archive failures can also throw
@@ -74,13 +107,21 @@ may throw `SyntaxError`; the unlock key is not transmitted in either case.
 |---|---|---|---|
 | `syncDestinations()` | None → `Promise<DestinationSnapshot>` | No additional API scope; local `unlockKey` required | Opens the per-key storage destination snapshot in memory. Accepts `ready` and legacy synchronization state; pending/missing state fails with `no_storage_destination`. Does not write artifacts to those destinations. |
 | `syncCatalog()` | None → `Promise<CatalogSnapshot>` | No additional API scope; local `unlockKey` required | Opens the latest authorized customer/product snapshot and replaces this instance's in-memory cache. Requires a ready published catalog and verifies the encrypted envelope digest. |
-| `catalogState()` | None → `Promise<CatalogState>` | No additional API scope | Compares the local catalog revision with public status. Returns `missing`, `fresh`, or `stale` plus revisions, fetch time, and a safe status error code; never returns catalog contents. |
-| `listCustomers(options?)` | `{ allowStale?: boolean }` → customer array | Local snapshot | Returns a copy of authorized customers. Stale cache is used only when explicitly opted in and current status is unavailable. |
-| `getCustomer(id, options?)` | Stable Facta customer ID and optional `{ allowStale?: boolean }` → customer or `null` | Local snapshot | Returns the matching authorized customer, or `null` when absent. |
-| `searchCustomers(query, options?)` | Query and optional `{ limit=50, allowStale?: boolean }` → customer array | Local snapshot | Case/diacritic-insensitive search over name, document number, NRC, and email. `limit` must be an integer from 1 through 500. |
-| `listProducts(options?)` | `{ includeInactive?: false, allowStale?: boolean }` → product array | Local snapshot | Returns active products by default; `includeInactive: true` includes inactive records. |
-| `getProduct(id, options?)` | Stable Facta product ID and optional `{ allowStale?: boolean }` → product or `null` | Local snapshot | Returns `null` for missing or inactive products. |
-| `searchProducts(query, options?)` | Query and optional `{ limit=50, allowStale?: boolean }` → product array | Local snapshot | Case/diacritic-insensitive search over description, code, and barcode; inactive products are omitted. `limit` must be an integer from 1 through 500. |
+| `catalogState()` | None → `Promise<CatalogState>` | No additional API scope | Compares the local catalog revision with public status. Returns `catalogMode` (`encrypted`, `readable`, `plain` or `null`), `missing`/`fresh`/`stale` plus revisions, fetch time, and a safe status error code; never returns catalog contents. A `plain` catalog is read live and reports `fresh`. |
+| `listCustomers(options?)` | `{ allowStale?: boolean, includeInactive?: boolean }` → customer array | Local snapshot (`encrypted`) or the API (`readable`, `plain`) | Returns a copy of authorized customers. Stale cache is used only when explicitly opted in and current status is unavailable. |
+| `getCustomer(id, options?)` | Stable Facta customer ID and optional `{ allowStale?: boolean, includeInactive?: boolean }` → customer or `null` | Local snapshot or the API | Returns the matching authorized customer, or `null` when absent. |
+| `searchCustomers(query, options?)` | Query and optional `{ limit=50, allowStale?: boolean, includeInactive?: boolean }` → customer array | Local snapshot or the API | Case/diacritic-insensitive search over name, document number, NRC, and email. `limit` must be an integer from 1 through 500. |
+| `listProducts(options?)` | `{ includeInactive?: false, allowStale?: boolean }` → product array | Local snapshot or the API | Returns active products by default; `includeInactive: true` includes inactive records. |
+| `getProduct(id, options?)` | Stable Facta product ID and optional `{ allowStale?: boolean, includeInactive?: boolean }` → product or `null` | Local snapshot or the API | Returns `null` for missing or inactive products. |
+| `searchProducts(query, options?)` | Query and optional `{ limit=50, allowStale?: boolean, includeInactive?: boolean }` → product array | Local snapshot or the API |
+| `createCustomer(input, options?)` | `CustomerInput` and optional `{ idempotencyKey?, signal? }` → `CatalogCustomer` | `catalog:write`; plain catalog | Creates a customer. `name` is required. DUI is 9 digits, NIT 14, NRC 1–8; dashes are accepted and removed. A retried create with the same `idempotencyKey` does not duplicate it. See the [catalog write guide](catalog-write.md). |
+| `updateCustomer(id, changes, options?)` | Customer ID and a partial `CustomerInput` → `CatalogCustomer` | `catalog:write`; plain catalog | `PATCH`: only the fields passed change; `null` clears an optional field. |
+| `deactivateCustomer(id, options?)` | Customer ID → `CatalogCustomer` (`active: false`) | `catalog:write`; plain catalog | `DELETE` deactivates; there is no hard delete. Listed again with `includeInactive: true`. |
+| `createProduct(input, options?)` | `ProductInput` and optional `{ idempotencyKey?, signal? }` → `CatalogProduct` | `catalog:write`; plain catalog | `description`, `item_type` (1 good, 2 service, 3 both; never defaulted) and `unit_price` are required. |
+| `updateProduct(id, changes, options?)` | Product ID and a partial `ProductInput` → `CatalogProduct` | `catalog:write`; plain catalog | `PATCH`: only the fields passed change. |
+| `deactivateProduct(id, options?)` | Product ID → `CatalogProduct` (`active: false`) | `catalog:write`; plain catalog | `DELETE` deactivates; the product can no longer be issued and past documents are untouched. |
+
+The catalog read methods pick their path from `catalogMode` (learned once from `/v1/status`, together with the region): `encrypted` decrypts the key's snapshot with `unlockKey`; `readable` and `plain` read through `GET /v1/customers` and `GET /v1/products`, with no `unlockKey`. Write methods fail locally with `validation_failed` (HTTP 422, before any request) when a field breaks a rule the server also enforces, and with `catalog_write_disabled` (403) or `catalog_encrypted` (409) when the company has not enabled catalog administration from the API. Case/diacritic-insensitive search over description, code, and barcode; inactive products are omitted. `limit` must be an integer from 1 through 500. |
 
 Invalid limits and missing runtime configuration fail locally with `TypeError`
 or `RangeError`. Snapshot/API failures use `FactaError`; the specific method
@@ -114,7 +155,8 @@ Spanish field names and enum values from the wire contract.
 | `deliverWhatsApp(generationCode, token, options?)` | Same → `DeliveryChannelResult` | `issue` (or `entrega:whatsapp`) | `POST /v1/dte/{codigoGeneracion}/entrega/whatsapp`. Billed to the company's prepaid wallet; without credit the state is `sin_credito`, an explicit `consentimiento: false` on the wire leaves it `sin_consentimiento` (the HTTP default is `true`; the `deliver.whatsapp` helper still requires `consent: true`). Content is the approved template plus the document only. |
 | `getDelivery(generationCode, options?)` | UUID, optional `{ signal? }` → `DeliveryStatus` | `query` | `GET /v1/dte/{codigoGeneracion}/entrega`; every channel's state with masked destinations. Works after the token expired. |
 | `waitForDelivery(generationCode, options?)` | UUID, optional `{ channels?, timeoutMs = 60000, intervalMs = 2000, signal? }` → `WaitedDelivery` | `query` | Polls `getDelivery` until every awaited channel is final (anything but `pendiente`/`en_proceso`; `esperando_sello` is not waited for). On timeout it returns the last status with `settled: false` instead of throwing: delivery never changes the fiscal outcome. |
-| `listDocuments(filters?)` | Optional date/state/type/limit/cursor filters → `DtePage` | `query` | `GET /v1/dte`; default page size is 50 and the API maximum is 100. Follow `siguiente` exactly; rows are summaries rather than full signed documents. They may include the recipient's name and document number; private-mode encryption at rest does not hide these fields from an authorized API key. Treat the response as personal data and keep it out of general logs. Rejected reservations are queried by generation code and cannot be listed. |
+| `isDeliveryLimitReason(reason)` | a `motivo` → `boolean` | none | Exported from the root and `/browser`. `true` for `quota_exceeded` and `provider_unavailable` (`DELIVERY_LIMIT_REASONS`): the sending limit was reached or the mail provider was unavailable. The document is already issued; show a warning and offer the PDF or JSON. Neither `issue` nor `waitForDelivery` throws for these states. |
+| `listDocuments(filters?)` | Optional date/state/type/limit/cursor filters → `DtePage` | `query` | `GET /v1/dte`; default page size is 50 and the API maximum is 100. Follow `siguiente` exactly; rows are summaries rather than full signed documents. They may include the recipient's name and document number; private-mode encryption at rest does not hide these fields from an authorized API key. Treat the response as personal data and keep it out of general logs. Rejected reservations are queried by generation code and cannot be listed. `include: ["dte"]` (needs `download`; 20 rows by default, 25 max) adds `archivoDte`, `resumen` and, when a row cannot be read, `dteError`; see [archivo-dte.md](archivo-dte.md#listing-documents-with-their-dte). |
 | `invalidate(generationCode, request, options?)` | Generation code, `InvalidationRequest`, optional call options → `InvalidationResult` | `issue`; `signKey` required | `POST /v1/dte/{codigoGeneracion}/invalidate`; irreversible fiscal action. POST retry uses the same idempotency key. |
 | `registerReturn(generationCode, request, options?)` | Generation code of the document, `ReturnRequest` (`items` with `linea` from 1 and `cantidad` or `noGravado`, optional `fechaEvento`), optional call options → `ReturnResult` | `issue`; `signKey` required | `POST /v1/dte/{codigoGeneracion}/return`; irreversible once sealed, spends no control number, and many returns may be registered until they add up to what was sold (`disponible` says what is left). A 202 (`estado: "firmado"`) means Hacienda did not answer: repeat with the SAME `idempotencyKey` and request to resend the same signed event. Refusals are codes: `return_exceeds_available` (with `details.lineas`), `return_window_closed`, `return_type_not_allowed`; `invalidate` on a returned document is `has_return_events` (409). Local input checks throw `TypeError`/`RangeError` before sending. |
 | `invalidateAndArchive(generationCode, request, options)` | Generation code, request, `{ archive, operationId, idempotencyKey, signal? }` → `InvalidationArchiveResult` | `issue`; `signKey` required when sending | Writes an encrypted command journal before sending, reuses the same key after an interrupted response, and retains the returned event JWS. `archive.state` is separate from fiscal success. |
@@ -129,7 +171,7 @@ Spanish field names and enum values from the wire contract.
 | `getStorageStatus(options?)` | Optional `{ signal? }` → `ManagedStorageStatus` | `download` | Checks capability v1, managed coverage/quota/integration, and verified BYOS readiness for the key's issuer/environment. Old servers (404/501) become `storage_unsupported`; malformed present responses fail as `storage_contract_invalid`. |
 | `getDocumentCopies(options?)` | Optional `{ generationCode?, signal? }` → `ManagedDocumentCopy[]` | `download` | Lists only managed JSON/PDF receipts for the authenticated issuer/environment. Includes pending/failed states; never returns object paths or signed URLs. |
 | `retryDocumentStorage(generationCode, options?)` | UUID and optional `{ signal? }` → `ManagedStorageReceipt` | `download` + `issue` | Repairs stored bytes for an already sealed DTE. It never calls `issue`, reserves a fiscal number, or accepts replacement content; errors when the API cannot recover originals. |
-| `downloadDocument(generationCode, kind="json", options?)` | `kind`: `json`, `pdf`, or `ticket`; optional `{ paperWidthMm?, signal? }` → `DownloadedDocument` | `download` | Returns exact server bytes, content type, and suggested filename. `storageSource` identifies managed, holding, or archive retrieval when the server reports it. Ticket is regenerated from an already sealed API-issued document without another DTE; documents issued in the web app are not available through this regeneration route. `paperWidthMm` applies only to ticket and must be an integer from 40 to 120; default is 80. |
+| `downloadDocument(generationCode, kind="json", options?)` | `kind`: `json`, `pdf`, or `ticket`; optional `{ paperWidthMm?, raw?, source?, signal? }` → `DownloadedDocument` | `download` | Returns exact server bytes, content type, and suggested filename. **JSON is the Archivo DTE by default** (document + `firmaElectronica` + `selloRecibido`) and `jsonFormat` reports `archivo-dte` or `raw` from `X-Facta-Json-Format`; `raw: true` (JSON only) returns the stored original `{codigoGeneracion, ambiente, jws}`. A document with no seal (contingency) answers `409 not_sealed`; retry with `raw: true`. `storageSource` identifies managed, holding, or archive retrieval when the server reports it. Ticket is regenerated from an already sealed API-issued document without another DTE; documents issued in the web app are not available through this regeneration route. `paperWidthMm` applies only to ticket and must be an integer from 40 to 120; default is 80. |
 | `issueAndArchive(request, options)` | Requires stable `operationId` and `idempotencyKey`; archive and remote destinations may come from `runtime`, with per-call overrides; optional signal and `ticketPaperWidthMm=80` → `ArchiveEmissionResult` | `issue` + `download` (ticket and recovery); `signKey` for issuance; `unlockKey` only when resolving catalog references | Verifies local archive readiness before reserving a number, records a restart-safe journal, and stores the exact server-returned signed JSON and PDF bytes without fetching them again. It derives the JWS from that JSON and downloads only the optional receipt ticket. Older API responses fall back to artifact downloads. Inspect `result.archive.state` separately from fiscal success; archive failure does not undo an issued DTE. Remote copy outcomes are separate. With `unlockKey` and a published snapshot it also replicates to the synced destinations (canonical `DTE/…` paths) unless `replicate: false` or `remoteDestinations` is given, reports verified copies to Facta when the server advertises `byosCopyReport`, and returns non-throwing `warnings` (`byos_not_replicated`, `copy_report_failed`). See [storage adapters](storage-adapters.md#where-documents-go-each-mode). |
 | `recoverOperation(operationId, options?)` | Journal ID and optional `{ request?, archive?, signal?, remoteDestinations?, replicate? }` → `ArchiveEmissionResult` | `issue` and possibly `download`; signing key needed only if the saved operation was never confirmed | Uses the encrypted request snapshot when available and verifies its fingerprint; accepts `request` for legacy journals without a saved snapshot. Reuses the saved idempotency key. Verifies API endpoint, key identity, issuer, and environment before any fiscal request. Expired or mismatched operations stop for manual reconciliation. Also retries unconfirmed BYOS copies and unsent copy reports. |
 | `listPendingOperations(archive?)` | Optional archive override → `PendingArchiveOperation[]` | No Facta scope; requires a ready local archive | Lists local operations that still need archive completion or remote-copy reconciliation. Returns an allow-listed summary without the stored fiscal request. Journal contents are encrypted by the archive adapter. |
@@ -151,6 +193,10 @@ ambiguous outcome. The built-in destination adapters are documented in
 [`storage-adapters.md`](storage-adapters.md). Delivery by e-mail and WhatsApp is done by the API, not
 the SDK: mark channels with `issue(…, { deliver })` and start them with
 `deliverEmail` / `deliverWhatsApp` (see above).
+
+## The sealed result and the Archivo DTE
+
+`SealedDte.archivoDte?: string` is the exact UTF-8 Archivo DTE: the signed document plus `firmaElectronica` and `selloRecibido`. It is absent in contingency and on API servers that predate it. `archivoDteOf(result)` returns it, or builds the same bytes from `documento`, `jws` and `selloRecibido` (two-space pretty print, document keys first), or `null` when there is no seal. `archivoJson` and `jws` are unchanged. `FactaErrorCode` gains `not_sealed` (HTTP 409): the JSON download of an unsealed document.
 
 ## Types and deeper references
 

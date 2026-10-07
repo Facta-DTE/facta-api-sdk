@@ -27,7 +27,7 @@ Deno.test("print forwards one immutable-by-copy PDF job to the selected transpor
     },
   };
   const original = ticket();
-  const result = await new Facta({ apiKey: "facta_test_a.bbbbbbbbbbbbbbbb" })
+  const result = await new Facta({ region: false, apiKey: "facta_test_a.bbbbbbbbbbbbbbbb" })
     .print(original, transport);
   assertEquals(calls, 1);
   assertEquals(result, {
@@ -42,7 +42,7 @@ Deno.test("print forwards one immutable-by-copy PDF job to the selected transpor
 
 Deno.test("an uncertain printer acknowledgement is returned as unknown without retry", async () => {
   let calls = 0;
-  const result = await new Facta({ apiKey: "facta_test_a.bbbbbbbbbbbbbbbb" })
+  const result = await new Facta({ region: false, apiKey: "facta_test_a.bbbbbbbbbbbbbbbb" })
     .print(ticket(), {
       id: "network-printer",
       submit: async () => {
@@ -56,7 +56,7 @@ Deno.test("an uncertain printer acknowledgement is returned as unknown without r
 });
 
 Deno.test("print rejects JSON, empty PDFs, invalid tickets, and empty adapter IDs", async () => {
-  const facta = new Facta({ apiKey: "facta_test_a.bbbbbbbbbbbbbbbb" });
+  const facta = new Facta({ region: false, apiKey: "facta_test_a.bbbbbbbbbbbbbbbb" });
   const transport: PrintTransport = { id: "printer", submit: async () => ({ state: "submitted" }) };
   await assertRejects(() => facta.print({ ...ticket(), kind: "json", contentType: "application/json" }, transport), TypeError);
   await assertRejects(() => facta.print({ ...ticket(), bytes: new Uint8Array() }, transport), TypeError);
@@ -71,7 +71,7 @@ Deno.test("runtime config supplies the default print transport", async () => {
     id: "configured-printer",
     submit: async () => { submitted += 1; return { state: "submitted" }; },
   };
-  const facta = new Facta({
+  const facta = new Facta({ region: false,
     apiKey: "facta_test_a.bbbbbbbbbbbbbbbb",
     runtime: { version: 1, printTransport: transport },
   });

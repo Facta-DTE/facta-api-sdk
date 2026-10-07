@@ -15,6 +15,7 @@ import {
   allowedDownloadKinds,
   type FactaCapabilities,
   type FactaDownloadKind,
+  type FactaCatalogWriteAction,
   type FactaReadAction,
   type FactaServiceState,
   projectCopies,
@@ -41,6 +42,12 @@ export type FactaDataLike = Partial<
     | "getCustomer"
     | "searchProducts"
     | "getProduct"
+    | "createCustomer"
+    | "updateCustomer"
+    | "deactivateCustomer"
+    | "createProduct"
+    | "updateProduct"
+    | "deactivateProduct"
     | "status"
     | "diagnose"
     | "getStorageStatus"
@@ -142,7 +149,11 @@ export function createDataActions(options: DataActionOptions) {
       if (typeof body.tipoDte !== "string" || !DTE_TYPES.includes(body.tipoDte)) bad("tipoDte is not valid.");
       filters.tipoDte = body.tipoDte as DteType;
     }
-    filters.limit = limitOf(body.limit, 25, 100);
+    if (body.include !== undefined) {
+      if (!Array.isArray(body.include) || body.include.length !== 1 || body.include[0] !== "dte") bad('include must be ["dte"].');
+      filters.include = ["dte"];
+    }
+    filters.limit = filters.include ? limitOf(body.limit, 20, 25) : limitOf(body.limit, 25, 100);
     if (body.cursor !== undefined) {
       if (typeof body.cursor !== "string" || body.cursor.length > 512) bad("cursor is not valid.");
       filters.cursor = body.cursor;
@@ -162,7 +173,14 @@ export function createDataActions(options: DataActionOptions) {
       throw new DataActionError("action_not_allowed", "This kind of file is not available.", 403);
     }
     const cg = code(body.codigoGeneracion);
-    const callOptions: { paperWidthMm?: number } = {};
+    const callOptions: { paperWidthMm?: number; raw?: boolean } = {};
+    if (body.raw !== undefined) {
+      if (kind !== "json" || typeof body.raw !== "boolean") bad("raw is only valid for json, as a boolean.");
+      if (body.raw && capabilities.rawJson !== true) {
+        throw new DataActionError("action_not_allowed", "The original JSON is not available.", 403);
+      }
+      if (body.raw) callOptions.raw = true;
+    }
     if (body.paperWidthMm !== undefined) {
       if (kind !== "ticket" || typeof body.paperWidthMm !== "number" || !Number.isInteger(body.paperWidthMm) || body.paperWidthMm < 40 || body.paperWidthMm > 120) {
         bad("paperWidthMm is only valid for tickets, from 40 to 120.");
@@ -182,6 +200,7 @@ export function createDataActions(options: DataActionOptions) {
         contentType: CONTENT_TYPES[kind],
         bytes: file.bytes.length,
         base64: toBase64(file.bytes),
+        ...(kind === "json" && file.jsonFormat !== undefined ? { jsonFormat: file.jsonFormat } : {}),
       },
     };
   }
@@ -247,7 +266,49 @@ export function createDataActions(options: DataActionOptions) {
     "storage.status": async () => ({ storage: projectStorageStatus(await need(facta, "getStorageStatus").call(facta)) }),
   };
 
+  const KEY = /^[\w.:-]{8,128}$/;
+
+  /** An optional caller-chosen idempotency key for a create; anything else is rejected, not ignored. */
+  function writeOptions(body: Record<string, unknown>, create: boolean): { idempotencyKey?: string } {
+    if (body.idempotencyKey === undefined) return {};
+    if (!create) bad("idempotencyKey only applies to create.");
+    if (typeof body.idempotencyKey !== "string" || !KEY.test(body.idempotencyKey)) bad("idempotencyKey is not valid.");
+    return { idempotencyKey: body.idempotencyKey };
+  }
+
+  function inputOf(body: Record<string, unknown>): Record<string, unknown> {
+    const input = body.input;
+    if (typeof input !== "object" || input === null || Array.isArray(input)) bad("input must be an object.");
+    return input as Record<string, unknown>;
+  }
+
+  /** Errors the SDK throws on its own (bad data) are the browser's to fix; the rest pass through as FactaError. */
+  const writers: Record<FactaCatalogWriteAction, (body: Record<string, unknown>) => Promise<Record<string, unknown>>> = {
+    "catalog.customers.create": async (body) => ({
+      item: projectCustomer(await need(facta, "createCustomer").call(facta, inputOf(body), writeOptions(body, true)), view),
+    }),
+    "catalog.customers.update": async (body) => ({
+      item: projectCustomer(await need(facta, "updateCustomer").call(facta, text(body.id, "id", 100), inputOf(body), writeOptions(body, false)), view),
+    }),
+    "catalog.customers.deactivate": async (body) => ({
+      item: projectCustomer(await need(facta, "deactivateCustomer").call(facta, text(body.id, "id", 100), writeOptions(body, false)), view),
+    }),
+    "catalog.products.create": async (body) => ({
+      item: projectProduct(await need(facta, "createProduct").call(facta, inputOf(body), writeOptions(body, true))),
+    }),
+    "catalog.products.update": async (body) => ({
+      item: projectProduct(await need(facta, "updateProduct").call(facta, text(body.id, "id", 100), inputOf(body), writeOptions(body, false))),
+    }),
+    "catalog.products.deactivate": async (body) => ({
+      item: projectProduct(await need(facta, "deactivateProduct").call(facta, text(body.id, "id", 100), writeOptions(body, false))),
+    }),
+  };
+
   return {
+    write(action: FactaCatalogWriteAction, body: Record<string, unknown>) {
+      return writers[action](body);
+    },
+
     read(action: FactaReadAction, body: Record<string, unknown>, forced: Partial<ListDocumentsFilters> = {}) {
       return readers[action](body, forced);
     },

@@ -243,7 +243,7 @@ Deno.test("archive readiness fails before a control number can be reserved", asy
   const archive = new MemoryArchive();
   archive.ready = false;
   const { fetch, calls } = transport();
-  const facta = new Facta({ apiKey: "facta_test_x.secret", fetch });
+  const facta = new Facta({ region: false, apiKey: "facta_test_x.secret", fetch });
   await assertRejects(() =>
     facta.issueAndArchive(request, {
       archive,
@@ -258,7 +258,7 @@ Deno.test("archive readiness fails before a control number can be reserved", asy
 Deno.test("runtime archive defaults store exact JSON/PDF/JWS/ticket bytes after issuance", async () => {
   const archive = new MemoryArchive();
   const { fetch, calls } = transport();
-  const facta = new Facta({ apiKey: "facta_test_x.secret", fetch, runtime: { version: 1, archive } });
+  const facta = new Facta({ region: false, apiKey: "facta_test_x.secret", fetch, runtime: { version: 1, archive } });
   const result = await facta.issueAndArchive(request, {
     operationId: "sale-2",
     idempotencyKey: "sale-2",
@@ -279,11 +279,32 @@ Deno.test("runtime archive defaults store exact JSON/PDF/JWS/ticket bytes after 
   assertEquals(calls.find((call) => call.url.includes("kind=ticket"))?.url.endsWith("kind=ticket&paperWidthMm=80"), true);
 });
 
+Deno.test("issueAndArchive sends `deliver` as `entrega` and returns the delivery offer", async () => {
+  const archive = new MemoryArchive();
+  const offer = { token: "delivery-token", venceEn: "2026-09-30T12:05:00Z", canales: { correo: { estado: "pendiente" as const } } };
+  const { fetch: inner } = transport(200, 200, { ...issuance, entrega: offer });
+  const bodies: unknown[] = [];
+  const fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input).endsWith("/v1/dte") && init?.method === "POST") bodies.push(JSON.parse(String(init.body)));
+    return inner(input, init);
+  }) as typeof globalThis.fetch;
+  const facta = new Facta({ region: false, apiKey: "facta_test_x.secret", fetch, runtime: { version: 1, archive } });
+  const result = await facta.issueAndArchive(request, {
+    operationId: "sale-deliver",
+    idempotencyKey: "sale-deliver",
+    deliver: { email: "buyer@example.com" },
+  });
+  assertEquals((bodies[0] as { entrega?: unknown }).entrega, { correo: "buyer@example.com" });
+  assertEquals((archive.operation?.request as { entrega?: unknown }).entrega, { correo: "buyer@example.com" });
+  assertEquals(result.entrega?.token, "delivery-token");
+  assertEquals(result.entrega, result.emission?.entrega);
+});
+
 Deno.test("old API responses fall back to JSON/PDF downloads when inline files are unavailable", async () => {
   const archive = new MemoryArchive();
   const oldResponse = { ...issuance, archivoJson: undefined, representacionGrafica: undefined };
   const { fetch, calls } = transport(200, 200, oldResponse);
-  const facta = new Facta({ apiKey: "facta_test_x.secret", fetch, runtime: { version: 1, archive } });
+  const facta = new Facta({ region: false, apiKey: "facta_test_x.secret", fetch, runtime: { version: 1, archive } });
   const result = await facta.issueAndArchive(request, {
     operationId: "sale-old-server",
     idempotencyKey: "sale-old-server",
@@ -310,7 +331,7 @@ Deno.test("contingency archives the server-signed JSON without requesting a PDF 
     archivoJson: issuance.archivoJson,
   } as const;
   const { fetch, calls } = transport(404, 404, contingency);
-  const facta = new Facta({ apiKey: "facta_test_x.secret", fetch });
+  const facta = new Facta({ region: false, apiKey: "facta_test_x.secret", fetch });
   const result = await facta.issueAndArchive(request, {
     archive,
     operationId: "sale-contingency",
@@ -341,7 +362,7 @@ Deno.test("remote writes are idempotent, persisted per artifact, and reconciled 
     },
     check: async () => "missing" as const,
   };
-  const facta = new Facta({
+  const facta = new Facta({ region: false,
     apiKey: "facta_test_x.secret",
     fetch,
     runtime: { version: 1, archive, remoteDestinations: [destination] },
@@ -372,7 +393,7 @@ Deno.test("remote writes are idempotent, persisted per artifact, and reconciled 
 Deno.test("cancelling remote replication journals an ambiguous artifact and stops the batch", async () => {
   const archive = new MemoryArchive();
   const { fetch } = transport();
-  const facta = new Facta({ apiKey: "facta_test_x.secret", fetch });
+  const facta = new Facta({ region: false, apiKey: "facta_test_x.secret", fetch });
   await facta.issueAndArchive(request, {
     archive,
     operationId: "sale-cancel-remote",
@@ -400,7 +421,7 @@ Deno.test("cancelling remote replication journals an ambiguous artifact and stop
 Deno.test("remote destination diagnostics read existing artifacts without writing or changing the journal", async () => {
   const archive = new MemoryArchive();
   const { fetch } = transport();
-  const facta = new Facta({ apiKey: "facta_test_x.secret", fetch });
+  const facta = new Facta({ region: false, apiKey: "facta_test_x.secret", fetch });
   await facta.issueAndArchive(request, {
     archive,
     operationId: "sale-probe",
@@ -453,7 +474,7 @@ Deno.test("remote destination diagnostics read existing artifacts without writin
 Deno.test("PDF failure is reported as issued with archive attention, not as an issuance failure", async () => {
   const archive = new MemoryArchive();
   const { fetch } = transport(404, 200, { ...issuance, representacionGrafica: null });
-  const facta = new Facta({ apiKey: "facta_test_x.secret", fetch });
+  const facta = new Facta({ region: false, apiKey: "facta_test_x.secret", fetch });
   const result = await facta.issueAndArchive(request, {
     archive,
     operationId: "sale-3",
@@ -468,7 +489,7 @@ Deno.test("PDF failure is reported as issued with archive attention, not as an i
 Deno.test("ticket failure preserves fiscal success and leaves the requested archive incomplete", async () => {
   const archive = new MemoryArchive();
   const { fetch } = transport(200, 503);
-  const facta = new Facta({ apiKey: "facta_test_x.secret", fetch });
+  const facta = new Facta({ region: false, apiKey: "facta_test_x.secret", fetch });
   const result = await facta.issueAndArchive(request, {
     archive,
     operationId: "sale-ticket-failure",
@@ -502,7 +523,7 @@ Deno.test("restart recovery reuses the saved idempotency key", async () => {
     (byte) => byte.toString(16).padStart(2, "0"),
   ).join("");
   const { fetch, calls } = transport();
-  const facta = new Facta({ apiKey: "facta_test_x.secret", fetch });
+  const facta = new Facta({ region: false, apiKey: "facta_test_x.secret", fetch });
   const result = await facta.recoverOperation("sale-4", { request, archive });
   assertEquals(result.archive.state, "complete");
   assertEquals(calls.find((call) => call.key)?.key, "same-key");
@@ -536,7 +557,7 @@ Deno.test("encrypted request snapshot enables recovery and pending listing by op
     }],
   });
   const { fetch, calls } = transport();
-  const facta = new Facta({ apiKey: "facta_test_x.secret", fetch, runtime: { version: 1, archive } });
+  const facta = new Facta({ region: false, apiKey: "facta_test_x.secret", fetch, runtime: { version: 1, archive } });
 
   const pending = await facta.listPendingOperations();
   assertEquals(pending.map((operation) => operation.id), ["sale-request-snapshot"]);
@@ -573,7 +594,7 @@ Deno.test("recovery with a saved generation code checks status and downloads wit
     (byte) => byte.toString(16).padStart(2, "0"),
   ).join("");
   const { fetch, calls } = transport();
-  const facta = new Facta({ apiKey: "facta_test_x.secret", fetch });
+  const facta = new Facta({ region: false, apiKey: "facta_test_x.secret", fetch });
   const result = await facta.recoverOperation("sale-5", { request, archive });
   assertEquals(result.emission, undefined);
   assertEquals(result.archive.state, "complete");
@@ -607,7 +628,7 @@ Deno.test("an expired unconfirmed operation stops instead of risking a duplicate
     (byte) => byte.toString(16).padStart(2, "0"),
   ).join("");
   const { fetch, calls } = transport();
-  const facta = new Facta({ apiKey: "facta_test_x.secret", fetch });
+  const facta = new Facta({ region: false, apiKey: "facta_test_x.secret", fetch });
   await assertRejects(
     () => facta.recoverOperation("sale-6", { request, archive }),
     Error,
@@ -629,7 +650,7 @@ Deno.test("archive recovery is bound to the endpoint and authenticated key ident
     state: "started",
   });
   const calls: Array<{ method: string; url: string }> = [];
-  const facta = new Facta({
+  const facta = new Facta({ region: false,
     apiKey: "facta_test_y.secret",
     baseUrl: "https://other.example/api-v1",
     fetch: (async (input, init) => {
@@ -659,7 +680,7 @@ Deno.test("legacy journals without identity remain inspectable but cannot be rep
     state: "started",
   };
   const { fetch, calls } = transport();
-  const facta = new Facta({ apiKey: "facta_test_x.secret", fetch });
+  const facta = new Facta({ region: false, apiKey: "facta_test_x.secret", fetch });
   assertEquals((await facta.listPendingOperations(archive))[0]?.id, "legacy-operation");
   const error = await assertRejects(() => facta.recoverOperation("legacy-operation", { request, archive }), FactaError);
   assertEquals(error.code, "archive_integrity_error");
@@ -669,7 +690,7 @@ Deno.test("legacy journals without identity remain inspectable but cannot be rep
 Deno.test("partial archive recovery reuses the exact saved PDF and downloads only a missing ticket", async () => {
   const archive = new MemoryArchive();
   const first = transport(200, 500);
-  const facta = new Facta({ apiKey: "facta_test_x.secret", fetch: first.fetch });
+  const facta = new Facta({ region: false, apiKey: "facta_test_x.secret", fetch: first.fetch });
   const initial = await facta.issueAndArchive(request, {
     archive,
     operationId: "partial-artifacts",
@@ -679,7 +700,7 @@ Deno.test("partial archive recovery reuses the exact saved PDF and downloads onl
   const originalPdf = archive.artifacts.find((artifact) => artifact.kind === "pdf")!.bytes;
 
   const recovery = transport(500, 200);
-  const resumed = new Facta({ apiKey: "facta_test_x.secret", fetch: recovery.fetch });
+  const resumed = new Facta({ region: false, apiKey: "facta_test_x.secret", fetch: recovery.fetch });
   const result = await resumed.recoverOperation("partial-artifacts", { request, archive });
   assertEquals(result.archive.state, "complete");
   assertEquals(recovery.calls.some((call) => call.url.includes("kind=pdf")), false);
@@ -1045,7 +1066,7 @@ Deno.test("invalidation recovery reuses its key and encrypts the exact event JWS
   const directory = await Deno.makeTempDir({ prefix: "facta-invalidation-archive-test-" });
   const passphrase = "unique-invalidation-secret-7pQ3vN8mC5xR2kL9dA4s";
   const archive = await FileInvoiceArchive.open({ directory, passphrase });
-  const first = new Facta({
+  const first = new Facta({ region: false,
     apiKey: "facta_test_a.bbbbbbbbbbbbbbbb",
     signKey: "factask_signing-secret",
     maxRetries: 0,
@@ -1082,7 +1103,7 @@ Deno.test("invalidation recovery reuses its key and encrypts the exact event JWS
 
     const restartedArchive = await FileInvoiceArchive.open({ directory, passphrase });
     let replayedKey: string | null = null;
-    const restartedFacta = new Facta({
+    const restartedFacta = new Facta({ region: false,
       apiKey: "facta_test_a.bbbbbbbbbbbbbbbb",
       signKey: "factask_signing-secret",
       maxRetries: 0,
@@ -1123,7 +1144,7 @@ Deno.test("invalidation recovery reuses its key and encrypts the exact event JWS
 Deno.test("sparse already-invalidated response and expired event recovery never resend", async () => {
   const archive = new MemoryInvalidationArchive();
   let requests = 0;
-  const facta = new Facta({
+  const facta = new Facta({ region: false,
     apiKey: "facta_test_a.bbbbbbbbbbbbbbbb",
     signKey: "factask_signing-secret",
     maxRetries: 0,
@@ -1176,7 +1197,7 @@ Deno.test("sparse already-invalidated response and expired event recovery never 
 
 Deno.test("invalidation archive refuses a response for a different target document", async () => {
   const archive = new MemoryInvalidationArchive();
-  const facta = new Facta({
+  const facta = new Facta({ region: false,
     apiKey: "facta_test_a.bbbbbbbbbbbbbbbb",
     signKey: "factask_signing-secret",
     maxRetries: 0,
@@ -1202,7 +1223,7 @@ Deno.test("invalidation archive refuses a response for a different target docume
 Deno.test("inline archival can explicitly omit the unsupported optional ticket and recover that choice", async () => {
   const archive = new MemoryArchive();
   const { fetch, calls } = transport();
-  const facta = new Facta({ apiKey: "facta_test_x.secret", fetch, runtime: { version: 1, archive }, config: { version: 1, ticketPaperWidthMm: 58 } });
+  const facta = new Facta({ region: false, apiKey: "facta_test_x.secret", fetch, runtime: { version: 1, archive }, config: { version: 1, ticketPaperWidthMm: 58 } });
   const result = await facta.issueAndArchive(request, { operationId: "no-ticket", idempotencyKey: "no-ticket", includeTicket: false });
   assertEquals(result.archive.state, "complete");
   assertEquals(archive.operation?.ticketPaperWidthMm, undefined);
@@ -1216,7 +1237,7 @@ Deno.test("inline archival can explicitly omit the unsupported optional ticket a
 Deno.test("ticket opt-out rejects an explicit width before any request", async () => {
   const archive = new MemoryArchive();
   const { fetch, calls } = transport();
-  const facta = new Facta({ apiKey: "facta_test_x.secret", fetch, clock: false });
+  const facta = new Facta({ region: false, apiKey: "facta_test_x.secret", fetch, clock: false });
   await assertRejects(() => facta.issueAndArchive(request, {
     archive, operationId: "conflict", idempotencyKey: "conflict", includeTicket: false, ticketPaperWidthMm: 58,
   }), TypeError, "ticketPaperWidthMm cannot be supplied");
@@ -1240,7 +1261,7 @@ Deno.test("managed pending receipts survive encrypted restart and repair without
   }) as typeof globalThis.fetch;
   try {
     const archive = await FileInvoiceArchive.open({ directory, passphrase: "test-managed-storage-archive-secret" });
-    const facta = new Facta({ apiKey: "facta_test_x.secret", fetch });
+    const facta = new Facta({ region: false, apiKey: "facta_test_x.secret", fetch });
     const issued = await facta.issueAndArchive(request, { operationId: "managed", idempotencyKey: "managed", archive, includeTicket: false });
     assertEquals(issued.archive.state, "complete");
     assertEquals((await archive.pending()).length, 1);
@@ -1264,7 +1285,7 @@ Deno.test("malformed storage receipt stays observable while exact inline archiva
   const base = transport(200, 200, { ...issuance, storage: { malformed: true } });
   try {
     const archive = await FileInvoiceArchive.open({ directory, passphrase: "test-managed-storage-archive-secret" });
-    const facta = new Facta({ apiKey: "facta_test_x.secret", fetch: base.fetch });
+    const facta = new Facta({ region: false, apiKey: "facta_test_x.secret", fetch: base.fetch });
     const result = await facta.issueAndArchive(request, { operationId: "invalid-storage", idempotencyKey: "invalid-storage", archive, includeTicket: false });
     assertEquals(result.emission?.estado, "sellado");
     assertEquals(result.storageErrorCode, "storage_contract_invalid");

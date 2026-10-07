@@ -871,6 +871,8 @@
 /* Delivery rows reuse the «Copias» row (.facta-kv + .facta-storage + .facta-dot). */
 .facta-delivery-row { align-items: flex-start; }
 :where(.facta-storage--problem) .facta-dot { background: var(--facta-i-danger); }
+/* A sending limit (quota, provider outage) is a warning: the document is issued. */
+:where(.facta-storage--warn) .facta-dot { background: var(--facta-i-warning); }
 :where(.facta-root[data-facta-motion="full"] .facta-delivery-row .facta-storage--pending) .facta-dot { animation: facta-pulse 1.6s ease-in-out infinite; }
 
 /* =====================================================================

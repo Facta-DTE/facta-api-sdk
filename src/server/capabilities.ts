@@ -25,8 +25,20 @@ export interface FactaCapabilities {
   documents?: "read";
   /** `documents.download`: `true` allows PDF, JSON and ticket; an array narrows it. */
   downloads?: boolean | FactaDownloadKind[];
-  /** `catalog.customers.*` and `catalog.products.*` (needs `unlockKey` on the server). */
-  catalog?: "read";
+  /**
+   * `documents.download` of `json` may ask for the stored original (`raw`)
+   * instead of the Archivo DTE. Off by default: the buyer-facing file is the
+   * Archivo DTE. Needs `downloads` to allow `json`.
+   */
+  rawJson?: boolean;
+  /**
+   * `catalog.customers.*` and `catalog.products.*`. `"read"`: search and get (an encrypted
+   * catalog needs `unlockKey` on the server; a plain one does not). `"write"`: also create, update
+   * and deactivate, which needs a key with `catalog:write` and a company that enabled catalog
+   * administration from the API. Off by default; `"write"` also requires an `authorize` function,
+   * never `"session-only"`.
+   */
+  catalog?: "read" | "write";
   /** `service.status`. */
   status?: boolean;
   /** `storage.status`. */
@@ -52,15 +64,26 @@ export const READ_ACTIONS = [
   "storage.status",
 ] as const;
 
+/** Catalog mutations, behind `capabilities.catalog: "write"`. */
+export const CATALOG_WRITE_ACTIONS = [
+  "catalog.customers.create",
+  "catalog.customers.update",
+  "catalog.customers.deactivate",
+  "catalog.products.create",
+  "catalog.products.update",
+  "catalog.products.deactivate",
+] as const;
+
 export const INVALIDATION_ACTIONS = ["invalidate.describe", "invalidate"] as const;
 
 export type FactaReadAction = typeof READ_ACTIONS[number];
 export type FactaInvalidationAction = typeof INVALIDATION_ACTIONS[number];
+export type FactaCatalogWriteAction = typeof CATALOG_WRITE_ACTIONS[number];
 export type FactaIssuingAction = "session.describe" | "issue" | "status";
-export type FactaAction = FactaIssuingAction | FactaReadAction | FactaInvalidationAction;
+export type FactaAction = FactaIssuingAction | FactaReadAction | FactaInvalidationAction | FactaCatalogWriteAction;
 
 /** The capability that unlocks each non-issuing action. */
-export function allows(capabilities: FactaCapabilities, action: FactaReadAction | FactaInvalidationAction): boolean {
+export function allows(capabilities: FactaCapabilities, action: FactaReadAction | FactaInvalidationAction | FactaCatalogWriteAction): boolean {
   switch (action) {
     case "documents.list":
     case "documents.get":
@@ -75,7 +98,14 @@ export function allows(capabilities: FactaCapabilities, action: FactaReadAction 
     case "catalog.customers.get":
     case "catalog.products.search":
     case "catalog.products.get":
-      return capabilities.catalog === "read";
+      return capabilities.catalog === "read" || capabilities.catalog === "write";
+    case "catalog.customers.create":
+    case "catalog.customers.update":
+    case "catalog.customers.deactivate":
+    case "catalog.products.create":
+    case "catalog.products.update":
+    case "catalog.products.deactivate":
+      return capabilities.catalog === "write";
     case "service.status":
       return capabilities.status === true;
     case "storage.status":
@@ -97,15 +127,15 @@ export function validateCapabilities(value: unknown): FactaCapabilities {
     throw new TypeError("capabilities must be an object.");
   }
   const c = value as Record<string, unknown>;
-  const known = ["documents", "downloads", "catalog", "status", "storage", "retryStorage", "invalidate"];
+  const known = ["documents", "downloads", "catalog", "rawJson", "status", "storage", "retryStorage", "invalidate"];
   for (const key of Object.keys(c)) {
     if (!known.includes(key)) throw new TypeError(`Unknown capability "${key}".`);
   }
   if (c.documents !== undefined && c.documents !== "read") throw new TypeError('capabilities.documents must be "read".');
-  if (c.catalog !== undefined && c.catalog !== "read") throw new TypeError('capabilities.catalog must be "read".');
+  if (c.catalog !== undefined && c.catalog !== "read" && c.catalog !== "write") throw new TypeError('capabilities.catalog must be "read" or "write".');
   if (c.storage !== undefined && c.storage !== "read") throw new TypeError('capabilities.storage must be "read".');
   if (c.invalidate !== undefined && c.invalidate !== "session") throw new TypeError('capabilities.invalidate must be "session".');
-  for (const key of ["status", "retryStorage"]) {
+  for (const key of ["status", "retryStorage", "rawJson"]) {
     if (c[key] !== undefined && typeof c[key] !== "boolean") throw new TypeError(`capabilities.${key} must be a boolean.`);
   }
   if (c.downloads !== undefined) {
@@ -194,6 +224,29 @@ export function projectListed(doc: ListedDte, options: ProjectionOptions): Recor
     selloRecibido: doc.selloRecibido ?? null,
     totales: pickTotals(doc.totales) ?? null,
     ...(options.exposeRecipient ? { receptor: receptor ?? null } : {}),
+    ...(doc.resumen !== undefined ? { resumen: projectResumen(doc.resumen, options) } : {}),
+    ...(doc.dteError !== undefined
+      ? { dteError: { code: String(doc.dteError.code).slice(0, 64), message: String(doc.dteError.message).slice(0, 300) } }
+      : {}),
+  };
+}
+
+/** The summary of a document, with the receiver under the same exposure and masking as `receptor`. */
+function projectResumen(resumen: ListedDte["resumen"], options: ProjectionOptions): Record<string, unknown> | null {
+  if (resumen === null || resumen === undefined) return null;
+  const receptor = options.exposeRecipient && resumen.receptor
+    ? {
+      nombre: typeof resumen.receptor.nombre === "string" ? resumen.receptor.nombre.slice(0, 200) : null,
+      tipoDocumento: resumen.receptor.tipoDocumento,
+      numDocumento: maskDocumentNumber(resumen.receptor.numDocumento),
+    }
+    : null;
+  return {
+    ...(options.exposeRecipient ? { receptor } : {}),
+    lineas: resumen.lineas,
+    primeraDescripcion: typeof resumen.primeraDescripcion === "string" ? resumen.primeraDescripcion.slice(0, 200) : null,
+    totalIva: resumen.totalIva,
+    totalPagar: resumen.totalPagar,
   };
 }
 

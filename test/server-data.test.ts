@@ -339,3 +339,29 @@ Deno.test("maskDocumentNumber hides all but the edges", () => {
   assertEquals(maskDocumentNumber("123"), "•••••");
   assertEquals(maskDocumentNumber(null), null);
 });
+
+Deno.test("documents.download asks for the raw JSON only when the capability allows it", async () => {
+  const jsonFile = { bytes: new Uint8Array([123, 125]), filename: "a.json", contentType: "application/json", jsonFormat: "archivo-dte" };
+  const closed = make({}, { downloadDocument: (..._a: unknown[]) => Promise.resolve(jsonFile) });
+  const denied = await post(closed.handler, { action: "documents.download", codigoGeneracion: CG, kind: "json", raw: true });
+  assertEquals(denied.status, 403);
+  assertEquals((await denied.json()).error.code, "action_not_allowed");
+  assertEquals(closed.calls.some((c) => c.method === "downloadDocument"), false);
+  const normal = await ok(closed.handler, { action: "documents.download", codigoGeneracion: CG, kind: "json" });
+  assertEquals(normal.file.jsonFormat, "archivo-dte");
+  assertEquals((await post(closed.handler, { action: "documents.download", codigoGeneracion: CG, kind: "json", raw: false })).status, 200);
+
+  let seen: unknown;
+  const open = make({ capabilities: { ...ALL, rawJson: true } }, {
+    downloadDocument: (_cg: string, _kind: string, options: unknown) => { seen = options; return Promise.resolve({ ...jsonFile, jsonFormat: "raw" }); },
+  });
+  const raw = await ok(open.handler, { action: "documents.download", codigoGeneracion: CG, kind: "json", raw: true });
+  assertEquals(seen, { raw: true });
+  assertEquals(raw.file.jsonFormat, "raw");
+  assertEquals((await post(open.handler, { action: "documents.download", codigoGeneracion: CG, kind: "pdf", raw: true })).status, 400);
+  assertEquals((await post(open.handler, { action: "documents.download", codigoGeneracion: CG, kind: "json", raw: "yes" })).status, 400);
+});
+
+Deno.test("capabilities.rawJson must be a boolean", () => {
+  assertThrows(() => createFactaHandler({ facta: fake().facta, sessionSecret: SECRET, authorize: () => true, capabilities: { downloads: true, rawJson: "yes" } } as never), TypeError, "rawJson");
+});

@@ -3,8 +3,13 @@
 La llave de API recibe una instantánea cifrada de los clientes que tiene
 autorización para consultar y de los productos activos. `syncCatalog()` descarga
 y descifra en memoria la última instantánea publicada. No crea ni modifica
-registros en el servidor. Las altas y cambios de clientes y productos siguen
-gestionándose en la app de Facta y mediante el flujo de importación CSV.
+registros en el servidor. Las altas y cambios de clientes y productos se hacen
+en la app de Facta y mediante la importación CSV, o desde el API cuando la
+empresa guarda su catálogo en texto plano (vea la
+[guía de escritura](catalog-write.es.md)). `catalogMode` indica en cuál de los
+tres casos está: `encrypted` (esta guía), `readable` o `plain` (el SDK lee
+entonces por `GET /v1/customers` y `GET /v1/products` y no necesita
+`unlockKey`; los métodos de lectura conservan su firma).
 
 ## Vigencia
 

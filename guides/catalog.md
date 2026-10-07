@@ -5,7 +5,12 @@
 The API key receives an encrypted snapshot of the customers it is allowed to
 use and the active products. `syncCatalog()` downloads and decrypts the latest
 published snapshot in memory. It does not create or update server-side records.
-Customer and product writes remain in the Facta app and CSV import flow.
+Customer and product writes happen in the Facta app and CSV import flow, or from
+the API when the company keeps its catalog in plain text (see the
+[catalog write guide](catalog-write.md)). `catalogMode` tells you which situation
+you are in: `encrypted` (this guide), `readable` or `plain` (the SDK then reads
+through `GET /v1/customers` and `GET /v1/products` and needs no `unlockKey`; the
+read methods keep their signatures).
 
 ## Freshness
 

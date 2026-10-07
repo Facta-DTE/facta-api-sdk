@@ -16,6 +16,12 @@ Deno.test("method reference covers every public Facta client method", () => {
     "listProducts",
     "getProduct",
     "searchProducts",
+    "createCustomer",
+    "updateCustomer",
+    "deactivateCustomer",
+    "createProduct",
+    "updateProduct",
+    "deactivateProduct",
     "issue",
     "issueAndArchive",
     "recoverOperation",
@@ -54,7 +60,7 @@ Deno.test("method reference covers every public Facta client method", () => {
       `Expected the method reference to document ${method}`,
     );
   }
-  assert(publicMethods.length === 37, "Update the method coverage list with the public API");
+  assert(publicMethods.length === 43, "Update the method coverage list with the public API");
 });
 
 Deno.test("package Markdown links resolve to files or in-page anchors", async () => {
@@ -85,7 +91,25 @@ Deno.test("package Markdown links resolve to files or in-page anchors", async ()
 });
 
 Deno.test("runtime and catalog guides have equivalent Spanish and English structure", async () => {
-  for (const stem of ["catalog", "storage-adapters", "node", "deno"]) {
+  for (const stem of [
+    "catalog",
+    "catalog-write",
+    "storage-adapters",
+    "node",
+    "deno",
+    "emergency",
+    "archivo-dte",
+    "region",
+    "timings",
+    "delivery",
+    "idempotency",
+    "prepare-sign",
+    "return-event",
+    "reference-clock",
+    "diagnose",
+    "errors",
+    "browser",
+  ]) {
     const english = await Deno.readTextFile(`guides/${stem}.md`);
     const spanish = await Deno.readTextFile(`guides/${stem}.es.md`);
     const count = (text: string, pattern: RegExp) => [...text.matchAll(pattern)].length;
@@ -106,4 +130,31 @@ Deno.test("document listing describes recipient privacy and rejected lookup limi
   const row = reference.split("\n").find((line) => line.startsWith("| `listDocuments("));
   assert(row?.includes("private-mode encryption at rest does not hide these fields"));
   assert(row?.includes("Rejected reservations are queried by generation code"));
+});
+
+Deno.test("every guide in guides/ is linked from README.md", async () => {
+  const readme = await Deno.readTextFile("README.md");
+  const linked = new Set(
+    [...readme.matchAll(/\[[^\]]*\]\(([^)#?]+)[^)]*\)/g)].map(([, target]) => target.replace(/^\.\//, "")),
+  );
+  for await (const entry of Deno.readDir("guides")) {
+    if (!entry.isFile || !entry.name.endsWith(".md")) continue;
+    assert(linked.has(`guides/${entry.name}`), `README.md should link guides/${entry.name}`);
+  }
+});
+
+Deno.test("the error catalogue documents every FactaErrorCode in both languages", async () => {
+  const errorsSource = await Deno.readTextFile("src/errors.ts");
+  const union = errorsSource.slice(
+    errorsSource.indexOf("export type FactaErrorCode"),
+    errorsSource.indexOf("export interface SpentCorrelative"),
+  );
+  const codes = [...union.matchAll(/\|\s*"([a-z_]+)"/g)].map(([, code]) => code);
+  assert(codes.length > 40, "Expected to read the FactaErrorCode union");
+  for (const path of ["guides/errors.md", "guides/errors.es.md"]) {
+    const guide = await Deno.readTextFile(path);
+    for (const code of codes) {
+      assert(guide.includes("`" + code + "`"), `${path} should document ${code}`);
+    }
+  }
 });

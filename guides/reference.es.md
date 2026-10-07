@@ -47,6 +47,8 @@ const facta = new Facta({
 | `timeoutMs` | número, opcional, defecto 60000 | Plazo de la petición entera. El Ministerio puede tardar unos cuarenta segundos en contestar. |
 | `maxRetries` | número, opcional, defecto 3 | Cuántas veces reintentar las condiciones donde reintentar es seguro. |
 | `fetch` | función, opcional | Para inyectarlo en pruebas. |
+| `region` | cadena o `false`, opcional | Región de las funciones que se envía como `x-region`. Por defecto se descubre una sola vez en `/v1/status` (respaldo `us-west-2`); una cadena la fija y `false` la apaga. También `config.region` y `FACTA_API_REGION`. Un fallo al descubrirla nunca falla la operación. `await facta.region()` la devuelve; `facta.servedRegion` y `diagnose().servedRegion` dicen qué región atendió. |
+| `debug` | `{ timings?: boolean }`, opcional | Ayuda para depurar, apagada por defecto. Con `{ timings: true }` el cliente envía `X-Facta-Debug: timings`; el API devuelve el tiempo de cada paso y el SDK lo expone en `result.debug` (si el cuerpo no lo trae, lee el encabezado `Server-Timing`). Sin la bandera el API no agrega nada. También se puede pasar `debug` en las opciones de una sola llamada. No la deje encendida en producción. |
 
 `CallOptions` — el segundo argumento de los métodos que escriben:
 
@@ -225,12 +227,20 @@ const todoElCatalogoActivo = await facta.listProducts();
 
 | Método | Resultado y comportamiento |
 | --- | --- |
-| `listCustomers(options?)` | Devuelve los clientes del snapshot autorizado; `allowStale` es opt-in. |
+| `listCustomers(options?)` | Devuelve los clientes autorizados; `allowStale` es opt-in; `includeInactive` incluye los desactivados. Lee el snapshot (`encrypted`) o el API (`readable`, `plain`). |
 | `getCustomer(id, options?)` | Busca por ID y devuelve `null` si no existe en el snapshot. |
 | `searchCustomers(query, options?)` | Busca nombre, documento, NRC y correo; límite 1–500, 50 por defecto. |
 | `listProducts(options?)` | Devuelve productos activos; `includeInactive` los incluye todos. |
 | `getProduct(id, options?)` | Devuelve `null` si no existe o está inactivo. |
 | `searchProducts(query, options?)` | Busca descripción, código y código de barras de productos activos; límite 1–500, 50 por defecto. |
+| `createCustomer(input, options?)` | Crea un cliente (`name` obligatorio; DUI 9 dígitos, NIT 14, NRC 1–8). `idempotencyKey` evita duplicados al reintentar. Requiere `catalog:write` y catálogo en texto plano. |
+| `updateCustomer(id, changes, options?)` | Cambia solo los campos indicados (`PATCH`); `null` borra un campo opcional. |
+| `deactivateCustomer(id, options?)` | Desactiva al cliente (`DELETE`); no existe borrado definitivo. |
+| `createProduct(input, options?)` | Crea un producto (`description`, `item_type` 1/2/3 y `unit_price` obligatorios; el tipo nunca se supone). |
+| `updateProduct(id, changes, options?)` | Cambia solo los campos indicados. |
+| `deactivateProduct(id, options?)` | Desactiva el producto; los documentos ya emitidos no cambian. |
+
+Las lecturas eligen su camino según `catalogMode`, que el SDK aprende una vez de `/v1/status`: con `encrypted` descifran el snapshot con `unlockKey`; con `readable` o `plain` leen por el API y no necesitan `unlockKey`. Las escrituras se explican en la [guía de escritura del catálogo](catalog-write.es.md).
 
 Las búsquedas ignoran mayúsculas y acentos, y solo consultan los campos
 descargados en el snapshot local.
@@ -423,6 +433,11 @@ if (dte.estado === "sellado" && dte.entrega?.token) {
   mensajes de error.
 * `waitForDelivery(codigoGeneracion, { channels?, timeoutMs = 60000, intervalMs = 2000, signal? })`
   devuelve `settled: false` al agotar el tiempo en vez de lanzar.
+* `isDeliveryLimitReason(motivo)` (exportada de la raíz y de `/browser`) es
+  `true` para `quota_exceeded` y `provider_unavailable`: se alcanzó el límite
+  de envíos o el proveedor no respondió. El documento ya está emitido; trátelo
+  como un aviso, ofrezca el PDF o el JSON y reintente más tarde. Ni `issue` ni
+  `waitForDelivery` lanzan por estos motivos.
 
 ### `getDocumentStatus(generationCode)`
 
@@ -439,7 +454,7 @@ console.log(uno.estado);   // "rechazado", "sellado", "contingencia"…
 
 **No manda la llave de firma.** Devuelve `DtePage`.
 
-El libro de lo sellado, del más nuevo al más viejo, con filtros por fecha, estado y tipo. **La paginación es por cursor, no por página**: `?pagina=2` sobre una tabla que crece repite un documento y se salta otro. Un documento **rechazado no está aquí**. Si al reconciliar aparece un hueco en su numeración, pregunte por ese código con `getDocumentStatus`. Cada fila puede incluir el nombre y número de documento del receptor. En modo privado, la API abre esos campos para la llave autorizada: el cifrado en reposo no los oculta a la integración. Trata la respuesta como dato personal y evita copiarla a logs generales.
+El libro de lo sellado, del más nuevo al más viejo, con filtros por fecha, estado y tipo. **La paginación es por cursor, no por página**: `?pagina=2` sobre una tabla que crece repite un documento y se salta otro. Un documento **rechazado no está aquí**. Si al reconciliar aparece un hueco en su numeración, pregunte por ese código con `getDocumentStatus`. Cada fila puede incluir el nombre y número de documento del receptor. En modo privado, la API abre esos campos para la llave autorizada: el cifrado en reposo no los oculta a la integración. Trata la respuesta como dato personal y evita copiarla a logs generales. Con `include: ["dte"]` (alcance `download`; 20 filas por defecto, 25 como máximo) cada fila trae además `archivoDte`, `resumen` y, si no se pudo leer, `dteError`; vea [archivo-dte.es.md](archivo-dte.es.md#listar-documentos-con-su-dte).
 
 ```typescript
 let cursor: string | null = null;
@@ -543,7 +558,7 @@ fiscal antes de volver a actuar.
 
 **No manda la llave de firma.** Devuelve `DownloadedDocument`.
 
-Devuelve los bytes exactos de `json`, `pdf` o `ticket`, sin parsearlos ni volver a serializarlos. El tipo predeterminado es `json`; exige el alcance `download`. `storageSource` informa `managed`, `holding` o `archive` si el servidor identifica el origen. El ticket se genera desde un DTE ya sellado y admite `paperWidthMm` entero de 40 a 120 (80 por defecto), sin issue de nuevo. Esta regeneración está disponible para DTE emitidos por la API, no para los que se emitieron desde la app web. El área de retención dura una hora desde la firma, pero **pasada esa hora la ruta sigue contestando**: el documento se rearma desde la reserva, que guarda el JWS sellado.
+Devuelve los bytes exactos de `json`, `pdf` o `ticket`, sin parsearlos ni volver a serializarlos. El tipo predeterminado es `json`; exige el alcance `download`. **El JSON es el Archivo DTE por defecto** (documento + `firmaElectronica` + `selloRecibido`) y `jsonFormat` informa `archivo-dte` o `raw` según `X-Facta-Json-Format`; `raw: true` (solo JSON) devuelve el original guardado `{codigoGeneracion, ambiente, jws}`. Un documento sin sello (contingencia) contesta `409 not_sealed`; repita con `raw: true`. Un resultado sellado trae además `archivoDte`, y `archivoDteOf(resultado)` lo arma con `documento`, `jws` y `selloRecibido` cuando la API aún no lo envía. `storageSource` informa `managed`, `holding` o `archive` si el servidor identifica el origen. El ticket se genera desde un DTE ya sellado y admite `paperWidthMm` entero de 40 a 120 (80 por defecto), sin issue de nuevo. Esta regeneración está disponible para DTE emitidos por la API, no para los que se emitieron desde la app web. El área de retención dura una hora desde la firma, pero **pasada esa hora la ruta sigue contestando**: el documento se rearma desde la reserva, que guarda el JWS sellado.
 
 ```typescript
 const archivo = await facta.downloadDocument(dte.codigoGeneracion, "json");

@@ -1,9 +1,11 @@
 export {
   type CallOptions,
+  type DebugOptions,
   type DestinationSnapshot,
   Facta,
   type FactaArchiveEmissionOptions,
   type FactaConfigV1,
+  type FactaEmergencyApi,
   type FactaInvalidationArchiveOptions,
   type FactaOptions,
   type FactaRuntimeConfigV1,
@@ -36,12 +38,15 @@ export type {
   DiagnosticsReport,
   DiagnosticState,
 } from "./src/diagnostics.ts";
+export { DELIVERY_LIMIT_REASONS, isDeliveryLimitReason } from "./src/delivery.ts";
 export {
   FactaError,
   type FactaErrorCode,
   type SpentCorrelative,
 } from "./src/errors.ts";
 export type * from "./src/types.ts";
+export { type ArchivoDteSource, archivoDteOf } from "./src/archivo-dte.ts";
+export { type DteResumen, type DteResumenReceptor, summarizeArchivoDte } from "./src/archivo-dte-summary.ts";
 export {
   type PrintJob,
   type PrintJobState,
@@ -89,3 +94,14 @@ export {
   createBridgeArtifactDestination,
   type LocalBridgeArtifactConfig,
 } from "./src/bridge-artifact-destination.ts";
+export {
+  type EmergencyEvent,
+  type EmergencyFiles,
+  type EmergencyInfo,
+  type EmergencyReason,
+  type EmergencyReplication,
+  type EmergencyReport,
+  type EmergencyStoreFn,
+  type EmergencyTrigger,
+  emergencyWarningCodes,
+} from "./src/emergency.ts";

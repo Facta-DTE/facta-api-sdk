@@ -114,8 +114,19 @@ export interface CatalogSnapshot {
   products: CatalogProduct[];
 }
 
+/** How the key's company stores the catalog the API can see. */
+export type CatalogMode = "encrypted" | "readable" | "plain";
+
 /** Public synchronization facts for this process-local catalog cache. */
 export interface CatalogState {
+  /**
+   * How this key reaches the catalog, from `/v1/status`: `encrypted` (decrypt the key's snapshot
+   * with `unlockKey`), `readable` (the owner published a readable snapshot) or `plain` (the company
+   * catalog is stored unencrypted and is read and written through the API). `null` when the
+   * server did not say (older API) or status could not be read.
+   */
+  catalogMode: CatalogMode | null;
+  /** `plain` reads are always live, so they report `fresh`. */
   freshness: "fresh" | "stale" | "missing";
   localRevision: number | null;
   fetchedAt: string | null;
@@ -129,25 +140,141 @@ export interface CatalogState {
 /** Explicit opt-in for non-fiscal catalog reads from the last process-local snapshot. */
 export interface CatalogReadOptions {
   allowStale?: boolean;
+  /** Include deactivated records (`active: false`). Default false. */
+  includeInactive?: boolean;
+  /** Abort the read (only used when the catalog is read through the API). */
+  signal?: AbortSignal;
 }
 
-/** Decrypted customer fields shared with this API key. */
+/** Options of a catalog write. */
+export interface CatalogWriteOptions {
+  /** Create only: reuse the same key to make a retried create safe. One is minted when omitted. */
+  idempotencyKey?: string;
+  signal?: AbortSignal;
+}
+
+/**
+ * Fields of a customer you can create or change, with the names the public API uses.
+ * Numbers may be typed with dashes; the SDK sends digits only. The stored spellings
+ * (`name`, `doc_type`, `doc_number`, `activity_code`, `address`, `phone`, `email`)
+ * are still accepted and translated; do not mix both for the same field.
+ */
+export interface CustomerInput {
+  /** Required on create. */
+  nombre?: string;
+  /** Document type code: `36` NIT, `13` DUI, `37` other, `03` passport, `02` residence card. */
+  tipoDocumento?: string | null;
+  /** DUI: 9 digits. NIT: 14 digits. */
+  numDocumento?: string | null;
+  /** 1 to 8 digits. */
+  nrc?: string | null;
+  /** Economic activity code. */
+  codActividad?: string | null;
+  /** Department, municipality and district codes, plus the free-text line. */
+  direccion?: Address | null;
+  telefono?: string | null;
+  correo?: string | null;
+  /** @deprecated Use `nombre`. */
+  name?: string;
+  /** @deprecated Use `tipoDocumento`. */
+  doc_type?: string | null;
+  /** @deprecated Use `numDocumento`. */
+  doc_number?: string | null;
+  /** @deprecated Use `codActividad`. */
+  activity_code?: string | null;
+  /** @deprecated Use `direccion`. */
+  address?: Address | null;
+  /** @deprecated Use `telefono`. */
+  phone?: string | null;
+  /** @deprecated Use `correo`. */
+  email?: string | null;
+}
+
+/** VAT treatment of a product, spelled like `items[].tipoVenta`. */
+export type SaleType = "gravada" | "exenta" | "no_sujeta";
+
+/**
+ * Fields of a product you can create or change, with the names the public API uses
+ * (the same as an issuing line). The stored spellings (`description`, `item_type`,
+ * `unit_price`, `unit_of_measure`, `code`, `barcode`, `vat_included`) are still accepted.
+ */
+export interface ProductInput {
+  /** Required on create. */
+  descripcion?: string;
+  /** Required on create: `1` good, `2` service, `3` both. Never defaulted. */
+  tipoItem?: 1 | 2 | 3;
+  /** Required on create. Greater than zero. */
+  precioUni?: number;
+  /** Unit-of-measure code; the server uses 59 (unidad) when omitted. */
+  uniMedida?: number;
+  codigo?: string | null;
+  codigoBarras?: string | null;
+  /** Whether `precioUni` already includes VAT. Defaults to true. */
+  ivaIncluido?: boolean;
+  /** VAT treatment: taxed (default), exempt or non-subject. Chosen, never inferred. */
+  tipoVenta?: SaleType;
+  /** @deprecated Use `descripcion`. */
+  description?: string;
+  /** @deprecated Use `tipoItem`. */
+  item_type?: 1 | 2 | 3;
+  /** @deprecated Use `precioUni`. */
+  unit_price?: number;
+  /** @deprecated Use `uniMedida`. */
+  unit_of_measure?: number;
+  /** @deprecated Use `codigo`. */
+  code?: string | null;
+  /** @deprecated Use `codigoBarras`. */
+  barcode?: string | null;
+  /** @deprecated Use `ivaIncluido`. */
+  vat_included?: boolean;
+}
+
+/**
+ * A customer, as the API returns it (Ministry names) and as an encrypted snapshot holds it
+ * (stored names). Every record the SDK returns carries both spellings, so code written
+ * against either keeps working in every catalog mode.
+ */
 export interface CatalogCustomer {
   id: string;
+  nombre?: string | null;
+  tipoDocumento?: string | null;
+  numDocumento?: string | null;
+  nrc?: string | null;
+  codActividad?: string | null;
+  direccion?: Address | null;
+  telefono?: string | null;
+  correo?: string | null;
+  /** false once deactivated. */
+  activo?: boolean;
+  creadoEn?: string | null;
+  actualizadoEn?: string | null;
   name?: string | null;
   doc_type?: string | null;
   doc_number?: string | null;
-  nrc?: string | null;
   activity_code?: string | null;
   address?: Address | null;
   phone?: string | null;
   email?: string | null;
+  active?: boolean;
   [field: string]: unknown;
 }
 
-/** Decrypted product fields shared with this API key. */
+/** A product, with both spellings like `CatalogCustomer`. */
 export interface CatalogProduct {
   id: string;
+  codigo?: string | null;
+  codigoBarras?: string | null;
+  descripcion?: string | null;
+  tipoItem?: number | null;
+  uniMedida?: number | null;
+  precioUni?: number | null;
+  ivaIncluido?: boolean | null;
+  /** VAT treatment; a product that never chose one reads as `gravada`. */
+  tipoVenta?: SaleType;
+  /** The same treatment as `tipoVenta`, spelled as Facta stores it: `gravada`, `exenta` or `noSuj`. */
+  sale_class?: "gravada" | "exenta" | "noSuj";
+  activo?: boolean;
+  actualizadoEn?: string | null;
   code?: string | null;
   barcode?: string | null;
   description?: string | null;
@@ -159,11 +286,9 @@ export interface CatalogProduct {
   [field: string]: unknown;
 }
 
-export interface CatalogSearchOptions {
-  /** Maximum number of local matches. Defaults to 50; valid range is 1–500. */
+export interface CatalogSearchOptions extends CatalogReadOptions {
+  /** Maximum number of matches. Defaults to 50; valid range is 1–500. */
   limit?: number;
-  /** Permit the last process-local snapshot if status is unreachable or sync is pending. */
-  allowStale?: boolean;
 }
 
 /** Computed by the server. Read them; never recompute them. */
@@ -176,6 +301,28 @@ export interface Totals {
   montoTotalOperacion: number;
   totalPagar: number;
   totalLetras: string;
+}
+
+// --- Debug timings (a debugging aid, off by default) ----------------------------
+
+/** One measured step of the API's processing. */
+export interface DebugTiming {
+  step: string;
+  /** Duration of the step, milliseconds. */
+  ms: number;
+  /** Milliseconds from the start of the request to the start of the step. Absent when only `Server-Timing` was available. */
+  startedAtMs?: number;
+}
+
+/**
+ * Per-step processing times the API returns when the request carries
+ * `X-Facta-Debug: timings` (client option `debug: { timings: true }`). Never present otherwise.
+ * `source` says where the SDK read it from: the response body or the `Server-Timing` header.
+ */
+export interface DebugInfo {
+  timings: DebugTiming[];
+  totalMs: number;
+  source?: "body" | "server-timing";
 }
 
 export interface SealedDte {
@@ -196,6 +343,13 @@ export interface SealedDte {
   jws: string;
   /** Exact server-generated JSON archive contents; persist this verbatim. */
   archivoJson?: string;
+  /**
+   * The Archivo DTE for the receiver: the document plus `firmaElectronica` and
+   * `selloRecibido`, as exact UTF-8 text. Absent on API servers that predate it
+   * and in contingency; `archivoDteOf(result)` builds it from `documento`,
+   * `jws` and `selloRecibido` when the field is missing.
+   */
+  archivoDte?: string;
   /** Server-rendered PDF as base64, present after a successful seal. */
   representacionGrafica?: string | null;
   /** Facta-managed durable copies; absent on older API servers. */
@@ -204,6 +358,14 @@ export interface SealedDte {
   storageErrorCode?: "storage_contract_invalid";
   /** Present only when the request marked delivery channels (`deliver`). Carries the delivery token. */
   entrega?: DeliveryOffer;
+  /** Only with `debug: { timings: true }`. */
+  debug?: DebugInfo;
+  /** Server warnings (e.g. `sin_almacenamiento_duradero`); the emergency safeguard reads them. */
+  advertencias?: Array<string | { codigo?: string; code?: string; mensaje?: string; detalle?: string }>;
+  /** Present only when the emergency safeguard ran. */
+  emergency?: import("./emergency.ts").EmergencyReport;
+  /** SDK-side notices; `emergency_saved` / `emergency_failed`. */
+  sdkWarnings?: Array<{ code: "emergency_saved" | "emergency_failed"; detail: string }>;
 }
 
 export interface DteInContingency {
@@ -225,6 +387,14 @@ export interface DteInContingency {
   storageErrorCode?: "storage_contract_invalid";
   /** Channels are `esperando_sello` and there is NO token: delivery after contingency is not offered yet. */
   entrega?: DeliveryOffer;
+  /** Only with `debug: { timings: true }`. */
+  debug?: DebugInfo;
+  /** Server warnings (e.g. `sin_almacenamiento_duradero`); the emergency safeguard reads them. */
+  advertencias?: Array<string | { codigo?: string; code?: string; mensaje?: string; detalle?: string }>;
+  /** Present only when the emergency safeguard ran. */
+  emergency?: import("./emergency.ts").EmergencyReport;
+  /** SDK-side notices; `emergency_saved` / `emergency_failed`. */
+  sdkWarnings?: Array<{ code: "emergency_saved" | "emergency_failed"; detail: string }>;
 }
 
 export type IssueResult = SealedDte | DteInContingency;
@@ -297,6 +467,8 @@ export interface PreparedDte {
   totales: Totals;
   documento: Record<string, unknown>;
   prepareToken: string;
+  /** Only with `debug: { timings: true }`. */
+  debug?: DebugInfo;
 }
 
 export interface DocumentStatus {
@@ -331,6 +503,8 @@ export interface DocumentStatus {
    * app) or the document is no longer in force.
    */
   disponible?: ReturnAvailability[] | null;
+  /** Only with `debug: { timings: true }`. */
+  debug?: DebugInfo;
 }
 
 export interface ListDocumentsFilters {
@@ -340,6 +514,26 @@ export interface ListDocumentsFilters {
   tipoDte?: DteType;
   limit?: number;
   cursor?: string;
+  /**
+   * `["dte"]` adds the Archivo DTE (and a `resumen`) to every row, resolved in
+   * the same call. The page is 20 rows by default and 25 at most. Needs the
+   * `download` scope. Rows the API cannot open itself are completed locally with
+   * `unlockKey`; a row that still cannot be read carries `dteError`.
+   */
+  include?: Array<"dte">;
+}
+
+/** Why a row of `listDocuments({ include: ["dte"] })` has no `archivoDte`. */
+export interface ListedDteError {
+  /**
+   * `not_sealed` (contingency), `storage_unavailable`, `not_found`, `timeout`,
+   * `needs_local_decrypt` (only readable with `unlockKey`, which is not set or
+   * cannot reach the copy), `destinations_unavailable`, `destination_read_failed`.
+   */
+  code: string;
+  message: string;
+  /** Copies the SDK can read with `unlockKey` (`needs_local_decrypt`). */
+  destinos?: Array<{ id: string; rutaJson: string; verificada: boolean }>;
 }
 
 export interface ListedDte {
@@ -353,6 +547,12 @@ export interface ListedDte {
   totales?: { totalGravada?: number; totalIva?: number; totalPagar?: number };
   /** Null when this document’s receiver metadata cannot be opened by the API. */
   receptor?: { nombre?: string | null; numDocumento?: string | null } | null;
+  /** Only with `include: ["dte"]`: the Archivo DTE, same text as `downloadDocument(code, "json")`. */
+  archivoDte?: string;
+  /** Only with `archivoDte`: `summarizeArchivoDte(archivoDte)`. The receiver comes from the legal document. */
+  resumen?: import("./archivo-dte-summary.ts").DteResumen | null;
+  /** Only with `include: ["dte"]`, instead of `archivoDte`. */
+  dteError?: ListedDteError;
 }
 
 export interface DtePage {
@@ -507,6 +707,12 @@ export interface DownloadedDocument {
   filename: string | null;
   /** Source selected by the API. Missing on servers predating source reporting. */
   storageSource?: "managed" | "holding" | "archive";
+  /**
+   * JSON downloads only, from `X-Facta-Json-Format`: `archivo-dte` is the
+   * receiver's file (the default), `raw` the stored original. Missing on
+   * servers that predate the header.
+   */
+  jsonFormat?: "archivo-dte" | "raw";
   /** Present for tickets; defaults to 80 mm when not requested. */
   paperWidthMm?: number;
 }
@@ -536,6 +742,10 @@ export interface Status {
   ok: boolean;
   version: string;
   ambiente: string;
+  /** Functions region the API runs in (e.g. `us-west-2`); absent on older APIs. */
+  region?: string;
+  /** Region that served this very call, when the API reports it. */
+  servedRegion?: string;
   emisor: { nit: string; nombre: string; ambiente: string } | null;
   llave: {
     keyId: string;
@@ -545,12 +755,17 @@ export interface Status {
     tiposDte: DteType[];
     venceEl: string | null;
     /**
+     * `plain`: the company catalog is unencrypted and the API reads and writes it.
      * `readable`: the owner enabled «Catálogo legible por la API», so the
      * server resolves `customerId` / `productId` and the SDK just sends the
      * ids. `encrypted` (or absent on older servers): the SDK resolves them
      * locally from the encrypted catalog and needs the unlock key.
      */
-    catalogMode?: "encrypted" | "readable";
+    catalogMode?: CatalogMode;
+    /** true when the company stores its catalog unencrypted: the API reads and writes it. Advertised alongside `catalogMode: "readable"` for older SDKs. */
+    catalogoSinCifrar?: boolean;
+    /** true while the owner allows API keys with `catalog:write` to administer customers and products. */
+    catalogoEscritura?: boolean;
   };
   /** Freshness of the published readable catalog; null unless `catalogMode` is readable. */
   catalogoLegible?: { publicado: boolean; revisionPublicada: number | null; revisionActual: number } | null;
@@ -643,6 +858,8 @@ export interface DeliveryChannelStatus {
   motivo?: DeliveryReason | null;
   /** ISO-8601 instant of the last change. */
   actualizado?: string;
+  /** Only with `debug: { timings: true }` (on `deliverEmail`). */
+  debug?: DebugInfo;
 }
 
 export type DeliveryChannels = Partial<Record<DeliveryChannel, DeliveryChannelStatus>>;
@@ -663,6 +880,8 @@ export interface DeliveryStatus {
   /** Token expiry, while the API still reports it. */
   venceEn?: string;
   canales: DeliveryChannels;
+  /** Only with `debug: { timings: true }`. */
+  debug?: DebugInfo;
 }
 
 /** Answer of `POST …/entrega/{canal}`: 200 final, or 202 with `en_proceso`. */
@@ -676,6 +895,8 @@ export interface WaitForDeliveryOptions {
   /** Pause between reads. Default 2 000. */
   intervalMs?: number;
   signal?: AbortSignal;
+  /** Debugging aid: ask the API for its per-step times on each read. */
+  debug?: { timings?: boolean };
 }
 
 /** `waitForDelivery` result: the last status read, and whether every awaited channel is final. */

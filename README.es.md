@@ -73,6 +73,37 @@ completion. It refuses non-loopback Supabase URLs and does not reset or migrate
 the local database. This repository-only validation script is not included in
 the published package.
 
+## Skill para agentes de IA
+
+[`skills/facta-dte-api/`](skills/facta-dte-api/SKILL.md) es una skill instalable (`SKILL.md`, referencias y plantillas verificadas con el compilador) que enseña a un agente de código a integrar este SDK y la API HTTP de Facta DTE sin tropiezos: llaves, tipos de DTE, idempotencia, contingencia, archivos y entrega, errores y la lista para producción. Cómo instalarla y descargarla (en español e inglés): [skills/README.md](skills/README.md). `pnpm skill:pack` genera `dist/facta-dte-api-skill.zip`.
+
+## Guías
+
+Todas las guías de `guides/`, en español y en inglés. Las dos guías de React están solo en inglés.
+
+| Tema | Español | English |
+| --- | --- | --- |
+| Referencia de métodos: cada método público | [reference.es.md](guides/reference.es.md) | [reference.md](guides/reference.md) |
+| Integración con Node.js | [node.es.md](guides/node.es.md) | [node.md](guides/node.md) |
+| Integración con Deno | [deno.es.md](guides/deno.es.md) | [deno.md](guides/deno.md) |
+| Catálogo de errores: cada código, estado HTTP y reintentos | [errors.es.md](guides/errors.es.md) | [errors.md](guides/errors.md) |
+| Patrones de idempotencia y recuperación de resultados inciertos | [idempotency.es.md](guides/idempotency.es.md) | [idempotency.md](guides/idempotency.md) |
+| Preparar, revisar y luego firmar | [prepare-sign.es.md](guides/prepare-sign.es.md) | [prepare-sign.md](guides/prepare-sign.md) |
+| El Archivo DTE (lo que recibe el receptor) | [archivo-dte.es.md](guides/archivo-dte.es.md) | [archivo-dte.md](guides/archivo-dte.md) |
+| Entrega por correo y WhatsApp | [delivery.es.md](guides/delivery.es.md) | [delivery.md](guides/delivery.md) |
+| Devoluciones (Evento de Retorno) | [return-event.es.md](guides/return-event.es.md) | [return-event.md](guides/return-event.md) |
+| Diagnóstico, `catalogState`, `diagnoseDestinations` | [diagnose.es.md](guides/diagnose.es.md) | [diagnose.md](guides/diagnose.md) |
+| Fijación de región | [region.es.md](guides/region.es.md) | [region.md](guides/region.md) |
+| Tiempos de depuración | [timings.es.md](guides/timings.es.md) | [timings.md](guides/timings.md) |
+| Reloj de referencia | [reference-clock.es.md](guides/reference-clock.es.md) | [reference-clock.md](guides/reference-clock.md) |
+| Fotos del catálogo y lecturas sin conexión | [catalog.es.md](guides/catalog.es.md) | [catalog.md](guides/catalog.md) |
+| Escritura del catálogo (clientes y productos) | [catalog-write.es.md](guides/catalog-write.es.md) | [catalog-write.md](guides/catalog-write.md) |
+| Adaptadores de almacenamiento | [storage-adapters.es.md](guides/storage-adapters.es.md) | [storage-adapters.md](guides/storage-adapters.md) |
+| Salvaguarda de emergencia | [emergency.es.md](guides/emergency.es.md) | [emergency.md](guides/emergency.md) |
+| Cliente de navegador sin interfaz (`@facta-dte/api/browser`) | [browser.es.md](guides/browser.es.md) | [browser.md](guides/browser.md) |
+| Ventana de firma para React | — | [react.md](guides/react.md) |
+| Ventana de firma: lado del servidor y almacenamiento | — | [react-server.md](guides/react-server.md) |
+
 ## Configuración tipada versionada
 
 `FactaOptions` conserva las opciones planas por compatibilidad. Para guardar defaults de comportamiento, usa `config: { version: 1, ... }`; si el mismo campo aparece en ambos lugares, la opción plana gana. Credenciales (`apiKey`, `signKey`, `unlockKey`) permanecen fuera de `config` para evitar serializarlas junto con perfiles.
@@ -103,6 +134,14 @@ const readiness = await facta.diagnose();
 
 La fecha y la hora de un DTE las pone siempre el servidor de Facta, nunca este SDK. El reloj del SDK importa para dos cosas locales: la firma SigV4 de las subidas a almacenamientos compatibles con S3 (S3 rechaza una firma con más de 15 minutos de diferencia, `RequestTimeTooSkewed`) y las marcas de tiempo de los registros de archivo. `new Facta({ apiKey })` mantiene un reloj de referencia (`facta.clock`): tres muestras al primer uso y después responde el reloj monotónico, sin volver a preguntar mientras la incertidumbre sea menor de 500 ms. La opción `clock` acepta `true` (por defecto, `https://clock.factadte.com/`), una URL o `false` para usar la hora del equipo. Para compartirlo con un destino S3: `createS3ArtifactDestination({ ..., clock: facta.clock ?? false })`. Si el servicio no responde, se usa la hora del equipo y la operación continúa. Guía: [la hora de referencia](https://sdk.factadte.com/guias/reloj-de-referencia/).
 
+## Salvaguarda de emergencia
+
+Si Facta avisa que no pudo guardar un documento en ningún sitio duradero (o toda
+la replicación falla), `runtime.emergencyStore` recibe el JSON, el PDF y lo que
+pasó, una sola vez por documento. Es opcional: sin ella, el resultado trae
+`emergency: { saved: false, reason: "not_configured" }` y Facta envía una copia
+de respaldo al correo del dueño. Guía y ejemplo: [`guides/emergency.es.md`](guides/emergency.es.md).
+
 ## Métodos del cliente
 
 | Método | Uso | Envía `FACTA_SIGN_KEY` |
@@ -116,6 +155,8 @@ La fecha y la hora de un DTE las pone siempre el servidor de Facta, nunca este S
 | `syncCatalog()` | Descarga el snapshot cifrado y abre clientes/productos localmente. | No |
 | `listCustomers()`, `getCustomer(id)`, `searchCustomers(query)` | Lee o busca clientes ya autorizados para esta llave desde el snapshot descifrado localmente. | No |
 | `listProducts()`, `getProduct(id)`, `searchProducts(query)` | Lee o busca productos del snapshot descifrado localmente. | No |
+| `createCustomer(input)`, `updateCustomer(id, cambios)`, `deactivateCustomer(id)` | Alta, edición y desactivación de clientes por el API. Requiere `catalog:write` y que la empresa pase su catálogo a texto plano y lo habilite. Ver la [guía](guides/catalog-write.es.md). | Alta con `idempotencyKey` |
+| `createProduct(input)`, `updateProduct(id, cambios)`, `deactivateProduct(id)` | Lo mismo para productos. No hay borrado definitivo. | Alta con `idempotencyKey` |
 | `issue(request, options?)` | Prepara, firma y transmite un DTE en una operación. | Sí |
 | `deliverEmail(codigoGeneracion, token)`, `deliverWhatsApp(codigoGeneracion, token)` | Inician la entrega por correo o WhatsApp de un DTE sellado con el token de entrega de `issue(…, { deliver })` (válido 5 minutos). | No |
 | `getDelivery(codigoGeneracion)`, `waitForDelivery(codigoGeneracion, options?)` | Leen el estado de cada canal; `waitForDelivery` consulta hasta que todos sean finales. | No |
@@ -236,6 +277,7 @@ un fallo de red. Evita registrar requests, documentos o configuraciones enteras.
 |---|---|---|
 | `baseUrl` | URL pública de Facta | La llave selecciona el ambiente de Hacienda; staging no usa otra URL de SDK. |
 | `timeoutMs` | `60_000` | Deadline para la petición completa, incluido leer el cuerpo de respuesta. |
+| `region` | descubierta en `/v1/status` | Región de las funciones que se envía como `x-region` para que cada petición corra junto a la base de datos (medido: `POST /v1/dte` de 7,2 s a 4,3 s). Se lee una sola vez de `/v1/status`; una API antigua usa `us-west-2`. Una cadena la fija, `false` la apaga; también `config.region` y la variable `FACTA_API_REGION`. `await facta.region()` la devuelve y `diagnose()` informa la región que atendió. Un fallo al descubrirla nunca falla la operación. |
 | `maxRetries` | `3` | Hasta tres reintentos para `idempotency_in_flight`, `mh_unreachable`, `service_unavailable`, `correlative_unavailable` y `network_error`; todo `POST` conserva la misma clave. |
 | `CallOptions.idempotencyKey` | UUID generado por llamada `POST` | Para sobrevivir reinicios, suministra un ID estable de venta y repítelo solo para esa misma operación/cuerpo. |
 | `CallOptions.signal` | Sin cancelación | `AbortSignal` cancela petición y reintentos posteriores. Si una emisión ya llegó al servidor, consulta su resultado con la misma clave antes de crear otra. |
@@ -272,6 +314,20 @@ devuelve la representación gráfica disponible. Guarda o transmite esos bytes
 directamente: parsear y serializar de nuevo el JSON cambia sus bytes. Ambas
 descargas requieren el alcance `download`. Una respuesta `202` de emisión es
 contingencia y no equivale a un rechazo ni a un DTE sellado.
+
+**Archivo DTE.** Un resultado sellado trae `archivoDte`: el texto exacto del
+Archivo DTE (el documento firmado más `firmaElectronica`, el JWS tal cual, y
+`selloRecibido`), que es el archivo para el cliente o el contador. En
+contingencia no existe porque todavía no hay sello. `archivoJson` no cambia
+(el original guardado). `archivoDteOf(resultado)` lo devuelve o lo arma con
+`documento`, `jws` y `selloRecibido` si la API todavía no envía el campo.
+`downloadDocument(id, "json")` **devuelve ahora el Archivo DTE por defecto** y
+`jsonFormat` informa `archivo-dte` o `raw` (cabecera `X-Facta-Json-Format`);
+`{ raw: true }`, solo para JSON, devuelve el original guardado. Un documento sin
+sello contesta `409 not_sealed`; pida `raw: true` para su original. El recibo y
+el botón de React dan el Archivo DTE como «Descargar JSON»; «JSON original
+(raw)» aparece solo con la propiedad `rawJson`, y el manejador del servidor la
+respeta solo con `capabilities.rawJson: true`.
 
 ```ts
 import { writeFile } from "node:fs/promises";

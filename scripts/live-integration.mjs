@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createValidationResults, renderLiveReport, safeFailureCode } from "./live-report.mjs";
 import { validateLiveManagedStorage } from "./live-managed-storage.mjs";
-import { requireLiveSnapshots, validateLiveCatalogReads } from "./live-preflight.mjs";
+import { emailDeliveryReportState, emailDeliveryVerdict, emailDeliveryWarningLines } from "./live-delivery.mjs";
+import { requireLiveSnapshots, validateLiveCatalogReads, validateLiveCatalogWriteGate } from "./live-preflight.mjs";
 import {
   assertRelatedTestDocuments,
   assertLiveRunWithinIdempotencyWindow,
@@ -22,6 +23,9 @@ const apiBaseUrl = process.env.STAGING_FACTA_API_BASE_URL;
 const runId = process.env.GITHUB_RUN_ID;
 const reportDir = process.env.FACTA_LIVE_REPORT_DIR;
 const liveMode = process.env.FACTA_LIVE_MODE ?? "emit-test-fe";
+// Optional: the inbox the e-mail delivery check sends to. Unset means the check
+// is reported as not run; nothing is sent.
+const deliveryInbox = process.env.STAGING_FACTA_DELIVERY_EMAIL?.trim() || undefined;
 const EXPECTED_STAGING_API_BASE_URL =
   "https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1";
 
@@ -53,13 +57,19 @@ if (apiBaseUrl !== EXPECTED_STAGING_API_BASE_URL) {
 if (!["emit-test-fe", "emit-enabled-dte-fixtures"].includes(liveMode)) {
   throw new Error("Refusing integration run: unknown live-test mode.");
 }
+if (deliveryInbox !== undefined && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(deliveryInbox)) {
+  const error = new Error("Refusing integration run: the delivery inbox is not an e-mail address.");
+  error.code = "delivery_inbox_invalid";
+  throw error;
+}
 assertLiveRunWithinIdempotencyWindow(process.env.GITHUB_RUN_CREATED_AT);
 
-const { Facta } = await import("../dist/index.js");
+const { Facta, archivoDteOf } = await import("../dist/index.js");
 const { FileInvoiceArchive } = await import("../dist/node.js");
 const scratch = await mkdtemp(join(tmpdir(), "facta-sdk-integration-"));
 const archivePassphrase = Buffer.from(crypto.getRandomValues(new Uint8Array(48))).toString("base64url");
 
+const emergencyCalls = [];
 const checks = createValidationResults();
 let currentCheck = "status";
 let failureCode = null;
@@ -88,13 +98,22 @@ try {
       timeoutMs: 90_000,
       maxRetries: 1,
     },
-    runtime: { version: 1, archive },
+    runtime: { version: 1, archive, emergencyStore: async (_files, info) => { emergencyCalls.push(info.reason); } },
   });
 
   const health = await facta.status();
   assert.equal(health.ok, true, "API status must report healthy");
   assert.equal(health.ambiente, "00", "API status must confirm the test environment");
   assert.equal(health.emisor?.ambiente, "00", "issuer must also be in the test environment");
+  // The API advertises its functions region once the monorepo change is deployed; warn until then.
+  const pinned = await facta.region();
+  console.log(`INFO region: pinned=${pinned ?? "none"} served=${facta.servedRegion ?? "unknown"}`);
+  if (typeof health.region === "string") {
+    assert.equal(health.region, "us-west-2", "API status must advertise the database region");
+    assert.equal(facta.servedRegion, "us-west-2", "requests must be served from the database region");
+  } else {
+    console.warn("WARN region: the API does not advertise a region yet; the built-in default was used");
+  }
   checks.status = "Passed";
   currentCheck = "preflight";
   console.log("PASS status: healthy test environment confirmed");
@@ -120,6 +139,8 @@ try {
   assert(storageCapability.managed.ready, "Full managed live validation requires ready managed storage.");
   const snapshots = await requireLiveSnapshots(facta, checks, (check) => { currentCheck = check; }, storageCapability.managed.ready && !storageCapability.byos.ready);
   await validateLiveCatalogReads(facta, snapshots.catalog, checks, (check) => { currentCheck = check; });
+  await validateLiveCatalogWriteGate(facta, checks, (check) => { currentCheck = check; });
+  console.log(`${checks["catalog-write-gate"].startsWith("Warning") ? "WARN" : "PASS"} catalog write gate: ${checks["catalog-write-gate"]}`);
   console.log("PASS snapshots: catalog and required BYOS destinations verified locally");
   currentCheck = "preflight";
 
@@ -183,12 +204,31 @@ try {
     "archived JSON must match the exact response bytes");
   assert(Buffer.from(pdf.bytes).equals(Buffer.from(result.emission.representacionGrafica, "base64")),
     "archived PDF must match the exact response bytes");
+  // The Archivo DTE: the server's `archivoDte` when deployed, otherwise the SDK builds it.
+  // Either way it must carry the exact JWS and the seal of this document.
+  const archivoDte = archivoDteOf(result.emission);
+  assert(typeof archivoDte === "string", "a sealed result must yield an Archivo DTE");
+  const archivoParsed = JSON.parse(archivoDte);
+  assert(archivoParsed.firmaElectronica === result.emission.jws, "Archivo DTE must carry the exact JWS");
+  assert(archivoParsed.selloRecibido === result.emission.selloRecibido, "Archivo DTE must carry Hacienda's seal");
+  if (typeof result.emission.archivoDte === "string") {
+    const fallback = archivoDteOf({ ...result.emission, archivoDte: undefined });
+    assert(JSON.stringify(archivoParsed) === JSON.stringify(JSON.parse(fallback)), "the server's Archivo DTE must match the SDK's fallback");
+    console.log(`INFO archivoDte served by the API; fallback bytes ${fallback === result.emission.archivoDte ? "identical" : "differ in formatting only"}`);
+  } else {
+    console.log("INFO archivoDte not served by this API yet; built by the SDK fallback");
+  }
   checks["inline-bytes"] = "Passed";
   currentCheck = "no-downloads";
   const fileRequests = requestRecords.filter(({ url }) => /\/v1\/dte\/[^/]+\/file$/.test(url.pathname));
   assert(fileRequests.every(({ url }) => url.searchParams.get("kind") === "ticket"), "inline JSON/PDF archival must not call a document file download endpoint");
   assert.equal(fileRequests.length, 1, "only the ticket may use the file download endpoint");
   checks["no-downloads"] = "Passed";
+  currentCheck = "emergency-idle";
+  assert.equal(emergencyCalls.length, 0, "the emergency safeguard must stay idle on a normal issue");
+  assert.equal(result.emergency, undefined, "a normal issue must not carry an emergency report");
+  assert.equal(result.emission.emergency, undefined, "a normal emission must not carry an emergency report");
+  checks["emergency-idle"] = "Passed";
   console.log("PASS archive: exact signed JSON, PDF, and ticket retained");
   await validateLiveManagedStorage(facta, { emission: result.emission, request, idempotencyKey, artifacts: { json: legalJson, pdf }, checks, onCheck: (check) => { currentCheck = check; } });
 
@@ -265,6 +305,14 @@ try {
   assert.equal(requestRecords.slice(postRestart).filter(({ url, method }) => url.pathname.endsWith("/v1/dte") && method === "POST").length, 0,
     "completed restart recovery must not submit an invoice");
   checks.restart = "Passed";
+
+  currentCheck = "email-delivery";
+  if (deliveryInbox === undefined) {
+    checks["email-delivery"] = "Not run (no test inbox configured)";
+    console.log("SKIP e-mail delivery: STAGING_FACTA_DELIVERY_EMAIL is not configured");
+  } else {
+    await validateLiveEmailDelivery(facta, request);
+  }
 } catch (error) {
   checks[currentCheck] = "Failed";
   failureCode = safeFailureCode(error);
@@ -283,6 +331,45 @@ try {
   } finally {
     await rm(scratch, { recursive: true, force: true });
   }
+}
+
+/**
+ * Issue one more $0.01 test FE marked for e-mail delivery, start it, and wait
+ * for its final state. A reached mail quota or a provider outage only warns;
+ * any other outcome that is not «enviado» to the right inbox fails the run.
+ */
+async function validateLiveEmailDelivery(facta, request) {
+  const idempotencyKey = `sdk-live-${runId}-mail`;
+  const emission = await facta.issue(request, { idempotencyKey, deliver: { email: deliveryInbox } });
+  assert.equal(emission.estado, "sellado", "the delivery test invoice must be sealed");
+  assert.equal(emission.ambiente, "00", "the delivery test invoice must be in the test environment");
+  const token = emission.entrega?.token;
+  let observed;
+  if (typeof token !== "string" || token === "") {
+    // No token: the API declined the channel up front; its state says why.
+    observed = { channel: emission.entrega?.canales?.correo, settled: true, expectedRecipient: deliveryInbox };
+  } else {
+    try {
+      await facta.deliverEmail(emission.codigoGeneracion, token);
+      const waited = await facta.waitForDelivery(emission.codigoGeneracion, { channels: ["correo"], timeoutMs: 90_000, intervalMs: 3_000 });
+      observed = { channel: waited.canales.correo, settled: waited.settled, expectedRecipient: deliveryInbox };
+    } catch (error) {
+      observed = { error };
+    }
+  }
+  const verdict = emailDeliveryVerdict(observed);
+  checks["email-delivery"] = emailDeliveryReportState(verdict);
+  if (verdict.outcome === "warn") {
+    for (const line of emailDeliveryWarningLines(verdict)) console.log(line);
+    return;
+  }
+  if (verdict.outcome === "fail") {
+    console.error(`FAIL e-mail delivery: ${verdict.code}${verdict.status ? ` (HTTP ${verdict.status})` : ""}`);
+    const error = new Error("E-mail delivery failed.");
+    error.code = "email_delivery_failed";
+    throw error;
+  }
+  console.log("PASS e-mail delivery: sent to the configured test inbox");
 }
 
 async function saveReport() {
