@@ -66,6 +66,11 @@ idempotencia: repetir la misma petición con la misma llave devuelve el mismo
 token mientras siga vigente, y cambiar `deliver` con la misma llave es
 `idempotency_key_reuse`.
 
+`issueAndArchive(request, { deliver, … })` acepta la misma opción y la manda
+con su primera petición (y la guarda en el diario, así que una recuperación la
+repite); el token viene en `result.entrega` (el mismo objeto que
+`result.emission.entrega`).
+
 **Alcances.** Una llave con el alcance `issue` puede marcar y entregar los dos
 canales. Una llave acuñada solo con `entrega:correo` o `entrega:whatsapp`
 conserva ese canal. Un canal que la llave no puede usar no impide emitir; el
@@ -165,11 +170,6 @@ vista como `state.delivery` y `onDelivery` (vea [browser.es.md](browser.es.md)).
   `sin_consentimiento`).
 - **`waitForDelivery` nunca termina**: pidió en `channels` un canal que no se
   marcó; nunca se informa, así que la llamada espera hasta `timeoutMs`.
-- **`issueAndArchive` con `deliver`**: en esta versión `issueAndArchive` **no**
-  envía `entrega` en su primera petición, así que el resultado no trae token de
-  entrega y no se entrega nada (el handler del servidor lo hereda cuando el
-  cliente tiene `runtime.archive`). Use `issue(request, { deliver })` cuando
-  necesite la entrega, hasta que esto se corrija.
 - **Una entrega fallida no es una emisión fallida**: nunca vuelva a emitir un
   documento porque un canal terminó `fallido`.
 

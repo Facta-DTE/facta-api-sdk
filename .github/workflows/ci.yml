@@ -47,6 +47,19 @@ jobs:
       - name: Verify packed consumer
         run: pnpm pack:check
 
+      - name: Check the integration skill (templates type-check, links, error codes)
+        run: pnpm skill:check
+
+      - name: Pack the integration skill
+        run: pnpm skill:pack
+
+      - name: Upload the skill zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: facta-dte-api-skill
+          path: dist/facta-dte-api-skill.zip
+          if-no-files-found: error
+
   playground:
     name: Playground (typecheck, test, build)
     runs-on: ubuntu-latest
