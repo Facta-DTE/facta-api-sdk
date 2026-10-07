@@ -203,9 +203,9 @@ main { min-width: 0; }
 @media (max-width: 899px) { .pg-footer { padding: 16px; } .pg-footer a { min-height: 44px; } }
 
 .pg-meter-short { display: none; }
-/* Below 1700 px the header is full: the meter becomes a small pill («19/20», the full text stays for screen readers
-   and in the title) so no nav link is clipped. */
-@media (min-width: 900px) and (max-width: 1700px) {
+/* On desktop the meter is always a small pill («19/20»; the full text stays for screen readers and in the title):
+   at 1700+ px a breakpoint still clipped «Referencia» on a 1728 px window, so no width gets the long form. */
+@media (min-width: 900px) {
   .pg-header .pg-meter-bar { display: none; }
   .pg-header .pg-meter { padding: 4px 10px; border: 1px solid var(--pg-border); border-radius: 20px; font-size: 12.5px; }
   .pg-header .pg-meter-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
@@ -213,8 +213,8 @@ main { min-width: 0; }
   .pg-header-inner { gap: 12px; }
   .pg-nav { gap: 14px; }
 }
-/* Six sections need the room: the docs and source links also live in the footer, so the bar drops them below 1560 px. */
-@media (min-width: 900px) and (max-width: 1560px) { .pg-header-tools .pg-doc-link { display: none; } }
+/* Six sections need the room: the docs and source links also live in the footer, so the bar drops them below 1920 px. */
+@media (min-width: 900px) and (max-width: 1919px) { .pg-header-tools .pg-doc-link { display: none; } }
 
 /* ---------- Loading states: a spinner on the busy button, a skeleton where the result will be ---------- */
 .pg-spin { display: inline-block; flex: none; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: pg-spin .7s linear infinite; vertical-align: -0.15em; }
