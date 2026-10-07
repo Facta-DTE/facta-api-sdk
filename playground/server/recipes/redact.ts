@@ -43,6 +43,12 @@ export interface RedactOptions {
   secrets?: readonly (string | undefined)[];
   /** Bulky keys to keep (e.g. `documento` when the page shows the canonical document). */
   keep?: readonly string[];
+  /**
+   * Exact paths (from the redacted root, dot-separated) where a member the key rule would strip is kept
+   * ON PURPOSE: the deliver-email issue stage shows `entrega.token`, the visitor's own five-minute token
+   * for the document it just issued. Every other `token` keeps being stripped, wherever it sits.
+   */
+  keepAt?: readonly string[];
   /** Longest string kept whole. */
   maxString?: number;
 }
@@ -50,6 +56,7 @@ export interface RedactOptions {
 export function redact(value: unknown, options: RedactOptions = {}): unknown {
   const secrets = (options.secrets ?? []).filter((s): s is string => typeof s === "string" && s.length >= 8);
   const keep = new Set((options.keep ?? []).map((k) => k.toLowerCase()));
+  const keepAt = new Set(options.keepAt ?? []);
   const maxString = options.maxString ?? 600;
 
   const scrub = (text: string): string => {
@@ -59,7 +66,7 @@ export function redact(value: unknown, options: RedactOptions = {}): unknown {
     return out;
   };
 
-  const walk = (node: unknown, depth: number): unknown => {
+  const walk = (node: unknown, depth: number, path: string): unknown => {
     if (depth > 12) return "[demasiado profundo]";
     if (node === null || typeof node === "number" || typeof node === "boolean") return node;
     if (typeof node === "string") {
@@ -67,25 +74,26 @@ export function redact(value: unknown, options: RedactOptions = {}): unknown {
       return clean.length > maxString ? `[texto de ${clean.length} caracteres]` : clean;
     }
     if (node instanceof Uint8Array) return `[archivo de ${node.byteLength} bytes]`;
-    if (Array.isArray(node)) return node.map((item) => walk(item, depth + 1));
+    if (Array.isArray(node)) return node.map((item) => walk(item, depth + 1, path));
     if (typeof node === "object") {
       const out: Record<string, unknown> = {};
       for (const [key, child] of Object.entries(node as Record<string, unknown>)) {
         const lower = key.toLowerCase();
-        if (SECRET_KEYS.has(lower)) continue;
+        const here = path === "" ? key : `${path}.${key}`;
+        if (SECRET_KEYS.has(lower) && !keepAt.has(here)) continue;
         if (BULKY_KEYS.has(lower) && !keep.has(lower)) {
           out[key] = typeof child === "string" ? `[omitido: ${child.length} caracteres]` : "[omitido]";
           continue;
         }
         // A kept document keeps its long strings (the legal text) but still loses credentials and paths.
-        out[key] = BULKY_KEYS.has(lower) ? redact(child, { ...options, keep: [], maxString: 100_000 }) : walk(child, depth + 1);
+        out[key] = BULKY_KEYS.has(lower) ? redact(child, { ...options, keep: [], keepAt: [], maxString: 100_000 }) : walk(child, depth + 1, here);
       }
       return out;
     }
     return String(node);
   };
 
-  return walk(value, 0);
+  return walk(value, 0, "");
 }
 
 /** Same scrub for a plain message (an error text). */

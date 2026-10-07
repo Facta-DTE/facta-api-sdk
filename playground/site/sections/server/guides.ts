@@ -470,7 +470,7 @@ export const RECIPE_GUIDES: Record<string, RecipeGuide> = {
     steps: [
       {
         title: "Emitir y marcar el correo.",
-        text: "`issue` con `deliver: { email }` sella el documento y deja marcado el canal. No espera a que el correo salga. Si el documento se selló, la respuesta trae `entrega.token` y `entrega.venceEn`, cinco minutos después de emitir.",
+        text: "`issue` con `deliver: { email }` sella el documento y deja marcado el canal. No espera a que el correo salga. Si el documento se selló, la respuesta trae `entrega.token` y `entrega.venceEn`, cinco minutos después de emitir. En «Probarla» verá el token real, con su cuenta regresiva: es solo suyo y de ese documento. En su integración, guárdelo en su servidor.",
         sdk: ["facta.issue(solicitud, { idempotencyKey, deliver: { email } })"],
         http: ["POST /v1/dte"],
       },
@@ -491,7 +491,8 @@ export const RECIPE_GUIDES: Record<string, RecipeGuide> = {
       "Tras el paso 1: el documento sellado, ya emitido, aunque el correo no haya salido.",
       "Tras el paso 2: el estado del canal, puede ser «en_proceso» al principio.",
       "Al final: «enviado» con la dirección enmascarada, o el motivo si no se pudo entregar.",
-      "Con un documento suyo emitido hace menos de 5 minutos y con correo marcado, la receta salta el paso 1.",
+      "Si ya emitió una factura hace menos de 5 minutos con correo marcado, «Usar una factura que ya emití» salta el paso 1.",
+      "Si el token venció, el paso 2 responde `entrega_vencida` (410): la factura sigue válida; emita otra para probar de nuevo.",
     ],
     use: [
       "Quiere que el correo salga solo después de cobrar, no antes.",

@@ -369,7 +369,7 @@ const orderDef: RecipeDef = {
   },
 };
 
-/** What the second stage needs, sealed for the browser to carry: the token never reaches the page. */
+/** What the second stage needs, sealed for the browser to carry (the page cannot read or change it). */
 interface HeldDelivery {
   code: string;
   token: string;
@@ -397,14 +397,23 @@ const deliverEmailDef: RecipeDef = {
         async exec(facta) {
           const out = await deliverEmail.issueWithDelivery(facta, input);
           const offer = out.result.entrega;
-          // The token stays on the server. The page gets proof that it exists and when it dies.
+          // The page shows `entrega` (token, expiry, channels): the token is the visitor's own, bound to the
+          // document it just issued and dead in five minutes. The SEND does not use what the page holds: it
+          // takes the sealed continuation below, so the browser can neither swap the token nor aim it at
+          // another document, and the API key that every call needs never leaves the Worker.
           const result = {
             issued: out.result,
-            entrega: { tokenRecibido: out.token !== undefined, venceEn: offer?.venceEn ?? null, canales: offer?.canales ?? {} },
+            entrega: {
+              tokenRecibido: out.token !== undefined,
+              ...(out.token === undefined ? {} : { token: out.token }),
+              venceEn: offer?.venceEn ?? null,
+              canales: offer?.canales ?? {},
+            },
           };
           const continuation = out.token === undefined ? undefined
             : await sealJson(ctx.secret, "deliver-email", ctx.email, { code: out.code, token: out.token, masked: maskAddress(address), rcpt }, 10 * 60_000, ctx.now);
-          return { result, issued: codeOf(out.result), ...(continuation === undefined ? {} : { continuation }) };
+          // `keepAt` lets ONLY `entrega.token` through the redaction; `issued.entrega.token` stays stripped.
+          return { result, issued: codeOf(out.result), keepAt: ["entrega.token"], ...(continuation === undefined ? {} : { continuation }) };
         },
       };
     }

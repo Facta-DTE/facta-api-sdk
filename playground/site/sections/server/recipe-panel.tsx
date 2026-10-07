@@ -22,6 +22,7 @@ import { CatalogFields } from "./catalog-fields.tsx";
 import { OrderField, RepeatBanner, RepeatCard } from "../../components/order-field.tsx";
 import { newOrderNumber, RECIPE_ORDER } from "../../order-number.ts";
 import { orders, recipeScope, useOrders } from "../../order-session.ts";
+import { MailRecipe } from "./mail-recipe.tsx";
 
 type Values = Record<string, string | boolean>;
 
@@ -201,7 +202,9 @@ export function RecipePanel({ spec, number, mine, onIssued }: { spec: RecipeSpec
         </div>
       </article>
 
-      <aside className="srv-run" aria-label="Ejecutar en staging" id={panelId(spec.id, "probar")} role="tabpanel" aria-labelledby={`${spec.id}-tab-probar`} hidden={tab !== "probar"}>
+      {spec.id === "deliver-email"
+        ? <MailRecipe mine={mine} onIssued={onIssued} panel={{ id: panelId(spec.id, "probar"), labelledBy: `${spec.id}-tab-probar`, hidden: tab !== "probar" }} />
+        : <aside className="srv-run" aria-label="Ejecutar en staging" id={panelId(spec.id, "probar")} role="tabpanel" aria-labelledby={`${spec.id}-tab-probar`} hidden={tab !== "probar"}>
         <h2>Ejecutar en staging</h2>
         <form className="srv-form" onSubmit={(e) => { e.preventDefault(); if (!busy && !blocked && !needsDocument) { setPrevious(null); setContinuation(null); setRuns([]); void execute(firstStage, null); } }}>
           {spec.fields.map((field) => (
@@ -261,7 +264,7 @@ export function RecipePanel({ spec, number, mine, onIssued }: { spec: RecipeSpec
             )}
           </div>
         )}
-      </aside>
+      </aside>}
     </>
   );
 }
@@ -279,7 +282,7 @@ function WhyTwoCalls() {
       <p>
         <b>El token dura 5 minutos.</b> Pasado ese plazo, <code>deliverEmail</code> contesta <code>entrega_vencida</code> (410). El documento sigue
         sellado y válido; solo se pierde el permiso de envío, y para enviar de nuevo hay que emitir un documento nuevo. El token se queda en su
-        servidor: aquí el Worker lo guarda y la página nunca lo ve.
+        servidor. Aquí lo ve para aprender cómo es; el envío lo hace el Worker con su propia copia, y la llave del API nunca sale de él.
       </p>
     </aside>
   );

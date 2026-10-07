@@ -467,14 +467,20 @@ describe("recipe «Entregar por correo»", () => {
     expect(calls).toEqual([]);
   });
 
-  it("is two calls: stage 1 issues and marks the e-mail, stage 2 sends with the sealed token, and the token never reaches the page", async () => {
+  it("is two calls: stage 1 issues, marks the e-mail and shows the token ONCE (entrega.token); stage 2 sends with the sealed hand-over", async () => {
     const { run, calls } = await recipeWorld();
     const first = await run({ recipe: "deliver-email", stage: "issue", runId: "two-calls-aaaa", params: { email: "cliente@example.com" } });
     expect(first.status).toBe(200);
     const issueText = await first.text();
-    expect(issueText).not.toContain("fdt_recipe_secret_token");
+    // The visitor's own token is shown at `result.entrega.token` and nowhere else (not inside the issued document).
+    expect(issueText.split("fdt_recipe_secret_token")).toHaveLength(2);
     expect(issueText).not.toContain("cliente@example.com");
-    const issueBody = JSON.parse(issueText) as { ok: boolean; issued: unknown[]; continuation?: string; result: { entrega: { tokenRecibido: boolean } } };
+    const issueBody = JSON.parse(issueText) as { ok: boolean; issued: unknown[]; continuation?: string; result: { entrega: { tokenRecibido: boolean; token?: string; venceEn: string | null }; issued: { entrega?: { token?: string } } } };
+    expect(issueBody.result.entrega.token).toBe("fdt_recipe_secret_token");
+    expect(issueBody.result.entrega.venceEn).not.toBeNull();
+    expect(issueBody.result.issued.entrega?.token).toBeUndefined();
+    // The continuation is opaque: it does not contain the token in clear.
+    expect(issueBody.continuation ?? "").not.toContain("fdt_recipe_secret_token");
     expect(issueBody.ok).toBe(true);
     expect(issueBody.issued).toMatchObject([{ codigoGeneracion: CODE, tipoDte: "01" }]);
     expect(issueBody.result.entrega.tokenRecibido).toBe(true);
