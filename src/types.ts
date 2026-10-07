@@ -271,6 +271,8 @@ export interface CatalogProduct {
   ivaIncluido?: boolean | null;
   /** VAT treatment; a product that never chose one reads as `gravada`. */
   tipoVenta?: SaleType;
+  /** The same treatment as `tipoVenta`, spelled as Facta stores it: `gravada`, `exenta` or `noSuj`. */
+  sale_class?: "gravada" | "exenta" | "noSuj";
   activo?: boolean;
   actualizadoEn?: string | null;
   code?: string | null;

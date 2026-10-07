@@ -886,7 +886,12 @@ export class Facta {
   /** Download and locally decrypt the latest customer/product snapshot. */
   async syncCatalog(): Promise<CatalogSnapshot> {
     if (this.#unlockKey === null) {
-      throw new FactaError('unauthorized', 'Configure FACTA_UNLOCK_KEY to open the encrypted catalog locally.', 0);
+      throw new FactaError(
+        'unauthorized',
+        'El catálogo de esta empresa está cifrado y falta la clave de desbloqueo: pase unlockKey al crear el cliente (o defina FACTA_UNLOCK_KEY). Con ella el SDK lo descifra aquí y devuelve los mismos datos que en un catálogo legible o en texto plano. / This catalog is encrypted and no unlockKey was configured: set unlockKey (or FACTA_UNLOCK_KEY).',
+        0,
+        { reason: 'unlock_key_missing', missing: 'unlockKey' },
+      );
     }
     const bundle = await this.#request<Record<string, unknown>>('GET', '/v1/vault/destinations');
     const vault = bundle['vault'] as Record<string, unknown> | null;
@@ -1203,7 +1208,7 @@ export class Facta {
   async #listPage<T extends { id: string }>(path: string, keys: readonly string[], query: Record<string, string>, options: { signal?: AbortSignal }): Promise<T[]> {
     const search = new URLSearchParams(query).toString();
     const payload = await this.#request<unknown>('GET', search === '' ? path : `${path}?${search}`, undefined, options.signal ? { signal: options.signal } : {});
-    return rowsOf<T>(payload, keys);
+    return rowsOf<T>(payload, keys).map((row) => normalizeRecord(path, row));
   }
 
   async #listAll<T extends { id: string }>(path: string, keys: readonly string[], options: { signal?: AbortSignal }, extra: Record<string, string> = {}): Promise<T[]> {

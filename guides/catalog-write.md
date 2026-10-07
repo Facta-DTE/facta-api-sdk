@@ -53,6 +53,18 @@ const state = await facta.catalogState();
 console.log(state.catalogMode); // "encrypted" | "readable" | "plain" | null
 ```
 
+**The result is the same in every mode; only the latency differs.** Every customer and
+product has the same fields whichever way it was read: both spellings of each name
+(`nombre` and `name`...), the product's VAT treatment (`tipoVenta` / `sale_class`),
+the whole address (`distrito`, and `pais` when there is one), numbers as numbers and
+`activo` always present. `customerId` / `productId` at issue time resolve to the same
+line and receiver in all three modes (the SDK resolves locally from the decrypted
+snapshot, or the server does it). An encrypted catalog is slower: the SDK downloads and
+decrypts the snapshot. Without an `unlockKey` it fails with `unauthorized`, naming
+`unlockKey` in `details.missing`; it never returns a partial record.
+The only field that can differ is a timestamp (`creadoEn`, `actualizadoEn`), which a
+snapshot never held and which reads `null` there.
+
 `diagnose()` reports the same `catalogMode`. Deactivated records are left out of
 lists and searches; pass `includeInactive: true` to see them.
 

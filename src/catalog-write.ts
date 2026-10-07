@@ -186,25 +186,54 @@ function withAliases(
   for (const [wire, stored] of aliases) {
     if (wire in out && !(stored in out)) out[stored] = out[wire];
     else if (stored in out && !(wire in out)) out[wire] = out[stored];
+    // The same fields exist in every mode: a field the source did not carry is null, never absent.
+    if (!(wire in out)) {
+      out[wire] = null;
+      out[stored] = null;
+    }
   }
-  // `activo` (API) and `active` (stored) are the same flag.
-  if ("activo" in out && !("active" in out)) out["active"] = out["activo"];
-  else if ("active" in out && !("activo" in out)) out["activo"] = out["active"];
+  // `activo` (API) and `active` (stored) are the same flag; a record that does not say is active.
+  const active = "activo" in out ? out["activo"] : "active" in out ? out["active"] : true;
+  out["activo"] = active !== false;
+  out["active"] = active !== false;
   return out;
 }
 
-/** A customer with both spellings, whether it came from the API or a decrypted snapshot. */
+const numberOrKeep = (value: unknown): unknown => {
+  if (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))) return Number(value);
+  return value;
+};
+
+/**
+ * A customer with both spellings and the same fields in every catalog mode (an
+ * encrypted snapshot, a readable copy and the plain API all give the same record;
+ * timestamps the snapshot never held are `null`).
+ */
 export function normalizeCustomer<T extends { id: string }>(row: T): T {
-  return withAliases(row as Record<string, unknown>, CUSTOMER_ALIASES) as T;
+  const out = withAliases(row as Record<string, unknown>, CUSTOMER_ALIASES);
+  for (const key of ["creadoEn", "actualizadoEn"]) if (!(key in out)) out[key] = null;
+  return out as T;
 }
 
-/** A product with both spellings. A snapshot product without a treatment reads as `gravada`. */
+/**
+ * A product with both spellings and the same fields in every catalog mode.
+ * `tipoVenta` (API spelling) and `sale_class` (stored spelling) are the VAT treatment;
+ * a product that never chose one reads as taxed.
+ */
 export function normalizeProduct<T extends { id: string }>(row: T): T {
   const out = withAliases(row as Record<string, unknown>, PRODUCT_ALIASES);
-  if (!("tipoVenta" in out)) {
-    const stored = out["sale_class"];
-    out["tipoVenta"] = stored === "exenta" ? "exenta" : stored === "noSuj" ? "no_sujeta" : "gravada";
-  }
+  for (const key of ["tipoItem", "uniMedida", "precioUni"]) out[key] = numberOrKeep(out[key]);
+  out["item_type"] = out["tipoItem"];
+  out["unit_of_measure"] = out["uniMedida"];
+  out["unit_price"] = out["precioUni"];
+  const stored = out["sale_class"];
+  const wire = out["tipoVenta"];
+  const type = wire === "exenta" || wire === "no_sujeta" || wire === "gravada"
+    ? wire
+    : stored === "exenta" ? "exenta" : stored === "noSuj" ? "no_sujeta" : "gravada";
+  out["tipoVenta"] = type;
+  out["sale_class"] = type === "no_sujeta" ? "noSuj" : type;
+  if (!("actualizadoEn" in out)) out["actualizadoEn"] = null;
   return out as T;
 }
 

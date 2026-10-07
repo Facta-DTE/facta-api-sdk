@@ -53,6 +53,18 @@ const state = await facta.catalogState();
 console.log(state.catalogMode); // "encrypted" | "readable" | "plain" | null
 ```
 
+**El resultado es el mismo en cualquier modo; solo cambia la latencia.** Cada cliente y
+cada producto trae los mismos campos se lea como se lea: los dos nombres de cada dato
+(`nombre` y `name`...), el tratamiento de IVA del producto (`tipoVenta` / `sale_class`),
+la dirección completa (`distrito` y, si la hay, `pais`), los números como números y
+`activo` siempre presente. `customerId` / `productId` al emitir dan la misma línea y el
+mismo receptor en los tres modos (el SDK los resuelve en local con la instantánea
+descifrada, o los resuelve el servidor). Un catálogo cifrado es más lento: el SDK
+descarga y descifra la instantánea. Sin `unlockKey` falla con `unauthorized` y nombra
+`unlockKey` en `details.missing`; nunca devuelve un registro a medias. El único campo
+que puede cambiar es una marca de tiempo (`creadoEn`, `actualizadoEn`), que la
+instantánea nunca tuvo y ahí vale `null`.
+
 `diagnose()` informa el mismo `catalogMode`. Los registros desactivados no salen en
 listas ni búsquedas; pase `includeInactive: true` para verlos.
 
