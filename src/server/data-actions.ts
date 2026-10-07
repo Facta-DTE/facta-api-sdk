@@ -149,7 +149,11 @@ export function createDataActions(options: DataActionOptions) {
       if (typeof body.tipoDte !== "string" || !DTE_TYPES.includes(body.tipoDte)) bad("tipoDte is not valid.");
       filters.tipoDte = body.tipoDte as DteType;
     }
-    filters.limit = limitOf(body.limit, 25, 100);
+    if (body.include !== undefined) {
+      if (!Array.isArray(body.include) || body.include.length !== 1 || body.include[0] !== "dte") bad('include must be ["dte"].');
+      filters.include = ["dte"];
+    }
+    filters.limit = filters.include ? limitOf(body.limit, 20, 25) : limitOf(body.limit, 25, 100);
     if (body.cursor !== undefined) {
       if (typeof body.cursor !== "string" || body.cursor.length > 512) bad("cursor is not valid.");
       filters.cursor = body.cursor;

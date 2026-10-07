@@ -224,6 +224,29 @@ export function projectListed(doc: ListedDte, options: ProjectionOptions): Recor
     selloRecibido: doc.selloRecibido ?? null,
     totales: pickTotals(doc.totales) ?? null,
     ...(options.exposeRecipient ? { receptor: receptor ?? null } : {}),
+    ...(doc.resumen !== undefined ? { resumen: projectResumen(doc.resumen, options) } : {}),
+    ...(doc.dteError !== undefined
+      ? { dteError: { code: String(doc.dteError.code).slice(0, 64), message: String(doc.dteError.message).slice(0, 300) } }
+      : {}),
+  };
+}
+
+/** The summary of a document, with the receiver under the same exposure and masking as `receptor`. */
+function projectResumen(resumen: ListedDte["resumen"], options: ProjectionOptions): Record<string, unknown> | null {
+  if (resumen === null || resumen === undefined) return null;
+  const receptor = options.exposeRecipient && resumen.receptor
+    ? {
+      nombre: typeof resumen.receptor.nombre === "string" ? resumen.receptor.nombre.slice(0, 200) : null,
+      tipoDocumento: resumen.receptor.tipoDocumento,
+      numDocumento: maskDocumentNumber(resumen.receptor.numDocumento),
+    }
+    : null;
+  return {
+    ...(options.exposeRecipient ? { receptor } : {}),
+    lineas: resumen.lineas,
+    primeraDescripcion: typeof resumen.primeraDescripcion === "string" ? resumen.primeraDescripcion.slice(0, 200) : null,
+    totalIva: resumen.totalIva,
+    totalPagar: resumen.totalPagar,
   };
 }
 

@@ -72,6 +72,38 @@ const text = new TextDecoder().decode(file.bytes);
 suggested name (or `null`) and `file.storageSource` the place the server read it
 from (`managed`, `holding` or `archive`) when the server reports it.
 
+## Listing documents with their DTE
+
+`listDocuments({ include: ["dte"] })` returns each row with `archivoDte` (the
+same text as `downloadDocument(code, "json")`) and `resumen`, in one API call.
+It needs the `download` scope besides `query`; pages are 20 rows by default and
+25 at most (`include_limit_exceeded` otherwise). The PDF and the ticket are not
+part of the list: download them per row when a person asks.
+
+```ts
+const page = await facta.listDocuments({ include: ["dte"], limit: 20 });
+for (const row of page.documentos) {
+  if (row.resumen) console.log(row.resumen.receptor?.nombre, row.resumen.primeraDescripcion, row.resumen.totalPagar);
+  else console.log(row.codigoGeneracion, row.dteError?.code, row.dteError?.message);
+}
+```
+
+`resumen` is `summarizeArchivoDte(row.archivoDte)`: `{ receptor, lineas,
+primeraDescripcion, totalIva, totalPagar }`, read from the legal document and
+never from the receiver stored in the index, so it is identical whether the
+company keeps its catalog readable or encrypted. The function is exported and
+pure.
+
+A document the API cannot open itself (issued from the Facta app, copy only in
+your own storage) arrives as `dteError.code === "needs_local_decrypt"`. With
+`unlockKey` configured the SDK opens your destinations snapshot locally, reads
+the file (four at a time) and returns the row complete, so you get the same
+shape either way. Without `unlockKey` the row keeps a `dteError` that says so.
+Other codes: `not_sealed`, `storage_unavailable`, `not_found`, `timeout`,
+`destinations_unavailable`, `destination_read_failed`. A failing row never
+fails the listing, and a server that predates the flag simply returns rows
+without `archivoDte`.
+
 ## Contingency and `not_sealed`
 
 A document in contingency is signed but has no `selloRecibido`, so it has no

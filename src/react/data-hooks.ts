@@ -144,13 +144,15 @@ function serverFilters(filters: DocumentFilters): Omit<DocumentFilters, "buscar"
   for (const key of ["desde", "hasta", "estado", "tipoDte"] as const) {
     if (filters[key]) out[key] = filters[key];
   }
+  if (filters.include?.length) out["include"] = filters.include;
   return out;
 }
 
 export function useFactaDocuments(filters: DocumentFilters = {}, options: UseFactaDocumentsOptions = {}): UseFactaDocuments {
   const { client } = useDataContext();
-  const pageSize = Math.min(100, Math.max(1, options.pageSize ?? 25));
   const server = serverFilters(filters);
+  // With `include: ["dte"]` every row costs a read, so the API caps the page at 25.
+  const pageSize = Math.min(server.include ? 25 : 100, Math.max(1, options.pageSize ?? 25));
   const key = `docs:${JSON.stringify(server)}:${pageSize}`;
   const first = useCachedQuery(key, () => client.listDocuments({ ...server, limit: pageSize }), {
     staleMs: options.staleMs ?? 15_000,

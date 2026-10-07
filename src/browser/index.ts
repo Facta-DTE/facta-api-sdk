@@ -18,6 +18,8 @@ export { describeFieldPath, describeFields } from "./fields.ts";
 export type { FieldIssue } from "./fields.ts";
 export { archivoDteOf } from "../archivo-dte.ts";
 export type { ArchivoDteSource } from "../archivo-dte.ts";
+export { summarizeArchivoDte } from "../archivo-dte-summary.ts";
+export type { DteResumen, DteResumenReceptor } from "../archivo-dte-summary.ts";
 export { storageTone } from "./storage.ts";
 export { DELIVERY_LIMIT_REASONS, isDeliveryLimitReason } from "../delivery.ts";
 export type { StorageTone } from "./storage.ts";
