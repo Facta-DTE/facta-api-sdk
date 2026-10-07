@@ -91,6 +91,8 @@ export interface RemoteArtifactDestination {
   write(artifact: ArchiveArtifact, options?: { signal?: AbortSignal }): Promise<RemoteCopyState>;
   /** Read-only check. Resolve an ambiguous write without modifying remote data. */
   check?(artifact: ArchiveArtifact, options?: { signal?: AbortSignal }): Promise<"stored" | "missing" | "unknown">;
+  /** Read one object by its path in this destination; `null` when it does not exist. Used to list documents with their DTE. */
+  read?(path: string, options?: { signal?: AbortSignal }): Promise<Uint8Array | null>;
 }
 
 /**

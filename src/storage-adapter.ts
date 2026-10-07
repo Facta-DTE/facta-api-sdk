@@ -81,6 +81,19 @@ export function createStorageArtifactDestination(
     kind: options.kind,
     label: options.label,
     check,
+    async read(path, callOptions) {
+      if (!path.trim() || path.startsWith("/") || path.includes("\\") || path.includes("\0") ||
+        path.split("/").some((part) => part === "." || part === "..")) {
+        throw new TypeError("Storage artifact path must be a non-empty relative object key.");
+      }
+      try {
+        return await options.store.get(path, callOptions);
+      } catch (error) {
+        if (callOptions?.signal?.aborted) throw error;
+        if (options.isNotFound(error)) return null;
+        throw error;
+      }
+    },
     async write(artifact, callOptions) {
       const existing = await check(artifact, callOptions);
       if (existing === "stored") return "stored";

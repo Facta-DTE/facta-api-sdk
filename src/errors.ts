@@ -21,6 +21,8 @@ export type FactaErrorCode =
   | "sign_vault_locked"
   | "sign_vault_missing"
   | "invalid_request"
+  /** `listDocuments({ include: ["dte"] })` asked for more than 25 rows (HTTP 400). `details.maximo` is the cap. */
+  | "include_limit_exceeded"
   | "validation_failed"
   | "not_found"
   | "method_not_allowed"
