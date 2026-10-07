@@ -3,7 +3,7 @@
 // behind `import.meta.env.DEV`, so it is never part of a production build.
 
 import { createMockFetch, type Outcome } from "../../examples/react-preview/src/mock-handler.ts";
-import { mockHoldingBase64, mockRecipeFiles, MOCK_CODE, MOCK_SEAL } from "./mock-dte.ts";
+import { mockHoldingBase64, mockPdfBase64, mockRecipeFiles, MOCK_CODE, MOCK_SEAL } from "./mock-dte.ts";
 import { ApiError, installMock, type CreatedSession, type IssuedDocument, type PlaygroundState } from "./api.ts";
 import { setTimingsEnabled, timingsEnabled } from "./timings.ts";
 import { maskCustomer, maskProduct } from "../server/catalog-mask.ts";
@@ -133,7 +133,16 @@ function withPlayground(inner: typeof fetch, sessionKeys: Map<string, string>, a
 /** `documents.download` kind json answers with the stored holding file, as the real handler does. */
 function withStoredJson(inner: typeof fetch): typeof fetch {
   return (async (input: RequestInfo | URL, init?: RequestInit) => {
-    const body = JSON.parse(String(init?.body ?? "{}")) as { action?: string; kind?: string; codigoGeneracion?: string };
+    const body = JSON.parse(String(init?.body ?? "{}")) as { action?: string; kind?: string; codigoGeneracion?: string; paperWidthMm?: number };
+    if (body.action === "documents.download" && (body.kind === "pdf" || body.kind === "ticket")) {
+      const code = body.codigoGeneracion ?? MOCK_CODE;
+      const ticket = body.kind === "ticket";
+      if (ticket && new URLSearchParams(window.location.search).get("ticket") === "missing") {
+        return new Response(JSON.stringify({ error: { code: "return_pdf_unavailable", message: "no ticket", retryable: false } }), { status: 404, headers: { "content-type": "application/json" } });
+      }
+      const file = { codigoGeneracion: code, kind: body.kind, filename: `${code}${ticket ? "-ticket" : ""}.pdf`, contentType: "application/pdf", bytes: 1, base64: mockPdfBase64(ticket ? body.paperWidthMm ?? 80 : undefined) };
+      return new Response(JSON.stringify({ file }), { status: 200, headers: { "content-type": "application/json" } });
+    }
     if (body.action === "documents.download" && body.kind === "json") {
       const code = body.codigoGeneracion ?? MOCK_CODE;
       const file = { codigoGeneracion: code, kind: "json", filename: `${code}.json`, contentType: "application/json", bytes: 1, base64: mockHoldingBase64() };

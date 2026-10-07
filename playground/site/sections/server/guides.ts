@@ -279,8 +279,8 @@ export const RECIPE_GUIDES: Record<string, RecipeGuide> = {
       },
       {
         title: "Si elige un documento: copias y descarga.",
-        text: "Lista las copias del JSON y del PDF, cada una guardada, pendiente o fallida, con su tamaño y su huella sha256, y después descarga el archivo.",
-        sdk: ["facta.getDocumentCopies({ generationCode })", "facta.downloadDocument(codigo, \"pdf\")"],
+        text: "Lista las copias del JSON y del PDF, cada una guardada, pendiente o fallida, con su tamaño y su huella sha256, y después descarga el archivo: PDF carta, JSON, o el ticket de rollo térmico, al ancho que elija (de 40 a 120 mm; los rollos comunes son 58 y 80).",
+        sdk: ["facta.getDocumentCopies({ generationCode })", "facta.downloadDocument(codigo, \"pdf\")", "facta.downloadDocument(codigo, \"ticket\", { paperWidthMm: 80 })"],
         http: ["GET /v1/storage/copies", "GET /v1/dte/{codigo}/file"],
       },
     ],

@@ -130,7 +130,8 @@ export const RECIPE_SPECS: RecipeSpec[] = [
     file: "documents-storage.ts",
     fields: [
       { name: "code", label: "Documento a descargar (opcional)", kind: "issued" },
-      { name: "kind", label: "Archivo", kind: "select", default: "pdf", options: [{ value: "pdf", label: "PDF" }, { value: "json", label: "JSON" }] },
+      { name: "kind", label: "Archivo", kind: "select", default: "pdf", options: [{ value: "pdf", label: "PDF carta" }, { value: "ticket", label: "Ticket (PDF de rollo térmico)" }, { value: "json", label: "JSON" }] },
+      { name: "paperWidthMm", label: "Ancho del rollo del ticket (mm)", kind: "number", default: 80, help: "Solo para el ticket: un entero de 40 a 120. Los rollos comunes son 58 y 80." },
       {
         name: "limit", label: "Documentos por página", kind: "select", default: "10",
         options: [{ value: "5", label: "5" }, { value: "10", label: "10" }, { value: "25", label: "25" }],

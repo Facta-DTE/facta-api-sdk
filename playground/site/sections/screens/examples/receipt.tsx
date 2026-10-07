@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { FactaDownloadButton, FactaReceipt, FactaStatusBadge, type IssueResult } from "../../../../../react.ts";
 import { Skeleton } from "../../../components/busy.tsx";
+import { DocumentForms } from "../../../components/document-forms.tsx";
 import { lacksCurrent, resultFromRegistry, useRegistry } from "../../registro/registry-data.ts";
 
 // After issuing: the compact receipt (it renders a result you already hold, with no
@@ -29,7 +30,8 @@ export function ReceiptExample({ result }: { result: IssueResult | null }) {
     return <p className="pg-note">Emita una factura desde «Emitir» (prepare la venta y úsela en cualquier ventana) y aparecerá aquí.</p>;
   }
   return (
-    <div style={{ display: "grid", gap: 16, width: "100%", maxWidth: 520 }}>
+    <div style={{ display: "grid", gap: 24, width: "100%", gridTemplateColumns: "minmax(0, 1fr)" }}>
+    <div style={{ display: "grid", gap: 16, width: "100%", maxWidth: 520, gridTemplateColumns: "minmax(0, 1fr)" }}>
       {result === null && <p className="pg-hint">Su último documento emitido en el playground. Al emitir uno nuevo, aparece aquí.</p>}
       <FactaReceipt result={shown} environment="00" reference="Playground" />
       <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
@@ -37,6 +39,9 @@ export function ReceiptExample({ result }: { result: IssueResult | null }) {
         <FactaDownloadButton codigoGeneracion={shown.codigoGeneracion} kinds={["pdf", "json", "ticket"]} />
         <FactaDownloadButton codigoGeneracion={shown.codigoGeneracion} variant="outline" size="sm" kinds={["json"]} />
       </div>
+    </div>
+      {/* The same document in its three forms; the ticket is the one that used to hide in the dropdown. */}
+      <DocumentForms code={shown.codigoGeneracion} estado={shown.estado} seal={"selloRecibido" in shown ? shown.selloRecibido ?? null : null} eager />
     </div>
   );
 }

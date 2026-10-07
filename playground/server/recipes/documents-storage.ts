@@ -10,7 +10,9 @@ import { FactaError, type Facta, type ListedDte } from "../../../mod.ts";
 export interface Input {
   /** Download this document too (and list its managed copies). */
   codigoGeneracion?: string;
-  kind: "pdf" | "json";
+  kind: "pdf" | "json" | "ticket";
+  /** Ticket only: roll width in millimeters, an integer from 40 through 120 (default 80). */
+  paperWidthMm?: number;
   limit: number;
   /** Keep only these generation codes (the playground lists just the visitor's own). */
   onlyCodes?: string[];
@@ -47,7 +49,8 @@ export async function run(facta: Facta, input: Input) {
 
   const copies = await attempt(() => facta.getDocumentCopies({ generationCode: code }));
   // `bytes` is a Uint8Array: write it to disk or stream it to your user.
-  const file = await facta.downloadDocument(code, input.kind);
+  // `kind: "ticket"` regenerates the thermal-roll PDF of an already sealed document; `paperWidthMm` is its roll width.
+  const file = await facta.downloadDocument(code, input.kind, input.kind === "ticket" && input.paperWidthMm !== undefined ? { paperWidthMm: input.paperWidthMm } : {});
   // The stored JSON has no seal of its own; Hacienda's seal comes from the document's status. The playground
   // joins both into the Archivo DTE, the JSON a person should see; the stored bytes stay as the raw file.
   const status = input.kind === "json" ? await attempt(() => facta.getDocumentStatus(code)) : undefined;
