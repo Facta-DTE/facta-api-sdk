@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ApiError, enrichRegistry, loadRegistry, type RegistryDocument } from "../../api.ts";
+import { ApiError, enrichRegistry, loadRegistry, loadRegistryDetails, type RegistryDetail, type RegistryDocument } from "../../api.ts";
 import { usePlayground } from "../../state.tsx";
 
 // Shared by Inicio («Sus últimas facturas»), Registro and the receipt example: the visitor's own documents
@@ -46,6 +46,33 @@ export function useRegistry(): { registry: Registry; reload(): Promise<void>; en
   }, []);
   useEffect(() => { if (signedIn) void reload(); }, [signedIn, reload]);
   return { registry, reload, enrich, signedIn };
+}
+
+/**
+ * The detail (receiver, concept, Archivo DTE) of the documents on screen, asked ten at a time and only once
+ * per document. When the API does not support `include`, `supported` turns false and nothing else changes.
+ */
+export function useRegistryDetails(): { details: Map<string, RegistryDetail>; supported: boolean; load(codes: string[]): Promise<void> } {
+  const [details, setDetails] = useState<Map<string, RegistryDetail>>(new Map());
+  const [supported, setSupported] = useState(true);
+  const asked = useRef(new Set<string>());
+  const load = useCallback(async (codes: string[]) => {
+    const wanted = [...new Set(codes)].filter((code) => !asked.current.has(code)).slice(0, 10);
+    if (wanted.length === 0) return;
+    for (const code of wanted) asked.current.add(code);
+    try {
+      const result = await loadRegistryDetails(wanted);
+      if (!result.supported) {
+        setSupported(false);
+        return;
+      }
+      setDetails((current) => new Map([...current, ...result.documents.map((d) => [d.codigoGeneracion, d] as const)]));
+    } catch {
+      // A rate limit already raised the page banner (api.ts); the rows keep what the ledger has. Ask again next time.
+      for (const code of wanted) asked.current.delete(code);
+    }
+  }, []);
+  return { details, supported, load };
 }
 
 /**

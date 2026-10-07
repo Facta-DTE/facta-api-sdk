@@ -2,12 +2,13 @@ import { useMemo, useState } from "react";
 import type { RegistryDocument } from "../../api.ts";
 import { StatusChip } from "../../components/ui.tsx";
 import { Busy, Skeleton } from "../../components/busy.tsx";
+import { DteView } from "../../components/dte-view.tsx";
 import { Link } from "../../router.tsx";
 import { usePlayground } from "../../state.tsx";
 import { useDownload } from "./downloads.ts";
 import { sealOf } from "./registry-rows.ts";
 import { InvalidateDialog } from "./invalidate-dialog.tsx";
-import { money, needsEnrich, observationsOf, TYPE_NAMES, tail, totalOf, useRegistry, useVisibleRows, whenOf } from "./registry-data.ts";
+import { money, needsEnrich, observationsOf, TYPE_NAMES, tail, totalOf, useRegistry, useRegistryDetails, useVisibleRows, whenOf } from "./registry-data.ts";
 import "./registro.css";
 
 // Section «Registro» (docs/playground.md §5.5). The list is the visitor's own record
@@ -21,6 +22,8 @@ export function Registro() {
   const { view } = usePlayground();
   const { registry, reload, enrich, signedIn } = useRegistry();
   const { busy, problem, download } = useDownload();
+  const { details, supported: detailsSupported, load: loadDetails } = useRegistryDetails();
+  const [opened, setOpened] = useState<string | null>(null);
   const [type, setType] = useState("");
   const [estado, setEstado] = useState("");
   const [reason, setReason] = useState<string | null>(null);
@@ -42,7 +45,10 @@ export function Registro() {
       return row !== undefined && needsEnrich(row);
     });
     if (wanted.length > 0) void enrich(wanted);
+    // One listing call (`include: ["dte"]`) brings the receiver and concept of every visible row.
+    void loadDetails(codes.filter((code) => documents.some((d) => d.codigoGeneracion === code && d.estado !== "rechazado")));
   });
+  const columns = detailsSupported ? 7 : 6;
 
   async function check(code: string) {
     setChecking(code);
@@ -106,26 +112,47 @@ export function Registro() {
             <div className="reg-table-card">
               <table className="reg-table">
                 <thead>
-                  <tr><th scope="col">Fecha</th><th scope="col">Tipo</th><th scope="col">Número de control</th><th scope="col" className="r">Total</th><th scope="col">Estado</th><th scope="col"><span className="pg-sr">Acciones</span></th></tr>
+                  <tr><th scope="col">Fecha</th><th scope="col">Tipo</th><th scope="col">Número de control</th>{detailsSupported && <th scope="col">Receptor y concepto</th>}<th scope="col" className="r">Total</th><th scope="col">Estado</th><th scope="col"><span className="pg-sr">Acciones</span></th></tr>
                 </thead>
                 <tbody>
                   {shown.map((d) => {
                     const total = totalOf(d);
                     const label = `${TYPE_NAMES[d.tipoDte] ?? d.tipoDte} ${tail(d.numeroControl, 4)}`;
                     const observations = observationsOf(d);
+                    const detail = details.get(d.codigoGeneracion);
+                    const hasDte = detail?.archivoDte != null;
                     return [
                       <tr key={d.codigoGeneracion} ref={observe(d.codigoGeneracion)} className={`reg-row reg-row--${d.estado}`}>
                         <td className="when">{whenOf(d)}</td>
                         <td className="type">{TYPE_NAMES[d.tipoDte] ?? `Tipo ${d.tipoDte}`}</td>
                         <td className="ctl mono" title={d.numeroControl}><span className="reg-ctl-full">{d.numeroControl}</span><span className="reg-ctl-short">{tail(d.numeroControl, 4)}</span></td>
+                        {detailsSupported && (
+                          <td className="who">
+                            {detail?.resumen != null ? (
+                              <>
+                                <span>{detail.resumen.receptor?.nombre ?? "Consumidor final"}</span>
+                                {detail.resumen.receptor?.numDocumento && <small className="pg-hint reg-sub mono">{detail.resumen.receptor.numDocumento}</small>}
+                                {detail.resumen.primeraDescripcion && <small className="pg-hint reg-sub">{detail.resumen.primeraDescripcion}{detail.resumen.lineas > 1 ? ` +${detail.resumen.lineas - 1}` : ""}</small>}
+                              </>
+                            ) : detail?.dteError != null ? (
+                              <small className="pg-hint reg-sub" title={detail.dteError.message}>No se pudo leer el documento ({detail.dteError.code})</small>
+                            ) : <span className="dte-null">—</span>}
+                          </td>
+                        )}
                         <td className="total r">{total === null ? "—" : money(total)}</td>
                         <td className="state"><StatusChip estado={d.estado} /></td>
                         <td className="act">
-                          {(d.estado === "sellado" || d.estado === "invalidado") && ([["pdf", "PDF", "PDF"], ["json", "JSON DTE", "JSON DTE"], ["raw", "Raw", "JSON original (raw)"]] as const).map(([kind, text, name]) => (
+                          {(d.estado === "sellado" || d.estado === "invalidado") && ([["pdf", "PDF", "PDF"], ["ticket", "Ticket", "ticket de 80 mm"], ["json", "JSON DTE", "JSON DTE"], ["raw", "Raw", "JSON original (raw)"]] as const).map(([kind, text, name]) => (
                             <button key={kind} type="button" className="pg-btn pg-btn--sm" aria-label={`Descargar ${name} de ${label}`} disabled={busy !== null} onClick={() => void download(d.codigoGeneracion, kind, sealOf(d))}>
                               {busy === `${d.codigoGeneracion}.${kind}` ? "…" : text}
                             </button>
                           ))}
+                          {hasDte && (
+                            <button type="button" className="pg-btn pg-btn--sm" aria-expanded={opened === d.codigoGeneracion} aria-controls={`dte-${d.codigoGeneracion}`} aria-label={`Ver el documento ${label}`} onClick={() => setOpened(opened === d.codigoGeneracion ? null : d.codigoGeneracion)}>Ver documento</button>
+                          )}
+                          {(d.estado === "contingencia" || d.estado === "rechazado") && (
+                            <small className="pg-hint reg-notkt">{d.estado === "contingencia" ? "Sin ticket: aún no tiene sello de Hacienda." : "Sin ticket: el documento fue rechazado."}</small>
+                          )}
                           {d.estado === "sellado" && canInvalidate && (
                             <button type="button" className="pg-btn pg-btn--sm reg-void" aria-label={`Anular ${label}`} onClick={() => setVoiding(d)}>Anular</button>
                           )}
@@ -139,9 +166,19 @@ export function Registro() {
                           )}
                         </td>
                       </tr>,
+                      hasDte && opened === d.codigoGeneracion && (
+                        // Replace with the shared DocumentForms (carta · ticket · JSON) when feat/playground-ticket lands.
+                        <tr key={`${d.codigoGeneracion}-dte`} className="reg-why-row">
+                          <td colSpan={columns}>
+                            <div className="reg-dte" id={`dte-${d.codigoGeneracion}`}>
+                              <DteView code={d.codigoGeneracion} dte={detail!.archivoDte} downloads={false} />
+                            </div>
+                          </td>
+                        </tr>
+                      ),
                       d.estado === "rechazado" && open === d.codigoGeneracion && (
                         <tr key={`${d.codigoGeneracion}-why`} className="reg-why-row">
-                          <td colSpan={6}>
+                          <td colSpan={columns}>
                             <div className="reg-why" id={`reason-${d.codigoGeneracion}`} role="note">
                               <b>Motivo de Hacienda:</b>{" "}
                               {observations.length > 0

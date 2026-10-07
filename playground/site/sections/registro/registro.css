@@ -22,6 +22,10 @@
 .reg-ctl-short { display: none; }
 .reg-table td.act { text-align: right; white-space: nowrap; }
 .reg-table td.act .pg-btn + .pg-btn { margin-left: 6px; }
+.reg-sub { display: block; margin-top: 2px; }
+.reg-notkt { display: block; margin-top: 4px; white-space: normal; }
+.reg-dte { margin: 0 16px 16px; }
+.reg-table .who { min-width: 160px; }
 .reg-void { color: var(--pg-danger); }
 .reg-why-row td { padding: 0; border-top: 0; }
 .reg-why { margin: 0 16px 16px; padding: 14px 16px; border-radius: var(--pg-radius-md); background: var(--pg-danger-soft); color: var(--pg-danger-ink); font-size: 14px; }
@@ -58,9 +62,11 @@
   .reg-row .state { grid-column: 3; grid-row: 1; }
   .reg-row .ctl { grid-column: 1 / 3; grid-row: 2; color: var(--pg-muted); font-size: 12px; }
   .reg-row .when { grid-column: 3; grid-row: 2; text-align: right; font-size: 12px; color: var(--pg-muted); }
-  .reg-row .act { grid-column: 1 / -1; grid-row: 3; display: flex; gap: 8px; text-align: left; margin-top: 6px; }
+  .reg-row .who { grid-column: 1 / -1; grid-row: 3; font-size: 14px; }
+  .reg-row .act { grid-column: 1 / -1; grid-row: 4; display: flex; flex-wrap: wrap; gap: 8px; text-align: left; margin-top: 6px; }
   .reg-row .act:empty { display: none; }
-  .reg-row .act .pg-btn { flex: 1 1 0; margin: 0 !important; }
+  .reg-row .act .pg-btn { flex: 1 1 72px; margin: 0 !important; }
+  .reg-dte { margin: 12px 0 0; }
   .reg-ctl-full { display: none; }
   .reg-ctl-short { display: inline; }
   .reg-why-row { display: block; margin-bottom: 12px; }

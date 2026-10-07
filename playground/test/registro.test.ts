@@ -15,12 +15,14 @@ const FIXTURES = JSON.stringify({
 
 function fakeFacta(estado: "sellado" | "contingencia" = "sellado") {
   let counter = 0;
+  const issuedCodes: string[] = [];
   const downloads: string[] = [];
   const facta = {
     environment: "00",
     issue: async (request: { tipoDte: string }) => {
       counter += 1;
       const codigoGeneracion = `AAAAAAAA-0000-4000-8000-${String(counter).padStart(12, "0")}`;
+      issuedCodes.push(codigoGeneracion);
       return {
         estado, codigoGeneracion, numeroControl: `DTE-${request.tipoDte}-M001P001-${String(counter).padStart(15, "0")}`, tipoDte: request.tipoDte,
         ambiente: "00", fecEmi: "2026-10-06", horEmi: "10:00:00", selloRecibido: "SELLO", totales: { totalPagar: 1 }, observaciones: [],
@@ -29,6 +31,13 @@ function fakeFacta(estado: "sellado" | "contingencia" = "sellado") {
     },
     getDocumentStatus: async (code: string) => ({
       estado: "sellado", codigoGeneracion: code, numeroControl: "N", tipoDte: "01", ambiente: "00", fecEmi: "2026-10-06", horEmi: "10:00:00", selloRecibido: "SELLO", observaciones: [], totales: { totalPagar: 1 },
+    }),
+    listDocuments: async () => ({
+      documentos: [...issuedCodes].reverse().map((code) => ({
+        estado: "sellado", codigoGeneracion: code.toLowerCase(), numeroControl: "N", tipoDte: "01", fecEmi: "2026-10-06",
+        archivoDte: "{}", resumen: { receptor: { nombre: `Receptor de ${code.slice(-2)}`, tipoDocumento: "13", numDocumento: "1" }, lineas: 1, primeraDescripcion: "Servicio", totalIva: 0, totalPagar: 1 },
+      })),
+      siguiente: null,
     }),
     downloadDocument: async (code: string, kind: string) => {
       downloads.push(`${code}.${kind}`);
@@ -82,6 +91,17 @@ describe("Registro", () => {
     expect(ana.documents[0]!.current).toMatchObject({ estado: "sellado" });
     const beto = await (await call("/api/registro", { as: "beto@example.com" })).json() as { documents: { codigoGeneracion: string }[] };
     expect(beto.documents.map((d) => d.codigoGeneracion)).toEqual([others]);
+  });
+
+  it("reads receiver and concept in one listing call and only for the visitor's own documents", async () => {
+    const { call, issue } = await world();
+    const mine = await issue("ana@example.com");
+    const theirs = await issue("beto@example.com");
+    expect((await call(`/api/registro/detalle?codes=${mine}`)).status).toBe(401);
+    const body = await (await call(`/api/registro/detalle?codes=${mine},${theirs}`, { as: "ana@example.com" })).json() as { supported: boolean; documents: { codigoGeneracion: string; resumen: { receptor: { nombre: string } } }[] };
+    expect(body.supported).toBe(true);
+    expect(body.documents.map((d) => d.codigoGeneracion)).toEqual([mine]);
+    expect(JSON.stringify(body)).not.toContain(theirs.slice(-2) === mine.slice(-2) ? "never" : `Receptor de ${theirs.slice(-2)}`);
   });
 
   it("records contingency documents too", async () => {

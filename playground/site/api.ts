@@ -224,6 +224,25 @@ export async function enrichRegistry(codes: string[]): Promise<RegistryDocument[
   return ((await response.json()) as { documents: RegistryDocument[] }).documents;
 }
 
+/** What the listing with `include: ["dte"]` says about one of the visitor's own documents. */
+export interface RegistryDetail {
+  codigoGeneracion: string;
+  resumen: { receptor: { nombre: string | null; tipoDocumento: string | null; numDocumento: string | null } | null; lineas: number; primeraDescripcion: string | null; totalIva: number | null; totalPagar: number | null } | null;
+  archivoDte: string | null;
+  dteError: { code: string; message: string } | null;
+}
+
+/**
+ * Receiver, concept and Archivo DTE of a few of the visitor's own documents in ONE listing call
+ * (`include: ["dte"]`). `supported: false` means the API ignored the flag: the page then shows what it
+ * showed before.
+ */
+export async function loadRegistryDetails(codes: string[]): Promise<{ supported: boolean; documents: RegistryDetail[] }> {
+  const response = await fetch(`/api/registro/detalle?codes=${encodeURIComponent(codes.slice(0, 10).join(","))}`, { headers: { accept: "application/json" } });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as { supported: boolean; documents: RegistryDetail[] };
+}
+
 export interface ResendOutcome {
   estado: string;
   /** Masked: «m•••@ejemplo.com». */

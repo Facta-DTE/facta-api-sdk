@@ -7,6 +7,7 @@
 //   POST /api/facta    the SDK handler (issue, status, documents, downloads…);
 //                      per-document reads are limited to documents this visitor issued
 //   GET  /api/registro the visitor's own documents (ledger + cache; never calls the API)
+//   GET  /api/registro/detalle?codes=  receiver, concept and Archivo DTE of own documents (one listing with include=dte)
 //   GET  /api/registro/enrich?codes=  the API's view of a few of them (cached; at most ten)
 //   GET  /api/issued   the generation codes THIS visitor issued here (issued-codes.ts)
 //   POST /api/invalidation  seals an invalidation session for a document the visitor issued here
@@ -40,6 +41,7 @@ import { loadCatalogLookup } from "./sale-catalog.ts";
 import type { FactaLike } from "../../src/server/handler.ts";
 import { handleRecipeRun } from "./recipes/route.ts";
 import { apiCacheOf } from "./api-cache.ts";
+import { findDetails } from "./registro-detail.ts";
 import { documentKey, RATE_LIMIT_MESSAGE } from "./api-budget.ts";
 import type { DocumentStatus } from "../../src/types.ts";
 
@@ -365,6 +367,26 @@ export async function handleApi(request: Request, env: PlaygroundEnv, deps: ApiD
       }
     }
     return jsonResponse(200, { documents });
+  }
+
+  if (path === "/api/registro/detalle") {
+    if (request.method !== "GET") return jsonResponse(405, errorBody("method_not_allowed", "Solo se acepta GET."), { allow: "GET" });
+    const visitor = await visitorOf(request);
+    if (visitor === null) return jsonResponse(401, errorBody("unauthorized", "Inicie sesión para ver su registro."));
+    const asked = (new URL(request.url).searchParams.get("codes") ?? "").split(",").map((c) => c.trim().toUpperCase()).filter((c) => isGenerationCode(c));
+    const codes = new Set(asked.slice(0, REGISTRY_ENRICH_BATCH));
+    if (codes.size === 0 || typeof parts.facta.listDocuments !== "function") return jsonResponse(200, { supported: false, documents: [] });
+    // Only the visitor's own codes; the listing holds every visitor's documents, so the rest is dropped here.
+    const wanted = new Map((await listIssued(env, visitor.id)).filter((e) => codes.has(e.codigoGeneracion)).map((e) => [e.codigoGeneracion, e.issuedAt] as const));
+    try {
+      return jsonResponse(200, await findDetails((filters) => parts.facta.listDocuments!(filters), wanted));
+    } catch (error) {
+      if (error instanceof FactaError && error.code === "rate_limited") {
+        return jsonResponse(429, errorBody("rate_limited", RATE_LIMIT_MESSAGE, true), { "retry-after": "60" });
+      }
+      // The page keeps the rows as the ledger has them.
+      return jsonResponse(200, { supported: false, documents: [] });
+    }
   }
 
   if (path === "/api/recipes/run") {

@@ -3,7 +3,7 @@
 // behind `import.meta.env.DEV`, so it is never part of a production build.
 
 import { createMockFetch, type Outcome } from "../../examples/react-preview/src/mock-handler.ts";
-import { mockHoldingBase64, mockRecipeFiles, MOCK_CODE, MOCK_SEAL } from "./mock-dte.ts";
+import { mockArchivoDte, mockHoldingBase64, mockRecipeFiles, MOCK_CODE, MOCK_SEAL } from "./mock-dte.ts";
 import { ApiError, installMock, type CreatedSession, type IssuedDocument, type PlaygroundState } from "./api.ts";
 import { setTimingsEnabled, timingsEnabled } from "./timings.ts";
 import { TIMINGS_HEADER, type Timings } from "../shared/timings.ts";
@@ -182,6 +182,16 @@ function mockRegistry(slow: number, rateLimited: boolean, contingency: boolean, 
       if (rateLimited) return json(429, { error: { code: "rate_limited", message: "El playground alcanzó el límite de pruebas por hora; intente en unos minutos.", retryable: true } });
       const codes = (parsed.searchParams.get("codes") ?? "").split(",");
       return json(200, { documents: documents.filter((d) => codes.includes(d.codigoGeneracion)).map((d) => ({ ...d, current: d.current ?? full(0, d.tipoDte, d.estado, d.total) })) });
+    }
+    if (parsed.pathname === "/api/registro/detalle") {
+      await sleep(slow);
+      const codes = (parsed.searchParams.get("codes") ?? "").split(",");
+      return json(200, {
+        supported: true,
+        documents: documents.filter((d) => codes.includes(d.codigoGeneracion) && d.estado !== "rechazado").map((d) => d.estado === "contingencia"
+          ? { codigoGeneracion: d.codigoGeneracion, resumen: null, archivoDte: null, dteError: { code: "not_sealed", message: "Todavía no tiene sello de Hacienda." } }
+          : { codigoGeneracion: d.codigoGeneracion, archivoDte: mockArchivoDte(), dteError: null, resumen: { receptor: { nombre: "Cliente de prueba", tipoDocumento: "13", numDocumento: "053085465" }, lineas: 2, primeraDescripcion: "Café de altura, bolsa de 1 lb", totalIva: 2.36, totalPagar: d.total } }),
+      });
     }
     if (parsed.pathname === "/api/recipes/run") {
       // A recipe takes a while at the real API: this one takes `slow` ms (or 1.2 s) so the running state can be seen.

@@ -39,3 +39,8 @@ export function mockRecipeFiles(contingency: boolean) {
 
 /** The stored holding file the SDK handler serves for `documents.download` kind json. */
 export const mockHoldingBase64 = () => base64(holding);
+
+/** The sealed mock document as an Archivo DTE (what `include: ["dte"]` returns per row). */
+export function mockArchivoDte(): string {
+  return archivoDteOf(sealed) ?? "";
+}
