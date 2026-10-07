@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { createValidationResults, renderLiveReport, safeFailureCode } from "./live-report.mjs";
 import { validateLiveManagedStorage } from "./live-managed-storage.mjs";
 import { emailDeliveryReportState, emailDeliveryVerdict, emailDeliveryWarningLines } from "./live-delivery.mjs";
-import { requireLiveSnapshots, validateLiveCatalogReads } from "./live-preflight.mjs";
+import { requireLiveSnapshots, validateLiveCatalogReads, validateLiveCatalogWriteGate } from "./live-preflight.mjs";
 import {
   assertRelatedTestDocuments,
   assertLiveRunWithinIdempotencyWindow,
@@ -69,6 +69,7 @@ const { FileInvoiceArchive } = await import("../dist/node.js");
 const scratch = await mkdtemp(join(tmpdir(), "facta-sdk-integration-"));
 const archivePassphrase = Buffer.from(crypto.getRandomValues(new Uint8Array(48))).toString("base64url");
 
+const emergencyCalls = [];
 const checks = createValidationResults();
 let currentCheck = "status";
 let failureCode = null;
@@ -97,7 +98,7 @@ try {
       timeoutMs: 90_000,
       maxRetries: 1,
     },
-    runtime: { version: 1, archive },
+    runtime: { version: 1, archive, emergencyStore: async (_files, info) => { emergencyCalls.push(info.reason); } },
   });
 
   const health = await facta.status();
@@ -138,6 +139,8 @@ try {
   assert(storageCapability.managed.ready, "Full managed live validation requires ready managed storage.");
   const snapshots = await requireLiveSnapshots(facta, checks, (check) => { currentCheck = check; }, storageCapability.managed.ready && !storageCapability.byos.ready);
   await validateLiveCatalogReads(facta, snapshots.catalog, checks, (check) => { currentCheck = check; });
+  await validateLiveCatalogWriteGate(facta, checks, (check) => { currentCheck = check; });
+  console.log(`${checks["catalog-write-gate"].startsWith("Warning") ? "WARN" : "PASS"} catalog write gate: ${checks["catalog-write-gate"]}`);
   console.log("PASS snapshots: catalog and required BYOS destinations verified locally");
   currentCheck = "preflight";
 
@@ -221,6 +224,11 @@ try {
   assert(fileRequests.every(({ url }) => url.searchParams.get("kind") === "ticket"), "inline JSON/PDF archival must not call a document file download endpoint");
   assert.equal(fileRequests.length, 1, "only the ticket may use the file download endpoint");
   checks["no-downloads"] = "Passed";
+  currentCheck = "emergency-idle";
+  assert.equal(emergencyCalls.length, 0, "the emergency safeguard must stay idle on a normal issue");
+  assert.equal(result.emergency, undefined, "a normal issue must not carry an emergency report");
+  assert.equal(result.emission.emergency, undefined, "a normal emission must not carry an emergency report");
+  checks["emergency-idle"] = "Passed";
   console.log("PASS archive: exact signed JSON, PDF, and ticket retained");
   await validateLiveManagedStorage(facta, { emission: result.emission, request, idempotencyKey, artifacts: { json: legalJson, pdf }, checks, onCheck: (check) => { currentCheck = check; } });
 

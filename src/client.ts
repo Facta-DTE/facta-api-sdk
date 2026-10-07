@@ -37,10 +37,32 @@
 import { FactaError, type FactaErrorCode } from "./errors.ts";
 import { validateFactaConfig } from "./config-validation.ts";
 import { resolveCatalogRefs } from "./catalog.ts";
+import {
+  CATALOG_WRITE_MESSAGES,
+  nextCursor,
+  prepareCustomer,
+  prepareProduct,
+  recordOf,
+  requireId,
+  rowsOf,
+} from "./catalog-write.ts";
 import { buildSyncedDestinations, readDocumentIdentity } from "./byos-copies.ts";
 import { createReferenceClock, type ReferenceClock } from "./reference-clock.ts";
 import { DEFAULT_CLOCK_URL } from "./clock-config.ts";
 import { submitPrintJob, type PrintResult, type PrintTransport } from "./printing.ts";
+import {
+  EmergencyDesk,
+  emergencyWarningCodes,
+  EMERGENCY_STORE_INFO,
+  replicateEmergency,
+  type EmergencyEvent,
+  type EmergencyFiles,
+  type EmergencyInfo,
+  type EmergencyReplication,
+  type EmergencyReport,
+  type EmergencyStoreFn,
+  type EmergencyTrigger,
+} from "./emergency.ts";
 import { diagnoseStatus, type DiagnoseOptions, type DiagnosticsReport } from "./diagnostics.ts";
 import type {
   ArchiveArtifact,
@@ -63,7 +85,11 @@ import { DEBUG_HEADER, DEBUG_TIMINGS, debugFromBody, debugFromServerTiming } fro
 import { deliveryRequestFor, GENERATION_CODE, isFinalDeliveryState } from "./delivery.ts";
 import type {
   CatalogCustomer,
+  CatalogMode,
   CatalogProduct,
+  CatalogWriteOptions,
+  CustomerInput,
+  ProductInput,
   CatalogReadOptions,
   CatalogSearchOptions,
   CatalogSnapshot,
@@ -175,6 +201,23 @@ export interface FactaRuntimeConfigV1 {
   /** Default `true`: replicate to the destinations synced from the Facta app. `false` opts out. */
   replicate?: boolean;
   printTransport?: PrintTransport;
+  /**
+   * The emergency safeguard: YOUR function, called only when Facta could not store a
+   * document durably (server warnings) or every replication failed. It receives the
+   * Archivo DTE, the stored original JSON, the PDF and what happened, once per
+   * document. The SDK ships no storage of its own; see guides/emergency.md.
+   */
+  emergencyStore?: EmergencyStoreFn;
+  /** Optional alert hook for the same emergencies; errors are swallowed. */
+  onEmergency?: (event: EmergencyEvent) => void | Promise<void>;
+}
+
+/** `facta.emergency`. */
+export interface FactaEmergencyApi {
+  /** Whether `runtime.emergencyStore` is set. */
+  readonly configured: boolean;
+  /** Re-try normal replication (configured and synced destinations, then the copy report) from files your store kept. */
+  replicate(files: EmergencyFiles, info: Pick<EmergencyInfo, "codigoGeneracion" | "numeroControl" | "fecEmi">): Promise<EmergencyReplication>;
 }
 
 /** Per-operation fields remain explicit; configured runtime adapters are fallbacks. */
@@ -468,8 +511,10 @@ export class Facta {
   readonly #runtime: FactaRuntimeConfigV1;
   readonly #secrets: readonly string[];
   readonly #clock: ReferenceClock | null;
+  readonly emergency: FactaEmergencyApi;
+  readonly #desk: EmergencyDesk;
   #catalogCache: { revision: number; snapshot: CatalogSnapshot; fetchedAt: string } | null = null;
-  #catalogModeCache: { readable: boolean; at: number } | null = null;
+  #catalogModeCache: { mode: CatalogMode | null; at: number } | null = null;
   readonly #regionSetting: string | false | undefined;
   #region: { value: string | null; at: number; failed: boolean } | null = null;
   #regionInFlight: Promise<string | null> | null = null;
@@ -494,6 +539,18 @@ export class Facta {
       throw new TypeError("Facta runtime config version must be 1.");
     }
     this.#runtime = options.runtime ?? { version: 1 };
+    const desk = new EmergencyDesk(this.#runtime.emergencyStore, this.#runtime.onEmergency, {
+      stamp: () => this.#stamp(),
+      download: (code, kind, opts) => this.downloadDocument(code, kind, { ...(opts.raw ? { raw: true as const } : {}), ...(opts.signal ? { signal: opts.signal } : {}) }),
+    });
+    this.#desk = desk;
+    this.emergency = {
+      get configured() { return desk.configured; },
+      replicate: (files, info) => replicateEmergency({
+        destinations: async (id) => await this.#emergencyDestinations(id),
+        reportCopy: (code, destination, pdfStored) => this.#postByosReport(code, destination, pdfStored),
+      }, files, info, () => this.#stamp()),
+    };
     if (typeof options.apiKey !== "string" || options.apiKey === "") {
       throw new FactaError("unauthorized", "API key is required.", 0);
     }
@@ -600,6 +657,7 @@ export class Facta {
         "X-Facta-Key": this.#apiKey,
         "x-region": fallback,
       }, undefined, false, undefined, false, Math.min(this.#timeoutMs, REGION_DISCOVERY_TIMEOUT_MS));
+      this.#rememberCatalogMode(status);
       const advertised = (status as { region?: unknown }).region;
       const value = typeof advertised === "string" && REGION_PATTERN.test(advertised) ? advertised : fallback;
       this.#region = { value, at: Date.now(), failed: false };
@@ -631,6 +689,7 @@ export class Facta {
         canIssueAndArchive: false,
         pendingArchiveOperations: null,
         revisions: null,
+        catalogMode: this.#catalogModeCache?.mode ?? null,
         servedRegion: this.#servedRegion,
         checks: [{
           id: "api",
@@ -683,9 +742,16 @@ export class Facta {
         report.checks[report.checks.length - 1].state = "blocked";
       } else if (report.overall === "ready") report.overall = "attention";
     }
+    // Informational only: the store is optional, so this never changes `overall`.
+    report.checks.push({
+      id: "emergency-store",
+      state: "ok",
+      message: this.#runtime.emergencyStore === undefined ? EMERGENCY_STORE_INFO : "runtime.emergencyStore is configured.",
+    });
     report.storageReady = storageReady;
     report.region = this.#regionSetting === false ? null : (typeof this.#regionSetting === "string" ? this.#regionSetting : this.#region?.value ?? null);
     report.servedRegion = this.#servedRegion;
+    report.catalogMode = this.#rememberCatalogMode(status);
     return report;
   }
 
@@ -900,6 +966,14 @@ export class Facta {
     const local = this.#catalogCache;
     try {
       const status = await this.status();
+      const catalogMode = this.#rememberCatalogMode(status);
+      if (catalogMode === 'plain') {
+        // The company catalog is read live through the API: there is no snapshot to lag behind.
+        return {
+          catalogMode, freshness: 'fresh', localRevision: null, fetchedAt: null,
+          desiredRevision: null, publishedRevision: null, syncStatus: null, statusError: null,
+        };
+      }
       const sync = status.sincronizacion as Record<string, unknown> | null | undefined;
       const catalog = sync?.['catalog'] as Record<string, unknown> | undefined;
       const desired = Number(catalog?.['desiredRevision']);
@@ -909,6 +983,7 @@ export class Facta {
       const ready = catalog?.['status'] === 'ready'
         && desiredRevision !== null && desiredRevision === publishedRevision;
       return {
+        catalogMode,
         freshness: local === null ? 'missing' : ready && publishedRevision === local.revision ? 'fresh' : 'stale',
         localRevision: local?.revision ?? null,
         fetchedAt: local?.fetchedAt ?? null,
@@ -920,6 +995,7 @@ export class Facta {
     } catch (cause) {
       const code = cause instanceof FactaError ? cause.code : 'network_error';
       return {
+        catalogMode: this.#catalogModeCache?.mode ?? null,
         freshness: local === null ? 'missing' : 'stale',
         localRevision: local?.revision ?? null,
         fetchedAt: local?.fetchedAt ?? null,
@@ -931,49 +1007,218 @@ export class Facta {
     }
   }
 
-  /** List customers; stale process-local reads require explicit opt-in. */
+  /**
+   * List customers. Reads follow the catalog mode the key reports: the key's decrypted snapshot
+   * (`encrypted`, needs `unlockKey`), or the API itself (`readable`, `plain`; no `unlockKey`).
+   * Deactivated customers are left out unless `includeInactive` is set.
+   */
   async listCustomers(options: CatalogReadOptions = {}): Promise<CatalogCustomer[]> {
-    return [...(await this.#freshCatalog(options.allowStale ?? this.#config.allowStaleCatalogReads)).customers];
+    return await this.#catalogRead(
+      async () => (await this.#listAll<CatalogCustomer>('/v1/customers', ['customers', 'clientes'], options)).filter((row) => options.includeInactive === true || row.active !== false),
+      async () => [...(await this.#freshCatalog(options.allowStale ?? this.#config.allowStaleCatalogReads)).customers],
+    );
   }
 
   /** Find one authorized customer by its stable Facta ID. */
   async getCustomer(customerId: string, options: CatalogReadOptions = {}): Promise<CatalogCustomer | null> {
-    return (await this.#freshCatalog(options.allowStale ?? this.#config.allowStaleCatalogReads)).customers.find((customer) => customer.id === customerId) ?? null;
+    return await this.#catalogRead(
+      async () => {
+        const row = await this.#getOne<CatalogCustomer>(`/v1/customers/${encodeURIComponent(customerId)}`, ['customer', 'cliente'], options);
+        return row === null || (row.active === false && options.includeInactive !== true) ? null : row;
+      },
+      async () => (await this.#freshCatalog(options.allowStale ?? this.#config.allowStaleCatalogReads)).customers.find((customer) => customer.id === customerId) ?? null,
+    );
   }
 
-  /** Search customer name, document number, NRC, and email locally. */
+  /** Search customer name, document number, NRC, and email. */
   async searchCustomers(query: string, options: CatalogSearchOptions = {}): Promise<CatalogCustomer[]> {
     const needle = normalizeCatalogQuery(query);
     if (!needle) return [];
     const limit = catalogSearchLimit(options.limit);
-    return (await this.#freshCatalog(options.allowStale ?? this.#config.allowStaleCatalogReads)).customers
-      .filter((customer) => [customer.name, customer.doc_number, customer.nrc, customer.email]
-        .some((value) => typeof value === 'string' && normalizeCatalogQuery(value).includes(needle)))
-      .slice(0, limit);
+    return await this.#catalogRead(
+      async () => (await this.#listPage<CatalogCustomer>('/v1/customers', ['customers', 'clientes'], { q: query.trim(), limit: String(limit) }, options))
+        .filter((row) => options.includeInactive === true || row.active !== false)
+        .slice(0, limit),
+      async () => (await this.#freshCatalog(options.allowStale ?? this.#config.allowStaleCatalogReads)).customers
+        .filter((customer) => [customer.name, customer.doc_number, customer.nrc, customer.email]
+          .some((value) => typeof value === 'string' && normalizeCatalogQuery(value).includes(needle)))
+        .slice(0, limit),
+    );
   }
 
-  /** List active products in the latest locally decrypted key snapshot. */
-  async listProducts(options: { includeInactive?: boolean; allowStale?: boolean } = {}): Promise<CatalogProduct[]> {
-    const products = (await this.#freshCatalog(options.allowStale ?? this.#config.allowStaleCatalogReads)).products;
-    return products.filter((product) => options.includeInactive === true || product.active !== false);
+  /** List active products (all of them with `includeInactive`). Same modes as `listCustomers`. */
+  async listProducts(options: CatalogReadOptions = {}): Promise<CatalogProduct[]> {
+    return await this.#catalogRead(
+      async () => (await this.#listAll<CatalogProduct>('/v1/products', ['products', 'productos'], options, options.includeInactive === true ? { includeInactive: 'true' } : {}))
+        .filter((product) => options.includeInactive === true || product.active !== false),
+      async () => (await this.#freshCatalog(options.allowStale ?? this.#config.allowStaleCatalogReads)).products
+        .filter((product) => options.includeInactive === true || product.active !== false),
+    );
   }
 
-  /** Find one authorized product by its stable Facta ID. */
+  /** Find one authorized product by its stable Facta ID. Inactive products are `null` unless `includeInactive`. */
   async getProduct(productId: string, options: CatalogReadOptions = {}): Promise<CatalogProduct | null> {
-    const product = (await this.#freshCatalog(options.allowStale ?? this.#config.allowStaleCatalogReads)).products.find((row) => row.id === productId);
-    return product === undefined || product.active === false ? null : product;
+    return await this.#catalogRead(
+      async () => {
+        const row = await this.#getOne<CatalogProduct>(`/v1/products/${encodeURIComponent(productId)}`, ['product', 'producto'], options);
+        return row === null || (row.active === false && options.includeInactive !== true) ? null : row;
+      },
+      async () => {
+        const product = (await this.#freshCatalog(options.allowStale ?? this.#config.allowStaleCatalogReads)).products.find((row) => row.id === productId);
+        return product === undefined || (product.active === false && options.includeInactive !== true) ? null : product;
+      },
+    );
   }
 
-  /** Search active product descriptions, codes, and barcodes locally. */
+  /** Search active product descriptions, codes, and barcodes. */
   async searchProducts(query: string, options: CatalogSearchOptions = {}): Promise<CatalogProduct[]> {
     const needle = normalizeCatalogQuery(query);
     if (!needle) return [];
     const limit = catalogSearchLimit(options.limit);
-    return (await this.#freshCatalog(options.allowStale ?? this.#config.allowStaleCatalogReads)).products
-      .filter((product) => product.active !== false
-        && [product.description, product.code, product.barcode]
-          .some((value) => typeof value === 'string' && normalizeCatalogQuery(value).includes(needle)))
-      .slice(0, limit);
+    return await this.#catalogRead(
+      async () => (await this.#listPage<CatalogProduct>('/v1/products', ['products', 'productos'], { q: query.trim(), limit: String(limit) }, options))
+        .filter((product) => options.includeInactive === true || product.active !== false)
+        .slice(0, limit),
+      async () => (await this.#freshCatalog(options.allowStale ?? this.#config.allowStaleCatalogReads)).products
+        .filter((product) => (options.includeInactive === true || product.active !== false)
+          && [product.description, product.code, product.barcode]
+            .some((value) => typeof value === 'string' && normalizeCatalogQuery(value).includes(needle)))
+        .slice(0, limit),
+    );
+  }
+
+  // --- Catalog writes (plain-text catalog, scope `catalog:write`) ---------------------------------
+  // The company must have switched its catalog to plain text and enabled «Permitir administrar
+  // clientes y productos desde el API»; otherwise the server answers `catalog_encrypted` (409) or
+  // `catalog_write_disabled` (403). There is no hard delete: removing a record would break the
+  // documents that reference it, so the API only deactivates.
+
+  /** Create a customer. Pass `idempotencyKey` to make a retried create safe. */
+  async createCustomer(input: CustomerInput, options: CatalogWriteOptions = {}): Promise<CatalogCustomer> {
+    const body = prepareCustomer(input, 'create');
+    return await this.#catalogWrite<CatalogCustomer>('POST', '/v1/customers', ['customer', 'cliente'], body, options);
+  }
+
+  /** Change fields of a customer; only the fields you pass change. */
+  async updateCustomer(customerId: string, changes: CustomerInput, options: CatalogWriteOptions = {}): Promise<CatalogCustomer> {
+    const id = requireId(customerId, 'customer');
+    return await this.#catalogWrite<CatalogCustomer>('PATCH', `/v1/customers/${encodeURIComponent(id)}`, ['customer', 'cliente'], prepareCustomer(changes, 'update'), options, id);
+  }
+
+  /** Deactivate a customer (`DELETE`). It keeps existing documents intact and stops being listed. */
+  async deactivateCustomer(customerId: string, options: CatalogWriteOptions = {}): Promise<CatalogCustomer> {
+    const id = requireId(customerId, 'customer');
+    return await this.#catalogWrite<CatalogCustomer>('DELETE', `/v1/customers/${encodeURIComponent(id)}`, ['customer', 'cliente'], undefined, options, id);
+  }
+
+  /** Create a product. `item_type` is required and never defaulted. */
+  async createProduct(input: ProductInput, options: CatalogWriteOptions = {}): Promise<CatalogProduct> {
+    const body = prepareProduct(input, 'create');
+    return await this.#catalogWrite<CatalogProduct>('POST', '/v1/products', ['product', 'producto'], body, options);
+  }
+
+  /** Change fields of a product; only the fields you pass change. */
+  async updateProduct(productId: string, changes: ProductInput, options: CatalogWriteOptions = {}): Promise<CatalogProduct> {
+    const id = requireId(productId, 'product');
+    return await this.#catalogWrite<CatalogProduct>('PATCH', `/v1/products/${encodeURIComponent(id)}`, ['product', 'producto'], prepareProduct(changes, 'update'), options, id);
+  }
+
+  /** Deactivate a product (`DELETE`). Existing documents keep it; it can no longer be issued. */
+  async deactivateProduct(productId: string, options: CatalogWriteOptions = {}): Promise<CatalogProduct> {
+    const id = requireId(productId, 'product');
+    return await this.#catalogWrite<CatalogProduct>('DELETE', `/v1/products/${encodeURIComponent(id)}`, ['product', 'producto'], undefined, options, id);
+  }
+
+  async #catalogWrite<T extends { id: string }>(
+    method: 'POST' | 'PATCH' | 'DELETE',
+    path: string,
+    keys: readonly string[],
+    body: Record<string, unknown> | undefined,
+    options: CatalogWriteOptions,
+    id?: string,
+  ): Promise<T> {
+    const payload = await this.#request<unknown>(method, path, body, {
+      ...(options.idempotencyKey === undefined ? {} : { idempotencyKey: options.idempotencyKey }),
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
+    });
+    const record = recordOf<T>(payload, keys);
+    if (record !== null) return record;
+    if (method === 'DELETE' && id !== undefined) return { id, active: false } as unknown as T;
+    throw new FactaError('internal_error', 'La respuesta del catálogo no trae el registro.', 502);
+  }
+
+  /**
+   * How the key reaches the catalog. Learned from `/v1/status` (shared with region discovery, so
+   * normally no extra request) and trusted for a minute. `null` when the server does not say or
+   * status failed, which keeps the encrypted-snapshot path.
+   */
+  async #catalogMode(): Promise<CatalogMode | null> {
+    const cached = this.#catalogModeCache;
+    if (cached !== null && Date.now() - cached.at < CATALOG_MODE_TTL_MS) return cached.mode;
+    // Region discovery reads the same status document: let it run first so one request serves both.
+    if (this.#regionSetting === undefined) {
+      await this.region();
+      const learned = this.#catalogModeCache as { mode: CatalogMode | null; at: number } | null;
+      if (learned !== null && Date.now() - learned.at < CATALOG_MODE_TTL_MS) return learned.mode;
+    }
+    try {
+      return this.#rememberCatalogMode(await this.status());
+    } catch {
+      return null;
+    }
+  }
+
+  #rememberCatalogMode(status: Status): CatalogMode | null {
+    const advertised = status.llave?.catalogMode;
+    const mode = advertised === 'plain' || advertised === 'readable' || advertised === 'encrypted' ? advertised : null;
+    this.#catalogModeCache = { mode, at: Date.now() };
+    return mode;
+  }
+
+  /** Pick the read path for the key's catalog mode. `readable` tries the API and falls back to the snapshot. */
+  async #catalogRead<T>(viaApi: () => Promise<T>, viaSnapshot: () => Promise<T>): Promise<T> {
+    const mode = await this.#catalogMode();
+    if (mode === 'plain') return await viaApi();
+    if (mode === 'readable') {
+      try {
+        return await viaApi();
+      } catch (cause) {
+        const routeMissing = cause instanceof FactaError &&
+          (cause.status === 404 || cause.status === 501 || cause.code === 'catalog_encrypted');
+        if (!routeMissing || this.#unlockKey === null) throw cause;
+        return await viaSnapshot();
+      }
+    }
+    return await viaSnapshot();
+  }
+
+  async #listPage<T extends { id: string }>(path: string, keys: readonly string[], query: Record<string, string>, options: { signal?: AbortSignal }): Promise<T[]> {
+    const search = new URLSearchParams(query).toString();
+    const payload = await this.#request<unknown>('GET', search === '' ? path : `${path}?${search}`, undefined, options.signal ? { signal: options.signal } : {});
+    return rowsOf<T>(payload, keys);
+  }
+
+  async #listAll<T extends { id: string }>(path: string, keys: readonly string[], options: { signal?: AbortSignal }, extra: Record<string, string> = {}): Promise<T[]> {
+    const rows: T[] = [];
+    let cursor: string | null = null;
+    for (let page = 0; page < 1000; page++) {
+      const query = new URLSearchParams({ limit: '200', ...extra, ...(cursor === null ? {} : { cursor }) }).toString();
+      const payload = await this.#request<unknown>('GET', `${path}?${query}`, undefined, options.signal ? { signal: options.signal } : {});
+      rows.push(...rowsOf<T>(payload, keys));
+      cursor = nextCursor(payload);
+      if (cursor === null) return rows;
+    }
+    throw new FactaError('internal_error', 'El catálogo devolvió demasiadas páginas.', 502);
+  }
+
+  async #getOne<T extends { id: string }>(path: string, keys: readonly string[], options: { signal?: AbortSignal }): Promise<T | null> {
+    try {
+      const payload = await this.#request<unknown>('GET', path, undefined, options.signal ? { signal: options.signal } : {});
+      return recordOf<T>(payload, keys);
+    } catch (cause) {
+      if (cause instanceof FactaError && cause.status === 404 && cause.code === 'not_found') return null;
+      throw cause;
+    }
   }
 
   async #freshCatalog(allowStale = false): Promise<CatalogSnapshot> {
@@ -1038,7 +1283,53 @@ export class Facta {
     const { deliver, ...call } = options;
     const resolved = withDelivery(await this.#resolveCatalogRefs(request), deliver);
     throwIfAborted(options.signal);
-    return this.#request<IssueResult>("POST", "/v1/dte", resolved, call);
+    return await this.#guard(await this.#request<IssueResult>("POST", "/v1/dte", resolved, call), []);
+  }
+
+  /**
+   * Run the emergency safeguard when the server warned (or the caller found) that the
+   * document has no durable copy. It runs after the fiscal result exists and never
+   * throws: the sealed result always comes back, with `emergency` and `sdkWarnings`.
+   */
+  async #guard<T extends IssueResult>(result: T, extra: EmergencyTrigger[], signal?: AbortSignal): Promise<T> {
+    const warnings = emergencyWarningCodes(result);
+    const trigger: EmergencyTrigger | undefined = warnings.length ? "server_warning" : extra[0];
+    if (trigger === undefined) return result;
+    let report: EmergencyReport;
+    try {
+      report = await this.#desk.protect(result as never, trigger, { warnings, ...(signal ? { signal } : {}) });
+    } catch {
+      return result;
+    }
+    // Not configured is not a failure: the store is optional (the server e-mails the owner a backup).
+    if (report.reason === "not_configured") return { ...result, emergency: report };
+    const sdkWarnings = [...(result.sdkWarnings ?? []), { code: report.saved ? "emergency_saved" as const : "emergency_failed" as const, detail: report.detail }];
+    return { ...result, emergency: report, sdkWarnings };
+  }
+
+  async #emergencyDestinations(identity: { numeroControl: string; fecEmi: string | null }): Promise<RemoteArtifactDestination[]> {
+    const out: RemoteArtifactDestination[] = [...(this.#runtime.remoteDestinations ?? [])];
+    if (out.length > 0 || this.#runtime.replicate === false || this.#unlockKey === null || identity.fecEmi === null) return out;
+    const snapshot = await this.syncDestinations();
+    return buildSyncedDestinations(snapshot, {
+      environment: this.#environment(),
+      identity: { numeroControl: identity.numeroControl, fecEmi: identity.fecEmi },
+      fetch: this.#fetch,
+    }).destinations;
+  }
+
+  async #postByosReport(code: string, destination: RemoteArtifactDestination, pdfStored: boolean): Promise<boolean> {
+    const canonical = destination.canonicalCopy;
+    if (!canonical || !await this.#serverAcceptsByosReports()) return false;
+    const response = await this.#request<unknown>("POST", `/v1/storage/copies/${encodeURIComponent(code)}/byos`, {
+      secretId: canonical.secretId,
+      jsonPath: canonical.jsonPath,
+      pdfPath: pdfStored ? canonical.pdfPath : null,
+      verified: true,
+      pdfRegenerated: false,
+    });
+    const copy = isRecord(response) && isRecord(response.copy) ? response.copy : undefined;
+    return copy?.recorded === true;
   }
 
   /**
@@ -1495,6 +1786,11 @@ export class Facta {
     remote: RemoteOptions = {},
   ): Promise<ArchiveEmissionResult> {
     const artifacts: ArchiveEmissionResult["archive"]["artifacts"] = [];
+    const base = {
+      ...(emission.storage === undefined ? {} : { managedStorage: emission.storage }),
+      ...(emission.storageErrorCode === undefined ? {} : { storageErrorCode: emission.storageErrorCode }),
+    };
+    let result: ArchiveEmissionResult;
     try {
       await archive.markIssued(operation.id, emission);
       const archived = await this.#archiveArtifacts(
@@ -1506,12 +1802,34 @@ export class Facta {
         remote,
         emission,
       );
-      return { emission, ...(emission.storage === undefined ? {} : { managedStorage: emission.storage }), ...(emission.storageErrorCode === undefined ? {} : { storageErrorCode: emission.storageErrorCode }), ...(archived.warnings.length ? { warnings: archived.warnings } : {}), archive: archived.archive };
+      result = { emission, ...base, ...(archived.warnings.length ? { warnings: archived.warnings } : {}), archive: archived.archive };
     } catch (cause) {
       const detail = cause instanceof Error ? cause.message : String(cause);
       try { await archive.markNeedsAttention(operation.id, detail.slice(0, 500)); } catch { /* Preserve the successful fiscal result. */ }
-      return { emission, ...(emission.storage === undefined ? {} : { managedStorage: emission.storage }), ...(emission.storageErrorCode === undefined ? {} : { storageErrorCode: emission.storageErrorCode }), archive: { state: "needs_attention", operationId: operation.id, artifacts, detail } };
+      result = { emission, ...base, archive: { state: "needs_attention", operationId: operation.id, artifacts, detail } };
     }
+    return await this.#guardArchived(result, signal);
+  }
+
+  /** Emergency triggers of an archived emission: server warnings, no durable destination, or every destination failed. */
+  async #guardArchived(result: ArchiveEmissionResult, signal?: AbortSignal): Promise<ArchiveEmissionResult> {
+    const emission = result.emission;
+    if (emission === undefined) return result;
+    const managedOk = emission.storage?.json.state === "stored" || emission.storage?.json.state === "pending";
+    const copies = result.archive.remoteCopies ?? [];
+    const remoteStored = copies.some((copy) => copy.kind === "json" && copy.state === "stored");
+    const extra: EmergencyTrigger[] = [];
+    if (!managedOk && !remoteStored) {
+      if (copies.length > 0) extra.push("all_destinations_failed");
+      // The local archive is itself a destination: only a missing or incomplete one counts as «none».
+      else if (emission.storage !== undefined && result.archive.state !== "complete") extra.push("no_destination");
+    }
+    const guarded = await this.#guard(emission, extra, signal);
+    if (guarded === emission) return result;
+    const report = guarded.emergency!;
+    if (report.reason === "not_configured") return { ...result, emission: guarded, emergency: report };
+    const warning = { code: report.saved ? "emergency_saved" as const : "emergency_failed" as const, detail: report.detail };
+    return { ...result, emission: guarded, emergency: report, warnings: [...(result.warnings ?? []), warning] };
   }
 
   async #archiveArtifacts(
@@ -1809,15 +2127,15 @@ export class Facta {
    */
   async #serverResolvesCatalog(): Promise<boolean> {
     const cached = this.#catalogModeCache;
-    if (cached !== null && Date.now() - cached.at < CATALOG_MODE_TTL_MS) return cached.readable;
-    let readable = false;
+    if (cached !== null && Date.now() - cached.at < CATALOG_MODE_TTL_MS) {
+      return cached.mode === "readable" || cached.mode === "plain";
+    }
     try {
-      readable = (await this.status()).llave?.catalogMode === "readable";
+      const mode = this.#rememberCatalogMode(await this.status());
+      return mode === "readable" || mode === "plain";
     } catch {
       return false;
     }
-    this.#catalogModeCache = { readable, at: Date.now() };
-    return readable;
   }
 
   async #resolveCatalogRefs(request: DteRequest): Promise<DteRequest> {
@@ -1840,11 +2158,11 @@ export class Facta {
    * Pass the document through UNCHANGED. The server checks a MAC over its
    * canonical hash, so a single altered cent is refused instead of signed.
    */
-  sign(prepared: PreparedDte, options: CallOptions = {}): Promise<IssueResult> {
-    return this.#request<IssueResult>("POST", "/v1/dte/sign", {
+  async sign(prepared: PreparedDte, options: CallOptions = {}): Promise<IssueResult> {
+    return await this.#guard(await this.#request<IssueResult>("POST", "/v1/dte/sign", {
       prepareToken: prepared.prepareToken,
       documento: prepared.documento,
-    }, options);
+    }, options), []);
   }
 
   /**
@@ -2342,7 +2660,10 @@ export class Facta {
   async #parseError(response: Response, payload?: unknown): Promise<never> {
     const value = payload ?? await response.json().catch(() => null);
     const error = (value as { error?: { code?: string; message?: string; details?: unknown } })?.error;
-    const message = typeof error?.message === "string" ? error.message : `HTTP ${response.status}`;
+    const guidance = error?.code === "catalog_write_disabled" || error?.code === "catalog_encrypted"
+      ? CATALOG_WRITE_MESSAGES[error.code]
+      : undefined;
+    const message = guidance ?? (typeof error?.message === "string" ? error.message : `HTTP ${response.status}`);
     throw new FactaError(
       (error?.code ?? "internal_error") as FactaErrorCode,
       redactErrorValue(message, this.#secrets) as string,

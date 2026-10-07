@@ -185,6 +185,21 @@ export function StorageRow({ result }: { result: IssueResult }) {
   );
 }
 
+/** The banner for a document that has no permanent copy; the download buttons stay below it. */
+export function EmergencyNotice({ result }: { result: IssueResult }) {
+  const { messages } = useCfg();
+  const e = result.emergency;
+  if (!e) return null;
+  // «Descárguelo ahora» only when nothing was saved AND the server's own holding copy failed too.
+  const urgent = !e.saved && e.reason === "store_failed" && e.critical === true;
+  const text = e.saved ? messages.emergency.saved : urgent ? messages.emergency.failed : messages.emergency.backup;
+  return (
+    <Callout tone={urgent ? "danger" : "warning"}>
+      <span role="alert" data-testid="facta-emergency">{text}</span>
+    </Callout>
+  );
+}
+
 export function IdRow({ label, value, shown, copy = true }: { label: string; value: string; shown?: string; copy?: boolean }) {
   return (
     <div className="facta-kv facta-kv--stack">
@@ -320,6 +335,7 @@ export function SealedContent({
           </>
         )}
       </div>
+      <EmergencyNotice result={result} />
       <Identifiers result={result} showStorage={showStorage} />
       {!compact && <Downloads result={result} />}
       <ObservationsList result={result} />
@@ -337,6 +353,7 @@ export function ContingencyContent({ result, showStorage }: { result: IssueResul
         <p className="facta-hero-text">{messages.contingency.body}</p>
       </div>
       <Callout tone="warning"><b>{messages.contingency.warningTitle}</b> {messages.contingency.warningBody}</Callout>
+      <EmergencyNotice result={result} />
       <Identifiers result={result} showStorage={showStorage} dateLabel={messages.contingency.signedAt} />
       {result.detalle && <p className="facta-text facta-text--small">{result.detalle}</p>}
       <Downloads result={result} />

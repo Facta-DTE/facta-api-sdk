@@ -80,6 +80,7 @@ The `Facta` client exposes the following English methods:
 
 - **Status and diagnostics:** `status`, `diagnose`, `getContract`, `getStorageStatus`.
 - **Synchronization and catalog:** `syncDestinations`, `syncCatalog`, `catalogState`, `listCustomers`, `getCustomer`, `searchCustomers`, `listProducts`, `getProduct`, `searchProducts`.
+- **Catalog writes (plain-text catalog, scope `catalog:write`):** `createCustomer`, `updateCustomer`, `deactivateCustomer`, `createProduct`, `updateProduct`, `deactivateProduct`. Reads work in all three catalog modes (`encrypted`, `readable`, `plain`). See the [catalog write guide](guides/catalog-write.md).
 - **DTE lifecycle:** `issue`, `prepare`, `sign`, `getDocumentStatus`, `listDocuments`, `invalidate`, `registerReturn`, `listHolding`, `downloadDocument`, `getDocumentCopies`, `retryDocumentStorage`.
 - **Durable archival:** `issueAndArchive`, `recoverOperation`, `listPendingOperations`, `invalidateAndArchive`, `recoverInvalidation`, `listPendingInvalidations`, `replicateArchive`, `diagnoseDestinations`.
 - **Delivery by e-mail and WhatsApp:** `issue(request, { deliver })`, `deliverEmail`, `deliverWhatsApp`, `getDelivery`, `waitForDelivery`. Issuing never waits for delivery; each channel is a separate request with a five-minute token and failures are reported as states.
@@ -151,7 +152,9 @@ The type system helps construct payloads but does not replace server-side tax va
 `issue()` never writes to storage. With `unlockKey` and a published snapshot, `issueAndArchive()` and `recoverOperation()` also replicate the legal JSON and PDF to your synced destinations under Facta's canonical `DTE/…/YYYY/MM/<numeroControl>` paths (opt out with `replicate: false`), report verified copies to Facta, and surface problems as non-throwing `warnings`. See [what each mode does](guides/storage-adapters.md#where-documents-go-each-mode).
 
 - [Catalog snapshots and offline reads](guides/catalog.md)
+- [Create, edit and deactivate customers and products](guides/catalog-write.md)
 - [Storage adapters](guides/storage-adapters.md)
+- [Emergency safeguard](guides/emergency.md): `runtime.emergencyStore` saves the JSON and PDF when Facta could not store them durably
 - [Node integration](guides/node.md)
 - [Deno integration](guides/deno.md)
 
