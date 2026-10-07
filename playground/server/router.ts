@@ -27,7 +27,7 @@ import { createDeliverySession, DeliveryError, maskAddress, mailMessage, mention
 import { FactaError } from "../../src/errors.ts";
 import type { PlaygroundEnv } from "./env.ts";
 import { createFactaParts, visitorTag, type FactaParts } from "./facta.ts";
-import { FixturesError, parseFixtures, publicFixtures, type PlaygroundFixtures } from "./fixtures.ts";
+import { FixturesError, loadFixturesOf, publicFixtures, type PlaygroundFixtures } from "./fixtures.ts";
 import { checkGuard, STAGING_API_HOST } from "./guard.ts";
 import { isGenerationCode, listIssued, ownsDocument, updateIssuedState } from "./issued-codes.ts";
 import { projectDocument } from "../../src/server/capabilities.ts";
@@ -122,7 +122,7 @@ function requireBrowserJson(request: Request): Response | null {
 }
 
 async function loadFixtures(env: PlaygroundEnv): Promise<PlaygroundFixtures> {
-  return parseFixtures(env.FACTA_DTE_FIXTURES_JSON);
+  return loadFixturesOf(env.FACTA_DTE_FIXTURES_JSON);
 }
 
 /** Handler actions that name one document: only its issuer's visitor may use them. */
