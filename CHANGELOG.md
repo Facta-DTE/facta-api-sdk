@@ -23,6 +23,10 @@
 - `summarizeArchivoDte(archivoDte)` (exported, pure): `{ receptor, lineas, primeraDescripcion, totalIva, totalPagar }` read from the legal document, independent of the catalog's privacy mode.
 - Types `ListedDteError`, `DteResumen`; error code `include_limit_exceeded`; optional `read(path)` on `RemoteArtifactDestination`.
 - React: `FactaDocumentList` takes `includeDte` and shows the receiver (legal document) and concept in the receiver cell; the server handler accepts `include: ["dte"]` and projects `resumen` under the same recipient exposure and masking.
+### Added: agent skill for integrations
+
+- `skills/facta-dte-api/`: an installable agent skill (`SKILL.md`, `references/*.md`, type-checked `templates/`) for integrating the SDK and the HTTP API, grounded in the guides, the source and the OpenAPI contract, with an index of the playground's recipes.  It ships in the npm package (`skills/`).
+- `scripts/pack-skill.mjs` (`pnpm skill:pack`) zips it deterministically into `dist/facta-dte-api-skill.zip`; `pnpm skill:check` compiles the templates (`tsconfig.skill.json`) and checks links, the frontmatter and that `references/errors.md` lists exactly the `FactaErrorCode` union. CI runs both and attaches the zip. Install guide in English and Spanish: `skills/README.md`.
 
 ### Added
 

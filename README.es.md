@@ -73,6 +73,10 @@ completion. It refuses non-loopback Supabase URLs and does not reset or migrate
 the local database. This repository-only validation script is not included in
 the published package.
 
+## Skill para agentes de IA
+
+[`skills/facta-dte-api/`](skills/facta-dte-api/SKILL.md) es una skill instalable (`SKILL.md`, referencias y plantillas verificadas con el compilador) que enseña a un agente de código a integrar este SDK y la API HTTP de Facta DTE sin tropiezos: llaves, tipos de DTE, idempotencia, contingencia, archivos y entrega, errores y la lista para producción. Cómo instalarla y descargarla (en español e inglés): [skills/README.md](skills/README.md). `pnpm skill:pack` genera `dist/facta-dte-api-skill.zip`.
+
 ## Guías
 
 Todas las guías de `guides/`, en español y en inglés. Las dos guías de React están solo en inglés.
