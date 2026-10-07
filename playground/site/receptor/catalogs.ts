@@ -42,11 +42,15 @@ export function loadCatalogs(): Promise<Catalogs> {
 }
 
 /** Lower case, accents and punctuation-insensitive form of a text, with each normalized char's origin index. */
-export function fold(text: string): { folded: string; origin: number[] } {
+export function fold(raw: string): { folded: string; origin: number[] } {
+  // Composed form first: a decomposed «ñ» (n + combining tilde) must stay one letter.
+  const text = raw.normalize("NFC");
   let folded = "";
   const origin: number[] = [];
   for (let i = 0; i < text.length; i++) {
-    const base = text[i]!.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+    // «ñ» is its own letter: «pan» must not find «pañales».
+    const c = text[i]!;
+    const base = c === "ñ" || c === "Ñ" ? "ñ" : c.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
     for (const char of base) {
       folded += char;
       origin.push(i);
@@ -76,7 +80,8 @@ function mergeRanges(ranges: Array<[number, number]>): Array<[number, number]> {
 
 /**
  * Entries whose code starts with the query, or whose text contains EVERY word of it (accent-insensitive).
- * Code matches come first, then word-start matches, then the rest; catalog order within each group.
+ * Ranking: a code that starts with the query; then a description with a WORD equal to the query; then one where a
+ * word STARTS with it; then any other substring match. Catalog order within each group.
  */
 export function searchCatalog<T extends CatalogEntry>(entries: readonly T[], query: string, limit = 8): Hit<T>[] {
   const wanted = words(query);
@@ -90,15 +95,22 @@ export function searchCatalog<T extends CatalogEntry>(entries: readonly T[], que
     }
     const { folded, origin } = fold(entry.value);
     const ranges: Array<[number, number]> = [];
-    let atWordStart = true;
+    let rank = 1;
     let all = true;
     for (const word of wanted) {
       const at = folded.indexOf(word);
       if (at < 0) { all = false; break; }
-      if (at > 0 && !/[^a-z0-9]/.test(folded[at - 1]!)) atWordStart = false;
+      // The best occurrence decides: a whole word, a word start, or just inside a word.
+      const pattern = new RegExp(`(^|[^a-z0-9ñ])${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "g");
+      let tier = 3;
+      for (let m = pattern.exec(folded); m !== null; m = pattern.exec(folded)) {
+        const end = m.index + m[0].length;
+        tier = Math.min(tier, /[a-z0-9ñ]/.test(folded[end] ?? " ") ? 2 : 1);
+      }
+      rank = Math.max(rank, tier);
       ranges.push([origin[at]!, origin[at + word.length - 1]! + 1]);
     }
-    if (all) ranked.push({ rank: atWordStart ? 1 : 2, hit: { entry, ranges: mergeRanges(ranges) } });
+    if (all) ranked.push({ rank: rank + 1, hit: { entry, ranges: mergeRanges(ranges) } });
   }
   return ranked.map((item, index) => ({ item, index })).sort((a, b) => a.item.rank - b.item.rank || a.index - b.index).slice(0, limit).map((x) => x.item.hit);
 }

@@ -3,7 +3,7 @@ import activities from "../site/catalogs/cat-019-actividad-economica.json";
 import departments from "../site/catalogs/cat-012-departamento.json";
 import municipalities from "../site/catalogs/cat-013-municipio.json";
 import countries from "../site/catalogs/cat-020-pais.json";
-import { municipalitiesOf, searchCatalog, titleCase, type MunicipalityEntry } from "../site/receptor/catalogs.ts";
+import { fold, municipalitiesOf, searchCatalog, titleCase, type MunicipalityEntry } from "../site/receptor/catalogs.ts";
 import { checkDocument, checkNrc, duiCheckDigit, makeDui, makeNit, nitCheckDigit } from "../site/receptor/identity.ts";
 import { DOCS, docTypeOf, isEmptyForm, missingText, previewLines, receptorChecklist, typedReceptor } from "../site/receptor/model.ts";
 import { presetsFor } from "../site/receptor/presets.ts";
@@ -72,9 +72,21 @@ describe("activity search over CAT-019", () => {
     expect(searchCatalog(activities, "venta")).toHaveLength(8);
     expect(searchCatalog(activities, "   ")).toEqual([]);
   });
-  it("ranks a word-start match above a match inside a word", () => {
-    const hits = searchCatalog(activities, "pan", 8);
-    expect(hits[0]!.entry.value.toLowerCase()).toMatch(/\bpan/);
+  it("ranks a whole word, then a word start, then a match inside a word", () => {
+    const all = searchCatalog(activities, "pan", 774).map((h) => fold(h.entry.value).folded);
+    const tier = (v: string) => (/(^|[^a-zñ])pan([^a-zñ]|$)/.test(v) ? 1 : /(^|[^a-zñ])pan/.test(v) ? 2 : 3);
+    expect(all.map(tier)).toEqual([...all.map(tier)].sort((a, b) => a - b));
+    expect(tier(all[0]!)).toBe(1);
+  });
+  it("a code prefix beats any description", () => {
+    expect(searchCatalog(activities, "47")[0]!.entry.code.startsWith("47")).toBe(true);
+  });
+  it("does not fold ñ into n: «pan» does not find «pañales»", () => {
+    expect(fold("Pañales").folded).toBe("pañales");
+    expect(fold("Panadería").folded).toBe("panaderia");
+    const only = activities.filter((a) => /pañal/i.test(a.value) && !/(^|[^a-zñ])pan/i.test(a.value.replace(/pañal\w*/gi, "")));
+    for (const entry of only) expect(searchCatalog([entry], "pan")).toEqual([]);
+    expect(searchCatalog(activities, "pañal").length).toBeGreaterThan(0);
   });
   it("countries: by name without accents and by code", () => {
     expect(searchCatalog(countries, "mexico")[0]!.entry.code).toBe("MX");

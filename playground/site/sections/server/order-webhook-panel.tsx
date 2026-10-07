@@ -209,7 +209,7 @@ export function OrderWebhookPanel({ spec, number, onIssued }: { spec: RecipeSpec
           <TimingsToggle />
           <div className="ow-actions">
             <button type="button" className="pg-primary" disabled={blocked || !orderValid || lines.length === 0} onClick={() => void send(false)}>
-              {busy === "first" ? <Busy>Enviando…</Busy> : repeated ? "Repetir la petición" : "Enviar el pedido"}
+              {busy === "first" ? <Busy>Enviando…</Busy> : "Enviar el pedido"}
             </button>
             <button type="button" className="pg-secondary" disabled={blocked || lastSent === null} onClick={() => void send(true)}>
               {busy === "again" ? <Busy>Enviando…</Busy> : "Enviar el mismo aviso otra vez"}
