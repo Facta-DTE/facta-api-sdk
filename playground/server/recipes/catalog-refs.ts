@@ -20,12 +20,11 @@ export interface Input {
 
 export async function run(facta: Facta, input: Input) {
   const { llave } = await facta.status();
-  const customers = (await facta.listCustomers()).slice(0, 25).map((c) => ({ id: c.id, name: c.name ?? null }));
-  const products = (await facta.listProducts()).slice(0, 25).map((p) => ({
-    id: p.id,
-    description: p.description ?? null,
-    unitPrice: p.unit_price ?? null,
-  }));
+  // The WHOLE records the key's snapshot carries: every customer and product field, not a name and a price.
+  // The playground masks the personal data of its real catalog on the Worker before the page sees it;
+  // in your server the SDK hands you these records complete.
+  const customers = (await facta.listCustomers()).slice(0, 25);
+  const products = (await facta.listProducts()).slice(0, 25);
   const listing = { catalogMode: llave.catalogMode ?? "encrypted", customers, products };
   if (input.productId === undefined) return { ...listing, result: null as IssueResult | null };
 
