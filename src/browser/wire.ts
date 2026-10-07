@@ -195,6 +195,18 @@ export interface DocumentFilters {
   tipoDte?: DteType | undefined;
   /** Substring of the control number, matched against the rows already loaded. */
   buscar?: string | undefined;
+  /** `["dte"]`: rows also carry `resumen` (receiver and concept read from the legal document). Pages are 25 rows at most. */
+  include?: Array<"dte"> | undefined;
+}
+
+/** What a row says about its document when the list was asked with `include: ["dte"]`. */
+export interface DocumentResumenView {
+  /** Present only when the handler has `exposeRecipient`; the number is masked like `receptor`. */
+  receptor?: (DocumentRecipientView & { tipoDocumento: string | null }) | null;
+  lineas: number;
+  primeraDescripcion: string | null;
+  totalIva: number | null;
+  totalPagar: number | null;
 }
 
 export interface DocumentRecipientView {
@@ -214,6 +226,10 @@ export interface DocumentRow {
   selloRecibido?: string | null;
   totales?: Partial<Totals> | null;
   receptor?: DocumentRecipientView | null;
+  /** Only with `include: ["dte"]` on a row the handler could read. */
+  resumen?: DocumentResumenView | null;
+  /** Only with `include: ["dte"]` on a row that could not be read. */
+  dteError?: { code: string; message: string };
 }
 
 export interface DocumentPage {

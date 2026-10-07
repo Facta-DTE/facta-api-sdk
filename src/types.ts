@@ -154,58 +154,127 @@ export interface CatalogWriteOptions {
 }
 
 /**
- * Fields of a customer you can create or change. Names match the stored customer
- * (`CatalogCustomer`). Numbers may be typed with dashes; the SDK sends digits only.
+ * Fields of a customer you can create or change, with the names the public API uses.
+ * Numbers may be typed with dashes; the SDK sends digits only. The stored spellings
+ * (`name`, `doc_type`, `doc_number`, `activity_code`, `address`, `phone`, `email`)
+ * are still accepted and translated; do not mix both for the same field.
  */
 export interface CustomerInput {
   /** Required on create. */
-  name?: string;
+  nombre?: string;
   /** Document type code: `36` NIT, `13` DUI, `37` other, `03` passport, `02` residence card. */
-  doc_type?: string | null;
+  tipoDocumento?: string | null;
   /** DUI: 9 digits. NIT: 14 digits. */
-  doc_number?: string | null;
+  numDocumento?: string | null;
   /** 1 to 8 digits. */
   nrc?: string | null;
   /** Economic activity code. */
+  codActividad?: string | null;
+  /** Department, municipality and district codes, plus the free-text line. */
+  direccion?: Address | null;
+  telefono?: string | null;
+  correo?: string | null;
+  /** @deprecated Use `nombre`. */
+  name?: string;
+  /** @deprecated Use `tipoDocumento`. */
+  doc_type?: string | null;
+  /** @deprecated Use `numDocumento`. */
+  doc_number?: string | null;
+  /** @deprecated Use `codActividad`. */
   activity_code?: string | null;
-  /** Department and municipality codes (two digits each). */
+  /** @deprecated Use `direccion`. */
   address?: Address | null;
+  /** @deprecated Use `telefono`. */
   phone?: string | null;
+  /** @deprecated Use `correo`. */
   email?: string | null;
 }
 
-/** Fields of a product you can create or change. Names match `CatalogProduct`. */
+/** VAT treatment of a product, spelled like `items[].tipoVenta`. */
+export type SaleType = "gravada" | "exenta" | "no_sujeta";
+
+/**
+ * Fields of a product you can create or change, with the names the public API uses
+ * (the same as an issuing line). The stored spellings (`description`, `item_type`,
+ * `unit_price`, `unit_of_measure`, `code`, `barcode`, `vat_included`) are still accepted.
+ */
 export interface ProductInput {
   /** Required on create. */
-  description?: string;
+  descripcion?: string;
   /** Required on create: `1` good, `2` service, `3` both. Never defaulted. */
+  tipoItem?: 1 | 2 | 3;
+  /** Required on create. Greater than zero. */
+  precioUni?: number;
+  /** Unit-of-measure code; the server uses 59 (unidad) when omitted. */
+  uniMedida?: number;
+  codigo?: string | null;
+  codigoBarras?: string | null;
+  /** Whether `precioUni` already includes VAT. Defaults to true. */
+  ivaIncluido?: boolean;
+  /** VAT treatment: taxed (default), exempt or non-subject. Chosen, never inferred. */
+  tipoVenta?: SaleType;
+  /** @deprecated Use `descripcion`. */
+  description?: string;
+  /** @deprecated Use `tipoItem`. */
   item_type?: 1 | 2 | 3;
-  /** Required on create. Not negative. */
+  /** @deprecated Use `precioUni`. */
   unit_price?: number;
-  /** Unit-of-measure code; the server defaults it when omitted. */
+  /** @deprecated Use `uniMedida`. */
   unit_of_measure?: number;
+  /** @deprecated Use `codigo`. */
   code?: string | null;
+  /** @deprecated Use `codigoBarras`. */
   barcode?: string | null;
+  /** @deprecated Use `ivaIncluido`. */
   vat_included?: boolean;
 }
 
-/** Decrypted customer fields shared with this API key. */
+/**
+ * A customer, as the API returns it (Ministry names) and as an encrypted snapshot holds it
+ * (stored names). Every record the SDK returns carries both spellings, so code written
+ * against either keeps working in every catalog mode.
+ */
 export interface CatalogCustomer {
   id: string;
+  nombre?: string | null;
+  tipoDocumento?: string | null;
+  numDocumento?: string | null;
+  nrc?: string | null;
+  codActividad?: string | null;
+  direccion?: Address | null;
+  telefono?: string | null;
+  correo?: string | null;
+  /** false once deactivated. */
+  activo?: boolean;
+  creadoEn?: string | null;
+  actualizadoEn?: string | null;
   name?: string | null;
   doc_type?: string | null;
   doc_number?: string | null;
-  nrc?: string | null;
   activity_code?: string | null;
   address?: Address | null;
   phone?: string | null;
   email?: string | null;
+  active?: boolean;
   [field: string]: unknown;
 }
 
-/** Decrypted product fields shared with this API key. */
+/** A product, with both spellings like `CatalogCustomer`. */
 export interface CatalogProduct {
   id: string;
+  codigo?: string | null;
+  codigoBarras?: string | null;
+  descripcion?: string | null;
+  tipoItem?: number | null;
+  uniMedida?: number | null;
+  precioUni?: number | null;
+  ivaIncluido?: boolean | null;
+  /** VAT treatment; a product that never chose one reads as `gravada`. */
+  tipoVenta?: SaleType;
+  /** The same treatment as `tipoVenta`, spelled as Facta stores it: `gravada`, `exenta` or `noSuj`. */
+  sale_class?: "gravada" | "exenta" | "noSuj";
+  activo?: boolean;
+  actualizadoEn?: string | null;
   code?: string | null;
   barcode?: string | null;
   description?: string | null;
@@ -445,6 +514,26 @@ export interface ListDocumentsFilters {
   tipoDte?: DteType;
   limit?: number;
   cursor?: string;
+  /**
+   * `["dte"]` adds the Archivo DTE (and a `resumen`) to every row, resolved in
+   * the same call. The page is 20 rows by default and 25 at most. Needs the
+   * `download` scope. Rows the API cannot open itself are completed locally with
+   * `unlockKey`; a row that still cannot be read carries `dteError`.
+   */
+  include?: Array<"dte">;
+}
+
+/** Why a row of `listDocuments({ include: ["dte"] })` has no `archivoDte`. */
+export interface ListedDteError {
+  /**
+   * `not_sealed` (contingency), `storage_unavailable`, `not_found`, `timeout`,
+   * `needs_local_decrypt` (only readable with `unlockKey`, which is not set or
+   * cannot reach the copy), `destinations_unavailable`, `destination_read_failed`.
+   */
+  code: string;
+  message: string;
+  /** Copies the SDK can read with `unlockKey` (`needs_local_decrypt`). */
+  destinos?: Array<{ id: string; rutaJson: string; verificada: boolean }>;
 }
 
 export interface ListedDte {
@@ -458,6 +547,12 @@ export interface ListedDte {
   totales?: { totalGravada?: number; totalIva?: number; totalPagar?: number };
   /** Null when this document’s receiver metadata cannot be opened by the API. */
   receptor?: { nombre?: string | null; numDocumento?: string | null } | null;
+  /** Only with `include: ["dte"]`: the Archivo DTE, same text as `downloadDocument(code, "json")`. */
+  archivoDte?: string;
+  /** Only with `archivoDte`: `summarizeArchivoDte(archivoDte)`. The receiver comes from the legal document. */
+  resumen?: import("./archivo-dte-summary.ts").DteResumen | null;
+  /** Only with `include: ["dte"]`, instead of `archivoDte`. */
+  dteError?: ListedDteError;
 }
 
 export interface DtePage {
@@ -667,6 +762,10 @@ export interface Status {
      * locally from the encrypted catalog and needs the unlock key.
      */
     catalogMode?: CatalogMode;
+    /** true when the company stores its catalog unencrypted: the API reads and writes it. Advertised alongside `catalogMode: "readable"` for older SDKs. */
+    catalogoSinCifrar?: boolean;
+    /** true while the owner allows API keys with `catalog:write` to administer customers and products. */
+    catalogoEscritura?: boolean;
   };
   /** Freshness of the published readable catalog; null unless `catalogMode` is readable. */
   catalogoLegible?: { publicado: boolean; revisionPublicada: number | null; revisionActual: number } | null;

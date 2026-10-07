@@ -52,10 +52,11 @@ Everything else is final for that request.
 | `not_found` | 404 | No such document/customer/product/route for this key's company; also locally for an id not in the catalog snapshot → check id and company; sync the catalog. |
 | `method_not_allowed` | 405 | Route exists, wrong method (only outside the SDK). |
 | `prepare_token_invalid` | 422 | Token expired (15 min), other key, or document changed → `prepare` again. |
+| `include_limit_exceeded` | 400 | `listDocuments` with `include: ["dte"]` asked for more than 25 rows (`details.maximo`) → ask for 25 or fewer and follow `siguiente`. |
 | `not_sealed` | 409 | Default JSON download of a document with no seal (contingency) → `{ raw: true }` or wait for the seal. |
 | `catalog_write_disabled` | 403 | Company did not enable catalog administration from the API → enable it in the app. |
 | `catalog_encrypted` | 409 | Catalog still encrypted, API cannot write → switch to plain text in the app. |
-| `catalog_duplicate` | 409 | A customer with that document, or a product with that code, already exists (`details.id` names it) → edit it, or reactivate it if deactivated. Only in SDK versions that include the catalog field-names change (PR #38). |
+| `catalog_duplicate` | 409 | A customer with that document, or a product with that code, already exists (`details.id` names it) → edit it, or reactivate it if deactivated. |
 
 ## Idempotency
 

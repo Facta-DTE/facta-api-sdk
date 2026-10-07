@@ -46,6 +46,7 @@ export {
 } from "./src/errors.ts";
 export type * from "./src/types.ts";
 export { type ArchivoDteSource, archivoDteOf } from "./src/archivo-dte.ts";
+export { type DteResumen, type DteResumenReceptor, summarizeArchivoDte } from "./src/archivo-dte-summary.ts";
 export {
   type PrintJob,
   type PrintJobState,

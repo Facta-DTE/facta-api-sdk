@@ -53,6 +53,18 @@ const state = await facta.catalogState();
 console.log(state.catalogMode); // "encrypted" | "readable" | "plain" | null
 ```
 
+**El resultado es el mismo en cualquier modo; solo cambia la latencia.** Cada cliente y
+cada producto trae los mismos campos se lea como se lea: los dos nombres de cada dato
+(`nombre` y `name`...), el tratamiento de IVA del producto (`tipoVenta` / `sale_class`),
+la dirección completa (`distrito` y, si la hay, `pais`), los números como números y
+`activo` siempre presente. `customerId` / `productId` al emitir dan la misma línea y el
+mismo receptor en los tres modos (el SDK los resuelve en local con la instantánea
+descifrada, o los resuelve el servidor). Un catálogo cifrado es más lento: el SDK
+descarga y descifra la instantánea. Sin `unlockKey` falla con `unauthorized` y nombra
+`unlockKey` en `details.missing`; nunca devuelve un registro a medias. El único campo
+que puede cambiar es una marca de tiempo (`creadoEn`, `actualizadoEn`), que la
+instantánea nunca tuvo y ahí vale `null`.
+
 `diagnose()` informa el mismo `catalogMode`. Los registros desactivados no salen en
 listas ni búsquedas; pase `includeInactive: true` para verlos.
 
@@ -61,33 +73,40 @@ listas ni búsquedas; pase `includeInactive: true` para verlos.
 ```ts
 const cliente = await facta.createCustomer(
   {
-    name: "Laura Ortiz",
-    doc_type: "13",
-    doc_number: "04829316-5",
-    address: { departamento: "06", municipio: "14", complemento: "Colonia Escalón" },
-    email: "laura@example.com",
+    nombre: "Laura Ortiz",
+    tipoDocumento: "13",
+    numDocumento: "04829316-5",
+    direccion: { departamento: "06", municipio: "14", distrito: "01", complemento: "Colonia Escalón" },
+    correo: "laura@example.com",
   },
   { idempotencyKey: `crm-cliente-${crmId}` },
 );
 
-await facta.updateCustomer(cliente.id, { phone: "2222-3333" });
+await facta.updateCustomer(cliente.id, { telefono: "2222-3333" });
 
 const producto = await facta.createProduct({
-  description: "Disco de corte 4 1/2",
-  item_type: 1, // 1 bien, 2 servicio, 3 ambos: obligatorio, nunca se supone
-  unit_price: 2.85,
-  vat_included: true,
+  descripcion: "Disco de corte 4 1/2",
+  tipoItem: 1, // 1 bien, 2 servicio, 3 ambos: obligatorio, nunca se supone
+  precioUni: 2.85,
+  ivaIncluido: true,
+  tipoVenta: "gravada", // o "exenta" / "no_sujeta"; si se omite, se lee como gravada
 });
 
-await facta.updateProduct(producto.id, { unit_price: 3.1 });
+await facta.updateProduct(producto.id, { precioUni: 3.1 });
 await facta.deactivateProduct(producto.id);
 ```
 
+Los nombres de los campos son los que usa el resto de la API pública (`nombre`,
+`numDocumento`, `precioUni`, `tipoVenta`...). Los nombres guardados (`name`,
+`doc_number`, `unit_price`...) se siguen aceptando al enviar, y cada registro que
+devuelve el SDK trae los dos nombres, en cualquier modo de catálogo.
+
 Reglas que el SDK revisa antes de enviar y que el servidor también revisa: un
-cliente necesita `name`; un DUI lleva 9 dígitos y un NIT 14 (se aceptan guiones y
-se quitan antes de enviar); un NRC lleva de 1 a 8 dígitos; una dirección necesita
-códigos de departamento y municipio de dos dígitos y un `complemento`; un producto
-necesita `description`, `item_type` y un `unit_price` no negativo. El SDK nunca
+cliente necesita `nombre`; un DUI lleva 9 dígitos y un NIT 14 (se aceptan guiones y
+se quitan antes de enviar); un NRC lleva de 1 a 8 dígitos; una `direccion` necesita
+códigos de departamento, municipio y distrito y un `complemento`; un producto
+necesita `descripcion`, `tipoItem` y un `precioUni` mayor que cero. `tipoVenta` es el
+tratamiento de IVA del producto y viaja en cada línea que se emite con él. El SDK nunca
 rechaza un valor que el servidor aceptaría. `FactaError` con
 `code: "validation_failed"` y `status: 422` lista los problemas en
 `details.issues`.

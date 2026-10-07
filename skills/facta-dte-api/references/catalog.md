@@ -52,9 +52,8 @@ if (state.catalogMode === "encrypted" && state.freshness !== "fresh") await fact
   `catalog_vat_basis` from the server; `invalid_request`, 422, locally in the SDK).
   Send an explicit `precioUni` in the document's basis.
 - `catalog_unknown_id`, inactive products and unknown customers are `404` / `not_found`.
-- The VAT class of a catalog product (`tipoVenta`) reaches the issued line only in SDK
-  versions with the field-names change above; before it, send `tipoVenta` yourself on the line
-  when the contract allows it (see issuing-dte-types.md), otherwise the line is `gravada`.
+- The VAT class of a catalog product (`tipoVenta`) rides on every line issued from it (0.5.0);
+  an older SDK issues the line as `gravada` unless you send `tipoVenta` yourself.
 
 ```ts
 const request: DteRequest = {
@@ -102,7 +101,7 @@ const product = await facta.createProduct({
 await facta.deactivateProduct(product.id); // DELETE deactivates; there is no hard delete
 ```
 
-- **Field names (SDK PR #38, `fix/sdk-catalog-wire-names`; check your installed `types.ts`):** the
+- **Field names (0.5.0):** the
   inputs use the same Ministry names as the rest of the API: customers `nombre`,
   `tipoDocumento`, `numDocumento`, `nrc`, `codActividad`, `direccion { departamento,
   municipio, distrito, complemento, pais? }`, `telefono`, `correo`; products `descripcion`,
@@ -110,7 +109,7 @@ await facta.deactivateProduct(product.id); // DELETE deactivates; there is no ha
   The older stored spellings (`name`, `doc_type`, `doc_number`, `activity_code`, `address`,
   `phone`, `email`, `description`, `item_type`, `unit_price`, `unit_of_measure`, `code`,
   `barcode`, `vat_included`) are **still accepted** (deprecated): do not mix both for the same
-  field. On a version without that change only the old spellings exist.
+  field. On an SDK older than 0.5.0 only the old spellings exist.
 - Every record the SDK returns carries **both** spellings, in every catalog mode, plus
   `activo`; the product's `tipoVenta` rides on every line issued from it, and
   `customerId` / `productId` resolve to the same line in all three modes. Timestamps
@@ -127,7 +126,6 @@ await facta.deactivateProduct(product.id); // DELETE deactivates; there is no ha
 - `tipoDocumento`: `36` NIT, `13` DUI, `37` other, `03` passport, `02` residence card.
 - A customer with the same document, or a product with the same code, already existing is
   `catalog_duplicate` (409; `details.id` names it): edit it, or reactivate it if deactivated.
-  (Code introduced by the same SDK change.)
 - Only creates take an `idempotencyKey`; updates and deactivations are repeatable.
 - Deactivated records still resolve for past documents, vanish from lists, and a
   deactivated product cannot be issued. Reactivation is done in the app.

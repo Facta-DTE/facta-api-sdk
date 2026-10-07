@@ -21,6 +21,8 @@ export type FactaErrorCode =
   | "sign_vault_locked"
   | "sign_vault_missing"
   | "invalid_request"
+  /** `listDocuments({ include: ["dte"] })` asked for more than 25 rows (HTTP 400). `details.maximo` is the cap. */
+  | "include_limit_exceeded"
   | "validation_failed"
   /** `aplicarReteRenta` on a document with an `exenta` or `no_sujeta` line (HTTP 422). Nothing was signed and no number spent. */
   | "retention_mixed_class_unsupported"
@@ -32,6 +34,8 @@ export type FactaErrorCode =
   | "catalog_write_disabled"
   /** The company catalog is still encrypted, so the API cannot write it (HTTP 409). */
   | "catalog_encrypted"
+  /** A customer with that document, or a product with that code, already exists (HTTP 409). */
+  | "catalog_duplicate"
   | "idempotency_key_required"
   | "idempotency_key_reuse"
   | "idempotency_in_flight"

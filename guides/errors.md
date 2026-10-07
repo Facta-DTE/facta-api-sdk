@@ -80,6 +80,7 @@ In the tables, "Retried" means retried automatically by the SDK.
 | Code | HTTP | Retried | Meaning | What to do |
 | --- | --- | --- | --- | --- |
 | `invalid_request` | 400 (422 locally) | no | Missing or non-JSON body, over 1 MB, a field with the wrong shape, or a non-UUID generation code (`details.field`). Locally (422): a catalog product with an invalid item type, unit of measure, or a VAT basis that does not match the DTE. | Fix the request. No number was spent. |
+| `include_limit_exceeded` | 400 | no | `listDocuments` with `include: ["dte"]` asked for more than 25 rows (`details.maximo`). | Ask for 25 or fewer and follow `siguiente`. |
 | `validation_failed` | 422 | no | The document fails Hacienda's official schema (`details.issues`). Also thrown locally (422, before any request) by catalog writes. | Fix the listed fields. No number was spent. |
 | `retention_mixed_class_unsupported` | 422 | no | `aplicarReteRenta` was requested on a document with an `exenta` or `no_sujeta` line (`items[].tipoVenta`). | Nothing was signed and no number was spent. Issue the exempt or non-subject lines in another document, or do not apply the withholding. |
 | `not_found` | 404 | no | No such document, customer, product or route for this key's company. Also thrown locally when a `customerId`/`productId` is not in the catalog snapshot. | Check the identifier and the key's company; sync the catalog. |
@@ -88,6 +89,7 @@ In the tables, "Retried" means retried automatically by the SDK.
 | `not_sealed` | 409 | no | Default JSON download of a document with no seal yet (contingency). | Use `{ raw: true }` or wait for the seal. See [archivo-dte.md](archivo-dte.md). |
 | `catalog_write_disabled` | 403 | no | The company did not enable «Permitir administrar clientes y productos desde el API». | Enable it in the app. See [catalog-write.md](catalog-write.md). |
 | `catalog_encrypted` | 409 | no | The company catalog is still encrypted, so the API cannot write it. | Switch the catalog to plain text in the app. |
+| `catalog_duplicate` | 409 | no | A customer with that document, or a product with that code, already exists. | `details.id` names it; edit it, or reactivate it if it is deactivated. |
 
 ## Idempotency
 

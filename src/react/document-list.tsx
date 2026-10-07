@@ -49,6 +49,12 @@ export interface FactaDocumentListProps extends FactaLook {
   showFilters?: boolean | undefined;
   /** Formats in the row menu. Default all three; pass `[]` to hide downloads. */
   downloads?: DownloadKind[] | undefined;
+  /**
+   * Ask the API for each row's document (`include: ["dte"]`) so the receiver cell
+   * also shows the concept and, when the handler exposes recipients, the receiver
+   * read from the legal document. Pages are 25 rows at most. Default false.
+   */
+  includeDte?: boolean | undefined;
   /** Open the built-in detail drawer on «Ver detalle» / row click (default true). */
   detail?: boolean | undefined;
   /** Called instead of (or besides) the built-in detail. */
@@ -191,8 +197,26 @@ function Toolbar({ state, setState, phone }: { state: FilterState; setState(s: F
   );
 }
 
+function ConceptLine({ row }: { row: DocumentRow }) {
+  const concept = row.resumen?.primeraDescripcion;
+  if (!concept) return null;
+  const extra = (row.resumen?.lineas ?? 1) - 1;
+  return <small className="facta-muted facta-subline">{concept}{extra > 0 ? ` +${extra}` : ""}</small>;
+}
+
 function ReceiverCell({ row }: { row: DocumentRow }) {
   const { messages } = useCfg();
+  // The legal document's receiver stands in for the index's, which is empty when the catalog is private.
+  const legal = row.resumen?.receptor;
+  if (legal && (!row.receptor || (!row.receptor.nombre && !row.receptor.numDocumento))) {
+    return (
+      <span>
+        {legal.nombre ?? messages.data.list.finalConsumer}
+        {legal.numDocumento && <small className="facta-muted facta-subline">{legal.numDocumento}</small>}
+        <ConceptLine row={row} />
+      </span>
+    );
+  }
   if (row.receptor === undefined) {
     return <span className="facta-hidden-r"><EyeOffIcon size={14} />{messages.data.list.receiverHidden}</span>;
   }
@@ -203,6 +227,7 @@ function ReceiverCell({ row }: { row: DocumentRow }) {
     <span>
       {row.receptor.nombre ?? messages.data.list.finalConsumer}
       {row.receptor.numDocumento && <small className="facta-muted facta-subline">{row.receptor.numDocumento}</small>}
+      <ConceptLine row={row} />
     </span>
   );
 }
@@ -248,7 +273,7 @@ function ListInner(props: Omit<FactaDocumentListProps, keyof FactaLook>) {
     if (!controlled) setInternal(next);
     props.onFiltersChange?.(toFilters(next));
   };
-  const list = useFactaDocuments(filters, { pageSize: props.pageSize ?? 25 });
+  const list = useFactaDocuments(props.includeDte ? { ...filters, include: ["dte"] } : filters, { pageSize: props.pageSize ?? 25 });
   const actions = useFactaActions();
   const [menu, setMenu] = useState<string | null>(null);
   const [detail, setDetail] = useState<string | null>(null);
