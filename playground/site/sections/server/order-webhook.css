@@ -77,3 +77,4 @@
   .ow-cart li > :nth-child(5) { grid-area: x; grid-row: 1 / span 2; }
 }
 .ow-cols[hidden], .ow-source[hidden] { display: none; }
+@media (max-width: 480px) { .ow-pair .ord-row { flex-wrap: wrap; } .ow-pair .ord-other { flex: 1 1 100%; } }
