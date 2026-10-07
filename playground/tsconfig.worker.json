@@ -8,9 +8,10 @@
     "skipLibCheck": true,
     "noEmit": true,
     "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
     "types": ["node"]
   },
-  "include": ["worker.ts", "server/**/*.ts", "test/**/*.ts"]
+  "include": ["worker.ts", "fixtures/*.json", "server/**/*.ts", "test/**/*.ts", "test/**/*.tsx"]
 }

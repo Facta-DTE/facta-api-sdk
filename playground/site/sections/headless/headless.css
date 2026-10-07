@@ -40,8 +40,12 @@
 .hl-form-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .hl-form-total { display: flex; justify-content: space-between; align-items: baseline; margin: 0; padding-top: 10px; border-top: 1px solid #e6dccb; }
 .hl-form-total b { font-size: 18px; }
-.hl-form .hl-form-check { display: flex; align-items: center; gap: 10px; min-height: 44px; color: #2b2116; }
-.hl-form-check input { width: 20px; height: 20px; accent-color: #2b2116; }
+.hl-form .hl-form-check { display: grid; gap: 8px; color: #2b2116; font-size: 14px; }
+.hl-form .hl-form-check .pg-check { display: flex; align-items: center; gap: 10px; min-height: 44px; color: #2b2116; font-size: 14px; }
+.hl-form-check input[type="checkbox"] { width: 20px; height: 20px; accent-color: #2b2116; }
+.hl-form .hl-form-check .pg-field > label { color: #6b5a44; font: 14px Georgia, serif; }
+.hl-form .hl-form-check .pg-hint { color: #6b5a44; font: 13px Georgia, serif; }
+.hl-form .hl-form-check .pg-field--invalid input { border-color: #a33a2a; }
 .hl-form > button[type="submit"] { min-height: 48px; border: 0; border-radius: 6px; background: #2b2116; color: #fffdf8; font: 700 16px Georgia, serif; cursor: pointer; }
 .hl-form > button:disabled { opacity: .5; cursor: not-allowed; }
 .hl-form input:focus-visible, .hl-form button:focus-visible { outline: 3px solid #8a5a1f; outline-offset: 2px; }
