@@ -1,6 +1,7 @@
 import react from "@vitejs/plugin-react";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
+import { skillZipPlugin } from "./skill-zip-plugin.ts";
 
 const here = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 
@@ -9,7 +10,7 @@ const here = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 // the files that actually run; the repository root is therefore readable by the dev server.
 export default defineConfig({
   root: here("./site"),
-  plugins: [react()],
+  plugins: [react(), skillZipPlugin()],
   build: { outDir: here("./dist"), emptyOutDir: true, sourcemap: false },
   server: {
     fs: { allow: [here("..")] },

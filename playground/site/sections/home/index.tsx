@@ -10,6 +10,7 @@ import { usePlayground } from "../../state.tsx";
 import { useDownload } from "../registro/downloads.ts";
 import { lacksCurrent, money, needsEnrich, TYPE_NAMES, tail, totalOf, useRegistry, whenOf } from "../registro/registry-data.ts";
 import type { RegistryDocument } from "../../api.ts";
+import { SkillCard } from "../../components/skill-card.tsx";
 import { LiveInvoice } from "./live-invoice.tsx";
 import { SOURCES } from "../../shown-files.ts";
 import { DOCS_URL, NPM_URL, PLAYGROUND_TREE_URL, REPO_URL } from "../../source-links.ts";
@@ -219,6 +220,8 @@ export function Home() {
           <PhoneLink to="/referencia" icon="{}" title="Referencia del SDK" text="Todo lo que puede hacer, buscable" />
         </nav>
       </section>
+
+      <div className="home-skill"><SkillCard /></div>
 
       <section className="home-bottom">
         <section className="pg-card home-recent" aria-labelledby="home-recent-title">
