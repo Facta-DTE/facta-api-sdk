@@ -215,8 +215,8 @@ Deno.test("a replication failure never fails a sealed document and is not report
   const result = await facta.issueAndArchive(request, opts("sale-put-fails"));
   assertEquals(result.emission?.estado, "sellado");
   assertEquals(result.archive.state, "complete");
-  // Every destination failed: the emergency safeguard notes it (no emergencyStore here).
-  assertEquals(result.warnings?.map((warning) => warning.code), ["byos_not_replicated", "emergency_failed"]);
+  // Every destination failed: the emergency report says so, without a warning (no emergencyStore here).
+  assertEquals(result.warnings?.map((warning) => warning.code), ["byos_not_replicated"]);
   assertEquals(result.emergency?.reason, "not_configured");
   assertEquals(w.reports.length, 0);
   assertEquals((await facta.listPendingOperations()).length, 1);

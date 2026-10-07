@@ -44,9 +44,8 @@ import { submitPrintJob, type PrintResult, type PrintTransport } from "./printin
 import {
   EmergencyDesk,
   emergencyWarningCodes,
-  EMERGENCY_STORE_MISSING_MESSAGE,
+  EMERGENCY_STORE_INFO,
   replicateEmergency,
-  warnEmergencyStoreMissing,
   type EmergencyEvent,
   type EmergencyFiles,
   type EmergencyInfo,
@@ -539,7 +538,6 @@ export class Facta {
         reportCopy: (code, destination, pdfStored) => this.#postByosReport(code, destination, pdfStored),
       }, files, info, () => this.#stamp()),
     };
-    if (this.#runtime.emergencyStore === undefined) warnEmergencyStoreMissing();
     if (typeof options.apiKey !== "string" || options.apiKey === "") {
       throw new FactaError("unauthorized", "API key is required.", 0);
     }
@@ -729,10 +727,12 @@ export class Facta {
         report.checks[report.checks.length - 1].state = "blocked";
       } else if (report.overall === "ready") report.overall = "attention";
     }
-    if (this.#runtime.emergencyStore === undefined) {
-      report.checks.push({ id: "emergency_store_missing", state: "warning", message: EMERGENCY_STORE_MISSING_MESSAGE });
-      if (report.overall === "ready") report.overall = "attention";
-    }
+    // Informational only: the store is optional, so this never changes `overall`.
+    report.checks.push({
+      id: "emergency-store",
+      state: "ok",
+      message: this.#runtime.emergencyStore === undefined ? EMERGENCY_STORE_INFO : "runtime.emergencyStore is configured.",
+    });
     report.storageReady = storageReady;
     report.region = this.#regionSetting === false ? null : (typeof this.#regionSetting === "string" ? this.#regionSetting : this.#region?.value ?? null);
     report.servedRegion = this.#servedRegion;
@@ -1106,6 +1106,8 @@ export class Facta {
     } catch {
       return result;
     }
+    // Not configured is not a failure: the store is optional (the server e-mails the owner a backup).
+    if (report.reason === "not_configured") return { ...result, emergency: report };
     const sdkWarnings = [...(result.sdkWarnings ?? []), { code: report.saved ? "emergency_saved" as const : "emergency_failed" as const, detail: report.detail }];
     return { ...result, emergency: report, sdkWarnings };
   }
@@ -1630,6 +1632,7 @@ export class Facta {
     const guarded = await this.#guard(emission, extra, signal);
     if (guarded === emission) return result;
     const report = guarded.emergency!;
+    if (report.reason === "not_configured") return { ...result, emission: guarded, emergency: report };
     const warning = { code: report.saved ? "emergency_saved" as const : "emergency_failed" as const, detail: report.detail };
     return { ...result, emission: guarded, emergency: report, warnings: [...(result.warnings ?? []), warning] };
   }

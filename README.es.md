@@ -107,9 +107,9 @@ La fecha y la hora de un DTE las pone siempre el servidor de Facta, nunca este S
 
 Si Facta avisa que no pudo guardar un documento en ningún sitio duradero (o toda
 la replicación falla), `runtime.emergencyStore` recibe el JSON, el PDF y lo que
-pasó, una sola vez por documento. Sin esa función, el resultado trae
-`emergency: { saved: false, reason: "not_configured" }` y `diagnose()` reporta
-`emergency_store_missing`. Guía y ejemplo: [`guides/emergency.es.md`](guides/emergency.es.md).
+pasó, una sola vez por documento. Es opcional: sin ella, el resultado trae
+`emergency: { saved: false, reason: "not_configured" }` y Facta envía una copia
+de respaldo al correo del dueño. Guía y ejemplo: [`guides/emergency.es.md`](guides/emergency.es.md).
 
 ## Métodos del cliente
 

@@ -6,7 +6,9 @@ Facta keeps every sealed document in a one-hour holding copy while it is written
 to durable storage. If the server cannot store it anywhere durable, or every
 replication the SDK attempted fails, that holding copy is the only one left. The
 emergency safeguard is the last resort so the API keeps signing and the files
-are still saved. The SDK ships no storage for it: you provide one function.
+are still saved. The SDK ships no storage for it: you may provide one function. It is optional.
+
+There is a second, server-side mechanism: if nothing could be stored anywhere, Facta e-mails the company owner a backup copy (JSON plus PDF, to import later). `emergencyStore` is an extra safeguard on top of that.
 
 ## When it runs
 
@@ -55,14 +57,15 @@ sends them nowhere else.
 ## What you get back
 
 The issue result (and `issueAndArchive`'s `emission` and result) carries
-`emergency: { saved, reason, trigger, detail }` and an `sdkWarnings` entry
-`emergency_saved` or `emergency_failed`:
+`emergency: { saved, reason, trigger, detail }` and, when your function ran, an
+`sdkWarnings` entry `emergency_saved` or `emergency_failed`:
 
 - `saved: true`: your function accepted the files; `reason` is the trigger.
-- `saved: false, reason: "not_configured"`: you set no `emergencyStore`. The
-  constructor logged a one-time warning and `diagnose()` reports
-  `emergency_store_missing`. The files stay in the result (`archivoDte`,
-  `archivoJson`, `representacionGrafica`): save them now.
+- `saved: false, reason: "not_configured"`: you set no `emergencyStore` (it is
+  optional; no warning is raised, and `diagnose()` lists it as plain
+  information). Facta e-mails the owner a backup copy, and the files stay in the
+  result (`archivoDte`, `archivoJson`, `representacionGrafica`) if you want to
+  keep them too.
 - `saved: false, reason: "store_failed"`: your function threw. Same advice.
 
 In React, `FactaReceipt` and the sealed window show a banner («Este documento no

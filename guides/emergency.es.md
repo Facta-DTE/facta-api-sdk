@@ -7,7 +7,9 @@ lo escribe en almacenamiento duradero. Si el servidor no logra guardarlo en
 ningún sitio duradero, o toda la replicación que intentó el SDK falla, esa copia
 temporal es la única que queda. La salvaguarda de emergencia es el último
 recurso para que la API siga firmando y los archivos se guarden de todos modos.
-El SDK no trae almacenamiento para esto: usted aporta una función.
+El SDK no trae almacenamiento para esto: usted puede aportar una función. Es opcional.
+
+Hay un segundo mecanismo, en el servidor: si nada se pudo guardar, Facta envía una copia de respaldo al correo del dueño (JSON más PDF, para importarlos después). `emergencyStore` es una salvaguarda adicional encima de esa.
 
 ## Cuándo se ejecuta
 
@@ -56,14 +58,15 @@ envía a ningún otro lugar.
 ## Qué recibe de vuelta
 
 El resultado de la emisión (y el `emission` y el resultado de `issueAndArchive`)
-trae `emergency: { saved, reason, trigger, detail }` y una entrada de
-`sdkWarnings`, `emergency_saved` o `emergency_failed`:
+trae `emergency: { saved, reason, trigger, detail }` y, si su función corrió, una
+entrada de `sdkWarnings`, `emergency_saved` o `emergency_failed`:
 
 - `saved: true`: su función aceptó los archivos; `reason` es el disparador.
-- `saved: false, reason: "not_configured"`: no configuró `emergencyStore`. El
-  constructor mostró una advertencia única y `diagnose()` reporta
-  `emergency_store_missing`. Los archivos siguen en el resultado
-  (`archivoDte`, `archivoJson`, `representacionGrafica`): guárdelos ahora.
+- `saved: false, reason: "not_configured"`: no configuró `emergencyStore` (es
+  opcional; no se emite ninguna advertencia y `diagnose()` lo muestra como
+  información simple). Facta envía una copia de respaldo al correo del dueño, y
+  los archivos siguen en el resultado (`archivoDte`, `archivoJson`,
+  `representacionGrafica`) por si quiere guardarlos también.
 - `saved: false, reason: "store_failed"`: su función lanzó un error. Mismo
   consejo.
 

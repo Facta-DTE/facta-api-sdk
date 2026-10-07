@@ -1,7 +1,7 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import { Facta } from "../src/client.ts";
 import { FileInvoiceArchive } from "../src/file-archive.ts";
-import { resetEmergencyStoreWarning, type EmergencyFiles, type EmergencyInfo } from "../src/emergency.ts";
+import { type EmergencyFiles, type EmergencyInfo } from "../src/emergency.ts";
 import type { RemoteArtifactDestination } from "../src/archive.ts";
 
 const CG = "7875BC7A-9580-441D-94E4-FA455E9D8BD0";
@@ -127,13 +127,13 @@ Deno.test("a document is handed over once per emergency even if the result is pr
   assertEquals(r.seen.length, 1);
 });
 
-Deno.test("not configured: the result says so, with a warning, and keeps the files", async () => {
+Deno.test("not configured: the result says so without a warning, and keeps the files", async () => {
   const { facta } = client(sealed({ advertencias: ["sin_almacenamiento_duradero"] }));
   const result = await facta.issue(request);
   assertEquals(result.emergency?.saved, false);
   assertEquals(result.emergency?.reason, "not_configured");
-  assertEquals(result.sdkWarnings?.[0].code, "emergency_failed");
-  assertStringIncludes(result.sdkWarnings![0].detail, "runtime.emergencyStore");
+  assertEquals(result.sdkWarnings, undefined);
+  assertStringIncludes(result.emergency!.detail, "e-mails the company owner");
   assertEquals((result as { archivoJson?: string }).archivoJson, RAW);
 });
 
@@ -161,8 +161,7 @@ Deno.test("onEmergency fires with the info and report; a throwing alert is harml
   assertEquals(result.emergency?.saved, true);
 });
 
-Deno.test("the constructor warns once, and diagnose reports emergency_store_missing", async () => {
-  resetEmergencyStoreWarning();
+Deno.test("a missing store prints nothing; diagnose lists it as plain information", async () => {
   const warnings: string[] = [];
   const original = console.warn;
   console.warn = (...args: unknown[]) => { warnings.push(args.join(" ")); };
@@ -176,16 +175,13 @@ Deno.test("the constructor warns once, and diagnose reports emergency_store_miss
       region: false, apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", runtime: { version: 1, ...runtime },
       fetch: (async () => new Response(JSON.stringify(status), { status: 200, headers: { "content-type": "application/json" } })) as typeof globalThis.fetch,
     });
-    const first = make({});
-    make({});
-    assertEquals(warnings.length, 1);
-    assertStringIncludes(warnings[0], "runtime.emergencyStore");
-    const report = await first.diagnose();
-    const check = report.checks.find((c) => c.id === "emergency_store_missing");
-    assertEquals(check?.state, "warning");
-    assertStringIncludes(check!.message, "copia temporal de 1 hora");
-    const configured = await make({ emergencyStore: () => Promise.resolve() }).diagnose();
-    assertEquals(configured.checks.some((c) => c.id === "emergency_store_missing"), false);
+    const without = await make({}).diagnose();
+    assertEquals(warnings.length, 0);
+    const check = without.checks.find((c) => c.id === "emergency-store");
+    assertEquals(check?.state, "ok");
+    assertStringIncludes(check!.message, "optional");
+    const withStore = await make({ emergencyStore: () => Promise.resolve() }).diagnose();
+    assertEquals(withStore.overall, without.overall, "the store never changes the verdict");
   } finally {
     console.warn = original;
   }

@@ -104,18 +104,8 @@ export function emergencyWarningCodes(result: unknown): string[] {
   return [...new Set(out)];
 }
 
-export const EMERGENCY_STORE_MISSING_MESSAGE =
-  "Configure runtime.emergencyStore: es la salvaguarda para guardar el JSON y el PDF si Facta no logra almacenarlos; sin ella, en una emergencia solo tendrá la copia temporal de 1 hora.";
-
-let warnedMissing = false;
-/** Console warning, once per process. */
-export function warnEmergencyStoreMissing(): void {
-  if (warnedMissing) return;
-  warnedMissing = true;
-  console.warn(`[facta] ${EMERGENCY_STORE_MISSING_MESSAGE}`);
-}
-/** Test hook. */
-export function resetEmergencyStoreWarning(): void { warnedMissing = false; }
+export const EMERGENCY_STORE_INFO =
+  "runtime.emergencyStore is optional: it saves the JSON and PDF yourself if Facta cannot store them. Without it, when nothing could be stored Facta e-mails the company owner a backup copy.";
 
 function base64Bytes(value: string): Uint8Array {
   return Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
@@ -186,7 +176,7 @@ export class EmergencyDesk {
     if (this.#store === undefined) {
       report = {
         saved: false, reason: "not_configured", trigger,
-        detail: `${EMERGENCY_STORE_MISSING_MESSAGE} Keep archivoDte, archivoJson and representacionGrafica from this result: the server's holding copy lasts about one hour.`,
+        detail: "No runtime.emergencyStore is configured (it is optional). If nothing could be stored, Facta e-mails the company owner a backup copy. You can also keep archivoDte, archivoJson and representacionGrafica from this result: the server's holding copy lasts about one hour.",
       };
     } else {
       try {
