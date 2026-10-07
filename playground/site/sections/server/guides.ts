@@ -6,7 +6,7 @@
 // What is deliberately NOT here: any timing the sources do not state, and any behaviour of contingency
 // beyond «no token, channel `esperando_sello`».
 
-import { CATALOG_GUIDE_URL, DELIVERY_DOC_URL, recipeLink, REACT_SERVER_GUIDE_URL, SDK_REFERENCE, STORAGE_GUIDE_URL } from "../guides/links.ts";
+import { CATALOG_GUIDE_URL, DELIVERY_DOC_URL, recipeLink, REACT_SERVER_GUIDE_URL, referenceLink, STORAGE_GUIDE_URL } from "../guides/links.ts";
 import type { RecipeGuide } from "../guides/types.ts";
 
 export const RECIPE_GUIDES: Record<string, RecipeGuide> = {
@@ -68,7 +68,7 @@ export const RECIPE_GUIDES: Record<string, RecipeGuide> = {
     ],
     more: [
       recipeLink("Receta 3: Consultar estado y recuperar →", "status-recovery"),
-      { label: `${SDK_REFERENCE.label}: issue →`, href: SDK_REFERENCE.href },
+      referenceLink("issue", "issue"),
     ],
   },
 
@@ -129,7 +129,7 @@ export const RECIPE_GUIDES: Record<string, RecipeGuide> = {
     ],
     more: [
       recipeLink("Receta 1: Emitir con idempotencia →", "issue-idempotent"),
-      { label: `${SDK_REFERENCE.label}: prepare, sign →`, href: SDK_REFERENCE.href },
+      referenceLink("prepare, sign", "prepare-sign"),
     ],
   },
 
@@ -190,7 +190,7 @@ export const RECIPE_GUIDES: Record<string, RecipeGuide> = {
     ],
     more: [
       recipeLink("Receta 1: Emitir con idempotencia →", "issue-idempotent"),
-      { label: `${SDK_REFERENCE.label}: issue, getDocumentStatus →`, href: SDK_REFERENCE.href },
+      referenceLink("issue, getDocumentStatus", "document-status"),
     ],
   },
 
@@ -257,7 +257,7 @@ export const RECIPE_GUIDES: Record<string, RecipeGuide> = {
     ],
     more: [
       recipeLink("Receta 3: Consultar estado y recuperar →", "status-recovery"),
-      { label: `${SDK_REFERENCE.label}: invalidate →`, href: SDK_REFERENCE.href },
+      referenceLink("invalidate", "invalidate"),
     ],
   },
 
@@ -320,7 +320,7 @@ export const RECIPE_GUIDES: Record<string, RecipeGuide> = {
     ],
     more: [
       { label: "Guía: almacenamiento y copias →", href: STORAGE_GUIDE_URL },
-      { label: `${SDK_REFERENCE.label}: listDocuments, downloadDocument →`, href: SDK_REFERENCE.href },
+      referenceLink("listDocuments, downloadDocument", "list-documents"),
     ],
   },
 
@@ -330,7 +330,7 @@ export const RECIPE_GUIDES: Record<string, RecipeGuide> = {
     steps: [
       {
         title: "Ver cómo llega su llave al catálogo.",
-        text: "La respuesta de estado dice en `llave.catalogMode` si el dueño de la llave activó el **catálogo legible por la API** o si el catálogo sigue **cifrado**.",
+        text: "La respuesta de estado dice en `llave.catalogMode` si el dueño de la llave activó el **catálogo legible por la API** o si el catálogo sigue **cifrado** (también existe `plain`, un catálogo guardado sin cifrar que se lee y se escribe por el API).",
         sdk: ["facta.status()"],
         http: ["GET /v1/status"],
       },
@@ -382,13 +382,13 @@ export const RECIPE_GUIDES: Record<string, RecipeGuide> = {
     ],
     more: [
       { label: "Guía: catálogo y lecturas sin conexión →", href: CATALOG_GUIDE_URL },
-      { label: `${SDK_REFERENCE.label}: listCustomers, listProducts, issue →`, href: SDK_REFERENCE.href },
+      referenceLink("listCustomers, listProducts, issue", "catalog-read"),
     ],
   },
 
   "order-webhook": {
     problem:
-      "Su tienda en línea le avisa a su servidor cada vez que alguien compra, y ese aviso suele llegar **más de una vez**. Si cada aviso emite, el cliente recibe dos facturas por una sola compra. La receta muestra cómo convertir cada pedido en exactamente una factura.",
+      "Esto es un **ejemplo de integración**, no una función de Facta DTE: Facta DTE no tiene pedidos. La receta simula el aviso (el webhook) que una tienda en línea de terceros, como Shopify, WooCommerce o la suya propia, envía cuando alguien compra, y muestra cómo el servidor de quien integra lo convierte en una factura con el SDK. Ese aviso suele llegar **más de una vez**; si cada aviso emite, el cliente recibe dos facturas por una sola compra. Aquí la tienda es la «Tienda de ejemplo (ficticia)».",
     steps: [
       {
         title: "Arme el pedido en la tienda de ejemplo.",
@@ -460,7 +460,7 @@ export const RECIPE_GUIDES: Record<string, RecipeGuide> = {
     more: [
       recipeLink("Receta 1: Emitir con idempotencia →", "issue-idempotent"),
       recipeLink("Receta 3: Consultar estado y recuperar →", "status-recovery"),
-      { label: `${SDK_REFERENCE.label}: issue →`, href: SDK_REFERENCE.href },
+      referenceLink("issue", "order-webhook"),
     ],
   },
 
@@ -528,7 +528,422 @@ export const RECIPE_GUIDES: Record<string, RecipeGuide> = {
     more: [
       { label: "Guía: entrega por correo y WhatsApp →", href: REACT_SERVER_GUIDE_URL },
       { label: "Diseño de los tokens de entrega →", href: DELIVERY_DOC_URL },
-      { label: `${SDK_REFERENCE.label}: deliverEmail, waitForDelivery →`, href: SDK_REFERENCE.href },
+      referenceLink("deliverEmail, waitForDelivery", "delivery"),
     ],
   },
+  "archivo-dte": {
+    problem:
+      "Su cliente, su contador o las herramientas de Hacienda esperan un archivo concreto: el **Archivo DTE**. Si usted guarda o entrega otro JSON, a ellos no les sirve, y si más adelante necesita el original firmado, no sabrá cuál de los dos tiene.",
+    steps: [
+      {
+        title: "Leer el estado.",
+        text: "La receta consulta el documento para saber si está sellado y cuál es su `selloRecibido`.",
+        sdk: ["facta.getDocumentStatus(codigo)"],
+        http: ["GET /v1/dte/{codigo}"],
+      },
+      {
+        title: "Descargar el JSON normal.",
+        text: "`downloadDocument(codigo, \"json\")` devuelve el Archivo DTE: el documento firmado, su `firmaElectronica` (el JWS, byte por byte) y el `selloRecibido`. Un documento sin sello contesta `not_sealed` (HTTP 409) y la receta lo anota en vez de fallar.",
+        sdk: ["facta.downloadDocument(codigo, \"json\")"],
+        http: ["GET /v1/dte/{codigo}/file"],
+      },
+      {
+        title: "Pedir el original con raw.",
+        text: "Con `{ raw: true }` llega lo que Facta DTE guardó: `{ codigoGeneracion, ambiente, jws }`. Es el único JSON que tiene un documento en contingencia.",
+        sdk: ["facta.downloadDocument(codigo, \"json\", { raw: true })"],
+        http: ["GET /v1/dte/{codigo}/file"],
+      },
+      {
+        title: "Reconstruir y comparar.",
+        text: "`archivoDteOf` arma el mismo texto a partir del JWS y del sello. Si coincide con lo que mandó el servidor, el resultado dice `rebuiltMatches: true`.",
+      },
+    ],
+    look: [
+      "`jsonFormat`: «archivo-dte» para la descarga normal.",
+      "`rebuiltMatches`: true cuando el texto reconstruido es idéntico al descargado. Solo se calcula en documentos sellados.",
+      "`notSealed`: true si el documento no tiene sello todavía; entonces solo existe `archivoJson`.",
+      "En la página aparecen dos archivos: `<código>.json` (Archivo DTE) y `<código>.raw.json` (original).",
+    ],
+    use: [
+      "Va a entregar el JSON a un cliente o a un contador.",
+      "Guarda copias propias y quiere saber cuál archivo guardar para cada fin.",
+      "Quiere comprobar que lo que guardó es exactamente lo que firmó Hacienda.",
+    ],
+    dont:
+      "no entregue el JSON original a un receptor como si fuera el Archivo DTE, ni vuelva a serializar el documento por su cuenta: la firma se calcula sobre bytes exactos y una copia reescrita ya no coincide.",
+    rule: "al receptor, el Archivo DTE; para su archivo, el original con `raw: true`.",
+    concepts: [
+      {
+        title: "Qué contiene cada archivo",
+        text: "El **Archivo DTE** es el documento más `firmaElectronica` y `selloRecibido`: lo que espera quien recibe. El **original** guarda el código, el ambiente y la firma (`jws`), de donde sale el documento. Los dos dicen lo mismo; solo el primero lleva el sello de Hacienda a la vista.",
+      },
+      {
+        title: "Y si el documento está en contingencia",
+        text: "Todavía no tiene sello de Hacienda, así que no hay Archivo DTE: la descarga normal contesta `not_sealed` y solo existe el original.",
+      },
+    ],
+    errors: [
+      { code: "not_sealed", text: "el documento no tiene sello (por ejemplo, en contingencia). Use `raw: true` para su original." },
+      { code: "not_found", text: "el documento no existe o es de otra empresa." },
+      { code: "forbidden_scope", text: "a la llave le falta el alcance para consultar o descargar." },
+    ],
+    more: [
+      referenceLink("el Archivo DTE y raw", "archivo-dte"),
+      recipeLink("Receta 5: Listar y descargar →", "documents-storage"),
+    ],
+  },
+
+  "region-timings": {
+    problem:
+      "Una emisión tarda más de lo que usted esperaba y no sabe si es su red, la API o Hacienda. Sin medir, es adivinar; y si su servidor está lejos de donde corre la API, cada llamada paga ese viaje extra.",
+    steps: [
+      {
+        title: "Leer la región.",
+        text: "`region()` dice qué región manda el cliente en el encabezado `x-region`: la que usted fijó o la que la API anunció en `/v1/status`.",
+        sdk: ["facta.region()"],
+        http: ["GET /v1/status"],
+      },
+      {
+        title: "Pedir tiempos solo en una llamada.",
+        text: "La receta llama `status` con `debug: { timings: true }`. El interruptor del cliente sigue apagado: lo pedido vale para esa llamada.",
+        sdk: ["facta.status({ debug: { timings: true } })"],
+        http: ["GET /v1/status"],
+      },
+      {
+        title: "Ver quién respondió.",
+        text: "`servedRegion` dice qué región atendió la última llamada. Con los tiempos, la API devuelve sus pasos en `result.debug`.",
+        sdk: ["facta.servedRegion"],
+      },
+    ],
+    look: [
+      "`functionsRegion`: la región que el cliente fija en cada petición.",
+      "`servedFrom`: la región que respondió de verdad.",
+      "`apiRegion`: la región que reporta el estado de la API.",
+      "`debug`: cada paso con sus milisegundos y el total, si la API los devolvió.",
+    ],
+    use: [
+      "Su integración corre en otra región y las emisiones le parecen lentas.",
+      "Quiere saber en qué paso se va el tiempo antes de optimizar.",
+      "Va a fijar la región en su configuración y quiere confirmarla.",
+    ],
+    dont:
+      "no deje los tiempos encendidos en tráfico de producción: son una ayuda para depurar y están apagados por defecto. Pídalos en la llamada que quiere medir.",
+    rule: "fije la región cerca de la API y mida con tiempos solo cuando lo necesite.",
+    concepts: [
+      {
+        title: "Por qué importa la región",
+        text: "Las funciones de la API corren junto a la base de datos, no junto a quien llama. En una medición del equipo, fijar cada petición a esa región bajó `POST /v1/dte` de 7.2 s a 4.3 s. El cliente la aprende solo la primera vez; puede fijarla con `region: \"us-west-2\"`, con `config.region` o con la variable `FACTA_API_REGION`, o apagarla con `region: false`.",
+      },
+      {
+        title: "Dónde se ven los tiempos",
+        text: "El resultado trae `{ timings: [{ step, ms }], totalMs }`. Si el cuerpo de la respuesta no los trae, el SDK los lee del encabezado `Server-Timing`. El interruptor «Mostrar tiempos» de las otras recetas usa exactamente esto.",
+      },
+    ],
+    errors: [
+      { code: "invalid_api_key", text: "la llave no sirve; sin ella no hay lectura de estado." },
+      { code: "service_unavailable", text: "algo de Facta DTE no contestó. El SDK reintenta solo; si persiste, repita en unos segundos." },
+      { code: "network_error", text: "no hubo respuesta de la API." },
+    ],
+    more: [
+      referenceLink("región", "region"),
+      referenceLink("tiempos por paso", "timings"),
+    ],
+  },
+
+  diagnose: {
+    problem:
+      "Descubrir que una llave de pruebas está en producción, que le falta un alcance o que el certificado no está registrado **en la primera venta** es descubrirlo con un cliente esperando. Conviene saberlo al arrancar.",
+    steps: [
+      {
+        title: "Diagnosticar.",
+        text: "`diagnose()` revisa la llave y su ambiente, los alcances, la llave de firma, el certificado, las revisiones del catálogo y de los destinos, y la función de emergencia. Cada revisión sale en `ok`, `warning`, `blocked` o `unknown`, con un mensaje de qué hacer.",
+        sdk: ["facta.diagnose()"],
+        http: ["GET /v1/status"],
+      },
+      {
+        title: "Ver el estado del catálogo.",
+        text: "`catalogState()` dice cómo llega la llave al catálogo (`encrypted`, `readable` o `plain`) y si la copia local está `fresh`, `stale` o `missing`.",
+        sdk: ["facta.catalogState()"],
+        http: ["GET /v1/status"],
+      },
+    ],
+    look: [
+      "Las revisiones en `diagnostics`: busque las que no están en «ok».",
+      "`catalog.catalogMode` y `catalog.freshness`.",
+      "Ninguna de las dos llamadas abre bóvedas, reserva correlativos ni envía documentos.",
+    ],
+    use: [
+      "Al arrancar su servicio, antes de aceptar ventas.",
+      "En un endpoint de salud que su monitoreo consulta.",
+      "Con `config.expectedEnvironment` y `requiredScopes`, para que una llave de pruebas en producción aparezca aquí y no en la primera venta.",
+    ],
+    dont:
+      "no confunda «ok» con «puede emitir hoy»: el diagnóstico lee el estado, no emite. Una venta real puede fallar por datos del documento aunque todas las revisiones estén en verde.",
+    rule: "diagnostique al arrancar y trate cada «blocked» como una venta que todavía no falló.",
+    concepts: [
+      {
+        title: "Lo que diagnose no hace",
+        text: "Solo lee `/v1/status`. No desencripta nada, no reserva números de control y no manda documentos, así que puede llamarlo con la frecuencia que su monitoreo necesite sin efectos fiscales.",
+      },
+    ],
+    errors: [],
+    noErrors:
+      "`diagnose()` no lanza el fallo de la API: lo devuelve como una revisión bloqueada dentro del informe, y `catalogState()` informa el suyo en el resultado.",
+    more: [
+      referenceLink("diagnóstico", "diagnose"),
+      referenceLink("estado del catálogo", "catalog-state"),
+    ],
+  },
+
+  "delivery-status": {
+    problem:
+      "Emitió un documento con correo marcado y quiere saber, ahora o mañana, si el correo salió. El token de entrega vence a los cinco minutos, pero la pregunta «¿llegó?» no vence.",
+    steps: [
+      {
+        title: "Elegir un documento suyo.",
+        text: "Es el único dato de la receta. Funciona con cualquiera que usted haya emitido aquí, con o sin canales marcados.",
+      },
+      {
+        title: "Leer el estado de la entrega.",
+        text: "`getDelivery` devuelve cada canal marcado con su estado, el destino enmascarado (`m•••@ejemplo.com`), un motivo estable y la hora del último cambio.",
+        sdk: ["facta.getDelivery(codigo)"],
+        http: ["GET /v1/dte/{codigo}/entrega"],
+      },
+    ],
+    look: [
+      "`canales`: un estado por canal. Los no finales son `pendiente` y `en_proceso`; el resto ya es definitivo.",
+      "`destino` enmascarado: la dirección completa nunca vuelve.",
+      "`motivo`: la razón estable cuando el estado no es `enviado`.",
+    ],
+    use: [
+      "Una pantalla de «Estado del envío» en su sistema.",
+      "Después de que venció el token de cinco minutos.",
+      "Para decidir si avisarle al cliente que su correo no salió.",
+    ],
+    dont:
+      "no trate un canal fallido como un error de su programa: es un estado del documento, que ya está emitido, y nada de eso lo cambia.",
+    rule: "el token vence, el estado se puede leer siempre.",
+    concepts: [
+      {
+        title: "Los estados de un canal",
+        text: "`pendiente` y `en_proceso` son los únicos que todavía pueden cambiar. Los finales son `enviado`, `fallido`, `sin_credito`, `sin_consentimiento`, `no_permitido` y `vencido`; `esperando_sello` es el de un documento en contingencia, que aún no tiene sello.",
+      },
+      {
+        title: "Esperar a que termine",
+        text: "`waitForDelivery` consulta el mismo estado cada cierto tiempo hasta que cada canal queda final; la receta 8 lo usa.",
+      },
+    ],
+    errors: [
+      { code: "not_found", text: "el documento no existe o es de otra empresa." },
+      { code: "forbidden_scope", text: "a la llave le falta el alcance para consultar." },
+    ],
+    more: [
+      recipeLink("Receta 8: Entregar por correo →", "deliver-email"),
+      referenceLink("estado de la entrega", "delivery-status"),
+    ],
+  },
+
+  "register-return": {
+    problem:
+      "El cliente devuelve parte de lo que compró. No es una anulación (la venta existió), ni un documento nuevo: es un **Evento de Retorno** sobre la factura original, que descuenta unidades de una línea.",
+    steps: [
+      {
+        title: "Elegir el documento, la línea y la cantidad.",
+        text: "Solo sirve para una Factura (01), una Exportación (11) o un Sujeto excluido (14), sellada y emitida por este API. Las líneas se cuentan desde 1, como las lee una persona en la factura.",
+      },
+      {
+        title: "Registrar el retorno.",
+        text: "Facta DTE arma el evento con su propio código y su propio sello, lo firma con el certificado del emisor (por eso hace falta la contraseña de firma) y lo envía a Hacienda. No gasta correlativo, pero exige llave de idempotencia.",
+        sdk: ["facta.registerReturn(codigo, solicitud, { idempotencyKey })"],
+        http: ["POST /v1/dte/{codigo}/return"],
+      },
+      {
+        title: "Leer lo que queda.",
+        text: "La respuesta trae `disponible`: cuánto queda por devolver de cada línea. Si Hacienda no contestó, llega `estado: \"firmado\"` (HTTP 202): repita la llamada con la **misma** llave y se reenvía el mismo evento.",
+      },
+    ],
+    look: [
+      "El evento sellado, con su propio sello, distinto del de la factura.",
+      "`disponible` por línea: la próxima devolución no puede pasar de ahí.",
+      "Si queda en `firmado`, use «Reintentar igual» y verá que sale el mismo evento.",
+    ],
+    use: [
+      "El cliente devuelve unidades de una venta ya facturada.",
+      "Quiere registrar varias devoluciones parciales sobre el mismo documento.",
+      "No quiere anular ni emitir una nota de crédito para esa devolución.",
+    ],
+    dont:
+      "no lo use para corregir un documento de otro tipo (se corrige con una nota de crédito) ni espere deshacerlo: un retorno sellado impide anular ese documento después.",
+    rule: "devuelva solo lo disponible, con una llave por devolución y la misma llave al reintentar.",
+    concepts: [
+      {
+        title: "Cuánto tiempo hay para registrarlo",
+        text: "El plazo es de tres meses desde que se generó o selló el documento (lo que termine primero), o dos años para facturas de ciertas actividades económicas. Fuera de ese plazo contesta `return_window_closed`.",
+      },
+      {
+        title: "Cantidad o no gravado",
+        text: "Cada línea del retorno lleva **una** de dos cosas: `cantidad` (las unidades que regresan) o `noGravado` (un cargo o crédito fuera de la base gravada). El formulario de la receta usa cantidad.",
+      },
+    ],
+    errors: [
+      { code: "return_exceeds_available", text: "pidió más de lo que queda de esa línea; `details.lineas` dice cuánto." },
+      { code: "return_window_closed", text: "la fecha del evento es anterior al documento, futura o fuera del plazo." },
+      { code: "return_type_not_allowed", text: "el documento no es 01, 11 ni 14. Use una nota de crédito." },
+      { code: "has_return_events", text: "al intentar anular un documento que ya tiene retornos." },
+      { code: "idempotency_key_reuse", text: "la misma llave con otra devolución. Use una llave nueva para cada una." },
+    ],
+    more: [
+      recipeLink("Receta 4: Anular un documento →", "invalidate"),
+      referenceLink("Evento de Retorno", "return-event"),
+    ],
+  },
+
+  "reference-clock": {
+    problem:
+      "El SDK escribe sus propias marcas de tiempo (los registros de un archivo local, las firmas de las subidas a S3). Si el reloj de su servidor se desajustó, esas marcas salen mal y las firmas pueden ser rechazadas.",
+    steps: [
+      {
+        title: "Tomar el reloj del cliente.",
+        text: "`facta.clock` es el reloj de referencia; vale `null` si lo apagó con `clock: false`.",
+        sdk: ["facta.clock"],
+      },
+      {
+        title: "Calibrar si hace falta.",
+        text: "`ensure()` consulta `clock.factadte.com` solo cuando sus reglas lo piden, con tres muestras al estilo NTP, y después mide con el reloj monotónico. Ninguna de las dos llamadas, `ensure()` ni `calibrate()`, lanza error.",
+      },
+      {
+        title: "Comparar.",
+        text: "La receta muestra la hora corregida junto a la del equipo, y el estado del reloj: `calibrated`, `provisional` o `device`.",
+      },
+    ],
+    look: [
+      "`corrected` y `device`: la diferencia es la corrección que aplicó el reloj.",
+      "`state.status`: «calibrated» tras calibrar; «device» si el servicio no respondió y usó el reloj del equipo.",
+      "`state.offsetMs` y `state.uncertaintyMs`: cuánto se corrigió y cuánto error puede quedar.",
+    ],
+    use: [
+      "Su servidor corre en un equipo cuyo reloj no controla.",
+      "Usa archivo local o subidas a S3 y quiere marcas confiables.",
+      "Quiere compartir un mismo reloj con otros adaptadores.",
+    ],
+    dont:
+      "no espere que este reloj cambie la fecha o la hora de un documento: eso lo pone siempre el servidor de Facta DTE.",
+    rule: "el reloj de referencia es para lo que escribe el SDK, no para lo que firma Hacienda.",
+    concepts: [
+      {
+        title: "Qué pasa si el servicio no responde",
+        text: "El SDK usa el reloj del equipo y ninguna operación falla; después de un fallo no reintenta durante un tiempo. Por eso `state.status` puede decir «device».",
+      },
+      {
+        title: "Compartirlo",
+        text: "`createReferenceClock` construye un reloj independiente, y puede pasarle `facta.clock` a otros adaptadores, por ejemplo `createS3ArtifactDestination({ clock: facta.clock ?? false })`.",
+      },
+    ],
+    errors: [],
+    noErrors: "El reloj nunca lanza errores: si no puede calibrar, sigue con el reloj del equipo y lo dice en `state.status`.",
+    more: [
+      referenceLink("el reloj de referencia", "reference-clock"),
+    ],
+  },
+
+  "service-info": {
+    problem:
+      "Antes de integrar, o cuando algo falla, necesita saber lo básico sin emitir nada: si la API está viva, qué ambiente es esta llave, qué puede hacer y qué documento publica el servidor como contrato.",
+    steps: [
+      {
+        title: "Saber el ambiente sin llamar a nadie.",
+        text: "`facta.environment` sale del prefijo de la llave (`facta_test_` es «00», pruebas; `facta_live_` es «01», producción) y no hace ninguna petición.",
+        sdk: ["facta.environment"],
+      },
+      {
+        title: "Leer el estado.",
+        text: "`status()` es la comprobación de salud: ambiente, alcances y tipos de documento de la llave, cómo llega al catálogo, los límites que le quedan y la región de la API. Tiene su propia ventana de límite, aparte de la de emitir.",
+        sdk: ["facta.status()"],
+        http: ["GET /v1/status"],
+      },
+      {
+        title: "Pedir el contrato.",
+        text: "`getContract()` devuelve el documento OpenAPI que publica el servidor, la autoridad sobre cada campo HTTP.",
+        sdk: ["facta.getContract()"],
+        http: ["GET /v1/openapi.json"],
+      },
+    ],
+    look: [
+      "`environment`: «00» o «01», igual que el de `health.ambiente`.",
+      "`key`: los alcances, los tipos de DTE y el `catalogMode` de su llave.",
+      "`limits`: lo que queda de cada techo.",
+      "`contract`: título, versión y las rutas que ofrece la API.",
+    ],
+    use: [
+      "Como comprobación de salud de su integración.",
+      "Para mostrar en pantalla con qué llave y qué ambiente está trabajando.",
+      "Para descargar el contrato y generar su propio cliente o probarlo en Postman.",
+    ],
+    dont:
+      "no use el contrato como sustituto de los tipos del SDK al escribir código: el SDK ya conoce sus campos. El contrato es la referencia cuando algo no cuadra.",
+    rule: "preguntar el estado es barato y seguro; hágalo antes de suponer.",
+    errors: [
+      { code: "invalid_api_key", text: "la llave no sirve." },
+      { code: "key_expired", text: "la llave venció; `venceEl` en el estado dice cuándo." },
+      { code: "rate_limited", text: "alcanzó la ventana propia de consulta de estado; espere lo que indique `details.retryAfterSeconds`." },
+    ],
+    more: [
+      referenceLink("estado, llave y contrato", "environment"),
+      recipeLink("Receta 11: Diagnóstico y estado del catálogo →", "diagnose"),
+    ],
+  },
+
+  "emergency-store": {
+    problem:
+      "Facta DTE guarda cada documento sellado en almacenamiento duradero. Si por alguna razón no pudo guardarlo en ningún sitio, la única copia es una temporal que dura una hora. Esa es la emergencia: sin su ayuda, el documento puede perderse.",
+    steps: [
+      {
+        title: "Usted escribe una función.",
+        text: "`runtime.emergencyStore` recibe el Archivo DTE, el JSON original, el PDF y lo que pasó, y los guarda donde usted quiera. El SDK no trae almacenamiento propio.",
+      },
+      {
+        title: "El SDK la llama solo en emergencia.",
+        text: "Una sola vez por documento, y solo si el servidor avisó que no pudo guardar (por ejemplo `sin_almacenamiento_duradero`) o toda la replicación falló. Aquí la emergencia es simulada: una API en memoria contesta con la advertencia que usted elija.",
+        sdk: ["facta.issue(solicitud)"],
+      },
+      {
+        title: "Leer el informe.",
+        text: "El resultado de emitir trae `emergency`: si se guardó (`saved`), por qué (`reason`) y un texto de qué hacer si no. Si su función falla, el documento sellado sigue sellado y el informe dice `store_failed`.",
+      },
+    ],
+    look: [
+      "`report.saved` y `report.reason`: el disparador cuando se guardó, o `not_configured` / `store_failed` cuando no.",
+      "`calledYourFunction`: lo que recibió su función, con los tamaños de cada archivo.",
+      "Con `sin_copia_en_servidor`, el informe es crítico: ni siquiera quedó la copia temporal.",
+    ],
+    use: [
+      "Su integración no puede perder un documento sellado bajo ninguna circunstancia.",
+      "Quiere un último recurso propio, además del que Facta DTE ofrece.",
+      "Quiere ver, sin riesgo, cómo se comporta su función antes de una emergencia real.",
+    ],
+    dont:
+      "no la use como almacenamiento normal: es el último recurso. Y no la haga lanzar error para «detener» la emisión: un fallo suyo no convierte un documento sellado en un error.",
+    rule: "guarde primero, y deje que el informe le diga si lo logró.",
+    concepts: [
+      {
+        title: "Esta receta no es real",
+        text: "El playground nunca provoca una emergencia real ni escribe en ningún almacenamiento: no usa la API de Facta DTE, no emite nada y solo muestra lo que recibiría su función.",
+      },
+      {
+        title: "Opcional",
+        text: "Sin función configurada, el informe dice `not_configured` y Facta DTE envía una copia al correo del dueño. Los archivos del resultado quedan igualmente en su mano; guárdelos.",
+      },
+      {
+        title: "Y después",
+        text: "`facta.emergency.replicate` reintenta la replicación normal con los archivos que su función guardó.",
+      },
+    ],
+    errors: [],
+    noErrors: "La emergencia nunca se vuelve un error del SDK: un fallo de su función aparece como `store_failed` en el informe.",
+    more: [
+      referenceLink("salvaguarda de emergencia", "emergency"),
+      { label: "Guía: adaptadores de almacenamiento →", href: STORAGE_GUIDE_URL },
+    ],
+  },
+
 };

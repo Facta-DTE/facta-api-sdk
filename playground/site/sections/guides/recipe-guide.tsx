@@ -119,6 +119,7 @@ export function RecipeGuideView({ recipe, guide, hidden, onTry }: { recipe: stri
         <div className="gd-ok" role="note"><b>La regla:</b> <Inline text={guide.rule} /></div>
         <section className="gd-card" aria-labelledby={`${recipe}-g-errors`}>
           <h2 className="gd-cap" id={`${recipe}-g-errors`}>Errores que puede ver</h2>
+          {guide.errors.length === 0 && guide.noErrors !== undefined && <p><Inline text={guide.noErrors} /></p>}
           <dl className="gd-errors">
             {guide.errors.map((error) => (
               <div key={error.code}>

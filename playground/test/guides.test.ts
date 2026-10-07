@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { RECIPE_SPECS } from "../server/recipes/specs.ts";
 import { RECIPE_GUIDES } from "../site/sections/server/guides.ts";
 import { PAGE_GUIDES } from "../site/sections/guides/page-guides.ts";
+import { COVERAGE } from "../shared/sdk-coverage.ts";
 import { ITEMS } from "../site/sections/screens/catalog.ts";
 import {
   readPageGuideOpen, readRecipeTab, RECIPE_TAB_KEY, writePageGuideOpen, writeRecipeTab,
@@ -18,6 +19,8 @@ const read = (path: string) => readFileSync(join(ROOT, path), "utf8");
 const client = read("src/client.ts");
 const errorsSource = read("src/errors.ts");
 const typesSource = read("src/types.ts");
+const emergencySource = read("src/emergency.ts");
+const recipeSources = readdirSync(join(ROOT, "playground/server/recipes")).map((f) => read(`playground/server/recipes/${f}`)).join("\n");
 
 function walk(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
@@ -29,7 +32,10 @@ const sdkSources = walk(join(ROOT, "src")).map((file) => readFileSync(file, "utf
 
 /** Public methods and getters of the `Facta` class (two-space indentation, not `#private`). */
 const FACTA_MEMBERS = new Set(
-  [...client.matchAll(/^ {2}(?:async |get )?([A-Za-z]\w*)\s*(?:<[^>]*>)?\(/gm)].map((m) => m[1]!),
+  [
+    ...client.matchAll(/^ {2}(?:async |get )?([A-Za-z]\w*)\s*(?:<[^>]*>)?\(/gm),
+    ...client.matchAll(/^ {2}readonly ([A-Za-z]\w*)\s*[:=]/gm),
+  ].map((m) => m[1]!),
 );
 
 const ERROR_CODES = new Set(
@@ -64,7 +70,7 @@ describe("every page has its guide", () => {
     const guide = RECIPE_GUIDES[id];
     expect(guide, `server/guides.ts has no entry for the recipe «${id}»`).toBeDefined();
     expect(guide!.steps.length).toBeGreaterThan(0);
-    expect(guide!.errors.length).toBeGreaterThan(0);
+    expect(guide!.errors.length > 0 || (guide!.noErrors ?? "") !== "", `${id}: list its errors or say why there are none`).toBe(true);
     expect(guide!.use.length).toBeGreaterThan(0);
   });
 
@@ -114,7 +120,7 @@ describe("what the guides claim is real", () => {
     for (const [id, guide] of allGuides) {
       for (const text of strings(guide)) {
         for (const [, token] of text.matchAll(/`([a-z]+(?:_[a-z]+)+)`/g)) {
-          expect(ERROR_CODES.has(token!) || DELIVERY_STATES.has(token!), `${id}: \`${token}\` is neither an error code nor a delivery state`).toBe(true);
+          expect(ERROR_CODES.has(token!) || DELIVERY_STATES.has(token!) || emergencySource.includes(`"${token}"`) || recipeSources.includes(`"${token}"`), `${id}: \`${token}\` is not an error code, a delivery state or an emergency code`).toBe(true);
         }
       }
     }
@@ -146,7 +152,10 @@ describe("what the guides claim is real", () => {
     for (const [id, guide] of allGuides) {
       for (const link of guide.more) {
         expect(link.to !== undefined || link.href !== undefined, `${id}: link «${link.label}» goes nowhere`).toBe(true);
-        if (link.to !== undefined) {
+        if (link.to?.startsWith("/referencia") === true) {
+          const entry = /^\/referencia(?:#([a-z0-9-]+))?$/.exec(link.to)?.[1];
+          expect(link.to === "/referencia" || COVERAGE.some((c) => c.id === entry), `${id}: ${link.to} is not a card of the SDK reference`).toBe(true);
+        } else if (link.to !== undefined) {
           const recipe = /^\/servidor\?receta=([a-z-]+)$/.exec(link.to)?.[1];
           expect(recipe !== undefined && recipes.has(recipe), `${id}: ${link.to} is not a recipe route`).toBe(true);
         }
@@ -169,7 +178,7 @@ describe("the copy keeps the project's voice", () => {
       for (const text of strings(guide)) {
         expect((text.match(/`/g) ?? []).length % 2, `${id}: unbalanced backtick in «${text.slice(0, 60)}»`).toBe(0);
         expect((text.match(/\*\*/g) ?? []).length % 2, `${id}: unbalanced ** in «${text.slice(0, 60)}»`).toBe(0);
-        expect(/<[a-z/]/i.test(text), `${id}: HTML in a guide`).toBe(false);
+        expect(/<[a-z/]/i.test(text.replace(/`[^`]*`/g, "")), `${id}: HTML in a guide`).toBe(false);
       }
     }
   });

@@ -44,6 +44,8 @@ export interface RecipeGuide {
   /** Ideas a newcomer needs before the steps make sense. */
   concepts?: GuideConcept[];
   errors: GuideError[];
+  /** Said instead of the errors card when the recipe never throws. */
+  noErrors?: string;
   more: GuideLink[];
 }
 

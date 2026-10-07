@@ -1,12 +1,10 @@
 import { githubFileUrl } from "../../source-links.ts";
 
-// Where the guides point when they send the reader to the SDK's own documentation. The reference lives in
-// the repository today; when the playground gets its own «Referencia del SDK» section, change it here and
-// every guide follows.
-export const SDK_REFERENCE: { label: string; href: string } = {
-  label: "Referencia del SDK",
-  href: `${githubFileUrl("guides/reference.md")}#dte-operations`,
-};
+/** A card of the playground's own «Referencia del SDK» page (`/referencia#<entry id>`, ids in shared/sdk-coverage.ts). */
+export const referenceLink = (what: string, entry?: string) => ({
+  label: `Referencia del SDK: ${what} →`,
+  to: entry === undefined ? "/referencia" : `/referencia#${entry}`,
+});
 
 export const STORAGE_GUIDE_URL = githubFileUrl("guides/storage-adapters.md");
 export const CATALOG_GUIDE_URL = githubFileUrl("guides/catalog.md");

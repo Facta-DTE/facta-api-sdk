@@ -2,7 +2,7 @@
 // «Mi propia implementación» and of «Registro». Same rules as server/guides.ts: each claim comes from the
 // example's source, the React guides in guides/ or the SDK, and test/guides.test.ts checks what it can.
 
-import { REACT_GUIDE_URL, REACT_SERVER_GUIDE_URL, SDK_REFERENCE } from "./links.ts";
+import { REACT_GUIDE_URL, REACT_SERVER_GUIDE_URL, referenceLink } from "./links.ts";
 import type { PageGuide } from "./types.ts";
 
 const REACT = { label: "Guía de React: la ventana de emisión →", href: REACT_GUIDE_URL };
@@ -139,7 +139,7 @@ export const PAGE_GUIDES: Record<string, PageGuide> = {
     what: "Los tres ejemplos no usan ningún componente visual del SDK. El primero usa `createFactaClient` y `createIssueFlow`, sin React; el segundo usa `useFactaIssue` con su teclado y sus estados; el tercero deja que una casilla decida si su servidor arma una Factura o un Crédito fiscal. En los tres el servidor arma el documento y el navegador solo sigue el flujo.",
     look: ["Cada ejemplo emite de verdad contra staging.", "Todos muestran los mismos estados del flujo: emitiendo, sellada, contingencia, rechazada y sesión vencida.", "«Ver el código» abre el archivo que corre, de menos de 60 líneas."],
     sdk: ["createFactaClient", "createIssueFlow", "useFactaIssue"],
-    more: [REACT, REACT_SERVER, { label: "Referencia del SDK →", href: SDK_REFERENCE.href }],
+    more: [REACT, REACT_SERVER, referenceLink("todo el SDK")],
   },
   registro: {
     problem: "Después de varias pruebas necesita ver qué emitió, en qué estado quedó cada documento y bajar sus archivos.",

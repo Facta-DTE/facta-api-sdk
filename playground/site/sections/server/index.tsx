@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useRoute } from "../../router.tsx";
 import { RECIPE_SPECS } from "../../../server/recipes/specs.ts";
 import { RecipePanel } from "./recipe-panel.tsx";
 import { loadMine, type MyDocument } from "./recipes-api.ts";
@@ -13,6 +14,12 @@ export function ServerRecipes() {
     return RECIPE_SPECS.some((s) => s.id === wanted) ? wanted! : RECIPE_SPECS[0]!.id;
   });
   const [mine, setMine] = useState<MyDocument[]>([]);
+  // A link from another recipe's guide to this route carries a new `?receta=`.
+  const { visits } = useRoute();
+  useEffect(() => {
+    const wanted = new URLSearchParams(window.location.search).get("receta");
+    if (visits > 0 && RECIPE_SPECS.some((s) => s.id === wanted)) setSelected(wanted!);
+  }, [visits]);
 
   useEffect(() => {
     void loadMine().then((docs) => setMine((current) => merge(docs, current)));
