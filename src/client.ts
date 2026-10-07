@@ -291,6 +291,9 @@ interface RemoteOptions {
   replicate?: boolean | undefined;
 }
 
+/** The API's largest catalog page (`limite`). */
+const SERVER_CATALOG_PAGE = 200;
+
 const DEFAULT_BASE_URL = "https://hcnvknpsbadplnfcflxx.supabase.co/functions/v1/api-v1";
 const RETRYABLE: ReadonlySet<FactaErrorCode> = new Set([
   "idempotency_in_flight",
@@ -1048,7 +1051,7 @@ export class Facta {
     if (!needle) return [];
     const limit = catalogSearchLimit(options.limit);
     return await this.#catalogRead(
-      async () => (await this.#listPage<CatalogCustomer>('/v1/customers', ['clientes'], { buscar: query.trim(), limite: String(limit), ...(options.includeInactive === true ? { incluirInactivos: 'true' } : {}) }, options))
+      async () => (await this.#searchServer<CatalogCustomer>('/v1/customers', ['clientes'], query, limit, options))
         .filter((row) => options.includeInactive === true || row.active !== false)
         .slice(0, limit),
       async () => (await this.#freshCatalog(options.allowStale ?? this.#config.allowStaleCatalogReads)).customers
@@ -1088,7 +1091,7 @@ export class Facta {
     if (!needle) return [];
     const limit = catalogSearchLimit(options.limit);
     return await this.#catalogRead(
-      async () => (await this.#listPage<CatalogProduct>('/v1/products', ['productos'], { buscar: query.trim(), limite: String(limit), ...(options.includeInactive === true ? { incluirInactivos: 'true' } : {}) }, options))
+      async () => (await this.#searchServer<CatalogProduct>('/v1/products', ['productos'], query, limit, options))
         .filter((product) => options.includeInactive === true || product.active !== false)
         .slice(0, limit),
       async () => (await this.#freshCatalog(options.allowStale ?? this.#config.allowStaleCatalogReads)).products
@@ -1210,6 +1213,19 @@ export class Facta {
     const search = new URLSearchParams(query).toString();
     const payload = await this.#request<unknown>('GET', search === '' ? path : `${path}?${search}`, undefined, options.signal ? { signal: options.signal } : {});
     return rowsOf<T>(payload, keys).map((row) => normalizeRecord(path, row));
+  }
+
+  /**
+   * Server-side catalog search. The API pages at most 200 rows (`limite` 1–200, 400 otherwise),
+   * while the local snapshot search never had a ceiling; a larger `limit` follows the cursor
+   * instead of failing, so both modes answer the same call.
+   */
+  async #searchServer<T extends { id: string }>(path: string, keys: readonly string[], query: string, limit: number, options: CatalogSearchOptions): Promise<T[]> {
+    const extra: Record<string, string> = { buscar: query.trim(), ...(options.includeInactive === true ? { incluirInactivos: 'true' } : {}) };
+    if (limit <= SERVER_CATALOG_PAGE) {
+      return await this.#listPage<T>(path, keys, { ...extra, limite: String(limit) }, options);
+    }
+    return await this.#listAll<T>(path, keys, options, extra);
   }
 
   async #listAll<T extends { id: string }>(path: string, keys: readonly string[], options: { signal?: AbortSignal }, extra: Record<string, string> = {}): Promise<T[]> {

@@ -105,6 +105,15 @@ Deno.test("plain: list follows the cursor, hides inactive customers and needs no
   assertEquals(calls.some((call) => call.path === "/v1/vault/destinations"), false);
 });
 
+Deno.test("plain: a search limit above the server page (200) follows the cursor instead of a 400", async () => {
+  const { calls, facta } = harness("plain", plainRoutes);
+  assertEquals((await facta.searchCustomers("ferre", { limit: 500 })).map((c) => c.id), ["c1"]);
+  const sent = calls.filter((call) => call.path === "/v1/customers");
+  assert(sent.every((call) => Number(new URLSearchParams(call.search).get("limite")) <= 200));
+  assert(sent.every((call) => new URLSearchParams(call.search).get("buscar") === "ferre"));
+  assertEquals((await facta.searchProducts("disco", { limit: 500 })).map((p) => p.id), ["p1"]);
+});
+
 Deno.test("plain: get returns the record, null when missing, null when inactive", async () => {
   const { facta } = harness("plain", plainRoutes);
   assertEquals((await facta.getCustomer("c1"))?.name, "Ferretería San Miguel");
