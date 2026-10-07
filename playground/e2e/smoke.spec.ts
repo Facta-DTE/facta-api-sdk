@@ -4,7 +4,7 @@ import { expect, test } from "@playwright/test";
 test("the shell loads and navigates every section", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1 })).toContainText("facturas de verdad");
-  for (const label of ["Pantallas React", "Mi propia implementación", "Solo servidor", "Referencia del SDK", "Registro", "Inicio"]) {
+  for (const label of ["Pantallas React", "Mi propia implementación", "Solo servidor", "Referencia", "Registro", "Inicio"]) {
     await page.getByRole("navigation", { name: "Secciones" }).getByRole("link", { name: label }).click();
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   }

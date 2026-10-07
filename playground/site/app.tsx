@@ -17,7 +17,7 @@ function Nav() {
     <nav className="pg-nav" aria-label="Secciones">
       {SECTIONS.map((section) => (
         <Link key={section.path} to={section.path} aria-current={path === section.path ? "page" : undefined}>
-          {section.label}
+          {section.navLabel ?? section.label}
         </Link>
       ))}
     </nav>

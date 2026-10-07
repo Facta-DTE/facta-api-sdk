@@ -13,6 +13,8 @@ import { Registro } from "./registro/index.tsx";
 export interface Section {
   path: string;
   label: string;
+  /** What the crowded desktop bar says when `label` is too long for it. */
+  navLabel?: string;
   Component: ComponentType;
 }
 
@@ -21,6 +23,6 @@ export const SECTIONS: Section[] = [
   { path: "/pantallas", label: "Pantallas React", Component: Screens },
   { path: "/implementacion", label: "Mi propia implementación", Component: Headless },
   { path: "/servidor", label: "Solo servidor", Component: ServerRecipes },
-  { path: "/referencia", label: "Referencia del SDK", Component: Referencia },
+  { path: "/referencia", label: "Referencia del SDK", navLabel: "Referencia", Component: Referencia },
   { path: "/registro", label: "Registro", Component: Registro },
 ];

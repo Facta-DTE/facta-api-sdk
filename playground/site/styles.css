@@ -203,6 +203,8 @@ main { min-width: 0; }
 @media (max-width: 899px) { .pg-footer { padding: 16px; } .pg-footer a { min-height: 44px; } }
 
 @media (min-width: 900px) and (max-width: 1500px) { .pg-header .pg-meter-bar { display: none; } }
+/* Six sections need the room: the docs and source links also live in the footer, so the bar drops them below 1560 px. */
+@media (min-width: 900px) and (max-width: 1560px) { .pg-header-tools .pg-doc-link { display: none; } }
 
 /* ---------- Loading states: a spinner on the busy button, a skeleton where the result will be ---------- */
 .pg-spin { display: inline-block; flex: none; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: pg-spin .7s linear infinite; vertical-align: -0.15em; }
