@@ -73,6 +73,33 @@ completion. It refuses non-loopback Supabase URLs and does not reset or migrate
 the local database. This repository-only validation script is not included in
 the published package.
 
+## Guías
+
+Todas las guías de `guides/`, en español y en inglés. Las dos guías de React están solo en inglés.
+
+| Tema | Español | English |
+| --- | --- | --- |
+| Referencia de métodos: cada método público | [reference.es.md](guides/reference.es.md) | [reference.md](guides/reference.md) |
+| Integración con Node.js | [node.es.md](guides/node.es.md) | [node.md](guides/node.md) |
+| Integración con Deno | [deno.es.md](guides/deno.es.md) | [deno.md](guides/deno.md) |
+| Catálogo de errores: cada código, estado HTTP y reintentos | [errors.es.md](guides/errors.es.md) | [errors.md](guides/errors.md) |
+| Patrones de idempotencia y recuperación de resultados inciertos | [idempotency.es.md](guides/idempotency.es.md) | [idempotency.md](guides/idempotency.md) |
+| Preparar, revisar y luego firmar | [prepare-sign.es.md](guides/prepare-sign.es.md) | [prepare-sign.md](guides/prepare-sign.md) |
+| El Archivo DTE (lo que recibe el receptor) | [archivo-dte.es.md](guides/archivo-dte.es.md) | [archivo-dte.md](guides/archivo-dte.md) |
+| Entrega por correo y WhatsApp | [delivery.es.md](guides/delivery.es.md) | [delivery.md](guides/delivery.md) |
+| Devoluciones (Evento de Retorno) | [return-event.es.md](guides/return-event.es.md) | [return-event.md](guides/return-event.md) |
+| Diagnóstico, `catalogState`, `diagnoseDestinations` | [diagnose.es.md](guides/diagnose.es.md) | [diagnose.md](guides/diagnose.md) |
+| Fijación de región | [region.es.md](guides/region.es.md) | [region.md](guides/region.md) |
+| Tiempos de depuración | [timings.es.md](guides/timings.es.md) | [timings.md](guides/timings.md) |
+| Reloj de referencia | [reference-clock.es.md](guides/reference-clock.es.md) | [reference-clock.md](guides/reference-clock.md) |
+| Fotos del catálogo y lecturas sin conexión | [catalog.es.md](guides/catalog.es.md) | [catalog.md](guides/catalog.md) |
+| Escritura del catálogo (clientes y productos) | [catalog-write.es.md](guides/catalog-write.es.md) | [catalog-write.md](guides/catalog-write.md) |
+| Adaptadores de almacenamiento | [storage-adapters.es.md](guides/storage-adapters.es.md) | [storage-adapters.md](guides/storage-adapters.md) |
+| Salvaguarda de emergencia | [emergency.es.md](guides/emergency.es.md) | [emergency.md](guides/emergency.md) |
+| Cliente de navegador sin interfaz (`@facta-dte/api/browser`) | [browser.es.md](guides/browser.es.md) | [browser.md](guides/browser.md) |
+| Ventana de firma para React | — | [react.md](guides/react.md) |
+| Ventana de firma: lado del servidor y almacenamiento | — | [react-server.md](guides/react-server.md) |
+
 ## Configuración tipada versionada
 
 `FactaOptions` conserva las opciones planas por compatibilidad. Para guardar defaults de comportamiento, usa `config: { version: 1, ... }`; si el mismo campo aparece en ambos lugares, la opción plana gana. Credenciales (`apiKey`, `signKey`, `unlockKey`) permanecen fuera de `config` para evitar serializarlas junto con perfiles.
