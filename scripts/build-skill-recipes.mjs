@@ -97,7 +97,7 @@ export function render() {
   lines.push("## Starter files in this skill");
   lines.push("");
   lines.push("`templates/` holds the same code already stripped and type-checked against the SDK:");
-  lines.push("`express-server.ts`, `nextjs-route.ts`, `react-checkout.tsx`, `webhook-to-invoice.ts` (shared model in");
+  lines.push("`express-server.ts`, `nextjs-route.ts`, `react-checkout.tsx`, `react-documents.tsx`, `webhook-to-invoice.ts` (shared model in");
   lines.push("`shared-order.ts`). Start there; open the recipe for the full story behind a call.");
   lines.push("");
   return lines.join("\n");

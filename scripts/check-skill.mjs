@@ -60,8 +60,11 @@ const union = /export type FactaErrorCode =([\s\S]*?);\n/.exec(errorsSrc)?.[1] ?
 const sdkCodes = new Set([...union.matchAll(/"([a-z_]+)"/g)].map((m) => m[1]));
 const doc = readFileSync(join(SKILL_DIR, "references", "errors.md"), "utf8");
 const documented = new Set([...doc.matchAll(/^\| `([a-z_]+)` \|/gm)].map((m) => m[1]));
+// Codes the skill documents ahead of the SDK change that introduces them. Remove each entry once its
+// SDK PR is in this branch (the check then enforces it like any other code).
+const PENDING_CODES = new Set(["catalog_duplicate"]); // SDK PR #38
 for (const code of sdkCodes) if (!documented.has(code)) fail(`errors.md is missing FactaErrorCode ${code}.`);
-for (const code of documented) if (!sdkCodes.has(code)) fail(`errors.md lists ${code}, which is not a FactaErrorCode.`);
+for (const code of documented) if (!sdkCodes.has(code) && !PENDING_CODES.has(code)) fail(`errors.md lists ${code}, which is not a FactaErrorCode.`);
 if (sdkCodes.size < 40) fail("could not read FactaErrorCode from src/errors.ts.");
 
 // 4. Recipes index current.

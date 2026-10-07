@@ -57,8 +57,8 @@ sources, it is not in the skill: say so to the developer instead of guessing.
 | find a real, tested example of any of the above to copy (the playground's recipes, with live links) | [references/recipes.md](references/recipes.md) |
 
 Copy-paste starting points live in [templates/](templates/README.md): an Express
-route, a Next.js route handler, a React checkout and an order-webhook-to-invoice
-handler. They are adapted from the playground's real, tested code (see
+route, a Next.js route handler, a React checkout, a React documents screen and an
+order-webhook-to-invoice handler. They are adapted from the playground's real, tested code (see
 [references/recipes.md](references/recipes.md)) and type-check against the SDK in this
 repository's CI. Prefer adapting a recipe or template over writing from scratch.
 
