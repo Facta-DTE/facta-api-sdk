@@ -27,6 +27,7 @@ import { createDeliverySession, DeliveryError, maskAddress, mailMessage, mention
 import { FactaError } from "../../src/errors.ts";
 import type { PlaygroundEnv } from "./env.ts";
 import { createFactaParts, visitorTag, type FactaParts } from "./facta.ts";
+import { CATALOG_WRITE_CODE, CATALOG_WRITE_MESSAGE, isCatalogWriteAction } from "./catalog-writes.ts";
 import { FixturesError, loadFixturesOf, publicFixtures, type PlaygroundFixtures } from "./fixtures.ts";
 import { checkGuard, STAGING_API_HOST } from "./guard.ts";
 import { isGenerationCode, listIssued, ownsDocument, updateIssuedState } from "./issued-codes.ts";
@@ -386,6 +387,8 @@ export async function handleApi(request: Request, env: PlaygroundEnv, deps: ApiD
     // the same session carries the same idempotency key and is free.
     if (request.method === "POST") {
       const peeked = await request.clone().json().catch(() => null) as { action?: unknown; session?: unknown; codigoGeneracion?: unknown } | null;
+      // The SDK can write the catalog; this playground never does. Refused here, before anything else sees it.
+      if (isCatalogWriteAction(peeked?.action)) return jsonResponse(403, errorBody(CATALOG_WRITE_CODE, CATALOG_WRITE_MESSAGE));
       // Per-document reads: the code must be one this visitor issued.
       if (typeof peeked?.action === "string" && PER_DOCUMENT_ACTIONS.has(peeked.action)) {
         const visitor = await visitorOf(request);

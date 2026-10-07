@@ -7,6 +7,7 @@ import type { PlaygroundEnv } from "../env.ts";
 import { archivoDteFromStored, archivoDteOf, dteFileName, rawFileName } from "../../shared/archivo-dte.ts";
 import { debugFromBody, debugFromServerTiming } from "../../../src/debug.ts";
 import type { DebugInfo } from "../../../src/types.ts";
+import { refuseCatalogWrites } from "../catalog-writes.ts";
 import { leaksSecret, redact, redactText, type RedactOptions } from "./redact.ts";
 
 export interface Step {
@@ -38,6 +39,8 @@ export interface ExecOutcome {
   /** Documents sealed (or in contingency) by this stage, to hand proofs for. */
   issued?: Array<{ codigoGeneracion: string; tipoDte: string; numeroControl: string; estado: string; total?: number }>;
   invalidated?: string[];
+  /** Documents a return event was sealed on (counts like an issue). */
+  returned?: string[];
   continuation?: string;
   /** Bulky members to keep in the redacted result (e.g. the canonical `documento`). */
   keep?: string[];
@@ -219,7 +222,7 @@ export async function execute(
   let outcome: ExecOutcome | null = null;
   let error: RunOutput["error"];
   try {
-    outcome = await exec(facta);
+    outcome = await exec(refuseCatalogWrites(facta));
   } catch (cause) {
     if (cause instanceof FactaError) {
       const spent = cause.spent;
