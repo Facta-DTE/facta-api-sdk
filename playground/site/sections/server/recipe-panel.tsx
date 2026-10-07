@@ -15,6 +15,8 @@ import { highlight } from "../../components/highlight.tsx";
 import { recipePath, recipeSource } from "./sources.ts";
 import { COVERAGE } from "../../../shared/sdk-coverage.ts";
 import { Link } from "../../router.tsx";
+import { RECIPE_GUIDES } from "./guides.ts";
+import { panelId, RecipeGuideView, RecipeTabBar, useRecipeTab } from "../guides/recipe-guide.tsx";
 
 type Values = Record<string, string | boolean>;
 
@@ -86,6 +88,10 @@ export function RecipePanel({ spec, number, mine, onIssued }: { spec: RecipeSpec
   const [problem, setProblem] = useState<string | null>(null);
   const [fullCode, setFullCode] = useState(false);
   const { copied, copy } = useCopy();
+  const [chosenTab, setTab] = useRecipeTab();
+  const guide = RECIPE_GUIDES[spec.id];
+  // A recipe without a guide opens on «Probarla» whatever tab the visitor last used.
+  const tab = guide === undefined && chosenTab === "guia" ? "probar" : chosenTab;
   const source = recipeSource(spec.file);
   const inReference = COVERAGE.find((entry) => (entry.demo.kind === "recipe" || entry.demo.kind === "simulated") && entry.demo.recipe === spec.id);
 
@@ -141,7 +147,7 @@ export function RecipePanel({ spec, number, mine, onIssued }: { spec: RecipeSpec
 
   return (
     <>
-      <article className="srv-main" aria-labelledby={`r-${spec.id}`}>
+      <article className="srv-main" aria-labelledby={`r-${spec.id}`} data-tab={tab}>
         <div className="srv-head">
           <div className="srv-crumb">Solo servidor · receta {number}</div>
           <h1 id={`r-${spec.id}`}>{spec.title}</h1>
@@ -153,7 +159,10 @@ export function RecipePanel({ spec, number, mine, onIssued }: { spec: RecipeSpec
           {spec.id === "issue-idempotent" && <WhySameKey />}
         </div>
 
-        <div className={`srv-codewrap${fullCode ? " is-full" : ""}`}>
+        <RecipeTabBar recipe={spec.id} tab={tab} onChange={setTab} withGuide={guide !== undefined} />
+        {guide !== undefined && <RecipeGuideView recipe={spec.id} guide={guide} hidden={tab !== "guia"} onTry={() => setTab("probar")} />}
+
+        <div className={`srv-codewrap${fullCode ? " is-full" : ""}`} id={panelId(spec.id, "codigo")} role="tabpanel" aria-labelledby={`${spec.id}-tab-codigo`} hidden={tab !== "codigo"}>
           <CodeBlock
             className="srv-codeblock"
             title={`recipes/${spec.file}`}
@@ -178,7 +187,7 @@ export function RecipePanel({ spec, number, mine, onIssued }: { spec: RecipeSpec
         </div>
       </article>
 
-      <aside className="srv-run" aria-label="Ejecutar en staging">
+      <aside className="srv-run" aria-label="Ejecutar en staging" id={panelId(spec.id, "probar")} role="tabpanel" aria-labelledby={`${spec.id}-tab-probar`} hidden={tab !== "probar"}>
         <h2>Ejecutar en staging</h2>
         <form className="srv-form" onSubmit={(e) => { e.preventDefault(); if (!busy && !blocked && !needsDocument) { setPrevious(null); setContinuation(null); setRuns([]); void execute(firstStage, null); } }}>
           {spec.fields.map((field) => (

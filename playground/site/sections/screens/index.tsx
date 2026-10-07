@@ -23,6 +23,7 @@ import { WindowHookExample } from "./examples/window-hook.tsx";
 import { SaleBuilder } from "./sale-builder.tsx";
 import { ScreenStateProvider, useScreens } from "./screen-state.tsx";
 import { IssueInsight } from "../../components/timings.tsx";
+import { PageGuideCard } from "../guides/page-guide.tsx";
 
 type Pane = "venta" | "vista" | "codigo";
 
@@ -185,6 +186,7 @@ function Workbench() {
             </div>
           )}
         </div>
+        <PageGuideCard key={item.id} id={item.id} />
         {item.window && s.run === "auto-close" && (
           <div className="wb-runopts">
             <label className="pg-field">
