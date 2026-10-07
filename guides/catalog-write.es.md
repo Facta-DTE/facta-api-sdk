@@ -61,33 +61,40 @@ listas ni búsquedas; pase `includeInactive: true` para verlos.
 ```ts
 const cliente = await facta.createCustomer(
   {
-    name: "Laura Ortiz",
-    doc_type: "13",
-    doc_number: "04829316-5",
-    address: { departamento: "06", municipio: "14", complemento: "Colonia Escalón" },
-    email: "laura@example.com",
+    nombre: "Laura Ortiz",
+    tipoDocumento: "13",
+    numDocumento: "04829316-5",
+    direccion: { departamento: "06", municipio: "14", distrito: "01", complemento: "Colonia Escalón" },
+    correo: "laura@example.com",
   },
   { idempotencyKey: `crm-cliente-${crmId}` },
 );
 
-await facta.updateCustomer(cliente.id, { phone: "2222-3333" });
+await facta.updateCustomer(cliente.id, { telefono: "2222-3333" });
 
 const producto = await facta.createProduct({
-  description: "Disco de corte 4 1/2",
-  item_type: 1, // 1 bien, 2 servicio, 3 ambos: obligatorio, nunca se supone
-  unit_price: 2.85,
-  vat_included: true,
+  descripcion: "Disco de corte 4 1/2",
+  tipoItem: 1, // 1 bien, 2 servicio, 3 ambos: obligatorio, nunca se supone
+  precioUni: 2.85,
+  ivaIncluido: true,
+  tipoVenta: "gravada", // o "exenta" / "no_sujeta"; si se omite, se lee como gravada
 });
 
-await facta.updateProduct(producto.id, { unit_price: 3.1 });
+await facta.updateProduct(producto.id, { precioUni: 3.1 });
 await facta.deactivateProduct(producto.id);
 ```
 
+Los nombres de los campos son los que usa el resto de la API pública (`nombre`,
+`numDocumento`, `precioUni`, `tipoVenta`...). Los nombres guardados (`name`,
+`doc_number`, `unit_price`...) se siguen aceptando al enviar, y cada registro que
+devuelve el SDK trae los dos nombres, en cualquier modo de catálogo.
+
 Reglas que el SDK revisa antes de enviar y que el servidor también revisa: un
-cliente necesita `name`; un DUI lleva 9 dígitos y un NIT 14 (se aceptan guiones y
-se quitan antes de enviar); un NRC lleva de 1 a 8 dígitos; una dirección necesita
-códigos de departamento y municipio de dos dígitos y un `complemento`; un producto
-necesita `description`, `item_type` y un `unit_price` no negativo. El SDK nunca
+cliente necesita `nombre`; un DUI lleva 9 dígitos y un NIT 14 (se aceptan guiones y
+se quitan antes de enviar); un NRC lleva de 1 a 8 dígitos; una `direccion` necesita
+códigos de departamento, municipio y distrito y un `complemento`; un producto
+necesita `descripcion`, `tipoItem` y un `precioUni` mayor que cero. `tipoVenta` es el
+tratamiento de IVA del producto y viaja en cada línea que se emite con él. El SDK nunca
 rechaza un valor que el servidor aceptaría. `FactaError` con
 `code: "validation_failed"` y `status: 422` lista los problemas en
 `details.issues`.

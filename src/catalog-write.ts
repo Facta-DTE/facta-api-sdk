@@ -38,30 +38,77 @@ function nullableText(input: Record<string, unknown>, key: string, issues: strin
   if (typeof value !== "string" || value.length > max) issues.push(`${key} debe ser texto de hasta ${max} caracteres.`);
 }
 
-/** The customer fields as the server stores them: document and NRC as digits only. */
+// The public API speaks the Ministry's field names (`nombre`, `numDocumento`,
+// `precioUni`...), like every other route. The first catalog methods of this SDK
+// used the stored names (`name`, `doc_number`, `unit_price`...), which are also
+// what an encrypted snapshot holds. Both spellings still work: inputs are
+// translated to the wire names before they are sent, and every record the SDK
+// returns carries BOTH spellings, whichever way the catalog was read.
+
+const CUSTOMER_ALIASES: ReadonlyArray<readonly [wire: string, stored: string]> = [
+  ["nombre", "name"],
+  ["tipoDocumento", "doc_type"],
+  ["numDocumento", "doc_number"],
+  ["nrc", "nrc"],
+  ["codActividad", "activity_code"],
+  ["direccion", "address"],
+  ["telefono", "phone"],
+  ["correo", "email"],
+];
+const PRODUCT_ALIASES: ReadonlyArray<readonly [wire: string, stored: string]> = [
+  ["codigo", "code"],
+  ["codigoBarras", "barcode"],
+  ["descripcion", "description"],
+  ["tipoItem", "item_type"],
+  ["uniMedida", "unit_of_measure"],
+  ["precioUni", "unit_price"],
+  ["ivaIncluido", "vat_included"],
+];
+const SALE_TYPES = ["gravada", "exenta", "no_sujeta"] as const;
+
+/** Both spellings of a field given: they must agree, or the caller gets told. */
+function toWire(
+  input: Record<string, unknown>,
+  aliases: ReadonlyArray<readonly [string, string]>,
+  issues: string[],
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...input };
+  for (const [wire, stored] of aliases) {
+    if (wire === stored || !(stored in input)) continue;
+    delete out[stored];
+    if (wire in input && JSON.stringify(input[wire]) !== JSON.stringify(input[stored])) {
+      issues.push(`${wire} y ${stored} son el mismo dato y traen valores distintos; use solo ${wire}.`);
+    } else if (!(wire in input)) {
+      out[wire] = input[stored];
+    }
+  }
+  return out;
+}
+
+/** The customer fields the server expects: wire names, document and NRC as digits only. */
 export function prepareCustomer(input: CustomerInput, mode: "create" | "update"): Record<string, unknown> {
   if (!isRecord(input)) invalid(["se esperaba un objeto con los datos del cliente."]);
   const issues: string[] = [];
-  const out: Record<string, unknown> = { ...input };
-  const name = input.name;
-  if (name === undefined) {
-    if (mode === "create") issues.push("name es obligatorio.");
-  } else if (typeof name !== "string" || name.trim() === "" || name.length > 250) {
-    issues.push("name debe ser texto, no vacío, de hasta 250 caracteres.");
+  const out = toWire(input as Record<string, unknown>, CUSTOMER_ALIASES, issues);
+  const nombre = out["nombre"];
+  if (nombre === undefined) {
+    if (mode === "create") issues.push("nombre es obligatorio.");
+  } else if (typeof nombre !== "string" || nombre.trim() === "" || nombre.length > 250) {
+    issues.push("nombre debe ser texto, no vacío, de hasta 250 caracteres.");
   }
-  const docType = input.doc_type;
-  const docNumber = input.doc_number;
-  if (docType !== undefined && docType !== null && typeof docType !== "string") issues.push("doc_type debe ser texto (por ejemplo «13» o «36»).");
+  const docType = out["tipoDocumento"];
+  const docNumber = out["numDocumento"];
+  if (docType !== undefined && docType !== null && typeof docType !== "string") issues.push("tipoDocumento debe ser texto (por ejemplo «13» o «36»).");
   if (docNumber !== undefined && docNumber !== null) {
-    if (typeof docNumber !== "string") issues.push("doc_number debe ser texto.");
+    if (typeof docNumber !== "string") issues.push("numDocumento debe ser texto.");
     else if (docType === "13" || docType === "36") {
       const clean = digits(docNumber);
       const want = docType === "13" ? 9 : 14;
-      if (clean.length !== want) issues.push(`doc_number de un ${docType === "13" ? "DUI" : "NIT"} lleva ${want} dígitos.`);
-      else out["doc_number"] = clean;
+      if (clean.length !== want) issues.push(`numDocumento de un ${docType === "13" ? "DUI" : "NIT"} lleva ${want} dígitos.`);
+      else out["numDocumento"] = clean;
     }
   }
-  const nrc = input.nrc;
+  const nrc = out["nrc"];
   if (nrc !== undefined && nrc !== null) {
     if (typeof nrc !== "string") issues.push("nrc debe ser texto.");
     else {
@@ -70,59 +117,95 @@ export function prepareCustomer(input: CustomerInput, mode: "create" | "update")
       else out["nrc"] = clean;
     }
   }
-  const address = input.address;
-  if (address !== undefined && address !== null) {
-    if (!isRecord(address)) issues.push("address debe ser un objeto {departamento, municipio, complemento}.");
+  const direccion = out["direccion"];
+  if (direccion !== undefined && direccion !== null) {
+    if (!isRecord(direccion)) issues.push("direccion debe ser un objeto {departamento, municipio, distrito, complemento}.");
     else {
-      if (typeof address["departamento"] !== "string" || !/^\d{2}$/.test(address["departamento"])) issues.push("address.departamento es un código de dos dígitos.");
-      if (typeof address["municipio"] !== "string" || !/^\d{2}$/.test(address["municipio"])) issues.push("address.municipio es un código de dos dígitos.");
-      if (typeof address["complemento"] !== "string" || address["complemento"].trim() === "") issues.push("address.complemento es obligatorio.");
+      if (typeof direccion["departamento"] !== "string" || !/^\d{2}$/.test(direccion["departamento"])) issues.push("direccion.departamento es un código de dos dígitos.");
+      if (typeof direccion["municipio"] !== "string" || !/^\d{2}$/.test(direccion["municipio"])) issues.push("direccion.municipio es un código de dos dígitos.");
+      if (typeof direccion["distrito"] !== "string" || direccion["distrito"].trim() === "") issues.push("direccion.distrito es obligatorio (código del distrito del departamento y municipio).");
+      if (typeof direccion["complemento"] !== "string" || direccion["complemento"].trim() === "") issues.push("direccion.complemento es obligatorio.");
     }
   }
-  const email = input.email;
-  if (email !== undefined && email !== null && (typeof email !== "string" || !email.includes("@") || email.length > 250)) {
-    issues.push("email no parece una dirección de correo.");
+  const correo = out["correo"];
+  if (correo !== undefined && correo !== null && (typeof correo !== "string" || !correo.includes("@") || correo.length > 250)) {
+    issues.push("correo no parece una dirección de correo.");
   }
-  nullableText(input as Record<string, unknown>, "activity_code", issues, 10);
-  nullableText(input as Record<string, unknown>, "phone", issues, 30);
-  if (mode === "update" && Object.keys(input).length === 0) issues.push("indique al menos un campo para cambiar.");
+  nullableText(out, "codActividad", issues, 10);
+  nullableText(out, "telefono", issues, 30);
+  if (mode === "update" && Object.keys(out).length === 0) issues.push("indique al menos un campo para cambiar.");
   if (issues.length > 0) invalid(issues);
   return out;
 }
 
-/** The product fields to send. `item_type` is never defaulted: it decides the tax treatment. */
+/** The product fields to send. `tipoItem` is never defaulted: it decides the tax treatment. */
 export function prepareProduct(input: ProductInput, mode: "create" | "update"): Record<string, unknown> {
   if (!isRecord(input)) invalid(["se esperaba un objeto con los datos del producto."]);
   const issues: string[] = [];
-  const description = input.description;
-  if (description === undefined) {
-    if (mode === "create") issues.push("description es obligatorio.");
-  } else if (typeof description !== "string" || description.trim() === "" || description.length > 1000) {
-    issues.push("description debe ser texto, no vacío, de hasta 1000 caracteres.");
+  const out = toWire(input as Record<string, unknown>, PRODUCT_ALIASES, issues);
+  const descripcion = out["descripcion"];
+  if (descripcion === undefined) {
+    if (mode === "create") issues.push("descripcion es obligatorio.");
+  } else if (typeof descripcion !== "string" || descripcion.trim() === "" || descripcion.length > 1500) {
+    issues.push("descripcion debe ser texto, no vacío, de hasta 1500 caracteres.");
   }
-  const itemType = input.item_type;
-  if (itemType === undefined) {
-    if (mode === "create") issues.push("item_type es obligatorio: 1 bien, 2 servicio o 3 ambos. No se asume ninguno.");
-  } else if (itemType !== 1 && itemType !== 2 && itemType !== 3) {
-    issues.push("item_type debe ser 1 (bien), 2 (servicio) o 3 (ambos).");
+  const tipoItem = out["tipoItem"];
+  if (tipoItem === undefined) {
+    if (mode === "create") issues.push("tipoItem es obligatorio: 1 bien, 2 servicio o 3 ambos. No se asume ninguno.");
+  } else if (tipoItem !== 1 && tipoItem !== 2 && tipoItem !== 3) {
+    issues.push("tipoItem debe ser 1 (bien), 2 (servicio) o 3 (ambos).");
   }
-  const price = input.unit_price;
-  if (price === undefined) {
-    if (mode === "create") issues.push("unit_price es obligatorio.");
-  } else if (typeof price !== "number" || !Number.isFinite(price) || price < 0) {
-    issues.push("unit_price debe ser un número no negativo.");
+  const precio = out["precioUni"];
+  if (precio === undefined) {
+    if (mode === "create") issues.push("precioUni es obligatorio.");
+  } else if (typeof precio !== "number" || !Number.isFinite(precio) || precio <= 0) {
+    issues.push("precioUni debe ser un número mayor que cero.");
   }
-  const unit = input.unit_of_measure;
-  if (unit !== undefined && (typeof unit !== "number" || !Number.isInteger(unit) || unit < 1)) {
-    issues.push("unit_of_measure debe ser un entero positivo.");
+  const unidad = out["uniMedida"];
+  if (unidad !== undefined && (typeof unidad !== "number" || !Number.isInteger(unidad) || unidad < 1)) {
+    issues.push("uniMedida debe ser un entero positivo.");
   }
-  const vat = input.vat_included;
-  if (vat !== undefined && typeof vat !== "boolean") issues.push("vat_included debe ser verdadero o falso.");
-  nullableText(input as Record<string, unknown>, "code", issues, 100);
-  nullableText(input as Record<string, unknown>, "barcode", issues, 100);
-  if (mode === "update" && Object.keys(input).length === 0) issues.push("indique al menos un campo para cambiar.");
+  const iva = out["ivaIncluido"];
+  if (iva !== undefined && typeof iva !== "boolean") issues.push("ivaIncluido debe ser verdadero o falso.");
+  const venta = out["tipoVenta"];
+  if (venta !== undefined && !(SALE_TYPES as readonly unknown[]).includes(venta)) {
+    issues.push("tipoVenta debe ser «gravada», «exenta» o «no_sujeta».");
+  }
+  nullableText(out, "codigo", issues, 25);
+  nullableText(out, "codigoBarras", issues, 100);
+  if (mode === "update" && Object.keys(out).length === 0) issues.push("indique al menos un campo para cambiar.");
   if (issues.length > 0) invalid(issues);
-  return { ...input };
+  return out;
+}
+
+function withAliases(
+  row: Record<string, unknown>,
+  aliases: ReadonlyArray<readonly [string, string]>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...row };
+  for (const [wire, stored] of aliases) {
+    if (wire in out && !(stored in out)) out[stored] = out[wire];
+    else if (stored in out && !(wire in out)) out[wire] = out[stored];
+  }
+  // `activo` (API) and `active` (stored) are the same flag.
+  if ("activo" in out && !("active" in out)) out["active"] = out["activo"];
+  else if ("active" in out && !("activo" in out)) out["activo"] = out["active"];
+  return out;
+}
+
+/** A customer with both spellings, whether it came from the API or a decrypted snapshot. */
+export function normalizeCustomer<T extends { id: string }>(row: T): T {
+  return withAliases(row as Record<string, unknown>, CUSTOMER_ALIASES) as T;
+}
+
+/** A product with both spellings. A snapshot product without a treatment reads as `gravada`. */
+export function normalizeProduct<T extends { id: string }>(row: T): T {
+  const out = withAliases(row as Record<string, unknown>, PRODUCT_ALIASES);
+  if (!("tipoVenta" in out)) {
+    const stored = out["sale_class"];
+    out["tipoVenta"] = stored === "exenta" ? "exenta" : stored === "noSuj" ? "no_sujeta" : "gravada";
+  }
+  return out as T;
 }
 
 export function requireId(id: unknown, label: string): string {

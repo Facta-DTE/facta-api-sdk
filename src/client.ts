@@ -40,6 +40,8 @@ import { resolveCatalogRefs } from "./catalog.ts";
 import {
   CATALOG_WRITE_MESSAGES,
   nextCursor,
+  normalizeCustomer,
+  normalizeProduct,
   prepareCustomer,
   prepareProduct,
   recordOf,
@@ -949,7 +951,11 @@ export class Facta {
       // The app's encrypted sync policy contains IDs for excluded customers.
       // Keep those control records private to the app; they are not part of
       // the API consumer's authorized customer snapshot.
-      const publicSnapshot = { version: 1 as const, customers: snapshot.customers, products: snapshot.products };
+      const publicSnapshot = {
+        version: 1 as const,
+        customers: snapshot.customers.map((row) => normalizeCustomer(row)),
+        products: snapshot.products.map((row) => normalizeProduct(row)),
+      };
       const revision = Number(catalog['revision']);
       if (!Number.isSafeInteger(revision) || revision < 0) {
         throw new FactaError('service_unavailable', 'Catalog revision is invalid.', 503);
@@ -1014,7 +1020,7 @@ export class Facta {
    */
   async listCustomers(options: CatalogReadOptions = {}): Promise<CatalogCustomer[]> {
     return await this.#catalogRead(
-      async () => (await this.#listAll<CatalogCustomer>('/v1/customers', ['customers', 'clientes'], options)).filter((row) => options.includeInactive === true || row.active !== false),
+      async () => (await this.#listAll<CatalogCustomer>('/v1/customers', ['clientes'], options, options.includeInactive === true ? { incluirInactivos: 'true' } : {})).filter((row) => options.includeInactive === true || row.active !== false),
       async () => [...(await this.#freshCatalog(options.allowStale ?? this.#config.allowStaleCatalogReads)).customers],
     );
   }
@@ -1023,7 +1029,7 @@ export class Facta {
   async getCustomer(customerId: string, options: CatalogReadOptions = {}): Promise<CatalogCustomer | null> {
     return await this.#catalogRead(
       async () => {
-        const row = await this.#getOne<CatalogCustomer>(`/v1/customers/${encodeURIComponent(customerId)}`, ['customer', 'cliente'], options);
+        const row = await this.#getOne<CatalogCustomer>(`/v1/customers/${encodeURIComponent(customerId)}`, ['cliente'], options);
         return row === null || (row.active === false && options.includeInactive !== true) ? null : row;
       },
       async () => (await this.#freshCatalog(options.allowStale ?? this.#config.allowStaleCatalogReads)).customers.find((customer) => customer.id === customerId) ?? null,
@@ -1036,7 +1042,7 @@ export class Facta {
     if (!needle) return [];
     const limit = catalogSearchLimit(options.limit);
     return await this.#catalogRead(
-      async () => (await this.#listPage<CatalogCustomer>('/v1/customers', ['customers', 'clientes'], { q: query.trim(), limit: String(limit) }, options))
+      async () => (await this.#listPage<CatalogCustomer>('/v1/customers', ['clientes'], { buscar: query.trim(), limite: String(limit), ...(options.includeInactive === true ? { incluirInactivos: 'true' } : {}) }, options))
         .filter((row) => options.includeInactive === true || row.active !== false)
         .slice(0, limit),
       async () => (await this.#freshCatalog(options.allowStale ?? this.#config.allowStaleCatalogReads)).customers
@@ -1049,7 +1055,7 @@ export class Facta {
   /** List active products (all of them with `includeInactive`). Same modes as `listCustomers`. */
   async listProducts(options: CatalogReadOptions = {}): Promise<CatalogProduct[]> {
     return await this.#catalogRead(
-      async () => (await this.#listAll<CatalogProduct>('/v1/products', ['products', 'productos'], options, options.includeInactive === true ? { includeInactive: 'true' } : {}))
+      async () => (await this.#listAll<CatalogProduct>('/v1/products', ['productos'], options, options.includeInactive === true ? { incluirInactivos: 'true' } : {}))
         .filter((product) => options.includeInactive === true || product.active !== false),
       async () => (await this.#freshCatalog(options.allowStale ?? this.#config.allowStaleCatalogReads)).products
         .filter((product) => options.includeInactive === true || product.active !== false),
@@ -1060,7 +1066,7 @@ export class Facta {
   async getProduct(productId: string, options: CatalogReadOptions = {}): Promise<CatalogProduct | null> {
     return await this.#catalogRead(
       async () => {
-        const row = await this.#getOne<CatalogProduct>(`/v1/products/${encodeURIComponent(productId)}`, ['product', 'producto'], options);
+        const row = await this.#getOne<CatalogProduct>(`/v1/products/${encodeURIComponent(productId)}`, ['producto'], options);
         return row === null || (row.active === false && options.includeInactive !== true) ? null : row;
       },
       async () => {
@@ -1076,7 +1082,7 @@ export class Facta {
     if (!needle) return [];
     const limit = catalogSearchLimit(options.limit);
     return await this.#catalogRead(
-      async () => (await this.#listPage<CatalogProduct>('/v1/products', ['products', 'productos'], { q: query.trim(), limit: String(limit) }, options))
+      async () => (await this.#listPage<CatalogProduct>('/v1/products', ['productos'], { buscar: query.trim(), limite: String(limit), ...(options.includeInactive === true ? { incluirInactivos: 'true' } : {}) }, options))
         .filter((product) => options.includeInactive === true || product.active !== false)
         .slice(0, limit),
       async () => (await this.#freshCatalog(options.allowStale ?? this.#config.allowStaleCatalogReads)).products
@@ -1096,37 +1102,37 @@ export class Facta {
   /** Create a customer. Pass `idempotencyKey` to make a retried create safe. */
   async createCustomer(input: CustomerInput, options: CatalogWriteOptions = {}): Promise<CatalogCustomer> {
     const body = prepareCustomer(input, 'create');
-    return await this.#catalogWrite<CatalogCustomer>('POST', '/v1/customers', ['customer', 'cliente'], body, options);
+    return await this.#catalogWrite<CatalogCustomer>('POST', '/v1/customers', ['cliente'], body, options);
   }
 
   /** Change fields of a customer; only the fields you pass change. */
   async updateCustomer(customerId: string, changes: CustomerInput, options: CatalogWriteOptions = {}): Promise<CatalogCustomer> {
     const id = requireId(customerId, 'customer');
-    return await this.#catalogWrite<CatalogCustomer>('PATCH', `/v1/customers/${encodeURIComponent(id)}`, ['customer', 'cliente'], prepareCustomer(changes, 'update'), options, id);
+    return await this.#catalogWrite<CatalogCustomer>('PATCH', `/v1/customers/${encodeURIComponent(id)}`, ['cliente'], prepareCustomer(changes, 'update'), options, id);
   }
 
   /** Deactivate a customer (`DELETE`). It keeps existing documents intact and stops being listed. */
   async deactivateCustomer(customerId: string, options: CatalogWriteOptions = {}): Promise<CatalogCustomer> {
     const id = requireId(customerId, 'customer');
-    return await this.#catalogWrite<CatalogCustomer>('DELETE', `/v1/customers/${encodeURIComponent(id)}`, ['customer', 'cliente'], undefined, options, id);
+    return await this.#catalogWrite<CatalogCustomer>('DELETE', `/v1/customers/${encodeURIComponent(id)}`, ['cliente'], undefined, options, id);
   }
 
   /** Create a product. `item_type` is required and never defaulted. */
   async createProduct(input: ProductInput, options: CatalogWriteOptions = {}): Promise<CatalogProduct> {
     const body = prepareProduct(input, 'create');
-    return await this.#catalogWrite<CatalogProduct>('POST', '/v1/products', ['product', 'producto'], body, options);
+    return await this.#catalogWrite<CatalogProduct>('POST', '/v1/products', ['producto'], body, options);
   }
 
   /** Change fields of a product; only the fields you pass change. */
   async updateProduct(productId: string, changes: ProductInput, options: CatalogWriteOptions = {}): Promise<CatalogProduct> {
     const id = requireId(productId, 'product');
-    return await this.#catalogWrite<CatalogProduct>('PATCH', `/v1/products/${encodeURIComponent(id)}`, ['product', 'producto'], prepareProduct(changes, 'update'), options, id);
+    return await this.#catalogWrite<CatalogProduct>('PATCH', `/v1/products/${encodeURIComponent(id)}`, ['producto'], prepareProduct(changes, 'update'), options, id);
   }
 
   /** Deactivate a product (`DELETE`). Existing documents keep it; it can no longer be issued. */
   async deactivateProduct(productId: string, options: CatalogWriteOptions = {}): Promise<CatalogProduct> {
     const id = requireId(productId, 'product');
-    return await this.#catalogWrite<CatalogProduct>('DELETE', `/v1/products/${encodeURIComponent(id)}`, ['product', 'producto'], undefined, options, id);
+    return await this.#catalogWrite<CatalogProduct>('DELETE', `/v1/products/${encodeURIComponent(id)}`, ['producto'], undefined, options, id);
   }
 
   async #catalogWrite<T extends { id: string }>(
@@ -1142,8 +1148,8 @@ export class Facta {
       ...(options.signal === undefined ? {} : { signal: options.signal }),
     });
     const record = recordOf<T>(payload, keys);
-    if (record !== null) return record;
-    if (method === 'DELETE' && id !== undefined) return { id, active: false } as unknown as T;
+    if (record !== null) return normalizeRecord(path, record);
+    if (method === 'DELETE' && id !== undefined) return normalizeRecord(path, { id, activo: false } as unknown as T);
     throw new FactaError('internal_error', 'La respuesta del catálogo no trae el registro.', 502);
   }
 
@@ -1169,7 +1175,9 @@ export class Facta {
   }
 
   #rememberCatalogMode(status: Status): CatalogMode | null {
-    const advertised = status.llave?.catalogMode;
+    // A company with an unencrypted catalog is advertised as `readable` (older SDKs resolve ids
+    // through it); `catalogoSinCifrar` is what tells this SDK the catalog is also writable.
+    const advertised = status.llave?.catalogoSinCifrar === true ? 'plain' : status.llave?.catalogMode;
     const mode = advertised === 'plain' || advertised === 'readable' || advertised === 'encrypted' ? advertised : null;
     this.#catalogModeCache = { mode, at: Date.now() };
     return mode;
@@ -1202,9 +1210,9 @@ export class Facta {
     const rows: T[] = [];
     let cursor: string | null = null;
     for (let page = 0; page < 1000; page++) {
-      const query = new URLSearchParams({ limit: '200', ...extra, ...(cursor === null ? {} : { cursor }) }).toString();
+      const query = new URLSearchParams({ limite: '200', ...extra, ...(cursor === null ? {} : { cursor }) }).toString();
       const payload = await this.#request<unknown>('GET', `${path}?${query}`, undefined, options.signal ? { signal: options.signal } : {});
-      rows.push(...rowsOf<T>(payload, keys));
+      rows.push(...rowsOf<T>(payload, keys).map((row) => normalizeRecord(path, row)));
       cursor = nextCursor(payload);
       if (cursor === null) return rows;
     }
@@ -1214,7 +1222,8 @@ export class Facta {
   async #getOne<T extends { id: string }>(path: string, keys: readonly string[], options: { signal?: AbortSignal }): Promise<T | null> {
     try {
       const payload = await this.#request<unknown>('GET', path, undefined, options.signal ? { signal: options.signal } : {});
-      return recordOf<T>(payload, keys);
+      const record = recordOf<T>(payload, keys);
+      return record === null ? null : normalizeRecord(path, record);
     } catch (cause) {
       if (cause instanceof FactaError && cause.status === 404 && cause.code === 'not_found') return null;
       throw cause;
@@ -2671,4 +2680,9 @@ export class Facta {
       redactErrorValue(error?.details, this.#secrets),
     );
   }
+}
+
+/** Both spellings on a record read through the API; the path says what kind it is. */
+function normalizeRecord<T extends { id: string }>(path: string, row: T): T {
+  return path.startsWith('/v1/customers') ? normalizeCustomer(row) : normalizeProduct(row);
 }
