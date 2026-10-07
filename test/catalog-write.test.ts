@@ -10,12 +10,13 @@ interface Call { method: string; path: string; search: string; body: unknown; ke
 
 type Mode = "encrypted" | "readable" | "plain" | undefined;
 
-const CUSTOMER = { id: "c1", name: "Ferretería San Miguel", doc_type: "36", doc_number: "06142103891024", nrc: "1234567", email: "x@example.test" };
-const OLD_CUSTOMER = { id: "c2", name: "Cliente Viejo", active: false };
-const PRODUCT = { id: "p1", code: "DIS-1", description: "Disco de corte", item_type: 1, unit_price: 2.85, vat_included: true };
-const OLD_PRODUCT = { id: "p2", description: "Disco viejo", item_type: 1, unit_price: 1, active: false };
+// What the real routes answer: the Ministry names, `activo`, and `clientes` / `productos`.
+const CUSTOMER = { id: "c1", nombre: "Ferretería San Miguel", tipoDocumento: "36", numDocumento: "06142103891024", nrc: "1234567", correo: "x@example.test", activo: true };
+const OLD_CUSTOMER = { id: "c2", nombre: "Cliente Viejo", activo: false };
+const PRODUCT = { id: "p1", codigo: "DIS-1", descripcion: "Disco de corte", tipoItem: 1, precioUni: 2.85, ivaIncluido: true, tipoVenta: "gravada", activo: true };
+const OLD_PRODUCT = { id: "p2", descripcion: "Disco viejo", tipoItem: 1, precioUni: 1, tipoVenta: "gravada", activo: false };
 
-function harness(mode: Mode, routes: (call: Call) => Response | undefined = () => undefined, extra: Record<string, unknown> = {}) {
+function harness(mode: Mode, routes: (call: Call) => Response | undefined = () => undefined, extra: Record<string, unknown> = {}, llave: Record<string, unknown> = {}) {
   const calls: Call[] = [];
   const fetch = ((input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(String(input));
@@ -35,7 +36,7 @@ function harness(mode: Mode, routes: (call: Call) => Response | undefined = () =
         emisor: null,
         limites: { hora: { limite: 100, restante: 90 }, dia: { limite: 1000, restante: 900 } },
         region: "us-west-2",
-        llave: { keyId: "key-1", alcances: ["catalog:write"], ...(mode === undefined ? {} : { catalogMode: mode }) },
+        llave: { keyId: "key-1", alcances: ["catalog:write"], ...(mode === undefined ? {} : { catalogMode: mode }), ...llave },
         sincronizacion: { catalog: { status: "ready", desiredRevision: 3, publishedRevision: 3 } },
       }), { status: 200 }));
     }
@@ -49,15 +50,15 @@ const json = (value: unknown, status = 200) => new Response(JSON.stringify(value
 function plainRoutes(call: Call): Response | undefined {
   const query = new URLSearchParams(call.search);
   if (call.method === "GET" && call.path === "/v1/customers") {
-    if (query.get("q") !== null) return json({ customers: [CUSTOMER] });
-    return query.get("cursor") === null ? json({ customers: [CUSTOMER], siguiente: "p2" }) : json({ customers: [OLD_CUSTOMER] });
+    if (query.get("buscar") !== null) return json({ clientes: [CUSTOMER], siguiente: null });
+    return query.get("cursor") === null ? json({ clientes: [CUSTOMER], siguiente: "p2" }) : json({ clientes: [OLD_CUSTOMER], siguiente: null });
   }
-  if (call.method === "GET" && call.path === "/v1/customers/c1") return json({ customer: CUSTOMER });
-  if (call.method === "GET" && call.path === "/v1/customers/c2") return json({ customer: OLD_CUSTOMER });
+  if (call.method === "GET" && call.path === "/v1/customers/c1") return json({ cliente: CUSTOMER });
+  if (call.method === "GET" && call.path === "/v1/customers/c2") return json({ cliente: OLD_CUSTOMER });
   if (call.method === "GET" && call.path === "/v1/products") {
-    return query.get("q") !== null ? json({ products: [PRODUCT, OLD_PRODUCT] }) : json({ products: query.get("includeInactive") === "true" ? [PRODUCT, OLD_PRODUCT] : [PRODUCT] });
+    return query.get("buscar") !== null ? json({ productos: query.get("incluirInactivos") === "true" ? [PRODUCT, OLD_PRODUCT] : [PRODUCT], siguiente: null }) : json({ productos: query.get("incluirInactivos") === "true" ? [PRODUCT, OLD_PRODUCT] : [PRODUCT], siguiente: null });
   }
-  if (call.method === "GET" && call.path === "/v1/products/p1") return json({ product: PRODUCT });
+  if (call.method === "GET" && call.path === "/v1/products/p1") return json({ producto: PRODUCT });
   return undefined;
 }
 
@@ -70,6 +71,12 @@ for (const mode of ["encrypted", "readable", "plain"] as const) {
     assertEquals((await facta.diagnose()).catalogMode, mode);
   });
 }
+
+Deno.test("the real server advertises a plain company as readable + catalogoSinCifrar: the SDK reads it as plain", async () => {
+  const { facta } = harness("readable", plainRoutes, {}, { catalogoSinCifrar: true, catalogoEscritura: true });
+  assertEquals((await facta.catalogState()).catalogMode, "plain");
+  assertEquals((await facta.getCustomer("c1"))?.id, "c1");
+});
 
 Deno.test("an older server that does not advertise a mode reports null", async () => {
   const { facta } = harness(undefined);
@@ -111,8 +118,8 @@ Deno.test("plain: search sends the query to the server and honours the limit", a
   const { calls, facta } = harness("plain", plainRoutes);
   assertEquals((await facta.searchCustomers("ferre", { limit: 5 })).map((c) => c.id), ["c1"]);
   const sent = calls.find((call) => call.path === "/v1/customers")!;
-  assertEquals(new URLSearchParams(sent.search).get("q"), "ferre");
-  assertEquals(new URLSearchParams(sent.search).get("limit"), "5");
+  assertEquals(new URLSearchParams(sent.search).get("buscar"), "ferre");
+  assertEquals(new URLSearchParams(sent.search).get("limite"), "5");
   assertEquals((await facta.searchProducts("disco")).map((p) => p.id), ["p1"]);
   assertEquals((await facta.searchProducts("disco", { includeInactive: true })).map((p) => p.id), ["p1", "p2"]);
   assertEquals(await facta.searchCustomers("   "), []);
@@ -158,50 +165,57 @@ Deno.test("a plain catalog reaches the server for issue(): ids travel as they ar
 // --- Writes ------------------------------------------------------------------------------------
 
 function writeRoutes(call: Call): Response | undefined {
-  if (call.path === "/v1/customers" && call.method === "POST") return json({ customer: { id: "new-c", ...(call.body as object) } }, 201);
-  if (call.path === "/v1/customers/c1" && call.method === "PATCH") return json({ customer: { ...CUSTOMER, ...(call.body as object) } });
-  if (call.path === "/v1/customers/c1" && call.method === "DELETE") return json({ customer: { ...CUSTOMER, active: false } });
-  if (call.path === "/v1/products" && call.method === "POST") return json({ product: { id: "new-p", ...(call.body as object) } }, 201);
-  if (call.path === "/v1/products/p1" && call.method === "PATCH") return json({ product: { ...PRODUCT, ...(call.body as object) } });
-  if (call.path === "/v1/products/p1" && call.method === "DELETE") return json({ ok: true });
+  if (call.path === "/v1/customers" && call.method === "POST") return json({ cliente: { id: "new-c", ...(call.body as object), activo: true } }, 201);
+  if (call.path === "/v1/customers/c1" && call.method === "PATCH") return json({ cliente: { ...CUSTOMER, ...(call.body as object) } });
+  if (call.path === "/v1/customers/c1" && call.method === "DELETE") return json({ cliente: { ...CUSTOMER, activo: false }, desactivado: true });
+  if (call.path === "/v1/products" && call.method === "POST") return json({ producto: { id: "new-p", ...(call.body as object), activo: true } }, 201);
+  if (call.path === "/v1/products/p1" && call.method === "PATCH") return json({ producto: { ...PRODUCT, ...(call.body as object) } });
+  if (call.path === "/v1/products/p1" && call.method === "DELETE") return json({ producto: { ...PRODUCT, activo: false }, desactivado: true });
   return undefined;
 }
 
 Deno.test("createCustomer sends digits only and returns the record", async () => {
   const { calls, facta } = harness("plain", writeRoutes);
   const created = await facta.createCustomer({
-    name: "Laura Ortiz", doc_type: "13", doc_number: "04829316-5", nrc: "123456-7",
-    address: { departamento: "06", municipio: "14", complemento: "Colonia Escalón" }, email: "laura@example.test",
+    nombre: "Laura Ortiz", tipoDocumento: "13", numDocumento: "04829316-5", nrc: "123456-7",
+    direccion: { departamento: "06", municipio: "14", distrito: "01", complemento: "Colonia Escalón" }, correo: "laura@example.test",
   });
   assertEquals(created.id, "new-c");
+  // both spellings come back, whichever the API used
+  assertEquals([created.nombre, created.name], ["Laura Ortiz", "Laura Ortiz"]);
+  assertEquals(created.active, true);
   const sent = calls.find((call) => call.method === "POST")!;
   assertEquals(sent.path, "/v1/customers");
-  assertEquals((sent.body as Record<string, unknown>).doc_number, "048293165");
+  assertEquals((sent.body as Record<string, unknown>).numDocumento, "048293165");
   assertEquals((sent.body as Record<string, unknown>).nrc, "1234567");
 });
 
 Deno.test("updateCustomer PATCHes only the given fields and sends no idempotency key", async () => {
   const { calls, facta } = harness("plain", writeRoutes);
-  const updated = await facta.updateCustomer("c1", { phone: "22223333" });
+  const updated = await facta.updateCustomer("c1", { telefono: "22223333" });
+  assertEquals(updated.telefono, "22223333");
   assertEquals(updated.phone, "22223333");
   const sent = calls.find((call) => call.method === "PATCH")!;
-  assertEquals(sent.body, { phone: "22223333" });
+  assertEquals(sent.body, { telefono: "22223333" });
   assertEquals(sent.key, null);
 });
 
 Deno.test("deactivateCustomer is a DELETE and returns the deactivated record", async () => {
   const { calls, facta } = harness("plain", writeRoutes);
-  assertEquals((await facta.deactivateCustomer("c1")).active, false);
+  assertEquals((await facta.deactivateCustomer("c1")).activo, false);
   assertEquals(calls.at(-1)?.method, "DELETE");
   assertEquals(calls.at(-1)?.body, undefined);
 });
 
 Deno.test("createProduct, updateProduct, deactivateProduct hit /v1/products", async () => {
   const { calls, facta } = harness("plain", writeRoutes);
-  const created = await facta.createProduct({ description: "Cemento", item_type: 1, unit_price: 9.5, vat_included: false });
+  const created = await facta.createProduct({ descripcion: "Cemento", tipoItem: 1, precioUni: 9.5, ivaIncluido: false, tipoVenta: "exenta" });
   assertEquals(created.id, "new-p");
-  assertEquals((await facta.updateProduct("p1", { unit_price: 3 })).unit_price, 3);
-  assertEquals(await facta.deactivateProduct("p1"), { id: "p1", active: false });
+  assertEquals((calls.find((call) => call.method === "POST")!.body as Record<string, unknown>).tipoVenta, "exenta");
+  const priced = await facta.updateProduct("p1", { precioUni: 3 });
+  assertEquals([priced.precioUni, priced.unit_price], [3, 3]);
+  const off = await facta.deactivateProduct("p1");
+  assertEquals([off.id, off.activo, off.active], ["p1", false, false]);
   assertEquals(calls.filter((call) => call.path.startsWith("/v1/products")).map((call) => call.method), ["POST", "PATCH", "DELETE"]);
 });
 
@@ -212,8 +226,8 @@ Deno.test("there is no hard delete in the SDK surface", () => {
 });
 
 Deno.test("an id with unsafe characters is encoded in the path", async () => {
-  const { calls, facta } = harness("plain", () => json({ customer: { id: "a/b" } }));
-  await facta.updateCustomer("a/b", { phone: "1" });
+  const { calls, facta } = harness("plain", () => json({ cliente: { id: "a/b" } }));
+  await facta.updateCustomer("a/b", { telefono: "1" });
   assertEquals(calls.at(-1)?.path, "/v1/customers/a%2Fb");
 });
 
@@ -225,25 +239,28 @@ const refused = async (promise: Promise<unknown>): Promise<FactaError> =>
 Deno.test("pre-validation: DUI 9 digits, NIT 14, NRC 1-8, address codes, item type required", async () => {
   const { calls, facta } = harness("plain", writeRoutes);
   for (const input of [
-    { name: "A", doc_type: "13", doc_number: "1234" },
-    { name: "A", doc_type: "36", doc_number: "123456789" },
-    { name: "A", nrc: "123456789" },
-    { name: "A", nrc: "abc" },
-    { name: "A", address: { departamento: "6", municipio: "14", complemento: "x" } },
-    { name: "A", address: { departamento: "06", municipio: "14", complemento: " " } },
-    { name: "A", email: "sin-arroba" },
-    { doc_type: "13", doc_number: "048293165" },
+    { nombre: "A", tipoDocumento: "13", numDocumento: "1234" },
+    { nombre: "A", tipoDocumento: "36", numDocumento: "123456789" },
+    { nombre: "A", nrc: "123456789" },
+    { nombre: "A", nrc: "abc" },
+    { nombre: "A", direccion: { departamento: "6", municipio: "14", distrito: "01", complemento: "x" } },
+    { nombre: "A", direccion: { departamento: "06", municipio: "14", distrito: "01", complemento: " " } },
+    { nombre: "A", direccion: { departamento: "06", municipio: "14", complemento: "x" } },
+    { nombre: "A", correo: "sin-arroba" },
+    { tipoDocumento: "13", numDocumento: "048293165" },
   ]) {
     const error = await refused(facta.createCustomer(input));
     assertEquals([error.code, error.status], ["validation_failed", 422]);
   }
   for (const input of [
-    { description: "x", unit_price: 1 },
-    { description: "x", item_type: 4 as never, unit_price: 1 },
-    { description: "x", item_type: 1 as const, unit_price: -1 },
-    { item_type: 1 as const, unit_price: 1 },
-    { description: "x", item_type: 1 as const },
-    { description: "x", item_type: 1 as const, unit_price: 1, unit_of_measure: 0 },
+    { descripcion: "x", precioUni: 1 },
+    { descripcion: "x", tipoItem: 4 as never, precioUni: 1 },
+    { descripcion: "x", tipoItem: 1 as const, precioUni: -1 },
+    { descripcion: "x", tipoItem: 1 as const, precioUni: 0 },
+    { tipoItem: 1 as const, precioUni: 1 },
+    { descripcion: "x", tipoItem: 1 as const },
+    { descripcion: "x", tipoItem: 1 as const, precioUni: 1, uniMedida: 0 },
+    { descripcion: "x", tipoItem: 1 as const, precioUni: 1, tipoVenta: "libre" as never },
   ]) {
     assertEquals((await refused(facta.createProduct(input))).code, "validation_failed");
   }
@@ -252,11 +269,35 @@ Deno.test("pre-validation: DUI 9 digits, NIT 14, NRC 1-8, address codes, item ty
 
 Deno.test("pre-validation accepts what the server accepts: other document types, no document, partial updates", async () => {
   const { facta } = harness("plain", writeRoutes);
-  await facta.createCustomer({ name: "Extranjero", doc_type: "03", doc_number: "P-998877" });
-  await facta.createCustomer({ name: "Sin documento" });
-  await facta.createCustomer({ name: "Con NIT", doc_type: "36", doc_number: "0614-210389-102-4" });
-  await facta.updateProduct("p1", { unit_price: 0 });
-  await facta.updateCustomer("c1", { email: null, phone: null });
+  await facta.createCustomer({ nombre: "Extranjero", tipoDocumento: "03", numDocumento: "P-998877" });
+  await facta.createCustomer({ nombre: "Sin documento" });
+  await facta.createCustomer({ nombre: "Con NIT", tipoDocumento: "36", numDocumento: "0614-210389-102-4" });
+  await facta.updateProduct("p1", { precioUni: 3, tipoVenta: "no_sujeta" });
+  await facta.updateCustomer("c1", { correo: null, telefono: null });
+});
+
+Deno.test("the stored spellings are still accepted and travel as the API names", async () => {
+  const { calls, facta } = harness("plain", writeRoutes);
+  await facta.createCustomer({ name: "Laura", doc_type: "13", doc_number: "04829316-5", phone: "2222-3333" });
+  await facta.createProduct({ description: "Cemento", item_type: 1, unit_price: 9.5, vat_included: true, code: "C1" });
+  const [customer, product] = calls.filter((call) => call.method === "POST").map((call) => call.body as Record<string, unknown>);
+  assertEquals(customer, { nombre: "Laura", tipoDocumento: "13", numDocumento: "048293165", telefono: "2222-3333" });
+  assertEquals(product, { descripcion: "Cemento", tipoItem: 1, precioUni: 9.5, ivaIncluido: true, codigo: "C1" });
+});
+
+Deno.test("the same field spelled twice with different values is refused", async () => {
+  const { facta } = harness("plain", writeRoutes);
+  const error = await refused(facta.createCustomer({ nombre: "A", name: "B" }));
+  assertEquals(error.code, "validation_failed");
+  await facta.createCustomer({ nombre: "A", name: "A" });
+});
+
+Deno.test("every read carries both spellings and the product's VAT treatment", async () => {
+  const { facta } = harness("plain", plainRoutes);
+  const customer = await facta.getCustomer("c1");
+  assertEquals([customer?.nombre, customer?.name, customer?.numDocumento, customer?.doc_number, customer?.active], ["Ferretería San Miguel", "Ferretería San Miguel", "06142103891024", "06142103891024", true]);
+  const product = await facta.getProduct("p1");
+  assertEquals([product?.descripcion, product?.description, product?.precioUni, product?.unit_price, product?.tipoVenta], ["Disco de corte", "Disco de corte", 2.85, 2.85, "gravada"]);
 });
 
 Deno.test("an empty update is refused locally and ids are required", async () => {
@@ -269,7 +310,7 @@ Deno.test("an empty update is refused locally and ids are required", async () =>
 
 Deno.test("catalog_write_disabled (403) says where to enable it and warns about readability", async () => {
   const { facta } = harness("encrypted", () => json({ error: { code: "catalog_write_disabled", message: "x" } }, 403));
-  const error = await refused(facta.createCustomer({ name: "A" }));
+  const error = await refused(facta.createCustomer({ nombre: "A" }));
   assertEquals([error.code, error.status], ["catalog_write_disabled", 403]);
   for (const part of ["Cuenta → API", "Permitir administrar clientes y productos desde el API", "catalog:write", "texto plano", "Facta DTE podrá leerlo"]) {
     assert(error.message.includes(part), `message should mention ${part}`);
@@ -278,7 +319,7 @@ Deno.test("catalog_write_disabled (403) says where to enable it and warns about 
 
 Deno.test("catalog_encrypted (409) explains the switch to plain text", async () => {
   const { facta } = harness("encrypted", () => json({ error: { code: "catalog_encrypted", message: "x" } }, 409));
-  const error = await refused(facta.updateProduct("p1", { unit_price: 2 }));
+  const error = await refused(facta.updateProduct("p1", { precioUni: 2 }));
   assertEquals([error.code, error.status], ["catalog_encrypted", 409]);
   for (const part of ["Cuenta → API", "texto plano", "Permitir administrar clientes y productos desde el API", "Facta DTE podrá leerlo"]) {
     assert(error.message.includes(part), `message should mention ${part}`);
@@ -295,8 +336,8 @@ Deno.test("a missing scope keeps the server's own forbidden_scope", async () => 
 
 Deno.test("create passes the caller's idempotencyKey and mints one otherwise", async () => {
   const { calls, facta } = harness("plain", writeRoutes);
-  await facta.createCustomer({ name: "A" }, { idempotencyKey: "order-77" });
-  await facta.createProduct({ description: "B", item_type: 2, unit_price: 1 });
+  await facta.createCustomer({ nombre: "A" }, { idempotencyKey: "order-77" });
+  await facta.createProduct({ descripcion: "B", tipoItem: 2, precioUni: 1 });
   const posts = calls.filter((call) => call.method === "POST");
   assertEquals(posts[0]!.key, "order-77");
   assert(posts[1]!.key !== null && posts[1]!.key !== "");
@@ -309,9 +350,9 @@ Deno.test("a retried create reuses the same key across attempts", async () => {
     if (call.method !== "POST") return undefined;
     keys.push(call.key);
     attempts++;
-    return attempts === 1 ? json({ error: { code: "service_unavailable", message: "x" } }, 503) : json({ customer: { id: "c9" } }, 201);
+    return attempts === 1 ? json({ error: { code: "service_unavailable", message: "x" } }, 503) : json({ cliente: { id: "c9" } }, 201);
   }, { maxRetries: 1 });
-  assertEquals((await facta.createCustomer({ name: "A" })).id, "c9");
+  assertEquals((await facta.createCustomer({ nombre: "A" })).id, "c9");
   assertEquals(keys.length, 2);
   assertEquals(keys[0], keys[1]);
 });

@@ -34,6 +34,8 @@ export type FactaErrorCode =
   | "catalog_write_disabled"
   /** The company catalog is still encrypted, so the API cannot write it (HTTP 409). */
   | "catalog_encrypted"
+  /** A customer with that document, or a product with that code, already exists (HTTP 409). */
+  | "catalog_duplicate"
   | "idempotency_key_required"
   | "idempotency_key_reuse"
   | "idempotency_in_flight"
