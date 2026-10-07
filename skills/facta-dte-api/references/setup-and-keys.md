@@ -15,8 +15,8 @@ npm view @facta-dte/api version dist-tags
 pnpm add @facta-dte/api            # or: npm install @facta-dte/api
 ```
 
-**Version `0.5.0` may still be unreleased** (it was `0.5.0 (unreleased)` in
-`CHANGELOG.md` when this skill was written). It adds, among others, the Archivo
+**Version `0.5.0` or later is needed for the newest methods** (`0.5.0` is on npm; the skill itself ships in
+the package, `0.5.1` and later target the public API explicitly). It adds, among others, the Archivo
 DTE as the default JSON download, catalog writes, regional pinning, debug
 timings, the emergency safeguard and the return event. If `npm view` shows an
 older version and you need those, install from the repository:
@@ -69,21 +69,38 @@ Rules:
 - `.env.example` in the SDK repo shows the names; copy it to an ignored `.env`,
   and fill it from your secret manager. The SDK never loads `.env` by itself.
 
-## Environments: 00 and 01
+## Environments: pruebas (00) and producción (01)
 
-- `facta_test_` keys issue in Hacienda's **test** environment (`ambiente "00"`,
-  `apitest`); `facta_live_` keys issue real fiscal documents (`"01"`).
-- **Both use the same base URL.** There is no separate staging URL; what changes
-  is the key. `baseUrl` is optional and defaults to Facta's public API URL.
+Always use Facta's public API. Omit `baseUrl`: the SDK default is the production
+host, and it serves both environments. **There is no staging or internal URL for
+integrators; never configure one. The environment is chosen by the key, never by
+the URL.**
+
+| | Pruebas | Producción |
+| --- | --- | --- |
+| Key prefix | `facta_test_` | `facta_live_` |
+| `ambiente` | `"00"` (Hacienda test environment) | `"01"` |
+| Fiscal value | None | Real documents, real control numbers |
+| Where | local, CI, tests | the production deploy only |
+
 - A production key can only be minted for a company that has completed its own
   step to production. The server compares the key's environment with the
   company's and refuses a mismatch with `environment_not_allowed`.
-- Test issuance consumes a *test* control-number sequence and has no fiscal
-  value. Use a stable test order id.
+- Test issuance consumes a *test* control-number sequence. Use a stable test order id.
+- Keep one variable name (`FACTA_API_KEY`) and give each deployment its own secret.
+  **A live key issues real fiscal documents**: keep it out of tests, CI and
+  developer machines.
 - `await facta.status()` returns `ambiente`, the issuer (`emisor`), the key
   (`llave.keyId`, `alcances`, `tiposDte`, `venceEl`, `catalogMode`) and
-  remaining limits. Gate on it: `if (status.ambiente !== "00") throw …` in test
-  jobs.
+  remaining limits. Gate on it at start-up, for each environment:
+
+```ts
+const status = await facta.status();
+const expected = process.env.FACTA_EXPECTED_AMBIENTE ?? "00"; // "01" only in the production deploy
+if (status.ambiente !== expected) {
+  throw new Error(`Facta key is in ambiente ${status.ambiente}, expected ${expected}`);
+}
+```
 
 ## Configure the client
 
@@ -94,7 +111,7 @@ const facta = new Facta({
   apiKey: process.env.FACTA_API_KEY!,
   signKey: process.env.FACTA_SIGN_KEY,      // omit in processes that never sign
   // unlockKey: process.env.FACTA_UNLOCK_KEY, // only for encrypted catalogs / BYOS snapshots
-  // baseUrl: process.env.FACTA_API_BASE_URL, // optional
+  // Do not set baseUrl: the default is Facta's public API (both environments).
   timeoutMs: 60_000, // default; includes reading the body
   maxRetries: 3,     // default; only explicitly retryable codes (see errors.md)
   config: { version: 1, expectedEnvironment: "00", requiredScopes: ["issue", "query", "download"] },

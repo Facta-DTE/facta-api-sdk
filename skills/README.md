@@ -45,6 +45,8 @@ open the files under `references/` when `SKILL.md` points to them.
 
 ### Download
 
+- **Latest:** https://github.com/Facta-DTE/facta-api-sdk/releases/download/skill-latest/facta-dte-api-skill.zip (refreshed on every change to `skills/` on `main`).
+- **Per version:** each npm release has a GitHub Release (`vX.Y.Z`) with `facta-dte-api-skill.zip` and the npm tarball attached: https://github.com/Facta-DTE/facta-api-sdk/releases
 - Build it: `pnpm skill:pack` writes `dist/facta-dte-api-skill.zip` (deterministic: the same files
   always give the same bytes).
 - Every CI run of this repository attaches it as the `facta-dte-api-skill` artifact.
@@ -86,6 +88,8 @@ archivos de `references/` cuando `SKILL.md` se los indique.
 
 ### Descarga
 
+- **La más reciente:** https://github.com/Facta-DTE/facta-api-sdk/releases/download/skill-latest/facta-dte-api-skill.zip (se actualiza con cada cambio de `skills/` en `main`).
+- **Por versión:** cada versión de npm tiene su GitHub Release (`vX.Y.Z`) con `facta-dte-api-skill.zip` y el tarball de npm adjuntos: https://github.com/Facta-DTE/facta-api-sdk/releases
 - Constrúyala: `pnpm skill:pack` escribe `dist/facta-dte-api-skill.zip` (determinista: los mismos
   archivos dan siempre los mismos bytes).
 - Cada ejecución de CI de este repositorio la adjunta como artefacto `facta-dte-api-skill`.
