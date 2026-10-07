@@ -66,5 +66,5 @@ Cross-reference: reference files in this skill that explain the same task, in or
 ## Starter files in this skill
 
 `templates/` holds the same code already stripped and type-checked against the SDK:
-`express-server.ts`, `nextjs-route.ts`, `react-checkout.tsx`, `webhook-to-invoice.ts` (shared model in
+`express-server.ts`, `nextjs-route.ts`, `react-checkout.tsx`, `react-documents.tsx`, `webhook-to-invoice.ts` (shared model in
 `shared-order.ts`). Start there; open the recipe for the full story behind a call.

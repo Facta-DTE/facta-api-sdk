@@ -52,9 +52,9 @@ if (state.catalogMode === "encrypted" && state.freshness !== "fresh") await fact
   `catalog_vat_basis` from the server; `invalid_request`, 422, locally in the SDK).
   Send an explicit `precioUni` in the document's basis.
 - `catalog_unknown_id`, inactive products and unknown customers are `404` / `not_found`.
-- Not in the SDK: the per-line VAT class of a catalog product does not reach the API
-  (per the contract, send `tipoVenta` on the line, which the SDK's types may not yet
-  declare — see issuing-dte-types.md).
+- The VAT class of a catalog product (`tipoVenta`) reaches the issued line only in SDK
+  versions with the field-names change above; before it, send `tipoVenta` yourself on the line
+  when the contract allows it (see issuing-dte-types.md), otherwise the line is `gravada`.
 
 ```ts
 const request: DteRequest = {
@@ -86,29 +86,48 @@ issued invoices keep their own privacy rules.
 
 ```ts
 const customer = await facta.createCustomer(
-  { name: "Laura Ortiz", doc_type: "13", doc_number: "04829316-5",
-    address: { departamento: "06", municipio: "14", complemento: "Colonia Escalón" },
-    email: "laura@example.com" },
+  { nombre: "Laura Ortiz", tipoDocumento: "13", numDocumento: "04829316-5",
+    direccion: { departamento: "06", municipio: "14", distrito: "01", complemento: "Colonia Escalón" },
+    correo: "laura@example.com" },
   { idempotencyKey: `crm-customer-${crmId}` },   // retries never create a second record
 );
-await facta.updateCustomer(customer.id, { phone: "2222-3333" }); // PATCH; null clears an optional field
+await facta.updateCustomer(customer.id, { telefono: "2222-3333" }); // PATCH; null clears an optional field
 const product = await facta.createProduct({
-  description: "Disco de corte 4 1/2",
-  item_type: 1,      // 1 good, 2 service, 3 both — required, never defaulted
-  unit_price: 2.85,
-  vat_included: true,
+  descripcion: "Disco de corte 4 1/2",
+  tipoItem: 1,          // 1 good, 2 service, 3 both: required, never defaulted
+  precioUni: 2.85,
+  ivaIncluido: true,
+  tipoVenta: "gravada", // or "exenta" / "no_sujeta"; omitted reads as gravada
 });
 await facta.deactivateProduct(product.id); // DELETE deactivates; there is no hard delete
 ```
 
-- Wire names are snake_case here (`doc_type`, `doc_number`, `item_type`, `unit_price`,
-  `vat_included`), different from the DTE request.
-- Rules checked locally before sending (never stricter than the server): customer
-  needs `name`; DUI 9 digits, NIT 14 (dashes accepted and removed), NRC 1–8 digits;
-  address needs two-digit `departamento` and `municipio` and a `complemento`;
-  product needs `description`, `item_type`, non-negative `unit_price`. Failure:
-  `validation_failed` (422) with `details.issues`, before any request.
-- `doc_type`: `36` NIT, `13` DUI, `37` other, `03` passport, `02` residence card.
+- **Field names (SDK PR #38, `fix/sdk-catalog-wire-names`; check your installed `types.ts`):** the
+  inputs use the same Ministry names as the rest of the API: customers `nombre`,
+  `tipoDocumento`, `numDocumento`, `nrc`, `codActividad`, `direccion { departamento,
+  municipio, distrito, complemento, pais? }`, `telefono`, `correo`; products `descripcion`,
+  `tipoItem`, `precioUni`, `uniMedida`, `codigo`, `codigoBarras`, `ivaIncluido`, `tipoVenta`.
+  The older stored spellings (`name`, `doc_type`, `doc_number`, `activity_code`, `address`,
+  `phone`, `email`, `description`, `item_type`, `unit_price`, `unit_of_measure`, `code`,
+  `barcode`, `vat_included`) are **still accepted** (deprecated): do not mix both for the same
+  field. On a version without that change only the old spellings exist.
+- Every record the SDK returns carries **both** spellings, in every catalog mode, plus
+  `activo`; the product's `tipoVenta` rides on every line issued from it, and
+  `customerId` / `productId` resolve to the same line in all three modes. Timestamps
+  (`creadoEn`, `actualizadoEn`) read `null` from an encrypted snapshot. An encrypted catalog
+  without `unlockKey` fails with `unauthorized` (`details.missing` names it).
+- Direct HTTP uses the same names; list queries use `buscar`, `limite`, `incluirInactivos` and
+  responses use `clientes` / `productos`. The SDK methods keep their signatures
+  (`searchCustomers(query, { limit, includeInactive })`).
+- Rules checked locally before sending (never stricter than the server): a customer needs
+  `nombre`; DUI 9 digits, NIT 14 (dashes accepted and removed), NRC 1–8 digits; a `direccion`
+  needs department, municipality and district codes and a `complemento`; a product needs
+  `descripcion`, `tipoItem` and a `precioUni` greater than zero. Failure: `validation_failed`
+  (422) with `details.issues`, before any request.
+- `tipoDocumento`: `36` NIT, `13` DUI, `37` other, `03` passport, `02` residence card.
+- A customer with the same document, or a product with the same code, already existing is
+  `catalog_duplicate` (409; `details.id` names it): edit it, or reactivate it if deactivated.
+  (Code introduced by the same SDK change.)
 - Only creates take an `idempotencyKey`; updates and deactivations are repeatable.
 - Deactivated records still resolve for past documents, vanish from lists, and a
   deactivated product cannot be issued. Reactivation is done in the app.

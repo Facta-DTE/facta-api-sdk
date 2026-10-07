@@ -12,6 +12,7 @@ mock mode are removed, and each file says so in its header.
 | `express-server.ts` | Express: `createFactaHandler` behind `/api/facta` plus a session endpoint. |
 | `nextjs-route.ts` | Next.js App Router: the same two routes as `Request → Response` handlers. |
 | `react-checkout.tsx` | React page: asks your server for a session, opens `FactaInvoiceDialog` or `useFactaWindow().open()`. |
+| `react-documents.tsx` | React documents screen: `FactaDocumentList`, `FactaDocumentDetail`, download buttons, service status and invalidation through your server's session. Needs the handler's `capabilities` (documented in the file). |
 | `webhook-to-invoice.ts` | Order-paid webhook → idempotent issue → e-mail in two calls. An integration example: Facta DTE has no orders. |
 
 Inside this repo they import `@facta-dte/api`; in your project that resolves to the installed
