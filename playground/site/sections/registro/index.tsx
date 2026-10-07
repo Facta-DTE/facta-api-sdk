@@ -7,6 +7,7 @@ import { usePlayground } from "../../state.tsx";
 import { useDownload } from "./downloads.ts";
 import { sealOf } from "./registry-rows.ts";
 import { InvalidateDialog } from "./invalidate-dialog.tsx";
+import { PageGuideCard } from "../guides/page-guide.tsx";
 import { money, needsEnrich, observationsOf, TYPE_NAMES, tail, totalOf, useRegistry, useVisibleRows, whenOf } from "./registry-data.ts";
 import "./registro.css";
 
@@ -84,6 +85,8 @@ export function Registro() {
           </div>
         )}
       </header>
+
+      <PageGuideCard id="registro" />
 
       {view.status === "ready" && !signedIn && <p className="pg-note">Inicie sesión para ver su registro.</p>}
       {signedIn && registry.status === "loading" && <div aria-busy="true"><Skeleton lines={4} label="Leyendo su registro" /></div>}

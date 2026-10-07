@@ -7,6 +7,7 @@ import { useTurnstileReady } from "../../turnstile.ts";
 import { CheckoutForm } from "./checkout-form.tsx";
 import { CreditSwitch } from "./credit-switch.tsx";
 import { PosKeypad } from "./pos-keypad.tsx";
+import { PageGuideCard } from "../guides/page-guide.tsx";
 import "./headless.css";
 
 // Section «Mi propia implementación» (docs/playground.md §5.3): the issuing flow
@@ -44,6 +45,8 @@ export function Headless() {
         <TurnstileBox />
         {exhausted && <p className="pg-note">Límite alcanzado. Intente de nuevo más tarde.</p>}
       </header>
+
+      <PageGuideCard id="headless" />
 
       <div className="hl-grid">
         {examples.map((e) => (
