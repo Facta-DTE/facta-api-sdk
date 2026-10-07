@@ -58,6 +58,7 @@
     "preview",
     ".env.example",
     "guides",
+    "skills",
     "README.md",
     "CHANGELOG.md"
   ],

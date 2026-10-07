@@ -56,7 +56,7 @@ for (const ref of files.filter((f) => f.includes("/references/"))) {
 
 // 3. Error codes are the SDK's own.
 const errorsSrc = readFileSync(join(root, "src", "errors.ts"), "utf8");
-const union = /export type FactaErrorCode =([\s\S]*?);\n/.exec(errorsSrc)?.[1] ?? "";
+const union = (/export type FactaErrorCode =([\s\S]*?);\n/.exec(errorsSrc)?.[1] ?? "").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
 const sdkCodes = new Set([...union.matchAll(/"([a-z_]+)"/g)].map((m) => m[1]));
 const doc = readFileSync(join(SKILL_DIR, "references", "errors.md"), "utf8");
 const documented = new Set([...doc.matchAll(/^\| `([a-z_]+)` \|/gm)].map((m) => m[1]));

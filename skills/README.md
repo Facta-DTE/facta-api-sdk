@@ -50,7 +50,7 @@ open the files under `references/` when `SKILL.md` points to them.
 - Every CI run of this repository attaches it as the `facta-dte-api-skill` artifact.
 - The playground offers the same zip («Skill para su agente de IA») once its release ships.
 
-The skill is **not** part of the npm package. Check it with `pnpm skill:check` (templates type-check
+The skill **ships inside the npm package** (`@facta-dte/api` 0.5.0 and later): after `npm install`, copy `node_modules/@facta-dte/api/skills/facta-dte-api/` to `~/.claude/skills/` (or your project's `.claude/skills/`). Check it with `pnpm skill:check` (templates type-check
 against the SDK, links resolve, `references/errors.md` matches `FactaErrorCode`).
 
 ## Español
@@ -91,5 +91,5 @@ archivos de `references/` cuando `SKILL.md` se los indique.
 - Cada ejecución de CI de este repositorio la adjunta como artefacto `facta-dte-api-skill`.
 - El playground ofrece el mismo zip («Skill para su agente de IA») cuando salga su versión.
 
-La skill **no** viaja en el paquete de npm. Se verifica con `pnpm skill:check` (las plantillas compilan
+La skill **viaja dentro del paquete de npm** (`@facta-dte/api` 0.5.0 en adelante): después de `npm install`, copie `node_modules/@facta-dte/api/skills/facta-dte-api/` a `~/.claude/skills/` (o al `.claude/skills/` de su proyecto). Se verifica con `pnpm skill:check` (las plantillas compilan
 contra el SDK, los enlaces existen y `references/errors.md` coincide con `FactaErrorCode`).
