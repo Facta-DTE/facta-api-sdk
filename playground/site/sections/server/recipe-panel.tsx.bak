@@ -17,10 +17,13 @@ import { COVERAGE } from "../../../shared/sdk-coverage.ts";
 import { Link } from "../../router.tsx";
 import { RECIPE_GUIDES } from "./guides.ts";
 import { panelId, RecipeGuideView, RecipeTabBar, useRecipeTab } from "../guides/recipe-guide.tsx";
+<<<<<<< HEAD
 import { CatalogFields } from "./catalog-fields.tsx";
+=======
 import { OrderField, RepeatBanner, RepeatCard } from "../../components/order-field.tsx";
 import { newOrderNumber, RECIPE_ORDER } from "../../order-number.ts";
 import { orders, recipeScope, useOrders } from "../../order-session.ts";
+>>>>>>> 358f693 (feat(playground): order number and repeats everywhere, and the Pedido entrante sample shop)
 
 type Values = Record<string, string | boolean>;
 

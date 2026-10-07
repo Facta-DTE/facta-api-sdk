@@ -9,6 +9,7 @@ import { sealOf } from "./registry-rows.ts";
 import { InvalidateDialog } from "./invalidate-dialog.tsx";
 import { PageGuideCard } from "../guides/page-guide.tsx";
 import { money, needsEnrich, observationsOf, TYPE_NAMES, tail, totalOf, useRegistry, useVisibleRows, whenOf } from "./registry-data.ts";
+import { useOrders } from "../../order-session.ts";
 import "./registro.css";
 
 // Section «Registro» (docs/playground.md §5.5). The list is the visitor's own record
@@ -22,6 +23,7 @@ export function Registro() {
   const { view } = usePlayground();
   const { registry, reload, enrich, signedIn } = useRegistry();
   const { busy, problem, download } = useDownload();
+  const sessionOrders = useOrders();
   const [type, setType] = useState("");
   const [estado, setEstado] = useState("");
   const [reason, setReason] = useState<string | null>(null);
@@ -120,7 +122,7 @@ export function Registro() {
                       <tr key={d.codigoGeneracion} ref={observe(d.codigoGeneracion)} className={`reg-row reg-row--${d.estado}`}>
                         <td className="when">{whenOf(d)}</td>
                         <td className="type">{TYPE_NAMES[d.tipoDte] ?? `Tipo ${d.tipoDte}`}</td>
-                        <td className="ctl mono" title={d.numeroControl}><span className="reg-ctl-full">{d.numeroControl}</span><span className="reg-ctl-short">{tail(d.numeroControl, 4)}</span></td>
+                        <td className="ctl mono" title={d.numeroControl}><span className="reg-ctl-full">{d.numeroControl}</span><span className="reg-ctl-short">{tail(d.numeroControl, 4)}</span>{sessionOrders.repeatsOf(d.codigoGeneracion) > 0 && <small className="reg-repeat" data-testid="repeat-note">Repetida: devolvió la misma factura</small>}</td>
                         <td className="total r">{total === null ? "—" : money(total)}</td>
                         <td className="state"><StatusChip estado={d.estado} /></td>
                         <td className="act">

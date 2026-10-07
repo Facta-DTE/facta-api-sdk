@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRoute } from "../../router.tsx";
 import { RECIPE_SPECS } from "../../../server/recipes/specs.ts";
 import { RecipePanel } from "./recipe-panel.tsx";
+import { OrderWebhookPanel } from "./order-webhook-panel.tsx";
 import { loadMine, type MyDocument } from "./recipes-api.ts";
 import { RECIPE_SHORT_TITLES, RECIPE_SUBTITLES } from "./subtitles.ts";
 import "./recipes.css";
@@ -55,7 +56,9 @@ export function ServerRecipes() {
           </select>
         </label>
       </div>
-      <RecipePanel key={spec.id} spec={spec} number={index + 1} mine={mine} onIssued={onIssued} />
+      {spec.id === "order-webhook"
+        ? <OrderWebhookPanel key={spec.id} spec={spec} number={index + 1} mine={mine} onIssued={onIssued} />
+        : <RecipePanel key={spec.id} spec={spec} number={index + 1} mine={mine} onIssued={onIssued} />}
     </div>
   );
 }

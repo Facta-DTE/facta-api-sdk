@@ -1,5 +1,7 @@
 import { API_BREAKDOWN_PENDING, type Timings } from "../../shared/timings.ts";
 import { setTimingsEnabled, useIssueInsight, useTimingsEnabled } from "../timings.ts";
+import { RepeatCard } from "./order-field.tsx";
+import { useOrders } from "../order-session.ts";
 import "./timings.css";
 
 /** The switch. Off by default; remembered in this browser. */
@@ -19,7 +21,7 @@ const seconds = (ms: number) => (ms >= 1000 ? `${(ms / 1000).toFixed(2)} s` : `$
  * A waterfall: one row per step with its start, its bar and its duration. The playground's own steps are
  * in the accent colour and the API's in green. Until the API returns a breakdown the page says so.
  */
-export function TimingsPanel({ title, timings }: { title: string; timings: Timings }) {
+export function TimingsPanel({ title, timings, replay }: { title: string; timings: Timings; /** The request was a repeat of an order already issued. */ replay?: boolean }) {
   const span = Math.max(timings.totalMs, ...timings.steps.map((s) => s.startedAtMs + s.ms), 1);
   return (
     <section className="pg-timings" aria-label={title} data-testid="timings">
@@ -41,6 +43,9 @@ export function TimingsPanel({ title, timings }: { title: string; timings: Timin
           </li>
         ))}
       </ol>
+      {replay === true && !timings.steps.some((step) => /hacienda/i.test(step.step)) && (
+        <p className="pg-timings-replay" data-testid="no-hacienda">No pasó por Hacienda (repetición)</p>
+      )}
       {!timings.apiBreakdown && <p className="pg-hint">{API_BREAKDOWN_PENDING}</p>}
     </section>
   );
@@ -52,16 +57,18 @@ export function TimingsPanel({ title, timings }: { title: string; timings: Timin
  */
 export function IssueInsight() {
   const insight = useIssueInsight();
+  const repeat = useOrders().lastRepeat();
   if (insight === null) return null;
   return (
     <div className="pg-insight">
-      {insight.replay && (
+      {insight.replay && repeat === null && (
         <p className="pg-replay" role="status" data-testid="replay-notice">
           <b>Mismo pedido{insight.orderNumber === null ? "" : ` (${insight.orderNumber})`}:</b> Hacienda no emitió otra factura; este es el documento original.
         </p>
       )}
+      {insight.replay && <RepeatCard />}
       {insight.session !== null && <TimingsPanel title="Preparar la sesión" timings={insight.session} />}
-      {insight.issue !== null && <TimingsPanel title="Emitir" timings={insight.issue} />}
+      {insight.issue !== null && <TimingsPanel title="Emitir" timings={insight.issue} replay={insight.replay} />}
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { ApiError, installMock, type CreatedSession, type IssuedDocument, type P
 import { setTimingsEnabled, timingsEnabled } from "./timings.ts";
 import { maskCustomer, maskProduct } from "../server/catalog-mask.ts";
 import { TIMINGS_HEADER, type Timings } from "../shared/timings.ts";
+import { orderToRequest, OrderError, type Order } from "../server/recipes/order-webhook.ts";
 
 const OUTCOMES: Outcome[] = ["sealed", "sealed-copies-pending", "sealed-delivered", "sealed-delivering", "contingency", "rejected", "uncertain-then-sealed", "failed-retryable", "expired"];
 
@@ -187,7 +188,19 @@ function mockRegistry(slow: number, rateLimited: boolean, contingency: boolean, 
     if (parsed.pathname === "/api/recipes/run") {
       // A recipe takes a while at the real API: this one takes `slow` ms (or 1.2 s) so the running state can be seen.
       await sleep(slow > 0 ? slow : 1200);
-      const body = JSON.parse(String(init?.body ?? "{}")) as { recipe?: string; stage?: string };
+      const body = JSON.parse(String(init?.body ?? "{}")) as { recipe?: string; stage?: string; params?: Record<string, unknown> };
+      const keyed = mockKeyedRun(body);
+      if (keyed !== null) {
+        if ("error" in keyed) return json(400, { error: { code: "order_invalid", message: keyed.error, retryable: false } });
+        await sleep(keyed.replay ? 210 : slow > 0 ? slow : 1200);
+        return json(200, {
+          recipe: body.recipe, stage: body.stage ?? "run", runId: "mock-run-0001", ok: true, totalMs: keyed.replay ? 210 : 1840,
+          steps: [{ method: "POST", endpoint: "/v1/dte", status: 200, ms: keyed.replay ? 210 : 1840 }],
+          result: { result: { estado: "sellado", numeroControl: keyed.doc.control, selloRecibido: MOCK_SEAL, totales: { totalPagar: keyed.doc.total } } },
+          ...(new Headers(init?.headers).get(TIMINGS_HEADER) === "1" ? { timings: mockTimings([["Verificación de Turnstile", 0, 41], ["Armado de la receta", 42, 4], ["API · POST /v1/dte", 50, keyed.replay ? 150 : 1700]], keyed.replay ? 230 : 1800, false, 50) } : {}),
+          files: [], issued: [{ codigoGeneracion: keyed.doc.code, tipoDte: keyed.doc.type, numeroControl: keyed.doc.control, total: keyed.doc.total }], invalidated: [],
+        });
+      }
       const wantsTimings = new Headers(init?.headers).get(TIMINGS_HEADER) === "1";
       const mail = body.recipe === "deliver-email";
       const send = mail && body.stage === "send";
@@ -230,4 +243,30 @@ function mockRegistry(slow: number, rateLimited: boolean, contingency: boolean, 
     }
     return real(input, init);
   };
+}
+
+
+// Dev mock of the keyed recipes: the same order (or order number) answers the same document, like the real API.
+const keyedDocs = new Map<string, { code: string; control: string; total: number; type: string }>();
+function mockKeyedRun(body: { recipe?: string; params?: Record<string, unknown> }): { error: string } | { replay: boolean; doc: { code: string; control: string; total: number; type: string } } | null {
+  let key: string; let total = 11.3; let type = String(body.params?.type ?? "01");
+  if (body.recipe === "order-webhook") {
+    let order: Order;
+    try { order = JSON.parse(String(body.params?.order)) as Order; } catch { return { error: "El pedido no es un JSON válido." }; }
+    try {
+      const request = orderToRequest(order);
+      total = (request.items as Array<{ cantidad: number; precioUni: number }>).reduce((sum, i) => Math.round((sum + i.cantidad * i.precioUni) * 100) / 100, 0);
+    } catch (error) {
+      return { error: error instanceof OrderError ? error.message : "El pedido no es válido." };
+    }
+    key = `order-${order.orderId}`; type = "01";
+  } else if (["issue-idempotent", "status-recovery"].includes(String(body.recipe)) && typeof body.params?.orderNumber === "string") {
+    key = `${body.recipe}.${body.params.orderNumber}.${type}`;
+  } else return null;
+  const known = keyedDocs.get(key);
+  if (known !== undefined) return { replay: true, doc: known };
+  const n = keyedDocs.size + 341;
+  const doc = { code: `7C1E4B6A-92D3-4F08-A1B7-5E30C9D2F${String(n).padStart(3, "0")}`, control: `DTE-${type}-M001P001-${String(n).padStart(15, "0")}`, total, type };
+  keyedDocs.set(key, doc);
+  return { replay: false, doc };
 }

@@ -179,7 +179,5 @@
 .wb-title--text { font: 700 28px/1.2 var(--pg-display); letter-spacing: -0.015em; }
 .wb-lead { margin: 6px 0 0; color: var(--pg-muted); max-width: 680px; }
 
-.pg-sale-order { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: flex-end; margin: 4px 0 12px; }
-.pg-sale-order .pg-field { flex: 0 1 220px; }
-.pg-sale-order .pg-hint, .pg-sale-order .pg-error { flex: 1 1 100%; margin: 0; }
-.pg-sale-order .pg-hint code { overflow-wrap: anywhere; }
+.pg-sale-order { display: grid; gap: 10px; margin: 4px 0 12px; }
+.pg-sale-order .pg-hint, .pg-sale-order .pg-error { margin: 0; }

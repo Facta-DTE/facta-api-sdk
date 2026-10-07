@@ -3,6 +3,9 @@ import { createFactaClient, createIssueFlow, formatMoney, initialFlowState, type
 import { createSession } from "../../api.ts";
 import { EMPTY_EMAIL, EmailChoice, emailReady, looksLikeAddress, type EmailChoiceValue } from "../../components/email-choice.tsx";
 import { Outcome } from "./outcome.tsx";
+import { OrderField, RepeatBanner, RepeatCard } from "../../components/order-field.tsx";
+import { newOrderNumber, ORDER_NUMBER } from "../../order-number.ts";
+import { SALE_SCOPE } from "../../order-session.ts";
 
 // Example 1: a checkout form on the browser client alone. No provider, no hook:
 // createIssueFlow is the state machine, subscribe() feeds our own state.
@@ -15,6 +18,8 @@ export function CheckoutForm({ disabled }: { disabled: boolean }) {
   const [price, setPrice] = useState(8.5);
   // «Quiero mi factura por correo» needs an address: the visitor types it, any address, and the server limits the sends.
   const [mail, setMail] = useState<EmailChoiceValue>(EMPTY_EMAIL);
+  const [order, setOrder] = useState(newOrderNumber);
+  const orderValid = ORDER_NUMBER.test(order.trim());
   const flow = useRef<IssueFlow | null>(null);
   useEffect(() => () => flow.current?.destroy(), []);
 
@@ -30,6 +35,7 @@ export function CheckoutForm({ disabled }: { disabled: boolean }) {
       // The server builds the fiscal request from this small description.
       const { session } = await createSession({
         tipoDte: "01",
+        orderNumber: order.trim(),
         lines: [{ descripcion: String(data.get("item")), cantidad: qty, precioUni: price, tipoItem: 1 }],
         ...(mail.send ? { sendEmail: true, emailTo: mail.address.trim() } : {}),
       });
@@ -52,9 +58,12 @@ export function CheckoutForm({ disabled }: { disabled: boolean }) {
         <label>Precio<input type="number" min={0.01} step="0.01" value={price} onChange={(e) => setPrice(Number(e.target.value))} required /></label>
       </div>
       <p className="hl-form-total"><span>Total</span><b>{formatMoney(qty * price)}</b></p>
+      <RepeatBanner scope={SALE_SCOPE} order={order} />
+      <OrderField scope={SALE_SCOPE} value={order} onChange={setOrder} make={newOrderNumber} valid={orderValid} label="Número de orden" />
       <EmailChoice className="hl-form-check" value={mail} onChange={setMail} label="Quiero mi factura por correo" />
-      <button type="submit" disabled={disabled || !emailReady(mail)}>Pagar y facturar</button>
+      <button type="submit" disabled={disabled || !emailReady(mail) || !orderValid}>Pagar y facturar</button>
       {problem && <p role="alert" className="pg-error">{problem}</p>}
+      <RepeatCard />
       {state && <Outcome state={state} skin="form" onRetry={() => void flow.current?.retry()} />}
     </form>
   );

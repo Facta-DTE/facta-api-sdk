@@ -8,6 +8,8 @@ import { useTurnstileReady } from "../../turnstile.ts";
 import { Busy } from "../../components/busy.tsx";
 import { CATALOG_SEARCH } from "../../catalog-search.ts";
 import { newOrderNumber, ORDER_NUMBER } from "../../order-number.ts";
+import { OrderField, RepeatBanner } from "../../components/order-field.tsx";
+import { SALE_SCOPE } from "../../order-session.ts";
 import { TimingsToggle } from "../../components/timings.tsx";
 import { EMPTY_CHOICE, ReceptorSection, receptorForSale, receptorMissing, type ReceptorChoice } from "./sale-receptor.tsx";
 
@@ -222,15 +224,9 @@ export function SaleBuilder({ state, issued, onPrepared, onStale }: {
       )}
 
       <div className="pg-sale-order">
-        <label className="pg-field">
-          <span>Número de pedido</span>
-          <input type="text" className="mono" maxLength={40} value={orderNumber} spellCheck={false} autoComplete="off" aria-invalid={!orderValid} onChange={(event) => setOrderNumber(event.target.value)} />
-        </label>
-        <button type="button" className="pg-secondary" onClick={() => setOrderNumber(newOrderNumber())}>Nuevo pedido</button>
-        <p className="pg-hint">
-          Es la identidad de la venta: viaja como llave de idempotencia (<code>{`<visitante>.sale-${orderValid ? orderNumber.trim() : "…"}`}</code>). Emitir el mismo pedido dos veces devuelve el mismo documento;
-          para otra factura, use «Nuevo pedido».
-        </p>
+        <RepeatBanner scope={SALE_SCOPE} order={orderNumber} />
+        <OrderField scope={SALE_SCOPE} value={orderNumber} onChange={setOrderNumber} make={newOrderNumber} valid={orderValid}
+          hint={`Es la identidad de la venta: viaja como llave de idempotencia (<visitante>.sale-${orderValid ? orderNumber.trim() : "…"}). Emitir el mismo número dos veces devuelve el mismo documento; para otra factura, use «Otro número».`} />
         {!orderValid && <p className="pg-error" role="alert">Use letras, números, punto, guion o guion bajo (hasta 40).</p>}
       </div>
 

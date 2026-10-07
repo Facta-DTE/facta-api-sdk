@@ -141,7 +141,7 @@ describe("recipes API", () => {
     expect(body.ok).toBe(true);
     expect(body.steps[0]).toMatchObject({ method: "POST", endpoint: "/v1/dte", status: 200 });
     expect(body.files.map((f: { name: string }) => f.name).sort()).toEqual([`${CODE}.json`, `${CODE}.pdf`, `${CODE}.raw.json`]);
-    expect(body.issued).toEqual([{ codigoGeneracion: CODE, tipoDte: "01" }]);
+    expect(body.issued).toMatchObject([{ codigoGeneracion: CODE, tipoDte: "01" }]);
     // The credentials travel to the API, never back to the page.
     expect(calls[0]!.headers.get("x-facta-key")).toBe(API_KEY);
     // Pinned next to the database: the region was learned once from /v1/status.
@@ -272,13 +272,59 @@ describe("recipes API", () => {
   it("maps a webhook order to one issue, whatever the redeliveries", async () => {
     const { run, calls, peek } = await world();
     const before = await peek("ana@example.com");
-    const order = JSON.stringify({ orderId: "ORD-1", customerRef: "c1", lines: [{ sku: "p1", qty: 2 }] });
+    const order = JSON.stringify({ orderId: "ORD-1", customerRef: "CLI-01", lines: [{ sku: "CAF-250", qty: 2 }, { sku: "ENV-SV", qty: 1 }] });
     for (let i = 0; i < 2; i++) expect((await (await run({ recipe: "order-webhook", params: { order } })).json() as { ok: boolean }).ok).toBe(true);
     expect(await peek("ana@example.com")).toBe(before - 1);
-    expect(calls[0]!.body).toMatchObject({ tipoDte: "01", items: [{ descripcion: "Café", cantidad: 2, precioUni: 2 }] });
+    expect(calls[0]!.body).toMatchObject({
+      tipoDte: "01",
+      receptor: { nombre: "Carlos Ejemplo Rivas", tipoDocumento: "13", numDocumento: "039458719" },
+      items: [{ descripcion: "Café molido 250 g", cantidad: 2, precioUni: 4.5 }, { descripcion: "Envío nacional", cantidad: 1, precioUni: 3 }],
+    });
     expect(calls[0]!.headers.get("idempotency-key")).toBe(calls[1]!.headers.get("idempotency-key"));
-    expect((await run({ recipe: "order-webhook", params: { order: JSON.stringify({ orderId: "O", lines: [{ sku: "nope", qty: 1 }] }) } })).status).toBe(400);
-    expect((await run({ recipe: "order-webhook", params: { order: "{not json" } })).status).toBe(400);
+    expect(calls[0]!.headers.get("idempotency-key")).toMatch(/\.order-ORD-1$/);
+  });
+
+  it("explains a bad webhook order in plain Spanish, naming the valid options", async () => {
+    const { run } = await world();
+    const say = async (order: unknown) => {
+      const response = await run({ recipe: "order-webhook", params: { order: typeof order === "string" ? order : JSON.stringify(order) } });
+      return { status: response.status, message: ((await response.json()) as { error: { message: string } }).error.message };
+    };
+    const sku = await say({ orderId: "O", lines: [{ sku: "CAF-999", qty: 1 }] });
+    expect(sku.status).toBe(400);
+    expect(sku.message).toBe("El SKU «CAF-999» no está en la lista de precios de la tienda de ejemplo. Use CAF-250, CAF-500, TAZ-01, FIL-50 o ENV-SV.");
+    const customer = await say({ orderId: "O", customerRef: "CLI-9", lines: [{ sku: "CAF-250", qty: 1 }] });
+    expect(customer.message).toBe("El cliente CLI-9 no existe en la tienda de ejemplo. Elija uno de la lista (CLI-01, CLI-02 o CLI-03) o deje el pedido sin cliente.");
+    expect((await say("{not json")).status).toBe(400);
+    expect((await say({ orderId: "O", lines: [{ sku: "CAF-250", qty: 0 }] })).status).toBe(400);
+    expect((await say({ orderId: "O", lines: [{ sku: "CAF-250", qty: 1000 }, { sku: "TAZ-01", qty: 1000 }] })).message).toContain("no puede pasar");
+  });
+
+  it("keys a recipe run by the visitor's order number, scoped to the visitor", async () => {
+    const { run, calls } = await world();
+    for (let i = 0; i < 2; i++) await run({ recipe: "issue-idempotent", params: { type: "01", orderNumber: "PED-77" } });
+    await run({ recipe: "issue-idempotent", params: { type: "01", orderNumber: "PED-78" } });
+    const keys = calls.map((c) => c.headers.get("idempotency-key"));
+    expect(keys[0]).toBe(keys[1]);
+    expect(keys[2]).not.toBe(keys[0]);
+    expect(keys[0]).toMatch(/^[0-9a-f]+\.r-issue-idempotent\.PED-77\.01$/);
+  });
+
+  it("refuses an order number that is not letters, digits, dot, dash or underscore (up to 64)", async () => {
+    const { run } = await world();
+    for (const orderNumber of ["a b", "x/../y", "é1", "a".repeat(65), "-start"]) {
+      const response = await run({ recipe: "issue-idempotent", params: { type: "01", orderNumber } });
+      expect(response.status).toBe(400);
+      expect(((await response.json()) as { error: { code: string } }).error.code).toBe("order_number_invalid");
+    }
+    expect((await run({ recipe: "issue-idempotent", params: { type: "01", orderNumber: "a".repeat(64) } })).status).toBe(200);
+  });
+
+  it("different visitors typing the same order number never share a key", async () => {
+    const { run, calls } = await world();
+    await run({ recipe: "issue-idempotent", params: { type: "01", orderNumber: "SAME" } }, "ana@example.com");
+    await run({ recipe: "issue-idempotent", params: { type: "01", orderNumber: "SAME" } }, "bea@example.com");
+    expect(calls[0]!.headers.get("idempotency-key")).not.toBe(calls[1]!.headers.get("idempotency-key"));
   });
 
   it("needs the unlock key for the catalog recipe", async () => {
