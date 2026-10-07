@@ -72,6 +72,39 @@ const text = new TextDecoder().decode(file.bytes);
 de donde lo leyó el servidor (`managed`, `holding` o `archive`) cuando lo
 informa.
 
+## Listar documentos con su DTE
+
+`listDocuments({ include: ["dte"] })` devuelve cada fila con `archivoDte` (el
+mismo texto de `downloadDocument(code, "json")`) y `resumen`, en una sola
+llamada a la API. Pide el alcance `download` además de `query`; la página es de
+20 filas por defecto y 25 como máximo (`include_limit_exceeded` si pide más).
+El PDF y el ticket no vienen en la lista: descárguelos por fila cuando alguien
+los pida.
+
+```ts
+const page = await facta.listDocuments({ include: ["dte"], limit: 20 });
+for (const row of page.documentos) {
+  if (row.resumen) console.log(row.resumen.receptor?.nombre, row.resumen.primeraDescripcion, row.resumen.totalPagar);
+  else console.log(row.codigoGeneracion, row.dteError?.code, row.dteError?.message);
+}
+```
+
+`resumen` es `summarizeArchivoDte(row.archivoDte)`: `{ receptor, lineas,
+primeraDescripcion, totalIva, totalPagar }`, leído del documento legal y nunca
+del receptor guardado en el índice, así que es idéntico tanto si la empresa
+guarda su catálogo legible como cifrado. La función se exporta y es pura.
+
+Un documento que la API no puede abrir por sí sola (emitido desde la app de
+Facta, con copia solo en su propio almacenamiento) llega como
+`dteError.code === "needs_local_decrypt"`. Con `unlockKey` configurada, el SDK
+abre localmente la instantánea de sus destinos, lee el archivo (de cuatro en
+cuatro) y devuelve la fila completa: la misma forma en ambos casos. Sin
+`unlockKey`, la fila conserva un `dteError` que lo explica. Otros códigos:
+`not_sealed`, `storage_unavailable`, `not_found`, `timeout`,
+`destinations_unavailable`, `destination_read_failed`. Una fila con error nunca
+hace fallar el listado, y un servidor que aún no conoce la bandera devuelve las
+filas sin `archivoDte`.
+
 ## Contingencia y `not_sealed`
 
 Un documento en contingencia está firmado pero no tiene `selloRecibido`, así que

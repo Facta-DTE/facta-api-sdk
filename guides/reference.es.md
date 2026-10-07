@@ -454,7 +454,7 @@ console.log(uno.estado);   // "rechazado", "sellado", "contingencia"…
 
 **No manda la llave de firma.** Devuelve `DtePage`.
 
-El libro de lo sellado, del más nuevo al más viejo, con filtros por fecha, estado y tipo. **La paginación es por cursor, no por página**: `?pagina=2` sobre una tabla que crece repite un documento y se salta otro. Un documento **rechazado no está aquí**. Si al reconciliar aparece un hueco en su numeración, pregunte por ese código con `getDocumentStatus`. Cada fila puede incluir el nombre y número de documento del receptor. En modo privado, la API abre esos campos para la llave autorizada: el cifrado en reposo no los oculta a la integración. Trata la respuesta como dato personal y evita copiarla a logs generales.
+El libro de lo sellado, del más nuevo al más viejo, con filtros por fecha, estado y tipo. **La paginación es por cursor, no por página**: `?pagina=2` sobre una tabla que crece repite un documento y se salta otro. Un documento **rechazado no está aquí**. Si al reconciliar aparece un hueco en su numeración, pregunte por ese código con `getDocumentStatus`. Cada fila puede incluir el nombre y número de documento del receptor. En modo privado, la API abre esos campos para la llave autorizada: el cifrado en reposo no los oculta a la integración. Trata la respuesta como dato personal y evita copiarla a logs generales. Con `include: ["dte"]` (alcance `download`; 20 filas por defecto, 25 como máximo) cada fila trae además `archivoDte`, `resumen` y, si no se pudo leer, `dteError`; vea [archivo-dte.es.md](archivo-dte.es.md#listar-documentos-con-su-dte).
 
 ```typescript
 let cursor: string | null = null;

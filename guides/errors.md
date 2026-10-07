@@ -80,6 +80,7 @@ In the tables, "Retried" means retried automatically by the SDK.
 | Code | HTTP | Retried | Meaning | What to do |
 | --- | --- | --- | --- | --- |
 | `invalid_request` | 400 (422 locally) | no | Missing or non-JSON body, over 1 MB, a field with the wrong shape, or a non-UUID generation code (`details.field`). Locally (422): a catalog product with an invalid item type, unit of measure, or a VAT basis that does not match the DTE. | Fix the request. No number was spent. |
+| `include_limit_exceeded` | 400 | no | `listDocuments` with `include: ["dte"]` asked for more than 25 rows (`details.maximo`). | Ask for 25 or fewer and follow `siguiente`. |
 | `validation_failed` | 422 | no | The document fails Hacienda's official schema (`details.issues`). Also thrown locally (422, before any request) by catalog writes. | Fix the listed fields. No number was spent. |
 | `not_found` | 404 | no | No such document, customer, product or route for this key's company. Also thrown locally when a `customerId`/`productId` is not in the catalog snapshot. | Check the identifier and the key's company; sync the catalog. |
 | `method_not_allowed` | 405 | no | The route exists, but not with that method. | Only seen when calling the API outside the SDK's methods. |
