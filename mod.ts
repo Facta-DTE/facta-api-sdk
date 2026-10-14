@@ -10,6 +10,7 @@ export {
   type FactaOptions,
   type FactaRuntimeConfigV1,
   type IssueOptions,
+  type SignOptions,
 } from "./src/client.ts";
 export type {
   ArchiveArtifact,
