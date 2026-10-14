@@ -112,3 +112,28 @@ Deno.test("listTemplates on a server without the endpoint rejects with a 404 Fac
   const error = await assertRejects(() => client(fetch).listTemplates(), FactaError);
   assertEquals((error as FactaError).status, 404);
 });
+
+// ---- the handler forwards only the template warnings --------------------------------------------------------
+
+import { createFactaHandler, createFactaSession, type FactaLike } from "../server.ts";
+
+Deno.test("the browser handler forwards plantilla_no_aplicada warnings and nothing else from advertencias", async () => {
+  const SECRET = "x".repeat(48);
+  const facta: FactaLike = {
+    issue: () => Promise.resolve({
+      ...SEALED,
+      advertencias: [WARNING, { code: "sin_almacenamiento_duradero", mensaje: "private storage detail" }, "texto suelto"],
+    } as unknown as IssueResult),
+    getDocumentStatus: () => Promise.reject(new Error("unused")),
+  };
+  const handler = createFactaHandler({ facta, sessionSecret: SECRET, authorize: "session-only" });
+  const session = await createFactaSession({ request: REQUEST, idempotencyKey: "order-1", display: { total: 2.5, title: "t", reference: "r" } }, SECRET);
+  const res = await handler(new Request("https://shop.test/api/facta", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-facta-ui": "1" },
+    body: JSON.stringify({ action: "issue", session }),
+  }));
+  assertEquals(res.status, 200);
+  const { result } = await res.json();
+  assertEquals(result.advertencias, [WARNING]);
+});
