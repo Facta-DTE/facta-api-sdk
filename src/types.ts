@@ -126,7 +126,8 @@ export interface Representation {
 
 /** The answer's `advertencias` entry when a requested template was not used (the company template was used instead). */
 export interface TemplateNotAppliedWarning {
-  code: "plantilla_no_aplicada";
+  /** The API's field name is `codigo` (like its other warnings). */
+  codigo: "plantilla_no_aplicada";
   /** E.g. `representacion.plantilla.carta`. */
   campo: string;
   motivo: "plan" | "no_existe" | "incompatible";
@@ -780,6 +781,12 @@ export interface DownloadedDocument {
   jsonFormat?: "archivo-dte" | "raw";
   /** Present for tickets; defaults to 80 mm when not requested. */
   paperWidthMm?: number;
+  /**
+   * PDF and ticket downloads, from `X-Facta-Plantilla`: the template the sheet was drawn with, a
+   * catalogue id (`letter-clasica`) or `custom:<uuid>@<version>`. Missing on servers that predate
+   * the header and on JSON downloads.
+   */
+  plantilla?: string;
 }
 
 export interface RateLimitWindow {

@@ -18,6 +18,7 @@ on:
           - skip
           - emit-test-fe
           - emit-enabled-dte-fixtures
+          - emit-test-fe-with-templates
 
 permissions:
   actions: read
@@ -28,7 +29,7 @@ permissions:
 jobs:
   live-test:
     if: >-
-      (github.event_name == 'workflow_dispatch' && (inputs.confirmation == 'emit-test-fe' || inputs.confirmation == 'emit-enabled-dte-fixtures')) ||
+      (github.event_name == 'workflow_dispatch' && (inputs.confirmation == 'emit-test-fe' || inputs.confirmation == 'emit-test-fe-with-templates' || inputs.confirmation == 'emit-enabled-dte-fixtures')) ||
       (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     environment:
@@ -70,7 +71,9 @@ jobs:
           # quota or provider outage there is a WARNING, never a failed run.
           STAGING_FACTA_DELIVERY_EMAIL: ${{ secrets.STAGING_FACTA_DELIVERY_EMAIL }}
           STAGING_FACTA_API_BASE_URL: https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1
-          FACTA_LIVE_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.confirmation || 'emit-test-fe' }}
+          FACTA_LIVE_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.confirmation != 'emit-test-fe-with-templates' && inputs.confirmation || 'emit-test-fe' }}
+          # Opt-in template check (one more $0.01 test FE): the manual option, or the repository variable STAGING_FACTA_LIVE_TEMPLATES=true.
+          FACTA_LIVE_TEMPLATES: ${{ (github.event_name == 'workflow_dispatch' && inputs.confirmation == 'emit-test-fe-with-templates') || vars.STAGING_FACTA_LIVE_TEMPLATES == 'true' }}
           GITHUB_RUN_CREATED_AT: ${{ steps.run-age.outputs.created_at }}
           FACTA_LIVE_REPORT_DIR: ${{ runner.temp }}/facta-live-report
       - name: Add live result to pull request

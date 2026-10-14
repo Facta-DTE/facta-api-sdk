@@ -33,7 +33,7 @@ const REQUEST: DteRequest = {
 };
 
 const WARNING: TemplateNotAppliedWarning = {
-  code: "plantilla_no_aplicada",
+  codigo: "plantilla_no_aplicada",
   campo: "representacion.plantilla.carta",
   motivo: "plan",
   mensaje: "Su plan no incluye esta plantilla.",
@@ -60,7 +60,7 @@ Deno.test("issue sends representacion untouched, with datos, filas and plantilla
   assertEquals(calls[0].url.endsWith("/v1/dte"), true);
   assertEquals(JSON.parse(calls[0].body!).representacion, REQUEST.representacion);
   // The refused choice is a typed warning, not an error.
-  const warning = result.advertencias?.find((w): w is TemplateNotAppliedWarning => typeof w === "object" && "code" in w && w.code === "plantilla_no_aplicada");
+  const warning = result.advertencias?.find((w): w is TemplateNotAppliedWarning => typeof w === "object" && "codigo" in w && w.codigo === "plantilla_no_aplicada");
   assertEquals(warning?.motivo, "plan");
   assertEquals(warning?.campo, "representacion.plantilla.carta");
 });
@@ -71,12 +71,12 @@ Deno.test("issue without representacion sends none", async () => {
   assertEquals("representacion" in JSON.parse(calls[0].body!), false);
 });
 
-Deno.test("prepare carries the request's representacion; sign sends its own", async () => {
+Deno.test("prepare never sends representacion (the API rejects it); sign carries its own", async () => {
   const prepared = { estado: "preparado", codigoGeneracion: SEALED.codigoGeneracion, numeroControl: SEALED.numeroControl, tipoDte: "01", ambiente: "00", totales: {}, documento: { a: 1 }, prepareToken: "tok" };
   const { fetch, calls } = fakeFetch([{ status: 200, body: prepared }, { status: 200, body: SEALED }, { status: 200, body: SEALED }]);
   const facta = client(fetch);
   const p = await facta.prepare(REQUEST);
-  assertEquals(JSON.parse(calls[0].body!).representacion, REQUEST.representacion);
+  assertEquals("representacion" in JSON.parse(calls[0].body!), false);
   await facta.sign(p, { representacion: REQUEST.representacion });
   assertEquals(calls[1].url.endsWith("/v1/dte/sign"), true);
   assertEquals(JSON.parse(calls[1].body!), { prepareToken: "tok", documento: { a: 1 }, representacion: REQUEST.representacion });
@@ -136,4 +136,19 @@ Deno.test("the browser handler forwards plantilla_no_aplicada warnings and nothi
   assertEquals(res.status, 200);
   const { result } = await res.json();
   assertEquals(result.advertencias, [WARNING]);
+});
+
+Deno.test("PDF and ticket downloads expose the applied template from X-Facta-Plantilla; JSON and bad tags do not", async () => {
+  const answer = (tag: string | null) => ((_: unknown) =>
+    Promise.resolve(new Response(new Uint8Array([37, 80, 68, 70]), {
+      status: 200,
+      headers: { "Content-Type": "application/pdf", ...(tag === null ? {} : { "X-Facta-Plantilla": tag }) },
+    }))) as unknown as typeof globalThis.fetch;
+  const cg = SEALED.codigoGeneracion;
+  const custom = "custom:0b8f5c3e-0000-4000-8000-000000000001@3";
+  assertEquals((await client(answer("letter-clasica")).downloadDocument(cg, "pdf")).plantilla, "letter-clasica");
+  assertEquals((await client(answer(custom)).downloadDocument(cg, "ticket")).plantilla, custom);
+  assertEquals((await client(answer(null)).downloadDocument(cg, "pdf")).plantilla, undefined);
+  assertEquals((await client(answer("not a tag!")).downloadDocument(cg, "pdf")).plantilla, undefined);
+  assertEquals((await client(answer("letter-clasica")).downloadDocument(cg, "json")).plantilla, undefined);
 });

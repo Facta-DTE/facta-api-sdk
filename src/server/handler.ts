@@ -259,11 +259,11 @@ function summarizeIssue(result: IssueResult, download: boolean, exposeDocument: 
 function templateWarningsOf(result: IssueResult): TemplateNotAppliedWarning[] {
   const out: TemplateNotAppliedWarning[] = [];
   for (const entry of result.advertencias ?? []) {
-    if (!isObject(entry) || entry.code !== "plantilla_no_aplicada") continue;
+    if (!isObject(entry) || entry.codigo !== "plantilla_no_aplicada") continue;
     const { campo, motivo, mensaje } = entry as Record<string, unknown>;
     if (typeof campo !== "string" || typeof mensaje !== "string") continue;
     const reason = motivo === "plan" || motivo === "no_existe" || motivo === "incompatible" ? motivo : "incompatible";
-    out.push({ code: "plantilla_no_aplicada", campo: campo.slice(0, 80), motivo: reason, mensaje: mensaje.slice(0, 300) });
+    out.push({ codigo: "plantilla_no_aplicada", campo: campo.slice(0, 80), motivo: reason, mensaje: mensaje.slice(0, 300) });
   }
   return out;
 }

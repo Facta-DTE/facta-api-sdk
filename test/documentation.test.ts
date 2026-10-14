@@ -48,6 +48,7 @@ Deno.test("method reference covers every public Facta client method", () => {
     "deliverWhatsApp",
     "getDelivery",
     "waitForDelivery",
+    "listTemplates",
   ];
 
   for (const method of publicMethods) {
@@ -60,7 +61,7 @@ Deno.test("method reference covers every public Facta client method", () => {
       `Expected the method reference to document ${method}`,
     );
   }
-  assert(publicMethods.length === 43, "Update the method coverage list with the public API");
+  assert(publicMethods.length === 44, "Update the method coverage list with the public API");
 });
 
 Deno.test("package Markdown links resolve to files or in-page anchors", async () => {
