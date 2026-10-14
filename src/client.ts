@@ -115,6 +115,9 @@ import type {
   ManagedStorageStatus,
   InvalidationRequest,
   DteRequest,
+  DteType,
+  Representation,
+  RepresentationTemplates,
   ReturnResult,
   ReturnRequest,
   Status,
@@ -243,6 +246,11 @@ export interface FactaInvalidationArchiveOptions {
 export interface DebugOptions {
   /** Ask for per-step processing times (`X-Facta-Debug: timings`). */
   timings?: boolean;
+}
+
+export interface SignOptions extends CallOptions {
+  /** Per-sale values and template choice for the graphical representation of the signed document. */
+  representacion?: Representation;
 }
 
 export interface CallOptions {
@@ -2189,11 +2197,25 @@ export class Facta {
    * Pass the document through UNCHANGED. The server checks a MAC over its
    * canonical hash, so a single altered cent is refused instead of signed.
    */
-  async sign(prepared: PreparedDte, options: CallOptions = {}): Promise<IssueResult> {
+  async sign(prepared: PreparedDte, options: SignOptions = {}): Promise<IssueResult> {
+    const { representacion, ...call } = options;
     return await this.#guard(await this.#request<IssueResult>("POST", "/v1/dte/sign", {
       prepareToken: prepared.prepareToken,
       documento: prepared.documento,
-    }, options), []);
+      ...(representacion === undefined ? {} : { representacion }),
+    }, call), []);
+  }
+
+  /**
+   * Templates the key's company can choose per document (`representacion.plantilla`), with the `datos`
+   * keys each one prints. Free plans see only free templates as `permitida: true`; pass `tipoDte` to
+   * list only those that can draw that type.
+   * Throws a `FactaError` with status 404 on an API server that does not have the endpoint yet.
+   */
+  listTemplates(options: { tipoDte?: DteType } & CallOptions = {}): Promise<RepresentationTemplates> {
+    const { tipoDte, ...call } = options;
+    const query = tipoDte === undefined ? "" : `?tipoDte=${encodeURIComponent(tipoDte)}`;
+    return this.#request<RepresentationTemplates>("GET", `/v1/representacion/plantillas${query}`, undefined, call);
   }
 
   /**
