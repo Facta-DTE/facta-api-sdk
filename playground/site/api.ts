@@ -5,6 +5,8 @@ import { turnstileHeaders } from "./turnstile.ts";
 import { publishIssue, publishSession, timingsHeaders } from "./timings.ts";
 import { orders, SALE_SCOPE } from "./order-session.ts";
 import type { Timings } from "../shared/timings.ts";
+import type { RepresentationInput } from "../shared/representation.ts";
+import type { RepresentationTemplates } from "../../src/types.ts";
 
 export interface PlaygroundState {
   environment: "00";
@@ -56,6 +58,8 @@ export interface MockBackend {
   session(sale: SaleDescription): CreatedSession | Promise<CreatedSession>;
   issued(): IssuedDocument[];
   invalidation(code: string): string;
+  /** The template list; absent or `{ available: false }` simulates an API without the endpoint. */
+  templates?(tipoDte: string): TemplateCatalog | Promise<TemplateCatalog>;
   /** Delivery demo: answers or throws an `ApiError` (limit states). */
   resend?(code: string): ResendOutcome;
 }
@@ -109,6 +113,17 @@ async function readError(response: Response): Promise<ApiError> {
   );
 }
 
+/** What `GET /api/plantillas` answers: the API's list, or `available: false` when the API does not have the endpoint yet. */
+export type TemplateCatalog = ({ available: true } & RepresentationTemplates) | { available: false };
+
+/** The templates the key's company can choose for a DTE type (cached by the Worker). */
+export async function loadTemplates(tipoDte: string): Promise<TemplateCatalog> {
+  if (mock) return mock.templates ? await mock.templates(tipoDte) : { available: false };
+  const response = await fetch(`/api/plantillas?tipoDte=${encodeURIComponent(tipoDte)}`, { headers: { accept: "application/json" } });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as TemplateCatalog;
+}
+
 export async function loadState(): Promise<PlaygroundState> {
   if (mock) return mock.state();
   const response = await fetch("/api/state", { headers: { accept: "application/json" } });
@@ -141,6 +156,8 @@ export interface SaleDescription {
    * document. Absent: a random key, so every call is a new sale.
    */
   orderNumber?: string;
+  /** Template choice and per-sale values for the letter and the ticket (`representacion` of the API). */
+  representacion?: RepresentationInput;
   sendEmail?: boolean;
   /** The address to e-mail the document to (any valid address; the server limits sends). */
   emailTo?: string;
@@ -157,6 +174,8 @@ export interface CreatedSession {
   idempotencyKey?: string;
   /** With «Mostrar tiempos»: the playground's steps while preparing the session. */
   timings?: Timings;
+  /** Added by the page (not the Worker): the templates the sale asked for, to compare with the API's warnings. */
+  requested?: { carta?: string; ticket?: string };
 }
 
 export async function createSession(sale: SaleDescription): Promise<CreatedSession> {

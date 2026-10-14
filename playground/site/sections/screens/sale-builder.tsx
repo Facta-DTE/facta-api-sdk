@@ -11,6 +11,8 @@ import { newOrderNumber, ORDER_NUMBER } from "../../order-number.ts";
 import { OrderField, RepeatBanner } from "../../components/order-field.tsx";
 import { SALE_SCOPE } from "../../order-session.ts";
 import { TimingsToggle } from "../../components/timings.tsx";
+import { buildRepresentation, EMPTY_REPRESENTATION, templateDisabledReason, type RepresentationForm } from "../../../shared/representation.ts";
+import { SaleRepresentation, shownKeysOf, templatesOf, useTemplates } from "./sale-representation.tsx";
 import { EMPTY_CHOICE, ReceptorSection, receptorForSale, receptorMissing, type ReceptorChoice } from "./sale-receptor.tsx";
 
 export const TYPE_LABELS: Record<string, string> = {
@@ -82,6 +84,8 @@ export function SaleBuilder({ state, issued, onPrepared, onStale }: {
   const [tipoDte, setTipoDte] = useState("01");
   const [receptor, setReceptor] = useState<ReceptorChoice>(EMPTY_CHOICE);
   const [relatedCode, setRelatedCode] = useState("");
+  const [repr, setRepr] = useState<RepresentationForm>(EMPTY_REPRESENTATION);
+  const templates = useTemplates(tipoDte);
   const [orderNumber, setOrderNumber] = useState(newOrderNumber);
   const [mail, setMail] = useState<EmailChoiceValue>({ ...EMPTY_EMAIL, address: state.visitor?.email ?? "" });
   const ready = useTurnstileReady();
@@ -96,7 +100,7 @@ export function SaleBuilder({ state, issued, onPrepared, onStale }: {
 
   // The prepared sale belongs to exactly what was on screen when it was prepared. Any later change (type,
   // receiver, lines, related document, e-mail) invalidates it, so «Abrir…» can never open an old session.
-  const signature = JSON.stringify({ tipoDte, receptor, relatedCode, orderNumber, mail, lines: lines.map((l) => ({ ...l, key: 0 })) });
+  const signature = JSON.stringify({ tipoDte, receptor, relatedCode, orderNumber, mail, repr, lines: lines.map((l) => ({ ...l, key: 0 })) });
   const preparedFor = useRef<string | null>(null);
   const latest = useRef(signature);
   latest.current = signature;
@@ -108,6 +112,12 @@ export function SaleBuilder({ state, issued, onPrepared, onStale }: {
       stale.current();
     }
   }, [signature]);
+  // A template that this type (or the plan) does not allow any more is dropped from the choice instead of kept invisible.
+  useEffect(() => {
+    if (templates.status !== "ready") return;
+    const usable = (id: string | null, tipo: "carta" | "ticket") => id === null || templatesOf(templates, tipo).some((t) => t.id === id && templateDisabledReason(t, tipoDte) === null);
+    setRepr((current) => (usable(current.carta, "carta") && usable(current.ticket, "ticket") ? current : { ...current, carta: usable(current.carta, "carta") ? current.carta : null, ticket: usable(current.ticket, "ticket") ? current.ticket : null }));
+  }, [templates, tipoDte]);
   // A related document that stopped being a Crédito fiscal choice is cleared rather than kept invisible.
   useEffect(() => {
     if (relatedCode !== "" && !correctable.some((d) => d.codigoGeneracion === relatedCode)) setRelatedCode("");
@@ -145,6 +155,7 @@ export function SaleBuilder({ state, issued, onPrepared, onStale }: {
     setProblem(null);
     setField(undefined);
     const askedFor = signature;
+    const representacion = buildRepresentation(repr, shownKeysOf(templates, repr));
     const sale: SaleDescription = {
       tipoDte,
       orderNumber: orderNumber.trim(),
@@ -160,6 +171,7 @@ export function SaleBuilder({ state, issued, onPrepared, onStale }: {
         };
       }),
       ...(mail.send ? { sendEmail: true, emailTo: mail.address.trim() } : {}),
+      ...(representacion === undefined ? {} : { representacion }),
       ...(receptorForSale(tipoDte, receptor) === undefined ? {} : { receptor: receptorForSale(tipoDte, receptor)! }),
       ...(isNote && relatedCode !== "" ? { relatedCode } : {}),
     };
@@ -171,7 +183,7 @@ export function SaleBuilder({ state, issued, onPrepared, onStale }: {
         return;
       }
       preparedFor.current = askedFor;
-      onPrepared({ ...created, tipoDte });
+      onPrepared({ ...created, tipoDte, ...(representacion?.plantilla === undefined ? {} : { requested: representacion.plantilla }) });
     } catch (error) {
       setProblem(error instanceof ApiError ? error.message : "No se pudo preparar la venta.");
       if (error instanceof ApiError) setField(error.field);
@@ -308,6 +320,8 @@ export function SaleBuilder({ state, issued, onPrepared, onStale }: {
           </div>
         </div>
       </div>
+
+      <SaleRepresentation tipoDte={tipoDte} view={templates} form={repr} onChange={setRepr} />
 
       <div className="pg-sale-foot">
         {state.visitor !== null && <EmailChoice value={mail} onChange={setMail} />}

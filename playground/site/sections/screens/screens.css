@@ -181,3 +181,12 @@
 
 .pg-sale-order { display: grid; gap: 10px; margin: 4px 0 12px; }
 .pg-sale-order .pg-hint, .pg-sale-order .pg-error { margin: 0; }
+
+/* «Representación gráfica» of the sale builder, and the template warnings after issuing. */
+.pg-repr { display: grid; gap: 12px; padding-top: 12px; border-top: 1px solid var(--pg-border); }
+.pg-repr h3 { margin: 0; font-size: 15px; }
+.pg-repr-rows { display: grid; gap: 8px; justify-items: start; }
+.pg-repr-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto; gap: 8px; width: 100%; align-items: center; }
+.pg-repr-row input { min-height: 40px; min-width: 0; font-size: 16px; padding: 0 10px; border-radius: var(--pg-radius-sm); border: 1px solid var(--pg-border-strong); background: var(--pg-surface); color: inherit; }
+.pg-tplwarn { display: grid; gap: 6px; width: 100%; }
+.pg-tplwarn-item { margin: 0; padding: 10px 12px; font-size: 14px; border-radius: var(--pg-radius-sm); border: 1px solid var(--pg-border-strong); background: var(--pg-surface); }

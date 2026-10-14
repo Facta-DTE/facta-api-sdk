@@ -44,6 +44,7 @@ export function redactedResponse(result: IssueResult | null): string | null {
     selloRecibido: result.selloRecibido,
     fhProcesamiento: result.fhProcesamiento,
     observaciones: result.observaciones,
+    advertencias: result.advertencias,
     detalle: result.detalle,
     totales: result.totales,
   };

@@ -1,6 +1,8 @@
 import { useEffect } from "react";
 import { FactaDownloadButton, FactaReceipt, FactaStatusBadge, type IssueResult } from "../../../../../react.ts";
 import { Skeleton } from "../../../components/busy.tsx";
+import { TemplateWarnings } from "../../../components/template-warnings.tsx";
+import { useScreens } from "../screen-state.tsx";
 import { DocumentForms } from "../../../components/document-forms.tsx";
 import { lacksCurrent, resultFromRegistry, useRegistry } from "../../registro/registry-data.ts";
 
@@ -17,6 +19,7 @@ import { lacksCurrent, resultFromRegistry, useRegistry } from "../../registro/re
 // separately (`downloadDocument(code, { kind: "json", raw: true })`). The Registro page already offers both.
 export function ReceiptExample({ result }: { result: IssueResult | null }) {
   const { registry, enrich } = useRegistry();
+  const screens = useScreens();
   const latest = registry.status === "ready" ? registry.documents[0] : undefined;
   const needsSeal = result === null && latest !== undefined && lacksCurrent(latest);
   const latestCode = latest?.codigoGeneracion;
@@ -33,6 +36,7 @@ export function ReceiptExample({ result }: { result: IssueResult | null }) {
     <div style={{ display: "grid", gap: 24, width: "100%", gridTemplateColumns: "minmax(0, 1fr)" }}>
     <div style={{ display: "grid", gap: 16, width: "100%", maxWidth: 520, gridTemplateColumns: "minmax(0, 1fr)" }}>
       {result === null && <p className="pg-hint">Su último documento emitido en el playground. Al emitir uno nuevo, aparece aquí.</p>}
+      {result !== null && <TemplateWarnings warnings={result.advertencias} requested={screens.prepared?.requested} />}
       <FactaReceipt result={shown} environment="00" reference="Playground" />
       <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
         <FactaStatusBadge estado={shown.estado} />

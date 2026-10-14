@@ -16,6 +16,7 @@
 import type { CatalogCustomer, CatalogProduct, DteRequest, ExcludedSubjectRecipient, ExportRecipient, LineItem, Recipient } from "../../src/types.ts";
 import type { PlaygroundFixtures } from "./fixtures.ts";
 import { buildCustomReceptor, ReceptorError } from "./receptor.ts";
+import { checkRepresentation } from "../shared/representation.ts";
 
 export const MAX_LINES = 10;
 export const MAX_TOTAL = 500;
@@ -410,7 +411,12 @@ export function buildSale(
     ...(raw.relatedCode === undefined ? {} : { relatedCode: raw.relatedCode as string }),
   };
   const context: SaleContext = { fixtures, owned: options.owned ?? [], catalog: options.catalog ?? EMPTY_CATALOG };
-  const sale = builder(input, context);
+  const built = builder(input, context);
+  // The graphical representation (template choice + per-sale values) rides on the request untouched; the API validates
+  // the values and falls back to the company template, with a warning, when it cannot honour a template.
+  const representation = checkRepresentation(raw.representacion);
+  if (!representation.ok) throw new SaleError("representacion_invalid", representation.message, "representacion");
+  const sale: BuiltSale = representation.value === undefined ? built : { ...built, request: { ...built.request, representacion: representation.value } as DteRequest };
   // A catalog receiver travels as an id the window cannot resolve: hand it the label the server just confirmed.
   const customer = input.receptor?.source === "catalog" && input.receptor.customerId !== undefined ? context.catalog.customers.get(input.receptor.customerId) : undefined;
   const recipientLabel = customer === undefined ? null : recipientLabelOf(customer);

@@ -236,6 +236,24 @@ export async function handleApi(request: Request, env: PlaygroundEnv, deps: ApiD
     }
   }
 
+  if (path === "/api/plantillas") {
+    if (request.method !== "GET") return jsonResponse(405, errorBody("method_not_allowed", "Solo se acepta GET."), { allow: "GET" });
+    const visitor = await visitorOf(request);
+    if (visitor === null) return jsonResponse(401, errorBody("unauthorized", "Inicie sesión para ver las plantillas."));
+    const tipoDte = new URL(request.url).searchParams.get("tipoDte") ?? "01";
+    if (!/^(01|03|05|06|11|14)$/.test(tipoDte)) return jsonResponse(400, errorBody("type_unsupported", "Ese tipo de documento no está disponible en el playground."));
+    const lister = (parts.facta as unknown as { listTemplates?: (o: { tipoDte: string }) => Promise<unknown> }).listTemplates;
+    if (typeof lister !== "function") return jsonResponse(200, { available: false });
+    try {
+      return jsonResponse(200, { available: true, ...(await lister.call(parts.facta, { tipoDte })) as object });
+    } catch (error) {
+      // An API server without the endpoint yet: the page hides the picker and says so.
+      if (error instanceof FactaError && error.status === 404) return jsonResponse(200, { available: false });
+      if (error instanceof FactaError && error.code === "rate_limited") return jsonResponse(429, errorBody("rate_limited", RATE_LIMIT_MESSAGE, true), { "retry-after": "60" });
+      throw error;
+    }
+  }
+
   if (path === "/api/issued") {
     if (request.method !== "GET") return jsonResponse(405, errorBody("method_not_allowed", "Solo se acepta GET."), { allow: "GET" });
     const visitor = await visitorOf(request);
