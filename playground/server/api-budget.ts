@@ -55,6 +55,19 @@ export function withApiBudget(inner: FactaLike, options: BudgetOptions & { names
   }
 
   const overrides: Record<string, AnyFn> = {
+    // The templates a company can choose change rarely: 5 minutes per DTE type, for every visitor. An API that does not
+    // have the endpoint yet answers 404; that is remembered for a minute so the page does not spend a read on every visit.
+    listTemplates: (async (templatesOptions?: { tipoDte?: string }) => {
+      const key = `tpl:${templatesOptions?.tipoDte ?? ""}`;
+      const hit = await cache.get<{ missing?: true }>(key);
+      if (hit !== null && hit.value.missing === true) throw new FactaError("not_found", "This API server does not have the template list yet.", 404, { cached: true });
+      try {
+        return await cached(key, () => CATALOG_TTL_MS, () => (inner as unknown as { listTemplates(o?: unknown): Promise<unknown> }).listTemplates(templatesOptions));
+      } catch (error) {
+        if (error instanceof FactaError && error.status === 404) await cache.put(key, { missing: true }, STATUS_TTL_MS);
+        throw error;
+      }
+    }) as unknown as AnyFn,
     getDocumentStatus: ((code: string) =>
       cached(documentKey(code), (status: { estado?: unknown }) => (isFinalState(status?.estado) ? FINAL_TTL_MS : PENDING_TTL_MS), () => inner.getDocumentStatus(code))) as unknown as AnyFn,
     searchCustomers: ((query: string, searchOptions?: { limit?: number }) =>

@@ -20,6 +20,7 @@ import type {
   IssueResult,
   ManagedStorageArtifactState,
   ManagedStorageReceipt,
+  TemplateNotAppliedWarning,
 } from "../types.ts";
 import { openDeliveryHandle, sealDeliveryHandle } from "./delivery-handle.ts";
 import {
@@ -245,9 +246,24 @@ function summarizeIssue(result: IssueResult, download: boolean, exposeDocument: 
     out.detalle = result.detalle;
   }
   if (download && typeof result.archivoJson === "string") out.archivoJson = result.archivoJson;
+  // Only the template warnings travel: they say which requested template was not used and why, never anything about storage.
+  const notApplied = templateWarningsOf(result);
+  if (notApplied.length > 0) out.advertencias = notApplied;
   if (exposeDocument) {
     out.jws = result.jws;
     out.documento = result.documento;
+  }
+  return out;
+}
+
+function templateWarningsOf(result: IssueResult): TemplateNotAppliedWarning[] {
+  const out: TemplateNotAppliedWarning[] = [];
+  for (const entry of result.advertencias ?? []) {
+    if (!isObject(entry) || entry.code !== "plantilla_no_aplicada") continue;
+    const { campo, motivo, mensaje } = entry as Record<string, unknown>;
+    if (typeof campo !== "string" || typeof mensaje !== "string") continue;
+    const reason = motivo === "plan" || motivo === "no_existe" || motivo === "incompatible" ? motivo : "incompatible";
+    out.push({ code: "plantilla_no_aplicada", campo: campo.slice(0, 80), motivo: reason, mensaje: mensaje.slice(0, 300) });
   }
   return out;
 }

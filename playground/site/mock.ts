@@ -8,7 +8,20 @@ import { ApiError, installMock, type CreatedSession, type IssuedDocument, type P
 import { setTimingsEnabled, timingsEnabled } from "./timings.ts";
 import { maskCustomer, maskProduct } from "../server/catalog-mask.ts";
 import { TIMINGS_HEADER, type Timings } from "../shared/timings.ts";
+import type { RepresentationTemplates } from "../../src/types.ts";
 import { orderToRequest, OrderError, type Order } from "../server/recipes/order-webhook.ts";
+
+const MOCK_TEMPLATES: RepresentationTemplates = {
+  predeterminada: { carta: "carta-a", ticket: "ticket-1" },
+  plantillas: [
+    { id: "carta-a", tipo: "carta", nombre: "Clásica", origen: "catalogo", permitida: true, clavesDatos: [] },
+    { id: "carta-menu", tipo: "carta", nombre: "Menú del día", origen: "catalogo", permitida: false, motivo: "plan", clavesDatos: ["mesa", "mesero", "comensales"] },
+    { id: "carta-clinica", tipo: "carta", nombre: "Consulta médica", origen: "catalogo", permitida: true, tiposDte: ["01"], clavesDatos: ["paciente", "proximaCita"] },
+    { id: "carta-fiscal", tipo: "carta", nombre: "Crédito fiscal sobrio", origen: "catalogo", permitida: true, tiposDte: ["03"], clavesDatos: ["proyecto"] },
+    { id: "ticket-1", tipo: "ticket", nombre: "Ticket 1", origen: "catalogo", permitida: true, clavesDatos: [] },
+    { id: "ticket-resto", tipo: "ticket", nombre: "Restaurante", origen: "catalogo", permitida: true, clavesDatos: ["mesa", "propinaSugerida"] },
+  ],
+};
 
 const OUTCOMES: Outcome[] = ["sealed", "sealed-copies-pending", "sealed-delivered", "sealed-delivering", "contingency", "rejected", "uncertain-then-sealed", "failed-retryable", "expired"];
 
@@ -75,6 +88,12 @@ export function installDevMock(search: string): void {
       };
     },
     issued: () => issued,
+    // `&templates=0` pretends the API does not have the template list yet.
+    templates: async (tipoDte) => {
+      await sleep(slow);
+      if (params.get("templates") === "0") return { available: false };
+      return { available: true, ...MOCK_TEMPLATES, plantillas: MOCK_TEMPLATES.plantillas.filter((t) => t.tiposDte === undefined || t.tiposDte.includes(tipoDte as never)) };
+    },
     invalidation: () => "inv-ok",
     // `&resend=limit` shows the limit state; `&resend=closed` the closed five-minute window.
     resend: () => {

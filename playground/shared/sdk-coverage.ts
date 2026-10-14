@@ -450,6 +450,22 @@ for (const pending of await facta.listPendingInvalidations()) await facta.recove
     sources: ["src/client.ts", "src/archive.ts"],
   },
 
+  // ---------------------------------------------------------------- Representación gráfica
+  {
+    id: "representation",
+    group: "emitir",
+    title: "Representación gráfica por documento: representacion y listTemplates()",
+    summary: "representacion lleva dos cosas con la emisión: plantilla ({ carta, ticket }, un id del catálogo o custom:<uuid> de una plantilla publicada de la empresa) y datos (valores de esta venta que la plantilla imprime, como mesa, mesero, paciente o proximaCita, más hasta diez filas libres { etiqueta, valor }). Se imprime solo en la hoja y el ticket, nunca en el documento firmado. listTemplates({ tipoDte }) devuelve lo que la empresa puede elegir, si cada plantilla está permitida con su plan (el gratuito solo elige las gratuitas) y qué claves de datos imprime. Si el API no puede usar la plantilla pedida —por el plan, porque no existe o porque no sirve para ese tipo— emite igual con la de la empresa y avisa con la advertencia plantilla_no_aplicada. Con sign(prepared, { representacion }) también se puede pedir en dos pasos.",
+    covers: [
+      "Facta#listTemplates", "mod:SignOptions", "mod:Representation", "mod:RepresentationData", "mod:RepresentationRow",
+      "mod:RepresentationTemplateChoice", "mod:RepresentationTemplate", "mod:RepresentationTemplates", "mod:TemplateNotAppliedWarning",
+    ],
+    demo: { kind: "page", path: "/pantallas", label: "Pantallas React: la venta, sección «Representación gráfica»", note: "Elija plantillas compatibles con su plan, escriba los datos que imprimen y mire el aviso si el API no pudo usarlas." },
+    code: { kind: "file", path: "playground/site/sections/screens/sale-representation.tsx" },
+    guides: ["reference"],
+    sources: ["src/client.ts", "src/types.ts", "src/server/handler.ts"],
+  },
+
   // ---------------------------------------------------------------- Retorno
   {
     id: "return-event",

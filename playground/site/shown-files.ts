@@ -23,6 +23,7 @@ import pos from "./sections/headless/pos-keypad.tsx?raw";
 import router from "../server/router.ts?raw";
 import factaServer from "../server/facta.ts?raw";
 import sale from "../server/sale.ts?raw";
+import saleRepresentation from "./sections/screens/sale-representation.tsx?raw";
 import deliveryServer from "../server/delivery.ts?raw";
 import orderKey from "../server/order-key.ts?raw";
 import archivoDteRecipe from "../server/recipes/archivo-dte.ts?raw";
@@ -60,6 +61,7 @@ export const SOURCES = {
   [`${S}screens/examples/receipt.tsx`]: receipt,
   [`${S}screens/examples/service-status.tsx`]: serviceStatus,
   [`${S}screens/examples/window-hook.tsx`]: windowHook,
+  [`${S}screens/sale-representation.tsx`]: saleRepresentation,
   [`${S}home/live-invoice.tsx`]: liveInvoice,
   [`${S}headless/checkout-form.tsx`]: checkout,
   [`${S}headless/credit-switch.tsx`]: credit,

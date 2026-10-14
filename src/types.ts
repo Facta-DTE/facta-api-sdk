@@ -90,8 +90,73 @@ export interface ExportDetails {
   seguro?: number;
 }
 
+/** Per-sale values printed only on the graphical representation (sheet and ticket); never in the signed DTE. */
+export interface RepresentationData {
+  mesa?: string; mesero?: string; cajero?: string; pedido?: string; bomba?: string; placa?: string;
+  /** Integer, 1 to 999. */
+  comensales?: number | string;
+  puntos?: number | string; kilometraje?: number | string;
+  /** Exactly four digits, as text (the last four of a card). */
+  tarjetaUltimos4?: string;
+  /** 0 to 99,999.99. */
+  propinaSugerida?: number | string;
+  paciente?: string; expediente?: string; proximaCita?: string; medico?: string; registroProfesional?: string;
+  ordenTrabajo?: string; entrega?: string; evento?: string; fechaEvento?: string; comentario?: string;
+  proyecto?: string; entregable?: string; periodo?: string;
+  /** `Nombre:desde-hasta;…` over the lines' number, for the grouped-table looks. */
+  secciones?: string;
+  /** Up to ten free label/value rows (label up to 30 characters, value up to 80). A label may not imitate a fiscal field. */
+  filas?: RepresentationRow[];
+}
+
+export interface RepresentationRow { etiqueta: string; valor: string }
+
+/** Template choice for one document: a catalogue id or `custom:<uuid>` of a published template of the company. */
+export interface RepresentationTemplateChoice {
+  carta?: string;
+  ticket?: string;
+}
+
+/** What the request sends as `representacion`. */
+export interface Representation {
+  datos?: RepresentationData;
+  /** Needs a server that supports it; list the options with `listTemplates`. A refused choice is not an error: see `plantilla_no_aplicada`. */
+  plantilla?: RepresentationTemplateChoice;
+}
+
+/** The answer's `advertencias` entry when a requested template was not used (the company template was used instead). */
+export interface TemplateNotAppliedWarning {
+  code: "plantilla_no_aplicada";
+  /** E.g. `representacion.plantilla.carta`. */
+  campo: string;
+  motivo: "plan" | "no_existe" | "incompatible";
+  mensaje: string;
+}
+
+/** One entry of `GET /v1/representacion/plantillas`. */
+export interface RepresentationTemplate {
+  id: string;
+  tipo: "carta" | "ticket";
+  nombre: string;
+  origen: "catalogo" | "propia";
+  /** False when the company's plan does not allow it (see `motivo`). */
+  permitida: boolean;
+  motivo?: string;
+  /** DTE types it can draw; absent means all. */
+  tiposDte?: DteType[];
+  /** The `representacion.datos` keys this template prints. */
+  clavesDatos: string[];
+}
+
+export interface RepresentationTemplates {
+  predeterminada: { carta: string | null; ticket: string | null };
+  plantillas: RepresentationTemplate[];
+}
+
 interface DteRequestBase {
   items: LineItem[];
+  /** Per-sale values and the template choice for the graphical representation. */
+  representacion?: Representation;
   condicionOperacion?: 1 | 2 | 3;
   plazo?: "01" | "02" | "03" | null;
   periodo?: number | null;
@@ -361,7 +426,7 @@ export interface SealedDte {
   /** Only with `debug: { timings: true }`. */
   debug?: DebugInfo;
   /** Server warnings (e.g. `sin_almacenamiento_duradero`); the emergency safeguard reads them. */
-  advertencias?: Array<string | { codigo?: string; code?: string; mensaje?: string; detalle?: string }>;
+  advertencias?: Array<string | TemplateNotAppliedWarning | { codigo?: string; code?: string; mensaje?: string; detalle?: string }>;
   /** Present only when the emergency safeguard ran. */
   emergency?: import("./emergency.ts").EmergencyReport;
   /** SDK-side notices; `emergency_saved` / `emergency_failed`. */
@@ -390,7 +455,7 @@ export interface DteInContingency {
   /** Only with `debug: { timings: true }`. */
   debug?: DebugInfo;
   /** Server warnings (e.g. `sin_almacenamiento_duradero`); the emergency safeguard reads them. */
-  advertencias?: Array<string | { codigo?: string; code?: string; mensaje?: string; detalle?: string }>;
+  advertencias?: Array<string | TemplateNotAppliedWarning | { codigo?: string; code?: string; mensaje?: string; detalle?: string }>;
   /** Present only when the emergency safeguard ran. */
   emergency?: import("./emergency.ts").EmergencyReport;
   /** SDK-side notices; `emergency_saved` / `emergency_failed`. */

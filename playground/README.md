@@ -169,6 +169,23 @@ runs, or a clearly labelled illustrative snippet) and links to its guides and so
   (`server/catalog-writes.ts`): `POST /api/facta` answers 403 `catalog_write_not_allowed` («Disponible en el SDK; el playground no modifica el catálogo.»),
   both Facta clients the Worker builds throw on the six methods, and `capabilities.catalog` stays `"read"`.
 
+## Graphical representation per document («Representación gráfica»)
+
+The sale builder (Pantallas React → «La venta») has a «Representación gráfica» section: the letter and ticket templates the key's company can
+choose for this DTE type, the per-sale values those templates print, and up to ten free rows. They travel inside the sealed session as
+`representacion` (`{ plantilla: { carta?, ticket? }, datos: {…, filas?} }`) and the API validates them.
+
+* `GET /api/plantillas?tipoDte=01` (visitor required) is `Facta#listTemplates` behind the API budget: cached 5 minutes for everyone, so it
+  costs one read per type. Templates the plan does not allow, or the type cannot draw, are listed **disabled** with «Requiere plan Lite o Pro» /
+  «No es compatible con este tipo de documento». An API without the endpoint (404) answers `{ available: false }` (remembered for a minute): the page
+  hides the picker and says so.
+* `shared/representation.ts` has the field catalogue (mirror of the API's whitelist), the form → `representacion` builder and the Worker's shape check
+  (`SaleError representacion_invalid`). Only the keys of the chosen templates are shown and sent.
+* After issuing, the receipt shows the `plantilla_no_aplicada` warnings (the document was issued with the company template) or says the choice was
+  used; the letter PDF and the 80 mm ticket below are the ones the API drew.
+* Tests: `test/representation.test.ts`, `test/template-warnings.test.tsx`, and `e2e/representation.spec.ts` (every `/api/*` answered by the test; run it
+  against `vite` as the file says). Live check needs the API release that has `representacion.plantilla` and the endpoint.
+
 ## Demo fixtures
 
 `FACTA_DTE_FIXTURES_JSON` is optional now. When it is unset or empty the Worker uses `fixtures/demo.json`, committed and entirely fictitious:
