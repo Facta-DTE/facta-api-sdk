@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Added: per-document graphical representation
+
+- `representacion` on `DteRequest` (`issue`, `issueAndArchive`; `prepare` strips it because the API rejects it there) and `sign(prepared, { representacion })`: `datos` (the per-sale values a template prints: mesa, mesero, comensales, paciente, proximaCita, ... and up to ten free `filas` of `{ etiqueta, valor }`) and `plantilla: { carta?, ticket? }` (a catalogue id or `custom:<uuid>`). The values appear only on the sheet / ticket, never in the signed document. Types `Representation`, `RepresentationData`, `RepresentationRow`, `RepresentationTemplateChoice`.
+- `TemplateNotAppliedWarning`: when the plan, the company or the DTE type does not allow the requested template the document is still issued with the company template, and `advertencias` carries `{ codigo: "plantilla_no_aplicada", campo, motivo: "plan" | "no_existe" | "incompatible", mensaje }`.
+- `listTemplates({ tipoDte? })` (API `GET /v1/representacion/plantillas`): the templates the key's company can choose, with `permitida`, the reason when not, the DTE types they draw and the `datos` keys each prints. Rejects with a 404 `FactaError` on an API server that does not have the endpoint yet.
+- The browser handler forwards the `plantilla_no_aplicada` warnings to the window as `result.advertencias` (and no other warning).
+- `DownloadedDocument.plantilla` (PDF and ticket downloads): the template applied, from the `X-Facta-Plantilla` response header (catalogue id or `custom:<uuid>@<version>`); absent when the server does not send it.
+- Depends on the server release that adds `representacion.plantilla`; `datos` already works on current servers.
+
 ## 0.5.1 (2026-10-07)
 
 - The agent skill (`skills/facta-dte-api`) now always targets Facta's public API (the SDK default base URL) and documents both environments: `facta_test_` keys for pruebas (`00`) and `facta_live_` keys for producción (`01`), switched by key and never by URL, with a `status()` gate and a warning that a live key issues real fiscal documents.

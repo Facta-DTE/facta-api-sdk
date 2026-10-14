@@ -6,7 +6,7 @@
 // a subset of the SDK's own types: the handler minimises what it returns, so
 // every field beyond the summary is optional here.
 
-import type { DeliveryChannelStatus, DeliveryChannel, DteType, Totals } from "../types.ts";
+import type { DeliveryChannelStatus, DeliveryChannel, DteType, TemplateNotAppliedWarning, Totals } from "../types.ts";
 import type { FactaErrorCode } from "../errors.ts";
 
 /** Codes the handler adds on top of `FactaErrorCode`. */
@@ -100,6 +100,8 @@ export interface IssueSummary {
    * integrator's emergency store took it. Never carries a path or a file.
    */
   emergency?: { saved: boolean; reason: string; critical?: boolean };
+  /** Requested templates the server did not use (the company's own was used instead), with the reason. */
+  advertencias?: TemplateNotAppliedWarning[];
   /** Lets the window ask `status` about this document. Added by the client. */
   statusToken?: string;
   /** Opaque, session-bound handle for `delivery.status`. Added by the client, consumed by the flow. */

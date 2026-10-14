@@ -115,6 +115,9 @@ import type {
   ManagedStorageStatus,
   InvalidationRequest,
   DteRequest,
+  DteType,
+  Representation,
+  RepresentationTemplates,
   ReturnResult,
   ReturnRequest,
   Status,
@@ -243,6 +246,11 @@ export interface FactaInvalidationArchiveOptions {
 export interface DebugOptions {
   /** Ask for per-step processing times (`X-Facta-Debug: timings`). */
   timings?: boolean;
+}
+
+export interface SignOptions extends CallOptions {
+  /** Per-sale values and template choice for the graphical representation of the signed document. */
+  representacion?: Representation;
 }
 
 export interface CallOptions {
@@ -491,6 +499,7 @@ const CATALOG_MODE_TTL_MS = 60_000;
  */
 const DEFAULT_REGIONS = { test: "us-west-2", live: "us-west-2" } as const;
 const REGION_PATTERN = /^[a-z]{2}(?:-[a-z]+)+-\d+$/;
+const TEMPLATE_TAG = /^(?:[A-Za-z0-9][A-Za-z0-9_-]{0,63}|custom:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}@[1-9][0-9]{0,8})$/;
 const REGION_DISCOVERY_TIMEOUT_MS = 5_000;
 const REGION_RETRY_MS = 60_000;
 
@@ -2147,7 +2156,9 @@ export class Facta {
     throwIfAborted(options.signal);
     const resolved = await this.#resolveCatalogRefs(request);
     throwIfAborted(options.signal);
-    return this.#request<PreparedDte>("POST", "/v1/dte/prepare", resolved, options);
+    // `representacion` belongs to sign/issue; prepare rejects it, so a request shared between the two flows is stripped here.
+    const { representacion: _representacion, ...forPrepare } = resolved as DteRequest & { representacion?: Representation };
+    return this.#request<PreparedDte>("POST", "/v1/dte/prepare", forPrepare, options);
   }
 
   /**
@@ -2189,11 +2200,25 @@ export class Facta {
    * Pass the document through UNCHANGED. The server checks a MAC over its
    * canonical hash, so a single altered cent is refused instead of signed.
    */
-  async sign(prepared: PreparedDte, options: CallOptions = {}): Promise<IssueResult> {
+  async sign(prepared: PreparedDte, options: SignOptions = {}): Promise<IssueResult> {
+    const { representacion, ...call } = options;
     return await this.#guard(await this.#request<IssueResult>("POST", "/v1/dte/sign", {
       prepareToken: prepared.prepareToken,
       documento: prepared.documento,
-    }, options), []);
+      ...(representacion === undefined ? {} : { representacion }),
+    }, call), []);
+  }
+
+  /**
+   * Templates the key's company can choose per document (`representacion.plantilla`), with the `datos`
+   * keys each one prints. Free plans see only free templates as `permitida: true`; pass `tipoDte` to
+   * list only those that can draw that type.
+   * Throws a `FactaError` with status 404 on an API server that does not have the endpoint yet.
+   */
+  listTemplates(options: { tipoDte?: DteType } & CallOptions = {}): Promise<RepresentationTemplates> {
+    const { tipoDte, ...call } = options;
+    const query = tipoDte === undefined ? "" : `?tipoDte=${encodeURIComponent(tipoDte)}`;
+    return this.#request<RepresentationTemplates>("GET", `/v1/representacion/plantillas${query}`, undefined, call);
   }
 
   /**
@@ -2530,12 +2555,14 @@ export class Facta {
     if (options.source === "managed" && downloaded.storageSource !== "managed") {
       throw new FactaError(downloaded.storageSource === undefined ? "storage_unsupported" : "storage_contract_invalid", "API did not return the explicitly requested managed copy.", 502);
     }
+    const { plantilla: appliedTemplate, ...rest } = downloaded;
     return {
-      ...downloaded,
+      ...rest,
       codigoGeneracion: generationCode,
       kind,
       ...(downloaded.storageSource === undefined ? {} : { storageSource: downloaded.storageSource }),
       ...(kind === "json" && downloaded.jsonFormat !== undefined ? { jsonFormat: downloaded.jsonFormat } : {}),
+      ...(kind !== "json" && appliedTemplate !== undefined ? { plantilla: appliedTemplate } : {}),
       ...(kind === "ticket" ? { paperWidthMm: paperWidthMm ?? 80 } : {}),
     };
   }
@@ -2645,12 +2672,14 @@ export class Facta {
         if (!response.ok) return await this.#parseError(response);
         const storageSource = response.headers.get("x-facta-storage-source");
         const jsonFormat = response.headers.get("x-facta-json-format");
+        const plantilla = response.headers.get("x-facta-plantilla");
         return {
           bytes: new Uint8Array(await response.arrayBuffer()),
           contentType: response.headers.get("content-type") ?? "application/octet-stream",
           filename: response.headers.get("content-disposition")?.match(/filename="?([^";]+)\"?/)?.[1] ?? null,
           ...(isStorageSource(storageSource) ? { storageSource } : {}),
           ...(jsonFormat === "archivo-dte" || jsonFormat === "raw" ? { jsonFormat } : {}),
+          ...(plantilla !== null && TEMPLATE_TAG.test(plantilla) ? { plantilla } : {}),
         } as T;
       } finally {
         clearTimeout(timer); signal?.removeEventListener("abort", abort);

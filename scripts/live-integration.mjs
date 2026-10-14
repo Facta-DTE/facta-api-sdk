@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createValidationResults, renderLiveReport, safeFailureCode } from "./live-report.mjs";
 import { validateLiveManagedStorage } from "./live-managed-storage.mjs";
+import { validateLiveTemplates } from "./live-templates.mjs";
 import { emailDeliveryReportState, emailDeliveryVerdict, emailDeliveryWarningLines } from "./live-delivery.mjs";
 import { requireLiveSnapshots, validateLiveCatalogReads, validateLiveCatalogWriteGate } from "./live-preflight.mjs";
 import {
@@ -25,6 +26,8 @@ const reportDir = process.env.FACTA_LIVE_REPORT_DIR;
 const liveMode = process.env.FACTA_LIVE_MODE ?? "emit-test-fe";
 // Optional: the inbox the e-mail delivery check sends to. Unset means the check
 // is reported as not run; nothing is sent.
+// Opt-in: one more test FE that chooses a template and fills per-sale data.
+const liveTemplates = process.env.FACTA_LIVE_TEMPLATES === "true";
 const deliveryInbox = process.env.STAGING_FACTA_DELIVERY_EMAIL?.trim() || undefined;
 const EXPECTED_STAGING_API_BASE_URL =
   "https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1";
@@ -312,6 +315,20 @@ try {
     console.log("SKIP e-mail delivery: STAGING_FACTA_DELIVERY_EMAIL is not configured");
   } else {
     await validateLiveEmailDelivery(facta, request);
+  }
+
+  currentCheck = "templates";
+  if (!liveTemplates) {
+    checks.templates = "Not run (not requested)";
+    console.log("SKIP templates: not requested (FACTA_LIVE_TEMPLATES is not true)");
+  } else {
+    try {
+      checks.templates = await validateLiveTemplates(facta, { runId });
+    } catch (error) {
+      // An SDK error keeps its stable code; anything else is reported under a fixed category.
+      if (typeof error?.code !== "string" || error.name === "AssertionError") error.code = "templates_failed";
+      throw error;
+    }
   }
 } catch (error) {
   checks[currentCheck] = "Failed";

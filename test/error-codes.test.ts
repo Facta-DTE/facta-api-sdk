@@ -6,7 +6,9 @@ import { assert, assertEquals } from "jsr:@std/assert@1";
  * lacks makes `error.code === "..."` fail to compile for integrators, so the
  * two lists are compared here.
  */
-function contractCodes(yaml: string): string[] {
+function contractCodes(source: string): string[] {
+  // A Windows checkout (core.autocrlf) makes the fixture CRLF; the parser below is line based.
+  const yaml = source.split(String.fromCharCode(13)).join("");
   const start = yaml.indexOf("\n    Error:\n");
   assert(start > 0, "Error schema not found in the contract");
   const enumStart = yaml.indexOf("enum:\n", start);
