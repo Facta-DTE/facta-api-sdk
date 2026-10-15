@@ -101,6 +101,9 @@ Everything else is final for that request.
 | `storage_unsupported` | 501 | no | Server lacks the managed-storage route, or `source: "managed"` got no proof → update the server before depending on it. |
 | `storage_unavailable` | 503 | yes | Managed copy cannot be read/repaired right now → retry only the storage operation; never re-issue. |
 | `storage_contract_invalid` | 502 (SDK) | no | Malformed storage response/receipt; on a successful issue it appears as `result.storageErrorCode` with the sealed result intact → repair later (`recoverOperation` / `retryDocumentStorage`). |
+| `drive_reauthorization_required` | 409 | no | Google revoked the Drive destination's long key → open Facta and press «Confirmar en Google» on that Drive; other destinations keep working. |
+| `drive_not_configured` | 503 | no | Facta server has no Google OAuth client → contact support. |
+| `drive_token_failed` | 502 | no | Google refused the Drive token renewal → retry later. |
 
 ## Delivery
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.0 (unreleased)
+
+- Google Drive copies from the destinations vault: when a `gdrive` destination's secret carries a long key (`refreshToken`, confirmed once in the Facta app with «Confirmar en Google»), `issueAndArchive`, `recoverOperation` and the emergency/read paths now write to it at the canonical `DTE/<env>/<yyyy>/<mm>/<numeroControl>.{json,pdf}` layout. Before, every Drive was skipped.
+- New `facta.driveToken(destinationId, refreshToken)` for `POST /v1/destinations/{id}/drive-token`, which exchanges the long key for a one-hour access token (the Google OAuth client secret never ships in the SDK). Tokens are cached in memory per destination until 60 s before expiry; concurrent artifacts share one renewal; a rotated long key is used for later renewals in the same process.
+- New error codes `drive_reauthorization_required` (409), `drive_not_configured` (503) and `drive_token_failed` (502). A Drive that cannot be authorized is reported as a skipped destination with its code (or as `unavailable` for one write) and never stops the emission or the other destinations. A Drive without a long key is still skipped, now with a reason that says to press «Confirmar en Google».
+- Requires an `api-v1` that serves the route; older servers answer `not_found`, reported the same way.
+
 ## 0.5.2 (2026-10-15)
 
 - Docs and skill: deactivating **and reactivating** customers and products works from the API. `updateCustomer(id, { activo: true })` / `updateProduct(id, { activo: true })` reactivate (`PATCH` with `{"activo": true}`). The Spanish README said the public API does not create or update customers or products, and the catalog-write guides and the skill said reactivation is done in the Facta app; all were out of date since catalog writes shipped, and the web app does not list deactivated customers at all.

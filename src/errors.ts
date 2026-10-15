@@ -57,6 +57,13 @@ export type FactaErrorCode =
   | "storage_unsupported"
   | "storage_unavailable"
   | "storage_contract_invalid"
+  // `POST /v1/destinations/{id}/drive-token` (Google Drive copies from the vault).
+  /** Google revoked or expired the Drive's long key (HTTP 409): open Facta and press «Confirmar en Google». */
+  | "drive_reauthorization_required"
+  /** The Facta server has no Google OAuth client configured (HTTP 503). */
+  | "drive_not_configured"
+  /** Google refused the renewal for any other reason (HTTP 502). */
+  | "drive_token_failed"
   // Delivery by e-mail / WhatsApp (docs/api-delivery-tokens.md §3.3).
   /** The five-minute delivery token expired (HTTP 410). The channel state becomes `vencido`. */
   | "entrega_vencida"

@@ -140,6 +140,9 @@ documento está firmado y Facta lo retransmitirá.
 | `storage_unsupported` | 501 | no | El servidor no expone la ruta de almacenamiento administrado (el SDK también le asigna los 404), o una descarga con `source: "managed"` no trajo la prueba de origen. | Actualice el servidor antes de depender de ello. |
 | `storage_unavailable` | 503 | **sí** | La copia administrada no se pudo leer o reparar en este momento. | Reintente solo la operación de almacenamiento; nunca vuelva a emitir. |
 | `storage_contract_invalid` | 502 (SDK) | no | Una respuesta o un recibo de almacenamiento viene mal formado. En una emisión exitosa aparece en cambio como `result.storageErrorCode`, con el resultado sellado intacto. | Repare la copia después (`recoverOperation` / `retryDocumentStorage`). |
+| `drive_reauthorization_required` | 409 | no | Google revocó o venció la llave larga del destino Drive (`POST /v1/destinations/{id}/drive-token`). El SDK informa ese Drive como omitido y sigue escribiendo los demás destinos. | Abra Facta, vaya a ese destino Drive y pulse «Confirmar en Google»; la próxima copia usa la llave nueva. |
+| `drive_not_configured` | 503 | no | El servidor de Facta no tiene configurado el cliente OAuth de Google y no puede renovar tokens de Drive. | No se arregla de su lado; contacte a soporte de Facta. La copia queda como no disponible. |
+| `drive_token_failed` | 502 | no | Google rechazó la renovación del token de Drive por una razón distinta de una llave revocada. | Reintente más tarde; el SDK reintenta en la siguiente copia. |
 
 ## Entrega
 

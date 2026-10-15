@@ -129,6 +129,25 @@ produce `unknown` without replacing either file. Use one writer process per
 Drive destination; independent processes can race and leave duplicate files.
 This adapter has mock coverage, but still needs a live Drive write test.
 
+### Drive copies from the destinations vault (long key)
+
+When `unlockKey` is configured, `issueAndArchive` writes to the company's
+Google Drive destination by itself, at the same `DTE/<env>/<yyyy>/<mm>/<numeroControl>.{json,pdf}`
+layout the Facta app uses. This only works if the Drive has a **long key**: in
+the Facta app, open that Drive destination and press **«Confirmar en Google»**
+once. The long key is stored inside the encrypted destination secret; the SDK
+opens it locally and exchanges it for one-hour access tokens through
+`POST /v1/destinations/{id}/drive-token` (`facta.driveToken(id, refreshToken)`),
+because the Google OAuth client secret only exists on the Facta server. The
+server does not store or log either token. Tokens are cached in memory per
+destination until 60 seconds before they expire, and concurrent artifacts share
+one renewal.
+
+A Drive without a long key, or whose key Google revoked
+(`drive_reauthorization_required`), is reported as skipped (warning
+`byos_not_replicated`, with the code) and never stops the emission or the other
+destinations. Open Facta and press «Confirmar en Google» to restore it.
+
 ### Run the authenticated local S3 integration check
 
 The optional `pnpm test:local-s3-storage` command builds the SDK and starts a
