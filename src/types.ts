@@ -174,6 +174,8 @@ export interface CustomerInput {
   direccion?: Address | null;
   telefono?: string | null;
   correo?: string | null;
+  /** Update only: `true` reactivates a deactivated customer (`deactivateCustomer` sets it false). */
+  activo?: boolean;
   /** @deprecated Use `nombre`. */
   name?: string;
   /** @deprecated Use `tipoDocumento`. */
@@ -213,6 +215,8 @@ export interface ProductInput {
   ivaIncluido?: boolean;
   /** VAT treatment: taxed (default), exempt or non-subject. Chosen, never inferred. */
   tipoVenta?: SaleType;
+  /** Update only: `true` reactivates a deactivated product (`deactivateProduct` sets it false). */
+  activo?: boolean;
   /** @deprecated Use `descripcion`. */
   description?: string;
   /** @deprecated Use `tipoItem`. */

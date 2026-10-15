@@ -155,7 +155,7 @@ de respaldo al correo del dueño. Guía y ejemplo: [`guides/emergency.es.md`](gu
 | `syncCatalog()` | Descarga el snapshot cifrado y abre clientes/productos localmente. | No |
 | `listCustomers()`, `getCustomer(id)`, `searchCustomers(query)` | Lee o busca clientes ya autorizados para esta llave desde el snapshot descifrado localmente. | No |
 | `listProducts()`, `getProduct(id)`, `searchProducts(query)` | Lee o busca productos del snapshot descifrado localmente. | No |
-| `createCustomer(input)`, `updateCustomer(id, cambios)`, `deactivateCustomer(id)` | Alta, edición y desactivación de clientes por el API. Requiere `catalog:write` y que la empresa pase su catálogo a texto plano y lo habilite. Ver la [guía](guides/catalog-write.es.md). | Alta con `idempotencyKey` |
+| `createCustomer(input)`, `updateCustomer(id, cambios)`, `deactivateCustomer(id)` | Alta, edición, desactivación y reactivación (`updateCustomer(id, { activo: true })`) de clientes por el API. Requiere `catalog:write` y que la empresa pase su catálogo a texto plano y lo habilite. Ver la [guía](guides/catalog-write.es.md). | Alta con `idempotencyKey` |
 | `createProduct(input)`, `updateProduct(id, cambios)`, `deactivateProduct(id)` | Lo mismo para productos. No hay borrado definitivo. | Alta con `idempotencyKey` |
 | `issue(request, options?)` | Prepara, firma y transmite un DTE en una operación. | Sí |
 | `deliverEmail(codigoGeneracion, token)`, `deliverWhatsApp(codigoGeneracion, token)` | Inician la entrega por correo o WhatsApp de un DTE sellado con el token de entrega de `issue(…, { deliver })` (válido 5 minutos). | No |
@@ -563,10 +563,13 @@ const dte = await facta.issue({
 
 ## Clientes, productos y sincronización
 
-La aplicación web es la autoridad de escritura. Desde ella se mantienen los
-registros y se importan archivos CSV; la API pública no crea ni actualiza
-clientes o productos. Al sincronizar desde la aplicación, la llave recibe un
-snapshot cifrado: los clientes respetan la selección configurada para esa
+Los clientes y productos se mantienen desde la aplicación web (y con su
+importación CSV) o, si la empresa guarda su catálogo en texto plano y habilitó
+la escritura, desde la API: `createCustomer`, `updateCustomer` y
+`deactivateCustomer` (lo mismo para productos), con el alcance
+`catalog:write`. Ver la [guía de escritura del catálogo](guides/catalog-write.es.md).
+Lo que sigue describe el modo cifrado. Al sincronizar desde la aplicación, la
+llave recibe un snapshot cifrado: los clientes respetan la selección configurada para esa
 llave, los clientes futuros se agregan automáticamente salvo exclusión
 explícita, y se publican los productos activos.
 

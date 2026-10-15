@@ -122,7 +122,20 @@ deactivations are naturally repeatable and send no key.
 There is no hard delete. `deactivateCustomer` and `deactivateProduct` send
 `DELETE`, and the record is kept with `active: false`: past documents still
 resolve it, it stops appearing in lists and searches, and a deactivated product
-cannot be issued. Reactivation is done in the Facta app.
+cannot be issued. To reactivate, send `{ activo: true }` with `updateCustomer` or
+`updateProduct` (a `PATCH` to the API); the record is listed again and can be
+issued. The Facta web app does not list deactivated customers, so reactivating a
+customer is done through the API.
+
+```ts
+const inactive = await facta.listCustomers({ includeInactive: true });
+await facta.deactivateCustomer(customer.id);              // DELETE → activo: false
+await facta.updateCustomer(customer.id, { activo: true }); // PATCH  → activo: true
+```
+
+Creating a customer with the document of a deactivated one returns
+`catalog_duplicate` (409) with `details.id` and `details.activo: false`:
+reactivate it instead of creating another.
 
 ## From the browser: the server handler
 

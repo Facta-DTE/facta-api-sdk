@@ -123,7 +123,20 @@ desactivar se pueden repetir sin riesgo y no envían llave.
 No existe el borrado definitivo. `deactivateCustomer` y `deactivateProduct` envían
 `DELETE` y el registro se conserva con `active: false`: los documentos anteriores lo
 siguen resolviendo, deja de aparecer en listas y búsquedas, y un producto
-desactivado no se puede emitir. Reactivarlo se hace en la app de Facta.
+desactivado no se puede emitir. Para reactivarlo, envíe `{ activo: true }` con
+`updateCustomer` o `updateProduct` (un `PATCH` a la API); vuelve a las listas y
+se puede emitir otra vez. La aplicación web no lista los clientes desactivados,
+así que la reactivación de un cliente se hace por la API.
+
+```ts
+const inactivos = await facta.listCustomers({ includeInactive: true });
+await facta.deactivateCustomer(cliente.id);              // DELETE → activo: false
+await facta.updateCustomer(cliente.id, { activo: true }); // PATCH  → activo: true
+```
+
+Si intenta crear un cliente con el documento de uno desactivado, la respuesta es
+`catalog_duplicate` (409) con `details.id` y `details.activo: false`: reactívelo
+en lugar de crear otro.
 
 ## Desde el navegador: el handler del servidor
 
