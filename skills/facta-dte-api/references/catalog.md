@@ -128,7 +128,11 @@ await facta.deactivateProduct(product.id); // DELETE deactivates; there is no ha
   `catalog_duplicate` (409; `details.id` names it): edit it, or reactivate it if deactivated.
 - Only creates take an `idempotencyKey`; updates and deactivations are repeatable.
 - Deactivated records still resolve for past documents, vanish from lists, and a
-  deactivated product cannot be issued. Reactivation is done in the app.
+  deactivated product cannot be issued. **Reactivate through the API**:
+  `updateCustomer(id, { activo: true })` / `updateProduct(id, { activo: true })`
+  (HTTP: `PATCH` with `{"activo": true}`). The web app does not list deactivated
+  customers, so never tell a user that deactivating or reactivating "must be done in
+  the app": both work from the API when `catalog:write` is enabled.
 - From a browser: `createFactaHandler({ capabilities: { catalog: "write" }, authorize })`
   adds six `catalog.customers|products.create|update|deactivate` actions; it
   **requires an `authorize` function** (`"session-only"` is refused at construction).

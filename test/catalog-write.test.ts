@@ -216,6 +216,14 @@ Deno.test("deactivateCustomer is a DELETE and returns the deactivated record", a
   assertEquals(calls.at(-1)?.body, undefined);
 });
 
+Deno.test("updateCustomer and updateProduct with { activo: true } reactivate through PATCH", async () => {
+  const { calls, facta } = harness("plain", writeRoutes);
+  await facta.updateCustomer("c1", { activo: true });
+  assertEquals([calls.at(-1)?.method, calls.at(-1)?.path, calls.at(-1)?.body], ["PATCH", "/v1/customers/c1", { activo: true }]);
+  await facta.updateProduct("p1", { activo: true });
+  assertEquals([calls.at(-1)?.method, calls.at(-1)?.path, calls.at(-1)?.body], ["PATCH", "/v1/products/p1", { activo: true }]);
+});
+
 Deno.test("createProduct, updateProduct, deactivateProduct hit /v1/products", async () => {
   const { calls, facta } = harness("plain", writeRoutes);
   const created = await facta.createProduct({ descripcion: "Cemento", tipoItem: 1, precioUni: 9.5, ivaIncluido: false, tipoVenta: "exenta" });
