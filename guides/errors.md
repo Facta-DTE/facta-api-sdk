@@ -139,6 +139,9 @@ document is signed and Facta will retransmit it.
 | `storage_unsupported` | 501 | no | The server does not expose the managed-storage route (the SDK also maps 404 to it), or a `source: "managed"` download got no source proof. | Update the server before depending on it. |
 | `storage_unavailable` | 503 | **yes** | The managed copy could not be read or repaired right now. | Retry only the storage operation; never re-issue. |
 | `storage_contract_invalid` | 502 (SDK) | no | A storage response or receipt is malformed. On a successful issue it appears as `result.storageErrorCode` instead, with the sealed result intact. | Repair the copy later (`recoverOperation` / `retryDocumentStorage`). |
+| `drive_reauthorization_required` | 409 | no | Google revoked or expired the Drive destination's long key (`POST /v1/destinations/{id}/drive-token`). The SDK reports that Drive as skipped and keeps writing the other destinations. | Open Facta, go to that Drive destination and press «Confirmar en Google»; the next copy uses the new key. |
+| `drive_not_configured` | 503 | no | The Facta server has no Google OAuth client configured, so it cannot renew Drive tokens. | Not fixable from your side; contact Facta support. The copy is reported as unavailable. |
+| `drive_token_failed` | 502 | no | Google refused the Drive token renewal for a reason other than a revoked key. | Retry later; the SDK retries on the next copy. |
 
 ## Delivery
 

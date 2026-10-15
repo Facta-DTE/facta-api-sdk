@@ -414,6 +414,17 @@ export interface ManagedStorageArtifactReceipt {
   retryable: boolean;
 }
 
+/** Answer of `POST /v1/destinations/{id}/drive-token`. Treat both tokens as secrets. */
+export interface DriveTokenResult {
+  accessToken: string;
+  /** Seconds the access token lives. */
+  expiresIn: number;
+  /** ISO-8601 instant the access token dies. */
+  expiresAt: string;
+  /** Present only when Google rotated the long key; use it for later renewals in this process. */
+  refreshToken?: string;
+}
+
 export interface ManagedStorageReceipt {
   destination: "managed" | "none";
   environment: "00" | "01";

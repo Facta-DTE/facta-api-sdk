@@ -48,7 +48,8 @@ import {
   requireId,
   rowsOf,
 } from "./catalog-write.ts";
-import { buildSyncedDestinations, readDocumentIdentity } from "./byos-copies.ts";
+import { buildSyncedDestinations, prepareDriveTokens, readDocumentIdentity } from "./byos-copies.ts";
+import { DriveTokenBroker } from "./drive-token.ts";
 import { completeLocally, summarizeRows } from "./listed-dte.ts";
 import { createReferenceClock, type ReferenceClock } from "./reference-clock.ts";
 import { DEFAULT_CLOCK_URL } from "./clock-config.ts";
@@ -112,6 +113,7 @@ import type {
   IssueResult,
   ManagedDocumentCopy,
   ManagedStorageReceipt,
+  DriveTokenResult,
   ManagedStorageStatus,
   InvalidationRequest,
   DteRequest,
@@ -519,6 +521,16 @@ export class Facta {
   readonly #clock: ReferenceClock | null;
   readonly emergency: FactaEmergencyApi;
   readonly #desk: EmergencyDesk;
+  /** Google Drive access tokens by destination; in memory only, shared by every copy this client writes. */
+  readonly #driveTokens = new DriveTokenBroker(async (destinationId, refreshToken) => {
+    const grant = await this.driveToken(destinationId, refreshToken);
+    const expiresAt = Date.parse(grant.expiresAt);
+    return {
+      accessToken: grant.accessToken,
+      expiresAt: Number.isFinite(expiresAt) ? expiresAt : Date.now() + grant.expiresIn * 1000,
+      ...(grant.refreshToken ? { refreshToken: grant.refreshToken } : {}),
+    };
+  });
   #catalogCache: { revision: number; snapshot: CatalogSnapshot; fetchedAt: string } | null = null;
   #catalogModeCache: { mode: CatalogMode | null; at: number } | null = null;
   readonly #regionSetting: string | false | undefined;
@@ -818,6 +830,40 @@ export class Facta {
       throw new FactaError("storage_contract_invalid", "API returned an invalid managed-storage repair receipt.", 502);
     }
     return receipt;
+  }
+
+  /**
+   * Exchange a Google Drive destination's long key for a one-hour access token
+   * (`POST /v1/destinations/{id}/drive-token`). The SDK calls this by itself
+   * when it writes copies to a Drive from the destinations vault; call it
+   * directly only to write to Drive with your own code. The server never stores
+   * or logs either token. Failures: `drive_reauthorization_required` (409, the
+   * person must press «Confirmar en Google» in Facta), `drive_not_configured`
+   * (503), `drive_token_failed` (502), `not_found` (404), `rate_limited` (429).
+   */
+  async driveToken(destinationId: string, refreshToken: string, options: CallOptions = {}): Promise<DriveTokenResult> {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(destinationId)) {
+      throw new TypeError("destinationId must be a UUID.");
+    }
+    if (typeof refreshToken !== "string" || refreshToken === "" || refreshToken.length > 2048) {
+      throw new TypeError("refreshToken must be a string of 1 to 2048 characters.");
+    }
+    const value = await this.#request<unknown>(
+      "POST",
+      `/v1/destinations/${encodeURIComponent(destinationId)}/drive-token`,
+      { refreshToken },
+      options,
+    );
+    if (!isRecord(value) || typeof value.accessToken !== "string" || value.accessToken === "" ||
+      typeof value.expiresIn !== "number" || typeof value.expiresAt !== "string") {
+      throw new FactaError("drive_token_failed", "API returned an invalid Google Drive token response.", 502);
+    }
+    return {
+      accessToken: value.accessToken,
+      expiresIn: value.expiresIn,
+      expiresAt: value.expiresAt,
+      ...(typeof value.refreshToken === "string" && value.refreshToken !== "" ? { refreshToken: value.refreshToken } : {}),
+    };
   }
 
   /** Download and open the destination snapshot in this process only. */
@@ -1342,10 +1388,12 @@ export class Facta {
     const out: RemoteArtifactDestination[] = [...(this.#runtime.remoteDestinations ?? [])];
     if (out.length > 0 || this.#runtime.replicate === false || this.#unlockKey === null || identity.fecEmi === null) return out;
     const snapshot = await this.syncDestinations();
+    await prepareDriveTokens(snapshot, this.#driveTokens);
     return buildSyncedDestinations(snapshot, {
       environment: this.#environment(),
       identity: { numeroControl: identity.numeroControl, fecEmi: identity.fecEmi },
       fetch: this.#fetch,
+      drive: this.#driveTokens,
     }).destinations;
   }
 
@@ -2055,10 +2103,12 @@ export class Facta {
       const code = operation?.codigoGeneracion;
       const json = code ? await this.#getVerifiedArtifact(archive, code, "json") : null;
       if (!json) return warn("The archived legal JSON is not available, so the canonical BYOS path could not be built.");
+      await prepareDriveTokens(snapshot, this.#driveTokens);
       const built = buildSyncedDestinations(snapshot, {
         environment: this.#environment(),
         identity: readDocumentIdentity(json.bytes),
         fetch: this.#fetch,
+        drive: this.#driveTokens,
       });
       return {
         destinations: built.destinations,
@@ -2306,7 +2356,8 @@ export class Facta {
       unlockKeyConfigured: this.#unlockKey !== null,
       open: async () => {
         const snapshot = await this.syncDestinations();
-        return buildSyncedDestinations(snapshot, { environment: this.#environment(), fetch: this.#fetch }).destinations;
+        await prepareDriveTokens(snapshot, this.#driveTokens);
+        return buildSyncedDestinations(snapshot, { environment: this.#environment(), fetch: this.#fetch, drive: this.#driveTokens }).destinations;
       },
     });
     summarizeRows(page.documentos);

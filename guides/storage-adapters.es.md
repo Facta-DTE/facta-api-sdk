@@ -91,6 +91,25 @@ const destination = createGoogleDriveArtifactDestination({
 
 Drive permite nombres duplicados y no ofrece una operación atómica de creación condicional para este modelo de rutas. El adaptador etiqueta los archivos con un digest de ruta privado en `appProperties`, serializa escrituras de la misma ruta dentro de una instancia y revisa todas las coincidencias indexadas durante la recuperación. Si encuentra coincidencias divergentes, informa `unknown` sin reemplazar ningún archivo. Usa un solo proceso escritor por destino de Drive; procesos independientes pueden competir y dejar archivos duplicados. Este adaptador tiene cobertura con mocks, pero aún necesita una prueba de escritura real en Drive.
 
+### Copias a Drive desde la bóveda de destinos (llave larga)
+
+Con `unlockKey` configurada, `issueAndArchive` escribe por sí mismo en el
+destino Google Drive de la empresa, con la misma estructura
+`DTE/<ambiente>/<aaaa>/<mm>/<numeroControl>.{json,pdf}` de la app de Facta. Solo
+funciona si ese Drive tiene **llave larga**: en la app de Facta, abra ese
+destino Drive y pulse **«Confirmar en Google»** una vez. La llave larga vive
+dentro del secreto cifrado del destino; el SDK la abre localmente y la cambia
+por tokens de una hora mediante `POST /v1/destinations/{id}/drive-token`
+(`facta.driveToken(id, refreshToken)`), porque el secreto del cliente OAuth de
+Google solo existe en el servidor de Facta, que no guarda ni registra ningún
+token. Los tokens se guardan en memoria por destino hasta 60 segundos antes de
+vencer y los artefactos concurrentes comparten una sola renovación.
+
+Un Drive sin llave larga, o cuya llave Google revocó
+(`drive_reauthorization_required`), se informa como omitido (advertencia
+`byos_not_replicated`, con el código) y nunca detiene la emisión ni los demás
+destinos. Abra Facta y pulse «Confirmar en Google» para restaurarlo.
+
 ### Ejecutar la comprobación local autenticada de integración S3
 
 El comando opcional `pnpm test:local-s3-storage` compila el SDK e inicia un servicio S3 temporal de SeaweedFS en Docker con credenciales generadas al azar. Verifica que se rechacen las solicitudes sin firma y luego prueba SigV4 para escribir y leer, reintentar una escritura idéntica y conservar los bytes existentes si una carga distinta apunta al mismo objeto. El servicio solo escucha en loopback y, al terminar, el comando elimina el contenedor y el archivo temporal de credenciales. Docker debe estar disponible. Define `FACTA_TEST_S3_IMAGE` para usar una imagen SeaweedFS local en vez de la imagen predeterminada.

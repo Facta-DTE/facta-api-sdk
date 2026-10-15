@@ -79,7 +79,7 @@ A document's own date and time are set by Facta's server, never by this SDK. The
 The `Facta` client exposes the following English methods:
 
 - **Status and diagnostics:** `status`, `diagnose`, `getContract`, `getStorageStatus`.
-- **Synchronization and catalog:** `syncDestinations`, `syncCatalog`, `catalogState`, `listCustomers`, `getCustomer`, `searchCustomers`, `listProducts`, `getProduct`, `searchProducts`.
+- **Synchronization and catalog:** `syncDestinations`, `driveToken`, `syncCatalog`, `catalogState`, `listCustomers`, `getCustomer`, `searchCustomers`, `listProducts`, `getProduct`, `searchProducts`.
 - **Catalog writes (plain-text catalog, scope `catalog:write`):** `createCustomer`, `updateCustomer`, `deactivateCustomer`, `createProduct`, `updateProduct`, `deactivateProduct`. Reads work in all three catalog modes (`encrypted`, `readable`, `plain`). See the [catalog write guide](guides/catalog-write.md).
 - **DTE lifecycle:** `issue`, `prepare`, `sign`, `getDocumentStatus`, `listDocuments`, `invalidate`, `registerReturn`, `listHolding`, `downloadDocument`, `getDocumentCopies`, `retryDocumentStorage`.
 - **Durable archival:** `issueAndArchive`, `recoverOperation`, `listPendingOperations`, `invalidateAndArchive`, `recoverInvalidation`, `listPendingInvalidations`, `replicateArchive`, `diagnoseDestinations`.
@@ -147,7 +147,7 @@ The type system helps construct payloads but does not replace server-side tax va
 
 ## Catalog and destination snapshots
 
-`syncCatalog()` and `syncDestinations()` decrypt their respective published snapshots in memory using `unlockKey`. They do not create or update server records and do not write artifacts to storage destinations. Catalog-backed customer/product lookup uses only a fresh snapshot for fiscal issuance; stale opt-in is limited to non-fiscal reads.
+`syncCatalog()` and `syncDestinations()` decrypt their respective published snapshots in memory using `unlockKey`. They do not create or update server records and do not write artifacts to storage destinations (the archive methods do that, including Google Drive destinations that have a long key confirmed in the Facta app with «Confirmar en Google»; see the [storage adapters guide](guides/storage-adapters.md)). Catalog-backed customer/product lookup uses only a fresh snapshot for fiscal issuance; stale opt-in is limited to non-fiscal reads.
 
 `issue()` never writes to storage. With `unlockKey` and a published snapshot, `issueAndArchive()` and `recoverOperation()` also replicate the legal JSON and PDF to your synced destinations under Facta's canonical `DTE/…/YYYY/MM/<numeroControl>` paths (opt out with `replicate: false`), report verified copies to Facta, and surface problems as non-throwing `warnings`. See [what each mode does](guides/storage-adapters.md#where-documents-go-each-mode).
 
