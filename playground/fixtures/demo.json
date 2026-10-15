@@ -1,0 +1,79 @@
+{
+  "customers": [
+    {
+      "id": "demo-comercial",
+      "label": "Comercial Demo, S.A. de C.V.",
+      "receptor": {
+        "nombre": "Comercial Demo, S.A. de C.V.",
+        "tipoDocumento": "36",
+        "numDocumento": "06140101991014",
+        "nrc": "987654",
+        "codActividad": "62010",
+        "descActividad": "Programación informática",
+        "direccion": { "departamento": "06", "municipio": "14", "complemento": "Calle Demo 100, colonia Ejemplo, San Salvador" },
+        "correo": "contabilidad@comercial-demo.example",
+        "nombreComercial": "Comercial Demo"
+      }
+    },
+    {
+      "id": "demo-servicios",
+      "label": "Servicios Profesionales Demo, S.A.S. de C.V.",
+      "receptor": {
+        "nombre": "Servicios Profesionales Demo, S.A.S. de C.V.",
+        "tipoDocumento": "36",
+        "numDocumento": "06141502881021",
+        "nrc": "246810",
+        "codActividad": "62020",
+        "descActividad": "Consultoría informática",
+        "direccion": { "departamento": "06", "municipio": "14", "complemento": "Avenida Ejemplo 200, edificio Demo, San Salvador" },
+        "correo": "facturas@servicios-demo.example"
+      }
+    },
+    {
+      "id": "demo-persona",
+      "label": "Persona natural demo (DUI)",
+      "receptor": {
+        "nombre": "Ana Ejemplo Demostración",
+        "tipoDocumento": "13",
+        "numDocumento": "048293168",
+        "direccion": { "departamento": "06", "municipio": "14", "complemento": "Pasaje Demo 12, colonia Ejemplo, San Salvador" },
+        "correo": "ana@persona-demo.example"
+      }
+    },
+    {
+      "id": "demo-proveedor",
+      "label": "Proveedor informal demo (sujeto excluido)",
+      "receptor": {
+        "nombre": "Carlos Proveedor Demostración",
+        "tipoDocumento": "13",
+        "numDocumento": "013579246",
+        "direccion": { "departamento": "06", "municipio": "14", "complemento": "Callejón Demo 7, barrio Ejemplo, San Salvador" },
+        "correo": "carlos@proveedor-demo.example"
+      }
+    },
+    {
+      "id": "demo-extranjero",
+      "label": "Demo Imports LLC (receptor extranjero)",
+      "receptor": {
+        "nombre": "Demo Imports LLC",
+        "numDocumento": "DEMO-US-0001",
+        "codPais": "US",
+        "nombrePais": "Estados Unidos de América",
+        "complemento": "100 Demo Street, Suite 5, Miami, FL",
+        "tipoPersona": 2,
+        "descActividad": "Comercio al por mayor de alimentos",
+        "correo": "compras@demo-imports.example"
+      }
+    }
+  ],
+  "products": [
+    { "id": "cafe", "label": "Café de altura, bolsa de 1 lb", "descripcion": "Café de altura, bolsa de 1 lb", "precioUni": 8.5 },
+    { "id": "taza", "label": "Taza de cerámica artesanal", "descripcion": "Taza de cerámica artesanal", "precioUni": 12 },
+    { "id": "asesoria", "label": "Hora de asesoría técnica", "descripcion": "Hora de asesoría técnica", "precioUni": 25 },
+    { "id": "envio", "label": "Envío a domicilio", "descripcion": "Envío a domicilio", "precioUni": 3 }
+  ],
+  "invalidation": {
+    "responsable": { "nombre": "Responsable Demo Ejemplo", "tipoDocumento": "13", "numDocumento": "075318648" },
+    "solicita": { "nombre": "Solicitante Demo Ejemplo", "tipoDocumento": "13", "numDocumento": "024681357" }
+  }
+}

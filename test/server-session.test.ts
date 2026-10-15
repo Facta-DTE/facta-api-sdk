@@ -26,6 +26,12 @@ Deno.test("a session round-trips with its payload", async () => {
   assertEquals(s.request, REQUEST);
 });
 
+Deno.test("display.recipient round-trips and is bounded", async () => {
+  const token = await createFactaSession({ ...INPUT, display: { recipient: "Ferretería Díaz · NIT ••••123" } }, SECRET, 1_000_000);
+  assertEquals((await verifyFactaSession(token, SECRET, 1_000_000)).display, { recipient: "Ferretería Díaz · NIT ••••123" });
+  await assertRejects(() => createFactaSession({ ...INPUT, display: { recipient: "r".repeat(121) } }, SECRET), TypeError);
+});
+
 Deno.test("each session carries a fresh nonce", async () => {
   const a = await verifyFactaSession(await createFactaSession(INPUT, SECRET), SECRET);
   const b = await verifyFactaSession(await createFactaSession(INPUT, SECRET), SECRET);

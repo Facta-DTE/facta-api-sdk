@@ -1,0 +1,227 @@
+[
+  {
+    "code": "00",
+    "value": "Otro (Para extranjeros)",
+    "departamento": "00"
+  },
+  {
+    "code": "13",
+    "value": "AHUACHAPAN NORTE",
+    "departamento": "01"
+  },
+  {
+    "code": "14",
+    "value": "AHUACHAPAN CENTRO",
+    "departamento": "01"
+  },
+  {
+    "code": "15",
+    "value": "AHUACHAPAN SUR",
+    "departamento": "01"
+  },
+  {
+    "code": "14",
+    "value": "SANTA ANA NORTE",
+    "departamento": "02"
+  },
+  {
+    "code": "15",
+    "value": "SANTA ANA CENTRO",
+    "departamento": "02"
+  },
+  {
+    "code": "16",
+    "value": "SANTA ANA ESTE",
+    "departamento": "02"
+  },
+  {
+    "code": "17",
+    "value": "SANTA ANA OESTE",
+    "departamento": "02"
+  },
+  {
+    "code": "17",
+    "value": "SONSONATE NORTE",
+    "departamento": "03"
+  },
+  {
+    "code": "18",
+    "value": "SONSONATE CENTRO",
+    "departamento": "03"
+  },
+  {
+    "code": "19",
+    "value": "SONSONATE ESTE",
+    "departamento": "03"
+  },
+  {
+    "code": "20",
+    "value": "SONSONATE OESTE",
+    "departamento": "03"
+  },
+  {
+    "code": "34",
+    "value": "CHALATENANGO NORTE",
+    "departamento": "04"
+  },
+  {
+    "code": "35",
+    "value": "CHALATENANGO CENTRO",
+    "departamento": "04"
+  },
+  {
+    "code": "36",
+    "value": "CHALATENANGO SUR",
+    "departamento": "04"
+  },
+  {
+    "code": "23",
+    "value": "LA LIBERTAD NORTE",
+    "departamento": "05"
+  },
+  {
+    "code": "24",
+    "value": "LA LIBERTAD CENTRO",
+    "departamento": "05"
+  },
+  {
+    "code": "25",
+    "value": "LA LIBERTAD OESTE",
+    "departamento": "05"
+  },
+  {
+    "code": "26",
+    "value": "LA LIBERTAD ESTE",
+    "departamento": "05"
+  },
+  {
+    "code": "27",
+    "value": "LA LIBERTAD COSTA",
+    "departamento": "05"
+  },
+  {
+    "code": "28",
+    "value": "LA LIBERTAD SUR",
+    "departamento": "05"
+  },
+  {
+    "code": "20",
+    "value": "SAN SALVADOR NORTE",
+    "departamento": "06"
+  },
+  {
+    "code": "21",
+    "value": "SAN SALVADOR OESTE",
+    "departamento": "06"
+  },
+  {
+    "code": "22",
+    "value": "SAN SALVADOR ESTE",
+    "departamento": "06"
+  },
+  {
+    "code": "23",
+    "value": "SAN SALVADOR CENTRO",
+    "departamento": "06"
+  },
+  {
+    "code": "24",
+    "value": "SAN SALVADOR SUR",
+    "departamento": "06"
+  },
+  {
+    "code": "17",
+    "value": "CUSCATLAN NORTE",
+    "departamento": "07"
+  },
+  {
+    "code": "18",
+    "value": "CUSCATLAN SUR",
+    "departamento": "07"
+  },
+  {
+    "code": "23",
+    "value": "LA PAZ OESTE",
+    "departamento": "08"
+  },
+  {
+    "code": "24",
+    "value": "LA PAZ CENTRO",
+    "departamento": "08"
+  },
+  {
+    "code": "25",
+    "value": "LA PAZ ESTE",
+    "departamento": "08"
+  },
+  {
+    "code": "10",
+    "value": "CABAÑAS ESTE",
+    "departamento": "09"
+  },
+  {
+    "code": "11",
+    "value": "CABAÑAS OESTE",
+    "departamento": "09"
+  },
+  {
+    "code": "14",
+    "value": "SAN VICENTE NORTE",
+    "departamento": "10"
+  },
+  {
+    "code": "15",
+    "value": "SAN VICENTE SUR",
+    "departamento": "10"
+  },
+  {
+    "code": "24",
+    "value": "USULUTAN NORTE",
+    "departamento": "11"
+  },
+  {
+    "code": "25",
+    "value": "USULUTAN ESTE",
+    "departamento": "11"
+  },
+  {
+    "code": "26",
+    "value": "USULUTAN OESTE",
+    "departamento": "11"
+  },
+  {
+    "code": "21",
+    "value": "SAN MIGUEL NORTE",
+    "departamento": "12"
+  },
+  {
+    "code": "22",
+    "value": "SAN MIGUEL CENTRO",
+    "departamento": "12"
+  },
+  {
+    "code": "23",
+    "value": "SAN MIGUEL OESTE",
+    "departamento": "12"
+  },
+  {
+    "code": "27",
+    "value": "MORAZAN NORTE",
+    "departamento": "13"
+  },
+  {
+    "code": "28",
+    "value": "MORAZAN SUR",
+    "departamento": "13"
+  },
+  {
+    "code": "19",
+    "value": "LA UNION NORTE",
+    "departamento": "14"
+  },
+  {
+    "code": "20",
+    "value": "LA UNION SUR",
+    "departamento": "14"
+  }
+]

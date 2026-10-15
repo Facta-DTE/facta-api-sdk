@@ -8,7 +8,7 @@
     "hola": "deno eval \"import { main } from './examples/hola-factura.ts'; await main();\""
   },
   "test": {
-    "exclude": ["node_modules", "dist", "test-react", "examples/react-preview", "preview"]
+    "exclude": ["node_modules", "dist", "test-react", "examples/react-preview", "preview", "playground"]
   },
   "lock": false
 }

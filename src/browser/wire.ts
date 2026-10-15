@@ -50,6 +50,8 @@ export interface SessionDisplay {
   reference?: string;
   /** A short subtitle, e.g. «Pedido #1042 · Café del Volcán». */
   title?: string;
+  /** Who the document is for when the draft only carries a `customerId`: a short, masked label. */
+  recipient?: string;
 }
 
 export interface SessionInfo {

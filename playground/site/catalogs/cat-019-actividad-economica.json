@@ -1,0 +1,3098 @@
+[
+  {
+    "code": "01111",
+    "value": "Cultivo de cereales excepto arroz y para forrajes"
+  },
+  {
+    "code": "01112",
+    "value": "Cultivo de legumbres"
+  },
+  {
+    "code": "01113",
+    "value": "Cultivo de semillas oleaginosas"
+  },
+  {
+    "code": "01114",
+    "value": "Cultivo de plantas para la preparación de semillas"
+  },
+  {
+    "code": "01119",
+    "value": "Cultivo de otros cereales excepto arroz y forrajeros n.c.p."
+  },
+  {
+    "code": "01120",
+    "value": "Cultivo de arroz"
+  },
+  {
+    "code": "01131",
+    "value": "Cultivo de raíces y tubérculos"
+  },
+  {
+    "code": "01132",
+    "value": "Cultivo de brotes, bulbos, vegetales tubérculos y cultivos similares"
+  },
+  {
+    "code": "01133",
+    "value": "Cultivo hortícola de fruto"
+  },
+  {
+    "code": "01134",
+    "value": "Cultivo de hortalizas de hoja y otras hortalizas ncp"
+  },
+  {
+    "code": "01140",
+    "value": "Cultivo de caña de azúcar"
+  },
+  {
+    "code": "01150",
+    "value": "Cultivo de tabaco"
+  },
+  {
+    "code": "01161",
+    "value": "Cultivo de algodón"
+  },
+  {
+    "code": "01162",
+    "value": "Cultivo de fibras vegetales excepto algodón"
+  },
+  {
+    "code": "01191",
+    "value": "Cultivo de plantas no perennes para la producción de semillas y flores"
+  },
+  {
+    "code": "01192",
+    "value": "Cultivo de cereales y pastos para la alimentación animal"
+  },
+  {
+    "code": "01199",
+    "value": "Producción de cultivos no estacionales ncp"
+  },
+  {
+    "code": "01220",
+    "value": "Cultivo de frutas tropicales"
+  },
+  {
+    "code": "01230",
+    "value": "Cultivo de cítricos"
+  },
+  {
+    "code": "01240",
+    "value": "Cultivo de frutas de pepita y hueso"
+  },
+  {
+    "code": "01251",
+    "value": "Cultivo de frutas ncp"
+  },
+  {
+    "code": "01252",
+    "value": "Cultivo de otros frutos y nueces de árboles y arbustos"
+  },
+  {
+    "code": "01260",
+    "value": "Cultivo de frutos oleaginosos"
+  },
+  {
+    "code": "01271",
+    "value": "Cultivo de café"
+  },
+  {
+    "code": "01272",
+    "value": "Cultivo de plantas para la elaboración de bebidas excepto café"
+  },
+  {
+    "code": "01281",
+    "value": "Cultivo de especias y aromáticas"
+  },
+  {
+    "code": "01282",
+    "value": "Cultivo de plantas para la obtención de productos medicinales y farmacéuticos"
+  },
+  {
+    "code": "01291",
+    "value": "Cultivo de árboles de hule (caucho) para la obtención de látex"
+  },
+  {
+    "code": "01292",
+    "value": "Cultivo de plantas para la obtención de productos químicos y colorantes"
+  },
+  {
+    "code": "01299",
+    "value": "Producción de cultivos perennes ncp"
+  },
+  {
+    "code": "01300",
+    "value": "Propagación de plantas"
+  },
+  {
+    "code": "01301",
+    "value": "Cultivo de plantas y flores ornamentales"
+  },
+  {
+    "code": "01410",
+    "value": "Cría y engorde de ganado bovino"
+  },
+  {
+    "code": "01420",
+    "value": "Cría de caballos y otros equinos"
+  },
+  {
+    "code": "01440",
+    "value": "Cría de ovejas y cabras"
+  },
+  {
+    "code": "01450",
+    "value": "Cría de cerdos"
+  },
+  {
+    "code": "01460",
+    "value": "Cría de aves de corral y producción de huevos"
+  },
+  {
+    "code": "01491",
+    "value": "Cría de abejas apicultura para la obtención de miel y otros productos apícolas"
+  },
+  {
+    "code": "01492",
+    "value": "Cría de conejos"
+  },
+  {
+    "code": "01493",
+    "value": "Cría de iguanas y garrobos"
+  },
+  {
+    "code": "01494",
+    "value": "Cría de mariposas y otros insectos"
+  },
+  {
+    "code": "01499",
+    "value": "Cría y obtención de productos animales n.c.p."
+  },
+  {
+    "code": "01500",
+    "value": "Cultivo de productos agrícolas en combinación con la cría de animales"
+  },
+  {
+    "code": "01611",
+    "value": "Servicios de maquinaria agrícola"
+  },
+  {
+    "code": "01612",
+    "value": "Control de plagas"
+  },
+  {
+    "code": "01613",
+    "value": "Servicios de riego"
+  },
+  {
+    "code": "01614",
+    "value": "Servicios de contratación de mano de obra para la agricultura"
+  },
+  {
+    "code": "01619",
+    "value": "Servicios agrícolas ncp"
+  },
+  {
+    "code": "01621",
+    "value": "Actividades para mejorar la reproducción, el crecimiento y el rendimiento de los animales y sus productos"
+  },
+  {
+    "code": "01622",
+    "value": "Servicios de mano de obra pecuaria"
+  },
+  {
+    "code": "01629",
+    "value": "Servicios pecuarios ncp"
+  },
+  {
+    "code": "01631",
+    "value": "Labores post cosecha de preparación de los productos agrícolas para su comercialización o para la industria"
+  },
+  {
+    "code": "01632",
+    "value": "Servicio de beneficio de café"
+  },
+  {
+    "code": "01633",
+    "value": "Servicio de beneficiado de plantas textiles (incluye el beneficiado cuando este es realizado en la misma explotación agropecuaria)"
+  },
+  {
+    "code": "01640",
+    "value": "Tratamiento de semillas para la propagación"
+  },
+  {
+    "code": "01700",
+    "value": "Caza ordinaria y mediante trampas, repoblación de animales de caza y servicios conexos"
+  },
+  {
+    "code": "02100",
+    "value": "Silvicultura y otras actividades forestales"
+  },
+  {
+    "code": "02200",
+    "value": "Extracción de madera"
+  },
+  {
+    "code": "02300",
+    "value": "Recolección de productos diferentes a la madera"
+  },
+  {
+    "code": "02400",
+    "value": "Servicios de apoyo a la silvicultura"
+  },
+  {
+    "code": "03110",
+    "value": "Pesca marítima de altura y costera"
+  },
+  {
+    "code": "03120",
+    "value": "Pesca de agua dulce"
+  },
+  {
+    "code": "03210",
+    "value": "Acuicultura marítima"
+  },
+  {
+    "code": "03220",
+    "value": "Acuicultura de agua dulce"
+  },
+  {
+    "code": "03300",
+    "value": "Servicios de apoyo a la pesca y acuicultura"
+  },
+  {
+    "code": "05100",
+    "value": "Extracción de hulla"
+  },
+  {
+    "code": "05200",
+    "value": "Extracción y aglomeración de lignito"
+  },
+  {
+    "code": "06100",
+    "value": "Extracción de petróleo crudo"
+  },
+  {
+    "code": "06200",
+    "value": "Extracción de gas natural"
+  },
+  {
+    "code": "07100",
+    "value": "Extracción de minerales de hierro"
+  },
+  {
+    "code": "07210",
+    "value": "Extracción de minerales de uranio y torio"
+  },
+  {
+    "code": "07290",
+    "value": "Extracción de minerales metalíferos no ferrosos"
+  },
+  {
+    "code": "08100",
+    "value": "Extracción de piedra, arena y arcilla"
+  },
+  {
+    "code": "08910",
+    "value": "Extracción de minerales para la fabricación de abonos y productos químicos"
+  },
+  {
+    "code": "08920",
+    "value": "Extracción y aglomeración de turba"
+  },
+  {
+    "code": "08930",
+    "value": "Extracción de sal"
+  },
+  {
+    "code": "08990",
+    "value": "Explotación de otras minas y canteras ncp"
+  },
+  {
+    "code": "09100",
+    "value": "Actividades de apoyo a la extracción de petróleo y gas natural"
+  },
+  {
+    "code": "09900",
+    "value": "Actividades de apoyo a la explotación de minas y canteras"
+  },
+  {
+    "code": "10101",
+    "value": "Servicio de rastros y mataderos de bovinos y porcinos"
+  },
+  {
+    "code": "10102",
+    "value": "Matanza y procesamiento de bovinos y porcinos"
+  },
+  {
+    "code": "10103",
+    "value": "Matanza y procesamientos de aves de corral"
+  },
+  {
+    "code": "10104",
+    "value": "Elaboración y conservación de embutidos y tripas naturales"
+  },
+  {
+    "code": "10105",
+    "value": "Servicios de conservación y empaque de carnes"
+  },
+  {
+    "code": "10106",
+    "value": "Elaboración y conservación de grasas y aceites animales"
+  },
+  {
+    "code": "10107",
+    "value": "Servicios de molienda de carne"
+  },
+  {
+    "code": "10108",
+    "value": "Elaboración de productos de carne ncp"
+  },
+  {
+    "code": "10201",
+    "value": "Procesamiento y conservación de pescado, crustáceos y moluscos"
+  },
+  {
+    "code": "10209",
+    "value": "Fabricación de productos de pescado ncp"
+  },
+  {
+    "code": "10301",
+    "value": "Elaboración de jugos de frutas y hortalizas"
+  },
+  {
+    "code": "10302",
+    "value": "Elaboración y envase de jaleas, mermeladas y frutas deshidratadas"
+  },
+  {
+    "code": "10309",
+    "value": "Elaboración de productos de frutas y hortalizas n.c.p."
+  },
+  {
+    "code": "10401",
+    "value": "Fabricación de aceites y grasas vegetales y animales comestibles"
+  },
+  {
+    "code": "10402",
+    "value": "Fabricación de aceites y grasas vegetales y animales no comestibles"
+  },
+  {
+    "code": "10409",
+    "value": "Servicio de maquilado de aceites"
+  },
+  {
+    "code": "10501",
+    "value": "Fabricación de productos lácteos excepto sorbetes y quesos sustitutos"
+  },
+  {
+    "code": "10502",
+    "value": "Fabricación de sorbetes y helados"
+  },
+  {
+    "code": "10503",
+    "value": "Fabricación de quesos"
+  },
+  {
+    "code": "10611",
+    "value": "Molienda de cereales"
+  },
+  {
+    "code": "10612",
+    "value": "Elaboración de cereales para el desayuno y similares"
+  },
+  {
+    "code": "10613",
+    "value": "Servicios de beneficiado de productos agrícolas ncp (excluye Beneficio de azúcar rama 1072 y beneficio de café rama 0163)"
+  },
+  {
+    "code": "10621",
+    "value": "Fabricación de almidón"
+  },
+  {
+    "code": "10628",
+    "value": "Servicio de molienda de maíz húmedo molino para nixtamal"
+  },
+  {
+    "code": "10711",
+    "value": "Elaboración de tortillas"
+  },
+  {
+    "code": "10712",
+    "value": "Fabricación de pan, galletas y barquillos"
+  },
+  {
+    "code": "10713",
+    "value": "Fabricación de repostería"
+  },
+  {
+    "code": "10721",
+    "value": "Ingenios azucareros"
+  },
+  {
+    "code": "10722",
+    "value": "Molienda de caña de azúcar para la elaboración de dulces"
+  },
+  {
+    "code": "10723",
+    "value": "Elaboración de jarabes de azúcar y otros similares"
+  },
+  {
+    "code": "10724",
+    "value": "Maquilado de azúcar de caña"
+  },
+  {
+    "code": "10730",
+    "value": "Fabricación de cacao, chocolates y productos de confitería"
+  },
+  {
+    "code": "10740",
+    "value": "Elaboración de macarrones, fideos, y productos farináceos similares"
+  },
+  {
+    "code": "10750",
+    "value": "Elaboración de comidas y platos preparados para la reventa en locales y/o para exportación"
+  },
+  {
+    "code": "10791",
+    "value": "Elaboración de productos de café"
+  },
+  {
+    "code": "10792",
+    "value": "Elaboración de especies, sazonadores y condimentos"
+  },
+  {
+    "code": "10793",
+    "value": "Elaboración de sopas, cremas y consomé"
+  },
+  {
+    "code": "10794",
+    "value": "Fabricación de bocadillos tostados y/o fritos"
+  },
+  {
+    "code": "10799",
+    "value": "Elaboración de productos alimenticios ncp"
+  },
+  {
+    "code": "10800",
+    "value": "Elaboración de alimentos preparados para animales"
+  },
+  {
+    "code": "11012",
+    "value": "Fabricación de aguardiente y licores"
+  },
+  {
+    "code": "11020",
+    "value": "Elaboración de vinos"
+  },
+  {
+    "code": "11030",
+    "value": "Fabricación de cerveza"
+  },
+  {
+    "code": "11041",
+    "value": "Fabricación de aguas gaseosas"
+  },
+  {
+    "code": "11042",
+    "value": "Fabricación y envasado de agua"
+  },
+  {
+    "code": "11043",
+    "value": "Elaboración de refrescos"
+  },
+  {
+    "code": "11048",
+    "value": "Maquilado de aguas gaseosas"
+  },
+  {
+    "code": "11049",
+    "value": "Elaboración de bebidas no alcohólicas"
+  },
+  {
+    "code": "12000",
+    "value": "Elaboración de productos de tabaco"
+  },
+  {
+    "code": "13111",
+    "value": "Preparación de fibras textiles"
+  },
+  {
+    "code": "13112",
+    "value": "Fabricación de hilados"
+  },
+  {
+    "code": "13120",
+    "value": "Fabricación de telas"
+  },
+  {
+    "code": "13130",
+    "value": "Acabado de productos textiles"
+  },
+  {
+    "code": "13910",
+    "value": "Fabricación de tejidos de punto y ganchillo"
+  },
+  {
+    "code": "13921",
+    "value": "Fabricación de productos textiles para el hogar"
+  },
+  {
+    "code": "13922",
+    "value": "Sacos, bolsas y otros artículos textiles"
+  },
+  {
+    "code": "13929",
+    "value": "Fabricación de artículos confeccionados con materiales textiles, excepto prendas de vestir n.c.p"
+  },
+  {
+    "code": "13930",
+    "value": "Fabricación de tapices y alfombras"
+  },
+  {
+    "code": "13941",
+    "value": "Fabricación de cuerdas de henequén y otras fibras naturales (lazos, pitas)"
+  },
+  {
+    "code": "13942",
+    "value": "Fabricación de redes de diversos materiales"
+  },
+  {
+    "code": "13948",
+    "value": "Maquilado de productos trenzables de cualquier material (petates, sillas, etc.)"
+  },
+  {
+    "code": "13991",
+    "value": "Fabricación de adornos, etiquetas y otros artículos para prendas de vestir"
+  },
+  {
+    "code": "13992",
+    "value": "Servicio de bordados en artículos y prendas de tela"
+  },
+  {
+    "code": "13999",
+    "value": "Fabricación de productos textiles ncp"
+  },
+  {
+    "code": "14101",
+    "value": "Fabricación de ropa interior, para dormir y similares"
+  },
+  {
+    "code": "14102",
+    "value": "Fabricación de ropa para niños"
+  },
+  {
+    "code": "14103",
+    "value": "Fabricación de prendas de vestir para ambos sexos"
+  },
+  {
+    "code": "14104",
+    "value": "Confección de prendas a medida"
+  },
+  {
+    "code": "14105",
+    "value": "Fabricación de prendas de vestir para deportes"
+  },
+  {
+    "code": "14106",
+    "value": "Elaboración de artesanías de uso personal confeccionadas especialmente de materiales textiles"
+  },
+  {
+    "code": "14108",
+    "value": "Maquilado de prendas de vestir, accesorios y otros"
+  },
+  {
+    "code": "14109",
+    "value": "Fabricación de prendas y accesorios de vestir n.c.p."
+  },
+  {
+    "code": "14200",
+    "value": "Fabricación de artículos de piel"
+  },
+  {
+    "code": "14301",
+    "value": "Fabricación de calcetines, calcetas, medias (panty house) y otros similares"
+  },
+  {
+    "code": "14302",
+    "value": "Fabricación de ropa interior de tejido de punto"
+  },
+  {
+    "code": "14309",
+    "value": "Fabricación de prendas de vestir de tejido de punto ncp"
+  },
+  {
+    "code": "15110",
+    "value": "Curtido y adobo de cueros; adobo y teñido de pieles"
+  },
+  {
+    "code": "15121",
+    "value": "Fabricación de maletas, bolsos de mano y otros artículos de marroquinería"
+  },
+  {
+    "code": "15122",
+    "value": "Fabricación de monturas, accesorios y vainas talabartería"
+  },
+  {
+    "code": "15123",
+    "value": "Fabricación de artesanías principalmente de cuero natural y sintético"
+  },
+  {
+    "code": "15128",
+    "value": "Maquilado de artículos de cuero natural, sintético y de otros materiales"
+  },
+  {
+    "code": "15201",
+    "value": "Fabricación de calzado"
+  },
+  {
+    "code": "15202",
+    "value": "Fabricación de partes y accesorios de calzado"
+  },
+  {
+    "code": "15208",
+    "value": "Maquilado de partes y accesorios de calzado"
+  },
+  {
+    "code": "16100",
+    "value": "Aserradero y acepilladura de madera"
+  },
+  {
+    "code": "16210",
+    "value": "Fabricación de madera laminada, terciada, enchapada y contrachapada, paneles para la construcción"
+  },
+  {
+    "code": "16220",
+    "value": "Fabricación de partes y piezas de carpintería para edificios y construcciones"
+  },
+  {
+    "code": "16230",
+    "value": "Fabricación de envases y recipientes de madera"
+  },
+  {
+    "code": "16292",
+    "value": "Fabricación de artesanías de madera, semillas, materiales trenzables"
+  },
+  {
+    "code": "16299",
+    "value": "Fabricación de productos de madera, corcho, paja y materiales trenzables ncp"
+  },
+  {
+    "code": "17010",
+    "value": "Fabricación de pasta de madera, papel y cartón"
+  },
+  {
+    "code": "17020",
+    "value": "Fabricación de papel y cartón ondulado y envases de papel y cartón"
+  },
+  {
+    "code": "17091",
+    "value": "Fabricación de artículos de papel y cartón de uso personal y doméstico"
+  },
+  {
+    "code": "17092",
+    "value": "Fabricación de productos de papel ncp"
+  },
+  {
+    "code": "18110",
+    "value": "Impresión"
+  },
+  {
+    "code": "18120",
+    "value": "Servicios relacionados con la impresión"
+  },
+  {
+    "code": "18200",
+    "value": "Reproducción de grabaciones"
+  },
+  {
+    "code": "19100",
+    "value": "Fabricación de productos de hornos de coque"
+  },
+  {
+    "code": "19201",
+    "value": "Fabricación de combustible"
+  },
+  {
+    "code": "19202",
+    "value": "Fabricación de aceites y lubricantes"
+  },
+  {
+    "code": "20111",
+    "value": "Fabricación de materias primas para la fabricación de colorantes"
+  },
+  {
+    "code": "20112",
+    "value": "Fabricación de materiales curtientes"
+  },
+  {
+    "code": "20113",
+    "value": "Fabricación de gases industriales"
+  },
+  {
+    "code": "20114",
+    "value": "Fabricación de alcohol etílico"
+  },
+  {
+    "code": "20119",
+    "value": "Fabricación de sustancias químicas básicas"
+  },
+  {
+    "code": "20120",
+    "value": "Fabricación de abonos y fertilizantes"
+  },
+  {
+    "code": "20130",
+    "value": "Fabricación de plástico y caucho en formas primarias"
+  },
+  {
+    "code": "20210",
+    "value": "Fabricación de plaguicidas y otros productos químicos de uso agropecuario"
+  },
+  {
+    "code": "20220",
+    "value": "Fabricación de pinturas, barnices y productos de revestimiento similares; tintas de imprenta y masillas"
+  },
+  {
+    "code": "20231",
+    "value": "Fabricación de jabones, detergentes y similares para limpieza"
+  },
+  {
+    "code": "20232",
+    "value": "Fabricación de perfumes, cosméticos y productos de higiene y cuidado personal, incluyendo tintes, champú, etc."
+  },
+  {
+    "code": "20291",
+    "value": "Fabricación de tintas y colores para escribir y pintar; fabricación de cintas para impresoras"
+  },
+  {
+    "code": "20292",
+    "value": "Fabricación de productos pirotécnicos, explosivos y municiones"
+  },
+  {
+    "code": "20299",
+    "value": "Fabricación de productos químicos n.c.p."
+  },
+  {
+    "code": "20300",
+    "value": "Fabricación de fibras artificiales"
+  },
+  {
+    "code": "21001",
+    "value": "Manufactura de productos farmacéuticos, sustancias químicas y productos botánicos"
+  },
+  {
+    "code": "21008",
+    "value": "Maquilado de medicamentos"
+  },
+  {
+    "code": "22110",
+    "value": "Fabricación de cubiertas y cámaras; renovación y recauchutado de cubiertas"
+  },
+  {
+    "code": "22190",
+    "value": "Fabricación de otros productos de caucho"
+  },
+  {
+    "code": "22201",
+    "value": "Fabricación de envases plásticos"
+  },
+  {
+    "code": "22202",
+    "value": "Fabricación de productos plásticos para uso personal o doméstico"
+  },
+  {
+    "code": "22208",
+    "value": "Maquila de plásticos"
+  },
+  {
+    "code": "22209",
+    "value": "Fabricación de productos plásticos n.c.p."
+  },
+  {
+    "code": "23101",
+    "value": "Fabricación de vidrio"
+  },
+  {
+    "code": "23102",
+    "value": "Fabricación de recipientes y envases de vidrio"
+  },
+  {
+    "code": "23108",
+    "value": "Servicio de maquilado"
+  },
+  {
+    "code": "23109",
+    "value": "Fabricación de productos de vidrio ncp"
+  },
+  {
+    "code": "23910",
+    "value": "Fabricación de productos refractarios"
+  },
+  {
+    "code": "23920",
+    "value": "Fabricación de productos de arcilla para la construcción"
+  },
+  {
+    "code": "23931",
+    "value": "Fabricación de productos de cerámica y porcelana no refractaria"
+  },
+  {
+    "code": "23932",
+    "value": "Fabricación de productos de cerámica y porcelana ncp"
+  },
+  {
+    "code": "23940",
+    "value": "Fabricación de cemento, cal y yeso"
+  },
+  {
+    "code": "23950",
+    "value": "Fabricación de artículos de hormigón, cemento y yeso"
+  },
+  {
+    "code": "23960",
+    "value": "Corte, tallado y acabado de la piedra"
+  },
+  {
+    "code": "23990",
+    "value": "Fabricación de productos minerales no metálicos ncp"
+  },
+  {
+    "code": "24100",
+    "value": "Industrias básicas de hierro y acero"
+  },
+  {
+    "code": "24200",
+    "value": "Fabricación de productos primarios de metales preciosos y metales no ferrosos"
+  },
+  {
+    "code": "24310",
+    "value": "Fundición de hierro y acero"
+  },
+  {
+    "code": "24320",
+    "value": "Fundición de metales no ferrosos"
+  },
+  {
+    "code": "25111",
+    "value": "Fabricación de productos metálicos para uso estructural"
+  },
+  {
+    "code": "25118",
+    "value": "Servicio de maquila para la fabricación de estructuras metálicas"
+  },
+  {
+    "code": "25120",
+    "value": "Fabricación de tanques, depósitos y recipientes de metal"
+  },
+  {
+    "code": "25130",
+    "value": "Fabricación de generadores de vapor, excepto calderas de agua caliente para calefacción central"
+  },
+  {
+    "code": "25200",
+    "value": "Fabricación de armas y municiones"
+  },
+  {
+    "code": "25910",
+    "value": "Forjado, prensado, estampado y laminado de metales; pulvimetalurgia"
+  },
+  {
+    "code": "25920",
+    "value": "Tratamiento y revestimiento de metales"
+  },
+  {
+    "code": "25930",
+    "value": "Fabricación de artículos de cuchillería, herramientas de mano y artículos de ferretería"
+  },
+  {
+    "code": "25991",
+    "value": "Fabricación de envases y artículos conexos de metal"
+  },
+  {
+    "code": "25992",
+    "value": "Fabricación de artículos metálicos de uso personal y/o doméstico"
+  },
+  {
+    "code": "25999",
+    "value": "Fabricación de productos elaborados de metal ncp"
+  },
+  {
+    "code": "26100",
+    "value": "Fabricación de componentes electrónicos"
+  },
+  {
+    "code": "26200",
+    "value": "Fabricación de computadoras y equipo conexo"
+  },
+  {
+    "code": "26300",
+    "value": "Fabricación de equipo de comunicaciones"
+  },
+  {
+    "code": "26400",
+    "value": "Fabricación de aparatos electrónicos de consumo para audio, video radio y televisión"
+  },
+  {
+    "code": "26510",
+    "value": "Fabricación de instrumentos y aparatos para medir, verificar, ensayar, navegar y de control de procesos industriales"
+  },
+  {
+    "code": "26520",
+    "value": "Fabricación de relojes y piezas de relojes"
+  },
+  {
+    "code": "26600",
+    "value": "Fabricación de equipo médico de irradiación y equipo electrónico de uso médico y terapéutico"
+  },
+  {
+    "code": "26700",
+    "value": "Fabricación de instrumentos de óptica y equipo fotográfico"
+  },
+  {
+    "code": "26800",
+    "value": "Fabricación de medios magnéticos y ópticos"
+  },
+  {
+    "code": "27100",
+    "value": "Fabricación de motores, generadores, transformadores eléctricos, aparatos de distribución y control de electricidad"
+  },
+  {
+    "code": "27200",
+    "value": "Fabricación de pilas, baterías y acumuladores"
+  },
+  {
+    "code": "27310",
+    "value": "Fabricación de cables de fibra óptica"
+  },
+  {
+    "code": "27320",
+    "value": "Fabricación de otros hilos y cables eléctricos"
+  },
+  {
+    "code": "27330",
+    "value": "Fabricación de dispositivos de cableados"
+  },
+  {
+    "code": "27400",
+    "value": "Fabricación de equipo eléctrico de iluminación"
+  },
+  {
+    "code": "27500",
+    "value": "Fabricación de aparatos de uso doméstico"
+  },
+  {
+    "code": "27900",
+    "value": "Fabricación de otros tipos de equipo eléctrico"
+  },
+  {
+    "code": "28110",
+    "value": "Fabricación de motores y turbinas, excepto motores para aeronaves, vehículos automotores y motocicletas"
+  },
+  {
+    "code": "28120",
+    "value": "Fabricación de equipo hidráulico"
+  },
+  {
+    "code": "28130",
+    "value": "Fabricación de otras bombas, compresores, grifos y válvulas"
+  },
+  {
+    "code": "28140",
+    "value": "Fabricación de cojinetes, engranajes, trenes de engranajes y piezas de transmisión"
+  },
+  {
+    "code": "28150",
+    "value": "Fabricación de hornos y quemadores"
+  },
+  {
+    "code": "28160",
+    "value": "Fabricación de equipo de elevación y manipulación"
+  },
+  {
+    "code": "28170",
+    "value": "Fabricación de maquinaria y equipo de oficina"
+  },
+  {
+    "code": "28180",
+    "value": "Fabricación de herramientas manuales"
+  },
+  {
+    "code": "28190",
+    "value": "Fabricación de otros tipos de maquinaria de uso general"
+  },
+  {
+    "code": "28210",
+    "value": "Fabricación de maquinaria agropecuaria y forestal"
+  },
+  {
+    "code": "28220",
+    "value": "Fabricación de máquinas para conformar metales y maquinaria herramienta"
+  },
+  {
+    "code": "28230",
+    "value": "Fabricación de maquinaria metalúrgica"
+  },
+  {
+    "code": "28240",
+    "value": "Fabricación de maquinaria para la explotación de minas y canteras y para obras de construcción"
+  },
+  {
+    "code": "28250",
+    "value": "Fabricación de maquinaria para la elaboración de alimentos, bebidas y tabaco"
+  },
+  {
+    "code": "28260",
+    "value": "Fabricación de maquinaria para la elaboración de productos textiles, prendas de vestir y cueros"
+  },
+  {
+    "code": "28291",
+    "value": "Fabricación de máquinas para imprenta"
+  },
+  {
+    "code": "28299",
+    "value": "Fabricación de maquinaria de uso especial ncp"
+  },
+  {
+    "code": "29100",
+    "value": "Fabricación vehículos automotores"
+  },
+  {
+    "code": "29200",
+    "value": "Fabricación de carrocerías para vehículos automotores; fabricación de remolques y semiremolques"
+  },
+  {
+    "code": "29300",
+    "value": "Fabricación de partes, piezas y accesorios para vehículos automotores"
+  },
+  {
+    "code": "30110",
+    "value": "Fabricación de buques"
+  },
+  {
+    "code": "30120",
+    "value": "Construcción y reparación de embarcaciones de recreo"
+  },
+  {
+    "code": "30200",
+    "value": "Fabricación de locomotoras y de material rodante"
+  },
+  {
+    "code": "30300",
+    "value": "Fabricación de aeronaves y naves espaciales"
+  },
+  {
+    "code": "30400",
+    "value": "Fabricación de vehículos militares de combate"
+  },
+  {
+    "code": "30910",
+    "value": "Fabricación de motocicletas"
+  },
+  {
+    "code": "30920",
+    "value": "Fabricación de bicicletas y sillones de ruedas para inválidos"
+  },
+  {
+    "code": "30990",
+    "value": "Fabricación de equipo de transporte ncp"
+  },
+  {
+    "code": "31001",
+    "value": "Fabricación de colchones y somier"
+  },
+  {
+    "code": "31002",
+    "value": "Fabricación de muebles y otros productos de madera a medida"
+  },
+  {
+    "code": "31008",
+    "value": "Servicios de maquilado de muebles"
+  },
+  {
+    "code": "31009",
+    "value": "Fabricación de muebles ncp"
+  },
+  {
+    "code": "32110",
+    "value": "Fabricación de joyas platerías y joyerías"
+  },
+  {
+    "code": "32120",
+    "value": "Fabricación de joyas de imitación (fantasía) y artículos conexos"
+  },
+  {
+    "code": "32200",
+    "value": "Fabricación de instrumentos musicales"
+  },
+  {
+    "code": "32301",
+    "value": "Fabricación de artículos de deporte"
+  },
+  {
+    "code": "32308",
+    "value": "Servicio de maquila de productos deportivos"
+  },
+  {
+    "code": "32401",
+    "value": "Fabricación de juegos de mesa y de salón"
+  },
+  {
+    "code": "32402",
+    "value": "Servicio de maquilado de juguetes y juegos"
+  },
+  {
+    "code": "32409",
+    "value": "Fabricación de juegos y juguetes n.c.p."
+  },
+  {
+    "code": "32500",
+    "value": "Fabricación de instrumentos y materiales médicos y odontológicos"
+  },
+  {
+    "code": "32901",
+    "value": "Fabricación de lápices, bolígrafos, sellos y artículos de librería en general"
+  },
+  {
+    "code": "32902",
+    "value": "Fabricación de escobas, cepillos, pinceles y similares"
+  },
+  {
+    "code": "32903",
+    "value": "Fabricación de artesanías de materiales diversos"
+  },
+  {
+    "code": "32904",
+    "value": "Fabricación de artículos de uso personal y domésticos n.c.p."
+  },
+  {
+    "code": "32905",
+    "value": "Fabricación de accesorios para las confecciones y la marroquinería n.c.p."
+  },
+  {
+    "code": "32908",
+    "value": "Servicios de maquila ncp"
+  },
+  {
+    "code": "32909",
+    "value": "Fabricación de productos manufacturados n.c.p."
+  },
+  {
+    "code": "33110",
+    "value": "Reparación y mantenimiento de productos elaborados de metal"
+  },
+  {
+    "code": "33120",
+    "value": "Reparación y mantenimiento de maquinaria"
+  },
+  {
+    "code": "33130",
+    "value": "Reparación y mantenimiento de equipo electrónico y óptico"
+  },
+  {
+    "code": "33140",
+    "value": "Reparación y mantenimiento de equipo eléctrico"
+  },
+  {
+    "code": "33150",
+    "value": "Reparación y mantenimiento de equipo de transporte, excepto vehículos automotores"
+  },
+  {
+    "code": "33190",
+    "value": "Reparación y mantenimiento de equipos n.c.p."
+  },
+  {
+    "code": "33200",
+    "value": "Instalación de maquinaria y equipo industrial"
+  },
+  {
+    "code": "35101",
+    "value": "Generación de energía eléctrica"
+  },
+  {
+    "code": "35102",
+    "value": "Transmisión de energía eléctrica"
+  },
+  {
+    "code": "35103",
+    "value": "Distribución de energía eléctrica"
+  },
+  {
+    "code": "35200",
+    "value": "Fabricación de gas, distribución de combustibles gaseosos por tuberías"
+  },
+  {
+    "code": "35300",
+    "value": "Suministro de vapor y agua caliente"
+  },
+  {
+    "code": "36000",
+    "value": "Captación, tratamiento y suministro de agua"
+  },
+  {
+    "code": "37000",
+    "value": "Evacuación de aguas residuales (alcantarillado)"
+  },
+  {
+    "code": "38110",
+    "value": "Recolección y transporte de desechos sólidos proveniente de hogares y sector urbano"
+  },
+  {
+    "code": "38120",
+    "value": "Recolección de desechos peligrosos"
+  },
+  {
+    "code": "38210",
+    "value": "Tratamiento y eliminación de desechos inicuos"
+  },
+  {
+    "code": "38220",
+    "value": "Tratamiento y eliminación de desechos peligrosos"
+  },
+  {
+    "code": "38301",
+    "value": "Reciclaje de desperdicios y desechos textiles"
+  },
+  {
+    "code": "38302",
+    "value": "Reciclaje de desperdicios y desechos de plástico y caucho"
+  },
+  {
+    "code": "38303",
+    "value": "Reciclaje de desperdicios y desechos de vidrio"
+  },
+  {
+    "code": "38304",
+    "value": "Reciclaje de desperdicios y desechos de papel y cartón"
+  },
+  {
+    "code": "38305",
+    "value": "Reciclaje de desperdicios y desechos metálicos"
+  },
+  {
+    "code": "38309",
+    "value": "Reciclaje de desperdicios y desechos no metálicos n.c.p."
+  },
+  {
+    "code": "39000",
+    "value": "Actividades de Saneamiento y otros Servicios de Gestión de Desechos"
+  },
+  {
+    "code": "41001",
+    "value": "Construcción de edificios residenciales"
+  },
+  {
+    "code": "41002",
+    "value": "Construcción de edificios no residenciales"
+  },
+  {
+    "code": "42100",
+    "value": "Construcción de carreteras, calles y caminos"
+  },
+  {
+    "code": "42200",
+    "value": "Construcción de proyectos de servicio público"
+  },
+  {
+    "code": "42900",
+    "value": "Construcción de obras de ingeniería civil n.c.p."
+  },
+  {
+    "code": "43110",
+    "value": "Demolición"
+  },
+  {
+    "code": "43120",
+    "value": "Preparación de terreno"
+  },
+  {
+    "code": "43210",
+    "value": "Instalaciones eléctricas"
+  },
+  {
+    "code": "43220",
+    "value": "Instalación de fontanería, calefacción y aire acondicionado"
+  },
+  {
+    "code": "43290",
+    "value": "Otras instalaciones para obras de construcción"
+  },
+  {
+    "code": "43300",
+    "value": "Terminación y acabado de edificios"
+  },
+  {
+    "code": "43900",
+    "value": "Otras actividades especializadas de construcción"
+  },
+  {
+    "code": "43901",
+    "value": "Fabricación de techos y materiales diversos"
+  },
+  {
+    "code": "45100",
+    "value": "Venta de vehículos automotores"
+  },
+  {
+    "code": "45201",
+    "value": "Reparación mecánica de vehículos automotores"
+  },
+  {
+    "code": "45202",
+    "value": "Reparaciones eléctricas del automotor y recarga de baterías"
+  },
+  {
+    "code": "45203",
+    "value": "Enderezado y pintura de vehículos automotores"
+  },
+  {
+    "code": "45204",
+    "value": "Reparaciones de radiadores, escapes y silenciadores"
+  },
+  {
+    "code": "45205",
+    "value": "Reparación y reconstrucción de vías, stop y otros artículos de fibra de vidrio"
+  },
+  {
+    "code": "45206",
+    "value": "Reparación de llantas de vehículos automotores"
+  },
+  {
+    "code": "45207",
+    "value": "Polarizado de vehículos (mediante la adhesión de papel especial a los vidrios)"
+  },
+  {
+    "code": "45208",
+    "value": "Lavado y pasteado de vehículos (carwash)"
+  },
+  {
+    "code": "45209",
+    "value": "Reparaciones de vehículos n.c.p."
+  },
+  {
+    "code": "45211",
+    "value": "Remolque de vehículos automotores"
+  },
+  {
+    "code": "45301",
+    "value": "Venta de partes, piezas y accesorios nuevos para vehículos automotores"
+  },
+  {
+    "code": "45302",
+    "value": "Venta de partes, piezas y accesorios usados para vehículos automotores"
+  },
+  {
+    "code": "45401",
+    "value": "Venta de motocicletas"
+  },
+  {
+    "code": "45402",
+    "value": "Venta de repuestos, piezas y accesorios de motocicletas"
+  },
+  {
+    "code": "45403",
+    "value": "Mantenimiento y reparación de motocicletas"
+  },
+  {
+    "code": "46100",
+    "value": "Venta al por mayor a cambio de retribución o por contrata"
+  },
+  {
+    "code": "46201",
+    "value": "Venta al por mayor de materias primas agrícolas"
+  },
+  {
+    "code": "46202",
+    "value": "Venta al por mayor de productos de la silvicultura"
+  },
+  {
+    "code": "46203",
+    "value": "Venta al por mayor de productos pecuarios y de granja"
+  },
+  {
+    "code": "46211",
+    "value": "Venta de productos para uso agropecuario"
+  },
+  {
+    "code": "46291",
+    "value": "Venta al por mayor de granos básicos (cereales, leguminosas)"
+  },
+  {
+    "code": "46292",
+    "value": "Venta al por mayor de semillas mejoradas para cultivo"
+  },
+  {
+    "code": "46293",
+    "value": "Venta al por mayor de café oro y uva"
+  },
+  {
+    "code": "46294",
+    "value": "Venta al por mayor de caña de azúcar"
+  },
+  {
+    "code": "46295",
+    "value": "Venta al por mayor de flores, plantas y otros productos naturales"
+  },
+  {
+    "code": "46296",
+    "value": "Venta al por mayor de productos agrícolas"
+  },
+  {
+    "code": "46297",
+    "value": "Venta al por mayor de ganado bovino (vivo)"
+  },
+  {
+    "code": "46298",
+    "value": "Venta al por mayor de animales porcinos, ovinos, caprino, canículas, apícolas, avícolas vivos"
+  },
+  {
+    "code": "46299",
+    "value": "Venta de otras especies vivas del reino animal"
+  },
+  {
+    "code": "46301",
+    "value": "Venta al por mayor de alimentos"
+  },
+  {
+    "code": "46302",
+    "value": "Venta al por mayor de bebidas"
+  },
+  {
+    "code": "46303",
+    "value": "Venta al por mayor de tabaco"
+  },
+  {
+    "code": "46371",
+    "value": "Venta al por mayor de frutas, hortalizas (verduras), legumbres y tubérculos"
+  },
+  {
+    "code": "46372",
+    "value": "Venta al por mayor de pollos, gallinas destazadas, pavos y otras aves"
+  },
+  {
+    "code": "46373",
+    "value": "Venta al por mayor de carne bovina y porcina, productos de carne y embutidos"
+  },
+  {
+    "code": "46374",
+    "value": "Venta al por mayor de huevos"
+  },
+  {
+    "code": "46375",
+    "value": "Venta al por mayor de productos lácteos"
+  },
+  {
+    "code": "46376",
+    "value": "Venta al por mayor de productos farináceos de panadería (pan dulce, cakes, respostería, etc.)"
+  },
+  {
+    "code": "46377",
+    "value": "Venta al por mayor de pastas alimenticias, aceites y grasas comestibles vegetal y animal"
+  },
+  {
+    "code": "46378",
+    "value": "Venta al por mayor de sal comestible"
+  },
+  {
+    "code": "46379",
+    "value": "Venta al por mayor de azúcar"
+  },
+  {
+    "code": "46391",
+    "value": "Venta al por mayor de abarrotes (vinos, licores, productos alimenticios envasados, etc.)"
+  },
+  {
+    "code": "46392",
+    "value": "Venta al por mayor de aguas gaseosas"
+  },
+  {
+    "code": "46393",
+    "value": "Venta al por mayor de agua purificada"
+  },
+  {
+    "code": "46394",
+    "value": "Venta al por mayor de refrescos y otras bebidas, líquidas o en polvo"
+  },
+  {
+    "code": "46395",
+    "value": "Venta al por mayor de cerveza y licores"
+  },
+  {
+    "code": "46396",
+    "value": "Venta al por mayor de hielo"
+  },
+  {
+    "code": "46411",
+    "value": "Venta al por mayor de hilados, tejidos y productos textiles de mercería"
+  },
+  {
+    "code": "46412",
+    "value": "Venta al por mayor de artículos textiles excepto confecciones para el hogar"
+  },
+  {
+    "code": "46413",
+    "value": "Venta al por mayor de confecciones textiles para el hogar"
+  },
+  {
+    "code": "46414",
+    "value": "Venta al por mayor de prendas de vestir y accesorios de vestir"
+  },
+  {
+    "code": "46415",
+    "value": "Venta al por mayor de ropa usada"
+  },
+  {
+    "code": "46416",
+    "value": "Venta al por mayor de calzado"
+  },
+  {
+    "code": "46417",
+    "value": "Venta al por mayor de artículos de marroquinería y talabartería"
+  },
+  {
+    "code": "46418",
+    "value": "Venta al por mayor de artículos de peletería"
+  },
+  {
+    "code": "46419",
+    "value": "Venta al por mayor de otros artículos textiles n.c.p."
+  },
+  {
+    "code": "46471",
+    "value": "Venta al por mayor de instrumentos musicales"
+  },
+  {
+    "code": "46472",
+    "value": "Venta al por mayor de colchones, almohadas, cojines, etc."
+  },
+  {
+    "code": "46473",
+    "value": "Venta al por mayor de artículos de aluminio para el hogar y para otros usos"
+  },
+  {
+    "code": "46474",
+    "value": "Venta al por mayor de depósitos y otros artículos plásticos para el hogar y otros usos, incluyendo los desechables de durapax y no desechables"
+  },
+  {
+    "code": "46475",
+    "value": "Venta al por mayor de cámaras fotográficas, accesorios y materiales"
+  },
+  {
+    "code": "46482",
+    "value": "Venta al por mayor de medicamentos, artículos y otros productos de uso veterinario"
+  },
+  {
+    "code": "46483",
+    "value": "Venta al por mayor de productos y artículos de belleza y de uso personal"
+  },
+  {
+    "code": "46484",
+    "value": "Venta de productos farmacéuticos y medicinales"
+  },
+  {
+    "code": "46491",
+    "value": "Venta al por mayor de productos medicinales, cosméticos, perfumería y productos de limpieza"
+  },
+  {
+    "code": "46492",
+    "value": "Venta al por mayor de relojes y artículos de joyería"
+  },
+  {
+    "code": "46493",
+    "value": "Venta al por mayor de electrodomésticos y artículos del hogar excepto bazar; artículos de iluminación"
+  },
+  {
+    "code": "46494",
+    "value": "Venta al por mayor de artículos de bazar y similares"
+  },
+  {
+    "code": "46495",
+    "value": "Venta al por mayor de artículos de óptica"
+  },
+  {
+    "code": "46496",
+    "value": "Venta al por mayor de revistas, periódicos, libros, artículos de librería y artículos de papel y cartón en general"
+  },
+  {
+    "code": "46497",
+    "value": "Venta de artículos deportivos, juguetes y rodados"
+  },
+  {
+    "code": "46498",
+    "value": "Venta al por mayor de productos usados para el hogar o el uso personal"
+  },
+  {
+    "code": "46499",
+    "value": "Venta al por mayor de enseres domésticos y de uso personal n.c.p."
+  },
+  {
+    "code": "46500",
+    "value": "Venta al por mayor de bicicletas, partes, accesorios y otros"
+  },
+  {
+    "code": "46510",
+    "value": "Venta al por mayor de computadoras, equipo periférico y programas informáticos"
+  },
+  {
+    "code": "46520",
+    "value": "Venta al por mayor de equipos de comunicación"
+  },
+  {
+    "code": "46530",
+    "value": "Venta al por mayor de maquinaria y equipo agropecuario, accesorios, partes y suministros"
+  },
+  {
+    "code": "46590",
+    "value": "Venta de equipos e instrumentos de uso profesional y científico y aparatos de medida y control"
+  },
+  {
+    "code": "46591",
+    "value": "Venta al por mayor de maquinaria equipo, accesorios y materiales para la industria de la madera y sus productos"
+  },
+  {
+    "code": "46592",
+    "value": "Venta al por mayor de maquinaria, equipo, accesorios y materiales para la industria gráfica y del papel, cartón y productos de papel y cartón"
+  },
+  {
+    "code": "46593",
+    "value": "Venta al por mayor de maquinaria, equipo, accesorios y materiales para la industria de productos químicos, plástico y caucho"
+  },
+  {
+    "code": "46594",
+    "value": "Venta al por mayor de maquinaria, equipo, accesorios y materiales para la industria metálica y de sus productos"
+  },
+  {
+    "code": "46595",
+    "value": "Venta al por mayor de equipamiento para uso médico, odontológico, veterinario y servicios conexos"
+  },
+  {
+    "code": "46596",
+    "value": "Venta al por mayor de maquinaria, equipo, accesorios y partes para la industria de la alimentación"
+  },
+  {
+    "code": "46597",
+    "value": "Venta al por mayor de maquinaria, equipo, accesorios y partes para la industria textil, confecciones y cuero"
+  },
+  {
+    "code": "46598",
+    "value": "Venta al por mayor de maquinaria, equipo y accesorios para la construcción y explotación de minas y canteras"
+  },
+  {
+    "code": "46599",
+    "value": "Venta al por mayor de otro tipo de maquinaria y equipo con sus accesorios y partes"
+  },
+  {
+    "code": "46610",
+    "value": "Venta al por mayor de otros combustibles sólidos, líquidos, gaseosos y de productos conexos"
+  },
+  {
+    "code": "46612",
+    "value": "Venta al por mayor de combustibles para automotores, aviones, barcos, maquinaria y otros"
+  },
+  {
+    "code": "46613",
+    "value": "Venta al por mayor de lubricantes, grasas y otros aceites para automotores, maquinaria industrial, etc."
+  },
+  {
+    "code": "46614",
+    "value": "Venta al por mayor de gas propano"
+  },
+  {
+    "code": "46615",
+    "value": "Venta al por mayor de leña y carbón"
+  },
+  {
+    "code": "46620",
+    "value": "Venta al por mayor de metales y minerales metalíferos"
+  },
+  {
+    "code": "46631",
+    "value": "Venta al por mayor de puertas, ventanas, vitrinas y similares"
+  },
+  {
+    "code": "46632",
+    "value": "Venta al por mayor de artículos de ferretería y pinturerías"
+  },
+  {
+    "code": "46633",
+    "value": "Vidrierías"
+  },
+  {
+    "code": "46634",
+    "value": "Venta al por mayor de maderas"
+  },
+  {
+    "code": "46639",
+    "value": "Venta al por mayor de materiales para la construcción n.c.p."
+  },
+  {
+    "code": "46691",
+    "value": "Venta al por mayor de sal industrial sin yodar"
+  },
+  {
+    "code": "46692",
+    "value": "Venta al por mayor de productos intermedios y desechos de origen textil"
+  },
+  {
+    "code": "46693",
+    "value": "Venta al por mayor de productos intermedios y desechos de origen metálico"
+  },
+  {
+    "code": "46694",
+    "value": "Venta al por mayor de productos intermedios y desechos de papel y cartón"
+  },
+  {
+    "code": "46695",
+    "value": "Venta al por mayor fertilizantes, abonos, agroquímicos y productos similares"
+  },
+  {
+    "code": "46696",
+    "value": "Venta al por mayor de productos intermedios y desechos de origen plástico"
+  },
+  {
+    "code": "46697",
+    "value": "Venta al por mayor de tintas para imprenta, productos curtientes y materias y productos colorantes"
+  },
+  {
+    "code": "46698",
+    "value": "Venta de productos intermedios y desechos de origen químico y de caucho"
+  },
+  {
+    "code": "46699",
+    "value": "Venta al por mayor de productos intermedios y desechos ncp"
+  },
+  {
+    "code": "46701",
+    "value": "Venta de algodón en oro"
+  },
+  {
+    "code": "46900",
+    "value": "Venta al por mayor de otros productos"
+  },
+  {
+    "code": "46901",
+    "value": "Venta al por mayor de cohetes y otros productos pirotécnicos"
+  },
+  {
+    "code": "46902",
+    "value": "Venta al por mayor de artículos diversos para consumo humano"
+  },
+  {
+    "code": "46903",
+    "value": "Venta al por mayor de armas de fuego, municiones y accesorios"
+  },
+  {
+    "code": "46904",
+    "value": "Venta al por mayor de toldos y tiendas de campaña de cualquier material"
+  },
+  {
+    "code": "46905",
+    "value": "Venta al por mayor de exhibidores publicitarios y rótulos"
+  },
+  {
+    "code": "46906",
+    "value": "Venta al por mayor de artículos promocionales diversos"
+  },
+  {
+    "code": "47111",
+    "value": "Venta en supermercados"
+  },
+  {
+    "code": "47112",
+    "value": "Venta en tiendas de artículos de primera necesidad"
+  },
+  {
+    "code": "47119",
+    "value": "Almacenes (venta de diversos artículos)"
+  },
+  {
+    "code": "47120",
+    "value": "Almacenes (venta de diversos artículos), y venta de vehículos automotores y motocicletas"
+  },
+  {
+    "code": "47190",
+    "value": "Venta al por menor de otros productos en comercios no especializados"
+  },
+  {
+    "code": "47199",
+    "value": "Venta de establecimientos no especializados con surtido compuesto principalmente de alimentos, bebidas y tabaco"
+  },
+  {
+    "code": "47211",
+    "value": "Venta al por menor de frutas y hortalizas"
+  },
+  {
+    "code": "47212",
+    "value": "Venta al por menor de carnes, embutidos y productos de granja"
+  },
+  {
+    "code": "47213",
+    "value": "Venta al por menor de pescado y mariscos"
+  },
+  {
+    "code": "47214",
+    "value": "Venta al por menor de productos lácteos"
+  },
+  {
+    "code": "47215",
+    "value": "Venta al por menor de productos de panadería, repostería y galletas"
+  },
+  {
+    "code": "47216",
+    "value": "Venta al por menor de huevos"
+  },
+  {
+    "code": "47217",
+    "value": "Venta al por menor de carnes y productos cárnicos"
+  },
+  {
+    "code": "47218",
+    "value": "Venta al por menor de granos básicos y otros"
+  },
+  {
+    "code": "47219",
+    "value": "Venta al por menor de alimentos n.c.p."
+  },
+  {
+    "code": "47221",
+    "value": "Venta al por menor de hielo"
+  },
+  {
+    "code": "47223",
+    "value": "Venta de bebidas no alcohólicas, para su consumo fuera del establecimiento"
+  },
+  {
+    "code": "47224",
+    "value": "Venta de bebidas alcohólicas, para su consumo fuera del establecimiento"
+  },
+  {
+    "code": "47225",
+    "value": "Venta de bebidas alcohólicas para su consumo dentro del establecimiento"
+  },
+  {
+    "code": "47230",
+    "value": "Venta al por menor de tabaco"
+  },
+  {
+    "code": "47300",
+    "value": "Venta de combustibles, lubricantes y otros (gasolineras)"
+  },
+  {
+    "code": "47411",
+    "value": "Venta al por menor de computadoras y equipo periférico"
+  },
+  {
+    "code": "47412",
+    "value": "Venta de equipo y accesorios de telecomunicación"
+  },
+  {
+    "code": "47420",
+    "value": "Venta al por menor de equipo de audio y video"
+  },
+  {
+    "code": "47510",
+    "value": "Venta al por menor de hilados, tejidos y productos textiles de mercería; confecciones para el hogar y textiles n.c.p."
+  },
+  {
+    "code": "47521",
+    "value": "Venta al por menor de productos de madera"
+  },
+  {
+    "code": "47522",
+    "value": "Venta al por menor de artículos de ferretería"
+  },
+  {
+    "code": "47523",
+    "value": "Venta al por menor de productos de pinturerías"
+  },
+  {
+    "code": "47524",
+    "value": "Venta al por menor en vidrierías"
+  },
+  {
+    "code": "47529",
+    "value": "Venta al por menor de materiales de construcción y artículos conexos"
+  },
+  {
+    "code": "47530",
+    "value": "Venta al por menor de tapices, alfombras y revestimientos de paredes y pisos en comercios especializados"
+  },
+  {
+    "code": "47591",
+    "value": "Venta al por menor de muebles"
+  },
+  {
+    "code": "47592",
+    "value": "Venta al por menor de artículos de bazar"
+  },
+  {
+    "code": "47593",
+    "value": "Venta al por menor de aparatos electrodomésticos, repuestos y accesorios"
+  },
+  {
+    "code": "47594",
+    "value": "Venta al por menor de artículos eléctricos y de iluminación"
+  },
+  {
+    "code": "47598",
+    "value": "Venta al por menor de instrumentos musicales"
+  },
+  {
+    "code": "47610",
+    "value": "Venta al por menor de libros, periódicos y artículos de papelería en comercios especializados"
+  },
+  {
+    "code": "47620",
+    "value": "Venta al por menor de discos láser, cassettes, cintas de video y otros"
+  },
+  {
+    "code": "47630",
+    "value": "Venta al por menor de productos y equipos de deporte"
+  },
+  {
+    "code": "47631",
+    "value": "Venta al por menor de bicicletas, accesorios y repuestos"
+  },
+  {
+    "code": "47640",
+    "value": "Venta al por menor de juegos y juguetes en comercios especializados"
+  },
+  {
+    "code": "47711",
+    "value": "Venta al por menor de prendas de vestir y accesorios de vestir"
+  },
+  {
+    "code": "47712",
+    "value": "Venta al por menor de calzado"
+  },
+  {
+    "code": "47713",
+    "value": "Venta al por menor de artículos de peletería, marroquinería y talabartería"
+  },
+  {
+    "code": "47721",
+    "value": "Venta al por menor de medicamentos farmacéuticos y otros materiales y artículos de uso médico, odontológico y veterinario"
+  },
+  {
+    "code": "47722",
+    "value": "Venta al por menor de productos cosméticos y de tocador"
+  },
+  {
+    "code": "47731",
+    "value": "Venta al por menor de productos de joyería, bisutería, óptica, relojería"
+  },
+  {
+    "code": "47732",
+    "value": "Venta al por menor de plantas, semillas, animales y artículos conexos"
+  },
+  {
+    "code": "47733",
+    "value": "Venta al por menor de combustibles de uso doméstico (gas propano y gas licuado)"
+  },
+  {
+    "code": "47734",
+    "value": "Venta al por menor de artesanías, artículos cerámicos y recuerdos en general"
+  },
+  {
+    "code": "47735",
+    "value": "Venta al por menor de ataúdes, lápidas y cruces, trofeos, artículos religiosos en general"
+  },
+  {
+    "code": "47736",
+    "value": "Venta al por menor de armas de fuego, municiones y accesorios"
+  },
+  {
+    "code": "47737",
+    "value": "Venta al por menor de artículos de cohetería y pirotécnicos"
+  },
+  {
+    "code": "47738",
+    "value": "Venta al por menor de artículos desechables de uso personal y doméstico (servilletas, papel higiénico, pañales, toallas sanitarias, etc.)"
+  },
+  {
+    "code": "47739",
+    "value": "Venta al por menor de otros productos n.c.p."
+  },
+  {
+    "code": "47741",
+    "value": "Venta al por menor de artículos usados"
+  },
+  {
+    "code": "47742",
+    "value": "Venta al por menor de textiles y confecciones usados"
+  },
+  {
+    "code": "47743",
+    "value": "Venta al por menor de libros, revistas, papel y cartón usados"
+  },
+  {
+    "code": "47749",
+    "value": "Venta al por menor de productos usados n.c.p."
+  },
+  {
+    "code": "47811",
+    "value": "Venta al por menor de frutas, verduras y hortalizas"
+  },
+  {
+    "code": "47814",
+    "value": "Venta al por menor de productos lácteos"
+  },
+  {
+    "code": "47815",
+    "value": "Venta al por menor de productos de panadería, galletas y similares"
+  },
+  {
+    "code": "47816",
+    "value": "Venta al por menor de bebidas"
+  },
+  {
+    "code": "47818",
+    "value": "Venta al por menor en tiendas de mercado y puestos"
+  },
+  {
+    "code": "47821",
+    "value": "Venta al por menor de hilados, tejidos y productos textiles de mercería en puestos de mercados y ferias"
+  },
+  {
+    "code": "47822",
+    "value": "Venta al por menor de artículos textiles excepto confecciones para el hogar en puestos de mercados y ferias"
+  },
+  {
+    "code": "47823",
+    "value": "Venta al por menor de confecciones textiles para el hogar en puestos de mercados y ferias"
+  },
+  {
+    "code": "47824",
+    "value": "Venta al por menor de prendas de vestir, accesorios de vestir y similares en puestos de mercados y ferias"
+  },
+  {
+    "code": "47825",
+    "value": "Venta al por menor de ropa usada"
+  },
+  {
+    "code": "47826",
+    "value": "Venta al por menor de calzado, artículos de marroquinería y talabartería en puestos de mercados y ferias"
+  },
+  {
+    "code": "47827",
+    "value": "Venta al por menor de artículos de marroquinería y talabartería en puestos de mercados y ferias"
+  },
+  {
+    "code": "47829",
+    "value": "Venta al por menor de artículos textiles ncp en puestos de mercados y ferias"
+  },
+  {
+    "code": "47891",
+    "value": "Venta al por menor de animales, flores y productos conexos en puestos de feria y mercados"
+  },
+  {
+    "code": "47892",
+    "value": "Venta al por menor de productos medicinales, cosméticos, de tocador y de limpieza en puestos de ferias y mercados"
+  },
+  {
+    "code": "47893",
+    "value": "Venta al por menor de artículos de bazar en puestos de ferias y mercados"
+  },
+  {
+    "code": "47894",
+    "value": "Venta al por menor de artículos de papel, envases, libros, revistas y conexos en puestos de feria y mercados"
+  },
+  {
+    "code": "47895",
+    "value": "Venta al por menor de materiales de construcción, electrodomésticos, accesorios para autos y similares en puestos de feria y mercados"
+  },
+  {
+    "code": "47896",
+    "value": "Venta al por menor de equipos accesorios para las comunicaciones en puestos de feria y mercados"
+  },
+  {
+    "code": "47899",
+    "value": "Venta al por menor en puestos de ferias y mercados n.c.p."
+  },
+  {
+    "code": "47910",
+    "value": "Venta al por menor por correo o Internet"
+  },
+  {
+    "code": "47990",
+    "value": "Otros tipos de venta al por menor no realizada, en almacenes, puestos de venta o mercado"
+  },
+  {
+    "code": "49110",
+    "value": "Transporte interurbano de pasajeros por ferrocarril"
+  },
+  {
+    "code": "49120",
+    "value": "Transporte de carga por ferrocarril"
+  },
+  {
+    "code": "49211",
+    "value": "Transporte de pasajeros urbanos e interurbano mediante buses"
+  },
+  {
+    "code": "49212",
+    "value": "Transporte de pasajeros interdepartamental mediante microbuses"
+  },
+  {
+    "code": "49213",
+    "value": "Transporte de pasajeros urbanos e interurbano mediante microbuses"
+  },
+  {
+    "code": "49214",
+    "value": "Transporte de pasajeros interdepartamental mediante buses"
+  },
+  {
+    "code": "49221",
+    "value": "Transporte internacional de pasajeros"
+  },
+  {
+    "code": "49222",
+    "value": "Transporte de pasajeros mediante taxis y autos con chofer"
+  },
+  {
+    "code": "49223",
+    "value": "Transporte escolar"
+  },
+  {
+    "code": "49225",
+    "value": "Transporte de pasajeros para excursiones"
+  },
+  {
+    "code": "49226",
+    "value": "Servicios de transporte de personal"
+  },
+  {
+    "code": "49229",
+    "value": "Transporte de pasajeros por vía terrestre ncp"
+  },
+  {
+    "code": "49231",
+    "value": "Transporte de carga urbano"
+  },
+  {
+    "code": "49232",
+    "value": "Transporte nacional de carga"
+  },
+  {
+    "code": "49233",
+    "value": "Transporte de carga internacional"
+  },
+  {
+    "code": "49234",
+    "value": "Servicios de mudanza"
+  },
+  {
+    "code": "49235",
+    "value": "Alquiler de vehículos de carga con conductor"
+  },
+  {
+    "code": "49300",
+    "value": "Transporte por oleoducto o gasoducto"
+  },
+  {
+    "code": "50110",
+    "value": "Transporte de pasajeros marítimo y de cabotaje"
+  },
+  {
+    "code": "50120",
+    "value": "Transporte de carga marítimo y de cabotaje"
+  },
+  {
+    "code": "50211",
+    "value": "Transporte de pasajeros por vías de navegación interiores"
+  },
+  {
+    "code": "50212",
+    "value": "Alquiler de equipo de transporte de pasajeros por vías de navegación interior con conductor"
+  },
+  {
+    "code": "50220",
+    "value": "Transporte de carga por vías de navegación interiores"
+  },
+  {
+    "code": "51100",
+    "value": "Transporte aéreo de pasajeros"
+  },
+  {
+    "code": "51201",
+    "value": "Transporte de carga por vía aérea"
+  },
+  {
+    "code": "51202",
+    "value": "Alquiler de equipo de aerotransporte con operadores para el propósito de transportar carga"
+  },
+  {
+    "code": "52101",
+    "value": "Alquiler de instalaciones de almacenamiento en zonas francas"
+  },
+  {
+    "code": "52102",
+    "value": "Alquiler de silos para conservación y almacenamiento de granos"
+  },
+  {
+    "code": "52103",
+    "value": "Alquiler de instalaciones con refrigeración para almacenamiento y conservación de alimentos y otros productos"
+  },
+  {
+    "code": "52109",
+    "value": "Alquiler de bodegas para almacenamiento y depósito n.c.p."
+  },
+  {
+    "code": "52211",
+    "value": "Servicio de garaje y estacionamiento"
+  },
+  {
+    "code": "52212",
+    "value": "Servicios de terminales para el transporte por vía terrestre"
+  },
+  {
+    "code": "52219",
+    "value": "Servicios para el transporte por vía terrestre n.c.p."
+  },
+  {
+    "code": "52220",
+    "value": "Servicios para el transporte acuático"
+  },
+  {
+    "code": "52230",
+    "value": "Servicios para el transporte aéreo"
+  },
+  {
+    "code": "52240",
+    "value": "Manipulación de carga"
+  },
+  {
+    "code": "52290",
+    "value": "Servicios para el transporte ncp"
+  },
+  {
+    "code": "52291",
+    "value": "Agencias de tramitaciones aduanales"
+  },
+  {
+    "code": "53100",
+    "value": "Servicios de correo nacional"
+  },
+  {
+    "code": "53200",
+    "value": "Actividades de correo distintas a las actividades postales nacionales"
+  },
+  {
+    "code": "53201",
+    "value": "Agencia privada de correo y encomiendas"
+  },
+  {
+    "code": "55101",
+    "value": "Actividades de alojamiento para estancias cortas"
+  },
+  {
+    "code": "55102",
+    "value": "Hoteles"
+  },
+  {
+    "code": "55200",
+    "value": "Actividades de campamentos, parques de vehículos de recreo y parques de caravanas"
+  },
+  {
+    "code": "55900",
+    "value": "Alojamiento n.c.p."
+  },
+  {
+    "code": "56101",
+    "value": "Restaurantes"
+  },
+  {
+    "code": "56106",
+    "value": "Pupusería"
+  },
+  {
+    "code": "56107",
+    "value": "Actividades varias de restaurantes"
+  },
+  {
+    "code": "56108",
+    "value": "Comedores"
+  },
+  {
+    "code": "56109",
+    "value": "Merenderos ambulantes"
+  },
+  {
+    "code": "56210",
+    "value": "Preparación de comida para eventos especiales"
+  },
+  {
+    "code": "56291",
+    "value": "Servicios de provisión de comidas por contrato"
+  },
+  {
+    "code": "56292",
+    "value": "Servicios de concesión de cafetines y chalet en empresas e instituciones"
+  },
+  {
+    "code": "56299",
+    "value": "Servicios de preparación de comidas ncp"
+  },
+  {
+    "code": "56301",
+    "value": "Servicio de expendio de bebidas en salones y bares"
+  },
+  {
+    "code": "56302",
+    "value": "Servicio de expendio de bebidas en puestos callejeros, mercados y ferias"
+  },
+  {
+    "code": "58110",
+    "value": "Edición de libros, folletos, partituras y otras ediciones distintas a estas"
+  },
+  {
+    "code": "58120",
+    "value": "Edición de directorios y listas de correos"
+  },
+  {
+    "code": "58130",
+    "value": "Edición de periódicos, revistas y otras publicaciones periódicas"
+  },
+  {
+    "code": "58190",
+    "value": "Otras actividades de edición"
+  },
+  {
+    "code": "58200",
+    "value": "Edición de programas informáticos (software)"
+  },
+  {
+    "code": "59110",
+    "value": "Actividades de producción cinematográfica"
+  },
+  {
+    "code": "59120",
+    "value": "Actividades de post producción de películas, videos y programas de televisión"
+  },
+  {
+    "code": "59130",
+    "value": "Actividades de distribución de películas cinematográficas, videos y programas de televisión"
+  },
+  {
+    "code": "59140",
+    "value": "Actividades de exhibición de películas cinematográficas y cintas de vídeo"
+  },
+  {
+    "code": "59200",
+    "value": "Actividades de edición y grabación de música"
+  },
+  {
+    "code": "60100",
+    "value": "Servicios de difusiones de radio"
+  },
+  {
+    "code": "60201",
+    "value": "Actividades de programación y difusión de televisión abierta"
+  },
+  {
+    "code": "60202",
+    "value": "Actividades de suscripción y difusión de televisión por cable y/o suscripción"
+  },
+  {
+    "code": "60299",
+    "value": "Servicios de televisión, incluye televisión por cable"
+  },
+  {
+    "code": "60900",
+    "value": "Programación y transmisión de radio y televisión"
+  },
+  {
+    "code": "61101",
+    "value": "Servicio de telefonía"
+  },
+  {
+    "code": "61102",
+    "value": "Servicio de Internet"
+  },
+  {
+    "code": "61103",
+    "value": "Servicio de telefonía fija"
+  },
+  {
+    "code": "61109",
+    "value": "Servicio de Internet n.c.p."
+  },
+  {
+    "code": "61201",
+    "value": "Servicios de telefonía celular"
+  },
+  {
+    "code": "61202",
+    "value": "Servicios de Internet inalámbrico"
+  },
+  {
+    "code": "61209",
+    "value": "Servicios de telecomunicaciones inalámbrico n.c.p."
+  },
+  {
+    "code": "61301",
+    "value": "Telecomunicaciones satelitales"
+  },
+  {
+    "code": "61309",
+    "value": "Comunicación vía satélite n.c.p."
+  },
+  {
+    "code": "61900",
+    "value": "Actividades de telecomunicación n.c.p."
+  },
+  {
+    "code": "62010",
+    "value": "Programación Informática"
+  },
+  {
+    "code": "62020",
+    "value": "Consultorías y gestión de servicios informáticos"
+  },
+  {
+    "code": "62090",
+    "value": "Otras actividades de tecnología de información y servicios de computadora"
+  },
+  {
+    "code": "63110",
+    "value": "Procesamiento de datos y Actividades relacionadas"
+  },
+  {
+    "code": "63120",
+    "value": "Portales WEB"
+  },
+  {
+    "code": "63910",
+    "value": "Servicios de Agencias de Noticias"
+  },
+  {
+    "code": "63990",
+    "value": "Otros servicios de información n.c.p."
+  },
+  {
+    "code": "64110",
+    "value": "Servicios provistos por el Banco Central de El salvador"
+  },
+  {
+    "code": "64190",
+    "value": "Bancos"
+  },
+  {
+    "code": "64192",
+    "value": "Entidades dedicadas al envío de remesas"
+  },
+  {
+    "code": "64199",
+    "value": "Otras entidades financieras"
+  },
+  {
+    "code": "64200",
+    "value": "Actividades de sociedades de cartera"
+  },
+  {
+    "code": "64300",
+    "value": "Fideicomisos, fondos y otras fuentes de financiamiento"
+  },
+  {
+    "code": "64910",
+    "value": "Arrendamientos financieros"
+  },
+  {
+    "code": "64920",
+    "value": "Asociaciones cooperativas de ahorro y crédito dedicadas a la intermediación financiera"
+  },
+  {
+    "code": "64921",
+    "value": "Instituciones emisoras de tarjetas de crédito y otros"
+  },
+  {
+    "code": "64922",
+    "value": "Tipos de crédito ncp"
+  },
+  {
+    "code": "64928",
+    "value": "Prestamistas y casas de empeño"
+  },
+  {
+    "code": "64990",
+    "value": "Actividades de servicios financieros, excepto la financiación de planes de seguros y de pensiones n.c.p."
+  },
+  {
+    "code": "65110",
+    "value": "Planes de seguros de vida"
+  },
+  {
+    "code": "65120",
+    "value": "Planes de seguro excepto de vida"
+  },
+  {
+    "code": "65199",
+    "value": "Seguros generales de todo tipo"
+  },
+  {
+    "code": "65200",
+    "value": "Planes se seguro"
+  },
+  {
+    "code": "65300",
+    "value": "Planes de pensiones"
+  },
+  {
+    "code": "66110",
+    "value": "Administración de mercados financieros (Bolsa de Valores)"
+  },
+  {
+    "code": "66120",
+    "value": "Actividades bursátiles (Corredores de Bolsa)"
+  },
+  {
+    "code": "66190",
+    "value": "Actividades auxiliares de la intermediación financiera ncp"
+  },
+  {
+    "code": "66210",
+    "value": "Evaluación de riesgos y daños"
+  },
+  {
+    "code": "66220",
+    "value": "Actividades de agentes y corredores de seguros"
+  },
+  {
+    "code": "66290",
+    "value": "Otras actividades auxiliares de seguros y fondos de pensiones"
+  },
+  {
+    "code": "66300",
+    "value": "Actividades de administración de fondos"
+  },
+  {
+    "code": "68101",
+    "value": "Servicio de alquiler y venta de lotes en cementerios"
+  },
+  {
+    "code": "68109",
+    "value": "Actividades inmobiliarias realizadas con bienes propios o arrendados n.c.p."
+  },
+  {
+    "code": "68200",
+    "value": "Actividades Inmobiliarias Realizadas a Cambio de una Retribución o por Contrata"
+  },
+  {
+    "code": "69100",
+    "value": "Actividades jurídicas"
+  },
+  {
+    "code": "69200",
+    "value": "Actividades de contabilidad, teneduría de libros y auditoría; asesoramiento en materia de impuestos"
+  },
+  {
+    "code": "70100",
+    "value": "Actividades de oficinas centrales de sociedades de cartera"
+  },
+  {
+    "code": "70200",
+    "value": "Actividades de consultoría en gestión empresarial"
+  },
+  {
+    "code": "71101",
+    "value": "Servicios de arquitectura y planificación urbana y servicios conexos"
+  },
+  {
+    "code": "71102",
+    "value": "Servicios de ingeniería"
+  },
+  {
+    "code": "71103",
+    "value": "Servicios de agrimensura, topografía, cartografía, prospección y geofísica y servicios conexos"
+  },
+  {
+    "code": "71200",
+    "value": "Ensayos y análisis técnicos"
+  },
+  {
+    "code": "72100",
+    "value": "Investigaciones y desarrollo experimental en el campo de las ciencias naturales y la ingeniería"
+  },
+  {
+    "code": "72199",
+    "value": "Investigaciones científicas"
+  },
+  {
+    "code": "72200",
+    "value": "Investigaciones y desarrollo experimental en el campo de las ciencias sociales y las humanidades científica y desarrollo"
+  },
+  {
+    "code": "73100",
+    "value": "Publicidad"
+  },
+  {
+    "code": "73200",
+    "value": "Investigación de mercados y realización de encuestas de opinión pública"
+  },
+  {
+    "code": "74100",
+    "value": "Actividades de diseño especializado"
+  },
+  {
+    "code": "74200",
+    "value": "Actividades de fotografía"
+  },
+  {
+    "code": "74900",
+    "value": "Servicios profesionales y científicos ncp"
+  },
+  {
+    "code": "75000",
+    "value": "Actividades veterinarias"
+  },
+  {
+    "code": "77101",
+    "value": "Alquiler de equipo de transporte terrestre"
+  },
+  {
+    "code": "77102",
+    "value": "Alquiler de equipo de transporte acuático"
+  },
+  {
+    "code": "77103",
+    "value": "Alquiler de equipo de transporte por vía aérea"
+  },
+  {
+    "code": "77210",
+    "value": "Alquiler y arrendamiento de equipo de recreo y deportivo"
+  },
+  {
+    "code": "77220",
+    "value": "Alquiler de cintas de video y discos"
+  },
+  {
+    "code": "77290",
+    "value": "Alquiler de otros efectos personales y enseres domésticos"
+  },
+  {
+    "code": "77300",
+    "value": "Alquiler de maquinaria y equipo"
+  },
+  {
+    "code": "77400",
+    "value": "Arrendamiento de productos de propiedad intelectual"
+  },
+  {
+    "code": "78100",
+    "value": "Obtención y dotación de personal"
+  },
+  {
+    "code": "78200",
+    "value": "Actividades de las agencias de trabajo temporal"
+  },
+  {
+    "code": "78300",
+    "value": "Dotación de recursos humanos y gestión; gestión de las funciones de recursos humanos"
+  },
+  {
+    "code": "79110",
+    "value": "Actividades de agencias de viajes y organizadores de viajes; actividades de asistencia a turistas"
+  },
+  {
+    "code": "79120",
+    "value": "Actividades de los operadores turísticos"
+  },
+  {
+    "code": "79900",
+    "value": "Otros servicios de reservas y actividades relacionadas"
+  },
+  {
+    "code": "80100",
+    "value": "Servicios de seguridad privados"
+  },
+  {
+    "code": "80201",
+    "value": "Actividades de servicios de sistemas de seguridad"
+  },
+  {
+    "code": "80202",
+    "value": "Actividades para la prestación de sistemas de seguridad"
+  },
+  {
+    "code": "80300",
+    "value": "Actividades de investigación"
+  },
+  {
+    "code": "81100",
+    "value": "Actividades combinadas de mantenimiento de edificios e instalaciones"
+  },
+  {
+    "code": "81210",
+    "value": "Limpieza general de edificios"
+  },
+  {
+    "code": "81290",
+    "value": "Otras actividades combinadas de mantenimiento de edificios e instalaciones ncp"
+  },
+  {
+    "code": "81300",
+    "value": "Servicio de jardinería"
+  },
+  {
+    "code": "82110",
+    "value": "Servicios administrativos de oficinas"
+  },
+  {
+    "code": "82190",
+    "value": "Servicio de fotocopiado y similares, excepto en imprentas"
+  },
+  {
+    "code": "82200",
+    "value": "Actividades de las centrales de llamadas (call center)"
+  },
+  {
+    "code": "82300",
+    "value": "Organización de convenciones y ferias de negocios"
+  },
+  {
+    "code": "82910",
+    "value": "Actividades de agencias de cobro y oficinas de crédito"
+  },
+  {
+    "code": "82921",
+    "value": "Servicios de envase y empaque de productos alimenticios"
+  },
+  {
+    "code": "82922",
+    "value": "Servicios de envase y empaque de productos medicinales"
+  },
+  {
+    "code": "82929",
+    "value": "Servicio de envase y empaque ncp"
+  },
+  {
+    "code": "82990",
+    "value": "Actividades de apoyo empresariales ncp"
+  },
+  {
+    "code": "84110",
+    "value": "Actividades de la Administración Pública en general"
+  },
+  {
+    "code": "84111",
+    "value": "Alcaldías Municipales"
+  },
+  {
+    "code": "84120",
+    "value": "Regulación de las actividades de prestación de servicios sanitarios, educativos, culturales y otros servicios sociales, excepto seguridad social"
+  },
+  {
+    "code": "84130",
+    "value": "Regulación y facilitación de la actividad económica"
+  },
+  {
+    "code": "84210",
+    "value": "Actividades de administración y funcionamiento del Ministerio de Relaciones Exteriores"
+  },
+  {
+    "code": "84220",
+    "value": "Actividades de defensa"
+  },
+  {
+    "code": "84230",
+    "value": "Actividades de mantenimiento del orden público y de seguridad"
+  },
+  {
+    "code": "84300",
+    "value": "Actividades de planes de seguridad social de afiliación obligatoria"
+  },
+  {
+    "code": "85101",
+    "value": "Guardería educativa"
+  },
+  {
+    "code": "85102",
+    "value": "Enseñanza preescolar o parvularia"
+  },
+  {
+    "code": "85103",
+    "value": "Enseñanza primaria"
+  },
+  {
+    "code": "85104",
+    "value": "Servicio de educación preescolar y primaria integrada"
+  },
+  {
+    "code": "85211",
+    "value": "Enseñanza secundaria tercer ciclo (7°, 8° y 9°)"
+  },
+  {
+    "code": "85212",
+    "value": "Enseñanza secundaria de formación general bachillerato"
+  },
+  {
+    "code": "85221",
+    "value": "Enseñanza secundaria de formación técnica y profesional"
+  },
+  {
+    "code": "85222",
+    "value": "Enseñanza secundaria de formación técnica y profesional integrada con enseñanza primaria"
+  },
+  {
+    "code": "85301",
+    "value": "Enseñanza superior universitaria"
+  },
+  {
+    "code": "85302",
+    "value": "Enseñanza superior no universitaria"
+  },
+  {
+    "code": "85303",
+    "value": "Enseñanza superior integrada a educación secundaria y/o primaria"
+  },
+  {
+    "code": "85410",
+    "value": "Educación deportiva y recreativa"
+  },
+  {
+    "code": "85420",
+    "value": "Educación cultural"
+  },
+  {
+    "code": "85490",
+    "value": "Otros tipos de enseñanza n.c.p."
+  },
+  {
+    "code": "85499",
+    "value": "Enseñanza formal"
+  },
+  {
+    "code": "85500",
+    "value": "Servicios de apoyo a la enseñanza"
+  },
+  {
+    "code": "86100",
+    "value": "Actividades de hospitales"
+  },
+  {
+    "code": "86201",
+    "value": "Clínicas médicas"
+  },
+  {
+    "code": "86202",
+    "value": "Servicios de Odontología"
+  },
+  {
+    "code": "86203",
+    "value": "Servicios médicos"
+  },
+  {
+    "code": "86901",
+    "value": "Servicios de análisis y estudios de diagnóstico"
+  },
+  {
+    "code": "86902",
+    "value": "Actividades de atención de la salud humana"
+  },
+  {
+    "code": "86909",
+    "value": "Otros Servicio relacionados con la salud ncp"
+  },
+  {
+    "code": "87100",
+    "value": "Residencias de ancianos con atención de enfermería"
+  },
+  {
+    "code": "87200",
+    "value": "Instituciones dedicadas al tratamiento del retraso mental, problemas de salud mental y el uso indebido de sustancias nocivas"
+  },
+  {
+    "code": "87300",
+    "value": "Instituciones dedicadas al cuidado de ancianos y discapacitados"
+  },
+  {
+    "code": "87900",
+    "value": "Actividades de asistencia a niños y jóvenes"
+  },
+  {
+    "code": "87901",
+    "value": "Otras actividades de atención en instituciones"
+  },
+  {
+    "code": "88100",
+    "value": "Actividades de asistencia sociales sin alojamiento para ancianos y discapacitados"
+  },
+  {
+    "code": "88900",
+    "value": "servicios sociales sin alojamiento ncp"
+  },
+  {
+    "code": "90000",
+    "value": "Actividades creativas artísticas y de esparcimiento"
+  },
+  {
+    "code": "91010",
+    "value": "Actividades de bibliotecas y archivos"
+  },
+  {
+    "code": "91020",
+    "value": "Actividades de museos y preservación de lugares y edificios históricos"
+  },
+  {
+    "code": "91030",
+    "value": "Actividades de jardines botánicos, zoológicos y de reservas naturales"
+  },
+  {
+    "code": "92000",
+    "value": "Actividades de juegos y apuestas"
+  },
+  {
+    "code": "93110",
+    "value": "Gestión de instalaciones deportivas"
+  },
+  {
+    "code": "93120",
+    "value": "Actividades de clubes deportivos"
+  },
+  {
+    "code": "93190",
+    "value": "Otras actividades deportivas"
+  },
+  {
+    "code": "93210",
+    "value": "Actividades de parques de atracciones y parques temáticos"
+  },
+  {
+    "code": "93291",
+    "value": "Discotecas y salas de baile"
+  },
+  {
+    "code": "93298",
+    "value": "Centros vacacionales"
+  },
+  {
+    "code": "93299",
+    "value": "Actividades de esparcimiento ncp"
+  },
+  {
+    "code": "94110",
+    "value": "Actividades de organizaciones empresariales y de empleadores"
+  },
+  {
+    "code": "94120",
+    "value": "Actividades de organizaciones profesionales"
+  },
+  {
+    "code": "94200",
+    "value": "Actividades de sindicatos"
+  },
+  {
+    "code": "94910",
+    "value": "Actividades de organizaciones religiosas"
+  },
+  {
+    "code": "94920",
+    "value": "Actividades de organizaciones políticas"
+  },
+  {
+    "code": "94990",
+    "value": "Actividades de asociaciones n.c.p."
+  },
+  {
+    "code": "95110",
+    "value": "Reparación de computadoras y equipo periférico"
+  },
+  {
+    "code": "95120",
+    "value": "Reparación de equipo de comunicación"
+  },
+  {
+    "code": "95210",
+    "value": "Reparación de aparatos electrónicos de consumo"
+  },
+  {
+    "code": "95220",
+    "value": "Reparación de aparatos doméstico y equipo de hogar y jardín"
+  },
+  {
+    "code": "95230",
+    "value": "Reparación de calzado y artículos de cuero"
+  },
+  {
+    "code": "95240",
+    "value": "Reparación de muebles y accesorios para el hogar"
+  },
+  {
+    "code": "95291",
+    "value": "Reparación de Instrumentos musicales"
+  },
+  {
+    "code": "95292",
+    "value": "Servicios de cerrajería y copiado de llaves"
+  },
+  {
+    "code": "95293",
+    "value": "Reparación de joyas y relojes"
+  },
+  {
+    "code": "95294",
+    "value": "Reparación de bicicletas, sillas de ruedas y rodados n.c.p."
+  },
+  {
+    "code": "95299",
+    "value": "Reparaciones de enseres personales n.c.p."
+  },
+  {
+    "code": "96010",
+    "value": "Lavado y limpieza de prendas de tela y de piel, incluso la limpieza en seco"
+  },
+  {
+    "code": "96020",
+    "value": "Peluquería y otros tratamientos de belleza"
+  },
+  {
+    "code": "96030",
+    "value": "Pompas fúnebres y actividades conexas"
+  },
+  {
+    "code": "96091",
+    "value": "Servicios de sauna y otros servicios para la estética corporal n.c.p."
+  },
+  {
+    "code": "96092",
+    "value": "Servicios n.c.p."
+  },
+  {
+    "code": "97000",
+    "value": "Actividad de los hogares en calidad de empleadores de personal doméstico"
+  },
+  {
+    "code": "98100",
+    "value": "Actividades indiferenciadas de producción de bienes de los hogares privados para uso propio"
+  },
+  {
+    "code": "98200",
+    "value": "Actividades indiferenciadas de producción de servicios de los hogares privados para uso propio"
+  },
+  {
+    "code": "99000",
+    "value": "Actividades de organizaciones y órganos extraterritoriales"
+  },
+  {
+    "code": "10001",
+    "value": "Empleados"
+  },
+  {
+    "code": "10002",
+    "value": "Pensionado"
+  },
+  {
+    "code": "10003",
+    "value": "Estudiante"
+  },
+  {
+    "code": "10004",
+    "value": "Desempleado"
+  },
+  {
+    "code": "10005",
+    "value": "Otros"
+  },
+  {
+    "code": "10006",
+    "value": "Comerciante"
+  }
+]
