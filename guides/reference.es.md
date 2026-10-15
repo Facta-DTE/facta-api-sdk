@@ -235,7 +235,7 @@ const todoElCatalogoActivo = await facta.listProducts();
 | `searchProducts(query, options?)` | Busca descripción, código y código de barras de productos activos; límite 1–500, 50 por defecto. |
 | `createCustomer(input, options?)` | Crea un cliente (`name` obligatorio; DUI 9 dígitos, NIT 14, NRC 1–8). `idempotencyKey` evita duplicados al reintentar. Requiere `catalog:write` y catálogo en texto plano. |
 | `updateCustomer(id, changes, options?)` | Cambia solo los campos indicados (`PATCH`); `null` borra un campo opcional. |
-| `deactivateCustomer(id, options?)` | Desactiva al cliente (`DELETE`); no existe borrado definitivo. |
+| `deactivateCustomer(id, options?)` | Desactiva al cliente (`DELETE`); no existe borrado definitivo. `updateCustomer(id, { activo: true })` lo reactiva. |
 | `createProduct(input, options?)` | Crea un producto (`description`, `item_type` 1/2/3 y `unit_price` obligatorios; el tipo nunca se supone). |
 | `updateProduct(id, changes, options?)` | Cambia solo los campos indicados. |
 | `deactivateProduct(id, options?)` | Desactiva el producto; los documentos ya emitidos no cambian. |
