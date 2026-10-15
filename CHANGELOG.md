@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.2 (2026-10-15)
+
+- Docs and skill: deactivating **and reactivating** customers and products works from the API. `updateCustomer(id, { activo: true })` / `updateProduct(id, { activo: true })` reactivate (`PATCH` with `{"activo": true}`). The Spanish README said the public API does not create or update customers or products, and the catalog-write guides and the skill said reactivation is done in the Facta app; all were out of date since catalog writes shipped, and the web app does not list deactivated customers at all.
+- Types: `CustomerInput` and `ProductInput` declare `activo?: boolean`, so the reactivation compiles without a cast.
+
 ## 0.5.1 (2026-10-07)
 
 - The agent skill (`skills/facta-dte-api`) now always targets Facta's public API (the SDK default base URL) and documents both environments: `facta_test_` keys for pruebas (`00`) and `facta_live_` keys for producción (`01`), switched by key and never by URL, with a `status()` gate and a warning that a live key issues real fiscal documents.
