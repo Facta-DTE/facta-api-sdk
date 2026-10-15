@@ -33,7 +33,17 @@ export function canonicalArchivePath(
 
 /** Read the control number and issue date from the exact legal JSON, never from a guess. */
 export function readDocumentIdentity(jsonBytes: Uint8Array): DocumentIdentity {
-  const parsed = JSON.parse(new TextDecoder().decode(jsonBytes)) as Record<string, unknown>;
+  let parsed = JSON.parse(new TextDecoder().decode(jsonBytes)) as Record<string, unknown>;
+  // The archive may hold the stored envelope `{ codigoGeneracion, ambiente, jws }`
+  // instead of the opened document: read the identity from the JWS payload.
+  if (parsed.identificacion === undefined && typeof parsed.jws === "string") {
+    const payload = parsed.jws.split(".")[1];
+    if (payload) {
+      const b64 = payload.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(payload.length / 4) * 4, "=");
+      const text = new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
+      parsed = JSON.parse(text) as Record<string, unknown>;
+    }
+  }
   const ident = parsed.identificacion;
   const source = ident !== null && typeof ident === "object" ? ident as Record<string, unknown> : parsed;
   const numeroControl = source.numeroControl;

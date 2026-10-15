@@ -268,3 +268,11 @@ Deno.test("issue() itself never writes storage or reports", async () => {
   assertEquals(w.bucket.size, 0);
   assertEquals(w.reports.length, 0);
 });
+
+Deno.test("readDocumentIdentity reads the identity from a stored JWS envelope", () => {
+  const doc = { identificacion: { numeroControl: "DTE-01-M001P001-000000000000045", fecEmi: "2026-10-15" } };
+  const b64url = (text: string) => btoa(text).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const jws = `${b64url('{"alg":"RS512"}')}.${b64url(JSON.stringify(doc))}.c2ln`;
+  const envelope = JSON.stringify({ codigoGeneracion: "8F2C4A1B-3D5E-4F7A-9B1C-2E4D6F8A0B3C", ambiente: "00", jws });
+  assertEquals(readDocumentIdentity(new TextEncoder().encode(envelope)), doc.identificacion);
+});
