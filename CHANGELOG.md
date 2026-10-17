@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.0 (2026-10-17)
+
+- `invalidate()` / `invalidateAndArchive()` results carry the new API fields (all optional, so older servers still type-check): `archivoEvento` (`{ nombre, ruta, contenido }` or `null`), the sealed event in the receiver's Archivo DTE shape, named `<CODIGO>.invalidacion.json`, to file beside the original document; `storage`, the receipt of the Facta-managed copy of that file; and `avisoCliente` (`{ estado, destino, motivo? }`), the state of the automatic «Documento invalidado» customer e-mail (PDF marked INVALIDADO plus the event JSON). `estado` is `enviado`, `en_proceso`, `fallido` or `no_enviado`; `motivo` is present unless `enviado`/`en_proceso`. The notice never fails the invalidation.
+- New types `InvalidationEventFile`, `InvalidationNotice`, `InvalidationNoticeSkipReason`, `InvalidationNoticeFailureReason`, and helper `invalidationEventFileOf(result)` (validated file or `null`).
+- The server handler forwards `avisoCliente` (state and masked address only) to the browser in `InvalidationOutcome`; the event file's content never reaches the browser.
+- Docs (`guides/reference*.md`, READMEs) and the agent skill explain the archived event file and the notice states.
+
 ## 0.5.2 (2026-10-15)
 
 - Docs and skill: deactivating **and reactivating** customers and products works from the API. `updateCustomer(id, { activo: true })` / `updateProduct(id, { activo: true })` reactivate (`PATCH` with `{"activo": true}`). The Spanish README said the public API does not create or update customers or products, and the catalog-write guides and the skill said reactivation is done in the Facta app; all were out of date since catalog writes shipped, and the web app does not list deactivated customers at all.

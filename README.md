@@ -141,6 +141,8 @@ Preparation reserves a control number. The prepared document and token must be p
 
 ## DTE types and fiscal payloads
 
+`invalidate()` also returns `archivoEvento` (the sealed event as `<CODIGO>.invalidacion.json`, to file beside the original; `invalidationEventFileOf(result)` validates it), the managed `storage` receipt for it, and `avisoCliente`, the state of the automatic «Documento invalidado» e-mail to the customer (`enviado`, `en_proceso`, `fallido` or `no_enviado`, with a `motivo`). See [guides/reference.md](guides/reference.md).
+
 The exported TypeScript types include `DteRequest`, `IssueResult`, `PreparedDte`, `DocumentStatus`, `InvalidationRequest`, `InvalidationResult`, `DteType`, `Recipient`, `Address`, `LineItem`, `Totals`, and `DtePage`. DTE request types form a union keyed by the unchanged `tipoDte` field, covering `"01"`, `"03"`, `"05"`, `"06"`, `"11"`, and `"14"`.
 
 The type system helps construct payloads but does not replace server-side tax validation. The SDK has no local VAT engine and does not infer fiscal totals. For a catalog-backed price, the item's VAT basis must match the DTE type; provide an explicit `precioUni` in the document's expected basis to override the catalog price.

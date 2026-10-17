@@ -72,6 +72,22 @@ const result = await facta.invalidate(code, request, { idempotencyKey: `invalida
   have completed but its event cannot be recovered. Reconcile manually; do not
   invalidate again.
 - Ask for confirmation in your UI: this is the one action that cannot be reverted.
+- **File the event.** A new result carries `archivoEvento` `{ nombre, ruta, contenido }`:
+  the sealed event as `<DOCUMENT-CODE>.invalidacion.json` (signed event +
+  `firmaElectronica` + `selloRecibido`). Write it at `ruta`, beside the original,
+  which you never rewrite; `invalidationEventFileOf(result)` returns it validated
+  or `null` (sparse «already invalidated» answer, older server, event not built).
+  `storage` is the receipt of Facta's managed copy of that file.
+- **The customer is told automatically.** `avisoCliente` `{ estado, destino, motivo? }`
+  reports the «Documento invalidado» e-mail (PDF marked INVALIDADO + the event
+  JSON) that Facta sends when the company has automatic e-mail delivery on. It
+  never fails the invalidation. `estado`: `enviado` · `en_proceso` (slow
+  provider, still sending) · `fallido` (`quota_exceeded`, `smtp_rejected`,
+  `document_rejected`, `provider_unavailable`) · `no_enviado` (`envio_automatico_desactivado`,
+  `servidor_de_correo_propio`, `documento_no_disponible` — emitted from the app,
+  `sin_correo`, `evento_ilegible`, `pdf_no_disponible`, `no_anotado_en_el_indice`).
+  `destino` is masked. Do not also e-mail the customer yourself when it is
+  `enviado` or `en_proceso`; treat `motivo` as an open string.
 
 From a browser, the handler's `invalidate: "session"` capability plus
 `createFactaInvalidationSession` keeps the decision on your server (see

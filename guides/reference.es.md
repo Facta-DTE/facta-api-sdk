@@ -494,6 +494,29 @@ const anulado = await facta.invalidate(generationCode, {
 if (anulado.yaEstabaInvalidado) console.log("ya estaba anulado; no se mandó nada");
 ```
 
+Una anulación nueva trae, además, tres campos (en servidores que ya los entregan):
+
+- **`archivoEvento: { nombre, ruta, contenido } | null`**: el evento sellado en el formato del Archivo DTE (el evento firmado más `firmaElectronica` y `selloRecibido`), con el nombre `<CODIGO-DEL-DOCUMENTO>.invalidacion.json`. Archívelo en `ruta`, al lado del documento original, que no se toca. `invalidationEventFileOf(anulado)` lo devuelve validado, o `null` si no hay (respuesta escueta de «ya estaba anulado», un servidor anterior, o un evento que el servidor no pudo armar).
+- **`storage`**: el recibo de la copia en Almacenamiento Facta de ese archivo (o `null`), con la misma forma `ManagedStorageReceipt` de la emisión; para un evento solo cuenta `json`.
+- **`avisoCliente: { estado, destino, motivo? }`**: el correo automático «Documento invalidado» al cliente (el PDF marcado como INVALIDADO y el JSON del evento). Sale solo cuando la empresa tiene activo el envío automático de correos, y **nunca deshace ni hace fallar la anulación**. `destino` es el correo enmascarado, o `null`.
+
+| `estado` | Qué significa | `motivo` |
+| --- | --- | --- |
+| `enviado` | El correo salió. | ninguno |
+| `en_proceso` | El proveedor tarda; el envío sigue y queda anotado en las entregas del documento. | ninguno |
+| `no_enviado` | No se mandó nada. | `envio_automatico_desactivado` (el ajuste está apagado), `servidor_de_correo_propio` (la empresa envía con su SMTP, que solo su navegador tiene), `documento_no_disponible` (el documento se emitió desde la app y el servidor no guarda su copia), `sin_correo` (el receptor no tiene correo), `evento_ilegible`, `pdf_no_disponible`, `no_anotado_en_el_indice` |
+| `fallido` | Se intentó y falló. | `quota_exceeded`, `smtp_rejected`, `document_rejected`, `provider_unavailable` |
+
+Trate `motivo` como un texto abierto: un servidor nuevo puede añadir códigos. Si usted ya envía su propio correo por otro medio, revise `avisoCliente` para no avisar dos veces al cliente.
+
+```typescript
+import { invalidationEventFileOf } from "@facta-dte/api";
+
+const archivo = invalidationEventFileOf(anulado);
+if (archivo) await miAlmacen.guardar(archivo.ruta, archivo.contenido); // <CODIGO>.invalidacion.json
+if (anulado.avisoCliente?.estado === "fallido") console.warn(anulado.avisoCliente.motivo);
+```
+
 ### `registerReturn(generationCode, request, options?)`
 
 **Manda la llave de firma.** Devuelve `ReturnResult`.

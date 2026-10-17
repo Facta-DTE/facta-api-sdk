@@ -341,4 +341,10 @@ export interface InvalidationOutcome {
     fhProcesamiento: string | null;
     tipoAnulacion: number;
   };
+  /** The automatic customer e-mail after the invalidation (masked address). Absent on older servers. */
+  avisoCliente?: {
+    estado: "enviado" | "en_proceso" | "fallido" | "no_enviado";
+    destino: string | null;
+    motivo?: string;
+  };
 }

@@ -185,6 +185,34 @@ its idempotent response may contain only the target identifiers and
 `yaEstabaInvalidado: true`; that response cannot reconstruct the prior event.
 Use `invalidateAndArchive()` when local event recovery is required.
 
+A new successful invalidation also carries, on servers that support them:
+
+- `archivoEvento: { nombre, ruta, contenido } | null`: the sealed event in the
+  receiver's Archivo DTE shape (the signed event plus `firmaElectronica` and
+  `selloRecibido`), named `<CODIGO-DEL-DOCUMENTO>.invalidacion.json`. File it at
+  `ruta`, beside the original document, which is never rewritten.
+  `invalidationEventFileOf(result)` returns it validated, or `null` when there
+  is none (a sparse «already invalidated» answer, an older server, or an event
+  the server could not build).
+- `storage`: the receipt of the Facta-managed copy of that event file (or
+  `null`), the same `ManagedStorageReceipt` as on issuance; only `json` is
+  used, `pdf` is not applicable to an event.
+- `avisoCliente: { estado, destino, motivo? }`: the automatic «Documento
+  invalidado» e-mail to the customer (PDF marked INVALIDADO plus the event
+  JSON). It follows the company's automatic e-mail setting and **never undoes or
+  fails the invalidation**. `destino` is a masked address or `null`.
+
+| `avisoCliente.estado` | Meaning | `motivo` |
+| --- | --- | --- |
+| `enviado` | The e-mail went out. | none |
+| `en_proceso` | The provider is slow; the send continues and is logged under the document's deliveries. | none |
+| `no_enviado` | Nothing was sent. | `envio_automatico_desactivado` (setting off), `servidor_de_correo_propio` (company mails from its own SMTP, which only its browser holds), `documento_no_disponible` (document was emitted from the app; the server holds no copy), `sin_correo` (no receiver e-mail), `evento_ilegible`, `pdf_no_disponible`, `no_anotado_en_el_indice` |
+| `fallido` | A send was tried and failed. | `quota_exceeded`, `smtp_rejected`, `document_rejected`, `provider_unavailable` |
+
+Treat `motivo` as an open string: newer servers may add codes. The server
+handler (`createFactaHandler` data actions) forwards only the notice state to
+the browser as `avisoCliente`; the event file's content never leaves your server.
+
 `issueAndArchive` and `recoverOperation` retain the immutable resolved request,
 its hash, idempotency key, and remote-copy state in the
 encrypted local journal. Remote writers must use stable paths and support

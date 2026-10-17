@@ -293,6 +293,22 @@ Deno.test("invalidate.describe shows the session's data; invalidate runs it once
   assert(events.some((e) => (e as { type: string }).type === "invalidated"));
 });
 
+Deno.test("invalidate forwards the notice state to the browser, never the event file", async () => {
+  const { handler } = make({}, {
+    invalidate: () => Promise.resolve({
+      estado: "invalidado", codigoGeneracion: CG, numeroControl: "n", tipoDte: "01", ambiente: "00",
+      evento: { codigoGeneracion: CG2, selloRecibido: "EVSEAL", tipoAnulacion: 2 },
+      documento: {}, jws: "j", anotadoEnElIndice: true,
+      archivoEvento: { nombre: "x.invalidacion.json", ruta: "p/x.invalidacion.json", contenido: "SECRET-CONTENT" },
+      avisoCliente: { estado: "no_enviado", destino: null, motivo: "sin_correo" },
+    }),
+  });
+  const token = await createFactaInvalidationSession({ generationCode: CG, tipoAnulacion: 2, responsable: PERSON, solicita: PERSON }, SECRET);
+  const done = await ok(handler, { action: "invalidate", session: token });
+  assertEquals(done.result.avisoCliente, { estado: "no_enviado", destino: null, motivo: "sin_correo" });
+  assertEquals(JSON.stringify(done).includes("SECRET-CONTENT"), false);
+});
+
 Deno.test("invalidate uses invalidateAndArchive when an invalidation archive is configured", async () => {
   const archived: unknown[] = [];
   const { handler } = make({}, {

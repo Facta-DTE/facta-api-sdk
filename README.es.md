@@ -164,7 +164,7 @@ de respaldo al correo del dueño. Guía y ejemplo: [`guides/emergency.es.md`](gu
 | `sign(prepared, options?)` | Firma y transmite exactamente el resultado de `prepare`. | Sí |
 | `getDocumentStatus(codigoGeneracion)` | Consulta un DTE por su código de generación. | No |
 | `listDocuments(filters?)` | Lista DTE con filtros y cursor de paginación. | No |
-| `invalidate(codigoGeneracion, request, options?)` | Anula un DTE sellado. | Sí |
+| `invalidate(codigoGeneracion, request, options?)` | Anula un DTE sellado. Devuelve además `archivoEvento` (el evento sellado, `<CODIGO>.invalidacion.json`, para archivar junto al original), su recibo `storage` y `avisoCliente` (el estado del correo automático «Documento invalidado» al cliente). | Sí |
 | `registerReturn(codigoGeneracion, solicitud, options?)` | Registra el evento de retorno de una FE, FEX o FSE sellada; varias hasta sumar lo vendido. | Sí |
 | `invalidateAndArchive(codigoGeneracion, request, options)` | Anula y guarda de forma cifrada el evento y su JWS para recuperación. | Sí |
 | `recoverInvalidation(operationId, archive?)`, `listPendingInvalidations(archive?)` | Reanuda o lista anulaciones locales pendientes; reusa la misma clave de idempotencia. | Si reanuda |

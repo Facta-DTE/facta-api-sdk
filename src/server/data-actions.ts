@@ -355,6 +355,9 @@ export function createDataActions(options: DataActionOptions) {
         result = await need(facta, "invalidate").call(facta, session.generationCode, session.request, { idempotencyKey: key });
       }
       const evento = "evento" in result ? result.evento : undefined;
+      // Only the notice's state reaches the browser (its address is already
+      // masked by the API); the event file's content never does.
+      const avisoCliente = "avisoCliente" in result ? result.avisoCliente : undefined;
       return {
         result,
         body: {
@@ -370,6 +373,15 @@ export function createDataActions(options: DataActionOptions) {
                   selloRecibido: evento.selloRecibido,
                   fhProcesamiento: evento.fhProcesamiento ?? null,
                   tipoAnulacion: evento.tipoAnulacion,
+                },
+              }
+              : {}),
+            ...(avisoCliente
+              ? {
+                avisoCliente: {
+                  estado: avisoCliente.estado,
+                  destino: avisoCliente.destino ?? null,
+                  ...(avisoCliente.motivo === undefined ? {} : { motivo: avisoCliente.motivo }),
                 },
               }
               : {}),

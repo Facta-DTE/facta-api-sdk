@@ -48,3 +48,26 @@ export function archivoDteOf(result: ArchivoDteSource): string | null {
   if (document === undefined || document === null) return null;
   return JSON.stringify({ ...document, firmaElectronica: signed ? jws : null, selloRecibido }, null, 2);
 }
+
+/** The fields of a successful invalidation response `invalidationEventFileOf` reads. */
+export interface InvalidationEventSource {
+  archivoEvento?: { nombre: string; ruta: string; contenido: string } | null | undefined;
+}
+
+/**
+ * The sealed invalidation event, ready to file as `<CODIGO>.invalidacion.json`
+ * beside the original document (which is never rewritten), or `null` when the
+ * response has none: a sparse «already invalidated» answer, a server that
+ * predates the field, or an event the server could not build. Unlike
+ * `archivoDteOf` there is no fallback to build it: the file's name and `ruta`
+ * come from the server.
+ */
+export function invalidationEventFileOf(
+  result: InvalidationEventSource,
+): { nombre: string; ruta: string; contenido: string } | null {
+  const file = result.archivoEvento;
+  if (file === null || file === undefined) return null;
+  if (typeof file.nombre !== "string" || file.nombre === "" || typeof file.ruta !== "string" || file.ruta === "") return null;
+  if (typeof file.contenido !== "string" || file.contenido === "") return null;
+  return { nombre: file.nombre, ruta: file.ruta, contenido: file.contenido };
+}

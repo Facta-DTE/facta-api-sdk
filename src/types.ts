@@ -578,6 +578,45 @@ export interface InvalidationRequest {
   solicita: InvalidationPerson;
 }
 
+/** The sealed invalidation event as the receiver's Archivo DTE, ready to file next to the original. */
+export interface InvalidationEventFile {
+  /** `<CODIGO-DEL-DOCUMENTO>.invalidacion.json`. */
+  nombre: string;
+  /** Where to file it, beside the original document (which is never touched). */
+  ruta: string;
+  /** The file's text: the signed event plus `firmaElectronica` and `selloRecibido`. */
+  contenido: string;
+}
+
+/** Why an automatic customer notice did not go out (`estado: "no_enviado"`). */
+export type InvalidationNoticeSkipReason =
+  | "envio_automatico_desactivado"
+  | "servidor_de_correo_propio"
+  | "documento_no_disponible"
+  | "sin_correo"
+  | "evento_ilegible"
+  | "pdf_no_disponible"
+  | "no_anotado_en_el_indice";
+
+/** Why a notice that was tried failed (`estado: "fallido"`). */
+export type InvalidationNoticeFailureReason =
+  | "quota_exceeded"
+  | "smtp_rejected"
+  | "document_rejected"
+  | "provider_unavailable";
+
+/**
+ * The automatic «Documento invalidado» e-mail to the customer (PDF marked
+ * INVALIDADO + the signed event). It never undoes or fails the invalidation.
+ * `motivo` is present whenever `estado` is not `enviado`; unknown codes may
+ * appear in newer servers, so it is typed as the known codes or any string.
+ */
+export type InvalidationNotice =
+  | { estado: "enviado"; destino: string | null; motivo?: undefined }
+  | { estado: "en_proceso"; destino: string | null; motivo?: undefined }
+  | { estado: "fallido"; destino: string | null; motivo: InvalidationNoticeFailureReason | (string & {}) }
+  | { estado: "no_enviado"; destino: string | null; motivo: InvalidationNoticeSkipReason | (string & {}) };
+
 export interface CompleteInvalidationResult {
   estado: "invalidado";
   codigoGeneracion: string;
@@ -589,6 +628,15 @@ export interface CompleteInvalidationResult {
   documento: Record<string, unknown>;
   jws: string;
   anotadoEnElIndice: boolean;
+  /**
+   * The sealed event filed as `<CODIGO>.invalidacion.json`; `null` when it
+   * could not be built. Absent on servers that predate it.
+   */
+  archivoEvento?: InvalidationEventFile | null;
+  /** Receipt of the Facta-managed copy of the event file, when the company has one. */
+  storage?: ManagedStorageReceipt | null;
+  /** Outcome of the automatic customer notice. Absent on servers that predate it. */
+  avisoCliente?: InvalidationNotice;
 }
 
 /** Idempotent server response when the target was already invalidated. */
