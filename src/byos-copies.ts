@@ -62,13 +62,24 @@ export function buildSyncedDestinations(
     environment: "00" | "01";
     /** Omit to build read-only destinations (no canonical write path, no `canonicalCopy`). */
     identity?: DocumentIdentity;
+    /**
+     * Build writers for ONE file at exactly this path (the `ruta` of an
+     * invalidation's `archivoEvento`) instead of the document's canonical
+     * JSON/PDF paths. The writer takes the `json` artifact kind.
+     */
+    eventPath?: string;
     fetch?: typeof fetch;
   },
 ): { destinations: RemoteArtifactDestination[]; skipped: SyncedDestinationSkip[] } {
-  const identity = options.identity;
+  const eventPath = options.eventPath ?? null;
+  const identity = eventPath === null ? options.identity : undefined;
   const jsonPath = identity ? canonicalArchivePath(options.environment, identity, "json") : null;
   const pdfPath = identity ? canonicalArchivePath(options.environment, identity, "pdf") : null;
   const pathForArtifact = (artifact: ArchiveArtifact): string => {
+    if (eventPath !== null) {
+      if (artifact.kind === "json") return eventPath;
+      throw new TypeError("These destinations write only the invalidation event file.");
+    }
     if (jsonPath === null || pdfPath === null) throw new TypeError("These destinations were built to read, not to write.");
     if (artifact.kind === "json") return jsonPath;
     if (artifact.kind === "pdf") return pdfPath;
@@ -105,7 +116,8 @@ export function buildSyncedDestinations(
       }
       destinations.push({
         ...destination,
-        kinds: ["json", "pdf"],
+        kinds: eventPath === null ? ["json", "pdf"] : ["json"],
+        ...(eventPath !== null ? { canonicalCopy: { secretId: entry.id, jsonPath: eventPath, pdfPath: eventPath } } : {}),
         ...(jsonPath !== null && pdfPath !== null ? { canonicalCopy: { secretId: entry.id, jsonPath, pdfPath } } : {}),
       });
     } catch {

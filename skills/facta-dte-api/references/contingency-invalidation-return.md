@@ -77,7 +77,13 @@ const result = await facta.invalidate(code, request, { idempotencyKey: `invalida
   `firmaElectronica` + `selloRecibido`). Write it at `ruta`, beside the original,
   which you never rewrite; `invalidationEventFileOf(result)` returns it validated
   or `null` (sparse «already invalidated» answer, older server, event not built).
-  `storage` is the receipt of Facta's managed copy of that file.
+  `storage` is the receipt of Facta's managed copy of that file
+  (`{ destination, environment, invalidation, operationId }`, one file).
+  With an `unlockKey` the SDK also writes the file to each synced BYOS
+  destination at exactly `ruta` and reports it (`kind: "invalidation"`, needs
+  `byosCopyReport >= 2`; older servers get the file only). Read the outcome in
+  `eventCopies` and `sdkWarnings` — it never fails the invalidation.
+  `downloadDocument(code, "invalidation")` returns the managed copy.
 - **The customer is told automatically.** `avisoCliente` `{ estado, destino, motivo? }`
   reports the «Documento invalidado» e-mail (PDF marked INVALIDADO + the event
   JSON) that Facta sends when the company has automatic e-mail delivery on. It

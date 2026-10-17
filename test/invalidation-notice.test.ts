@@ -20,7 +20,7 @@ const FILE = {
 };
 const artifact = (state: string) => ({ state, sha256: null, bytes: null, storedAt: null, errorCode: null, retryable: false });
 const STORAGE = {
-  destination: "managed", environment: "00", json: artifact("stored"), pdf: artifact("not_configured"), operationId: EVENT,
+  destination: "managed", environment: "00", invalidation: artifact("stored"), operationId: DOCUMENT,
 };
 
 function answer(extra: Record<string, unknown>) {
@@ -48,7 +48,7 @@ Deno.test("invalidate carries archivoEvento and the managed storage receipt", as
   const result = await invalidate({ archivoEvento: FILE, storage: STORAGE, avisoCliente: { estado: "enviado", destino: "a•••@ejemplo.com" } });
   assertEquals(result.archivoEvento, FILE);
   assertEquals(result.storage?.destination, "managed");
-  assertEquals(result.storage?.json.state, "stored");
+  assertEquals(result.storage?.invalidation.state, "stored");
   assertEquals(invalidationEventFileOf(result), FILE);
 });
 

@@ -141,7 +141,7 @@ Preparation reserves a control number. The prepared document and token must be p
 
 ## DTE types and fiscal payloads
 
-`invalidate()` also returns `archivoEvento` (the sealed event as `<CODIGO>.invalidacion.json`, to file beside the original; `invalidationEventFileOf(result)` validates it), the managed `storage` receipt for it, and `avisoCliente`, the state of the automatic «Documento invalidado» e-mail to the customer (`enviado`, `en_proceso`, `fallido` or `no_enviado`, with a `motivo`). See [guides/reference.md](guides/reference.md).
+`invalidate()` also returns `archivoEvento` (the sealed event as `<CODIGO>.invalidacion.json`, to file beside the original; `invalidationEventFileOf(result)` validates it), the managed `storage` receipt for it, and `avisoCliente`, the state of the automatic «Documento invalidado» e-mail to the customer (`enviado`, `en_proceso`, `fallido` or `no_enviado`, with a `motivo`). With an `unlockKey` the SDK also writes that file to your synced BYOS destinations at exactly `ruta` and reports each copy to Facta; the outcome is in `eventCopies` / `sdkWarnings` and never fails the invalidation. See [guides/reference.md](guides/reference.md).
 
 The exported TypeScript types include `DteRequest`, `IssueResult`, `PreparedDte`, `DocumentStatus`, `InvalidationRequest`, `InvalidationResult`, `DteType`, `Recipient`, `Address`, `LineItem`, `Totals`, and `DtePage`. DTE request types form a union keyed by the unchanged `tipoDte` field, covering `"01"`, `"03"`, `"05"`, `"06"`, `"11"`, and `"14"`.
 

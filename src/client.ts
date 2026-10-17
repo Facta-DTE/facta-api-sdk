@@ -49,6 +49,7 @@ import {
   rowsOf,
 } from "./catalog-write.ts";
 import { buildSyncedDestinations, readDocumentIdentity } from "./byos-copies.ts";
+import { invalidationEventFileOf } from "./archivo-dte.ts";
 import { completeLocally, summarizeRows } from "./listed-dte.ts";
 import { createReferenceClock, type ReferenceClock } from "./reference-clock.ts";
 import { DEFAULT_CLOCK_URL } from "./clock-config.ts";
@@ -104,6 +105,9 @@ import type {
   DeliveryStatus,
   DocumentStatus,
   PreparedDte,
+  CompleteInvalidationResult,
+  InvalidationEventCopy,
+  InvalidationSdkWarning,
   InvalidationResult,
   DtePage,
   DownloadedDocument,
@@ -397,15 +401,16 @@ function isManagedStorageStatus(value: unknown): value is ManagedStorageStatus {
     [managed.quotaBytes, managed.usedBytes, managed.reservedBytes, managed.usedBytesTotal, managed.reservedBytesTotal].every(nullableBytes) &&
     [managed.coveredUntil, managed.accessUntil].every((field) => field === null || validTimestamp(field)) &&
     [managed.bucketState, managed.backupState].every(nullableString) && typeof value.byos.ready === "boolean" &&
-    Array.isArray(value.supportedKinds) && value.supportedKinds.length === 2 && new Set(value.supportedKinds).size === 2 &&
-    value.supportedKinds.every((kind) => kind === "json" || kind === "pdf") && Array.isArray(value.unsupportedKinds) &&
+    Array.isArray(value.supportedKinds) && new Set(value.supportedKinds).size === value.supportedKinds.length &&
+    value.supportedKinds.includes("json") && value.supportedKinds.includes("pdf") &&
+    value.supportedKinds.every((kind) => kind === "json" || kind === "pdf" || kind === "invalidation") && Array.isArray(value.unsupportedKinds) &&
     value.unsupportedKinds.every((kind) => kind === "ticket" || kind === "invalidation");
 }
 
 function isManagedDocumentCopies(value: unknown): value is { capabilityVersion: 1; copies: ManagedDocumentCopy[] } {
   return isRecord(value) && value.capabilityVersion === 1 && Array.isArray(value.copies) &&
     new Set(value.copies.map((copy) => isRecord(copy) ? `${String(copy.generationCode).toUpperCase()}:${String(copy.kind)}` : "invalid")).size === value.copies.length && value.copies.every((copy) =>
-    isRecord(copy) && typeof copy.generationCode === "string" && uuidPattern.test(copy.generationCode) && (copy.kind === "json" || copy.kind === "pdf") &&
+    isRecord(copy) && typeof copy.generationCode === "string" && uuidPattern.test(copy.generationCode) && (copy.kind === "json" || copy.kind === "pdf" || copy.kind === "invalidation") &&
     (copy.environment === "00" || copy.environment === "01") && ["stored", "pending", "failed"].includes(String(copy.state)) &&
     validBytes(copy.bytes) && typeof copy.sha256 === "string" && digestPattern.test(copy.sha256) && typeof copy.issuedDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(copy.issuedDate) && Number.isFinite(Date.parse(copy.issuedDate)) && new Date(copy.issuedDate).toISOString().slice(0, 10) === copy.issuedDate &&
     (copy.storedAt === null || validTimestamp(copy.storedAt)) && (copy.state !== "stored" || validTimestamp(copy.storedAt))
@@ -2073,16 +2078,22 @@ export class Facta {
     }
   }
 
-  /** `true` only when the server advertises `capabilities.byosCopyReport`; cached per client. */
-  #byosReportCapability: Promise<boolean> | undefined = undefined;
-  async #serverAcceptsByosReports(): Promise<boolean> {
+  /**
+   * What the server accepts for BYOS copy reports, cached per client:
+   * `version` is `capabilities.byosCopyReport` (0 when absent); `invalidation`
+   * is true from version 2 or when `supportedKinds` lists `invalidation`.
+   */
+  #byosReportCapability: Promise<{ version: number; invalidation: boolean }> | undefined = undefined;
+  async #byosReportInfo(): Promise<{ version: number; invalidation: boolean }> {
     this.#byosReportCapability ??= (async () => {
       try {
         const status = await this.#request<unknown>("GET", "/v1/storage/status");
         const caps = isRecord(status) && isRecord(status.capabilities) ? status.capabilities : undefined;
-        return caps?.byosCopyReport === 1;
+        const version = typeof caps?.byosCopyReport === "number" ? caps.byosCopyReport : 0;
+        const kinds = isRecord(status) && Array.isArray(status.supportedKinds) ? status.supportedKinds : [];
+        return { version, invalidation: version >= 2 || kinds.includes("invalidation") };
       } catch (cause) {
-        if (cause instanceof FactaError && (cause.status === 404 || cause.status === 501)) return false;
+        if (cause instanceof FactaError && (cause.status === 404 || cause.status === 501)) return { version: 0, invalidation: false };
         throw cause;
       }
     })();
@@ -2091,6 +2102,108 @@ export class Facta {
     } catch (cause) {
       this.#byosReportCapability = undefined; // a transient failure is not cached
       throw cause;
+    }
+  }
+
+  /** `true` when the server accepts BYOS copy reports of any version; cached per client. */
+  async #serverAcceptsByosReports(): Promise<boolean> {
+    return (await this.#byosReportInfo()).version >= 1;
+  }
+
+  /**
+   * Write the invalidation's event file to each BYOS destination at exactly
+   * `archivoEvento.ruta` and tell Facta (`kind: "invalidation"`). Runs only
+   * with an `unlockKey`; never throws and never changes the fiscal result: a
+   * problem becomes `eventCopies` / `sdkWarnings` on the returned result.
+   */
+  async #archiveInvalidationEvent(result: CompleteInvalidationResult, signal?: AbortSignal): Promise<CompleteInvalidationResult> {
+    const file = invalidationEventFileOf(result);
+    if (file === null || this.#unlockKey === null || this.#runtime.replicate === false) return result;
+    const warnings: InvalidationSdkWarning[] = [];
+    const eventCopies: InvalidationEventCopy[] = [];
+    const finish = (): CompleteInvalidationResult => ({
+      ...result,
+      ...(eventCopies.length ? { eventCopies } : {}),
+      ...(warnings.length ? { sdkWarnings: warnings } : {}),
+    });
+    try {
+      throwIfAborted(signal);
+      let snapshot: DestinationSnapshot;
+      try {
+        snapshot = await this.syncDestinations();
+      } catch (cause) {
+        if (cause instanceof FactaError && (cause.code === "no_storage_destination" || cause.code === "not_found")) return result;
+        const code = cause instanceof FactaError ? cause.code : "unexpected_error";
+        warnings.push({ code: "byos_not_replicated", detail: `The destinations snapshot could not be opened (${code}); the invalidation event was not written to your BYOS destinations.` });
+        return finish();
+      }
+      const built = buildSyncedDestinations(snapshot, { environment: this.#environment(), eventPath: file.ruta, fetch: this.#fetch });
+      for (const skip of built.skipped) {
+        warnings.push({ code: "byos_not_replicated", destinationId: skip.destinationId, detail: `${skip.kind}: ${skip.reason}` });
+      }
+      if (built.destinations.length === 0) return finish();
+      const bytes = new TextEncoder().encode(file.contenido);
+      const artifact: ArchiveArtifact = {
+        codigoGeneracion: result.codigoGeneracion,
+        kind: "json",
+        filename: file.nombre,
+        contentType: "application/json",
+        bytes,
+        sha256: await sha256Hex(bytes),
+      };
+      let info: { version: number; invalidation: boolean } | null = null;
+      let infoError: string | null = null;
+      for (const destination of built.destinations) {
+        throwIfAborted(signal);
+        let state: InvalidationEventCopy["state"];
+        try {
+          state = await destination.write({ ...artifact, bytes: new Uint8Array(bytes) }, signal ? { signal } : {});
+        } catch {
+          if (signal?.aborted) break;
+          state = "failed";
+        }
+        const row: InvalidationEventCopy = { destinationId: destination.id, label: destination.label, state, report: "skipped" };
+        eventCopies.push(row);
+        if (state !== "stored") {
+          warnings.push({
+            code: "byos_not_replicated",
+            destinationId: destination.id,
+            detail: `The invalidation event is not confirmed at "${destination.label}" (${state}).`,
+          });
+          continue;
+        }
+        try {
+          if (info === null && infoError === null) {
+            try { info = await this.#byosReportInfo(); } catch (cause) { infoError = cause instanceof FactaError ? cause.code : "network_error"; }
+          }
+          if (infoError !== null) throw new FactaError("service_unavailable", infoError, 0);
+          if (!info?.invalidation) {
+            row.detail = "This server cannot record invalidation copies (byosCopyReport < 2); the file is stored but Facta was not told.";
+            continue;
+          }
+          const response = await this.#request<unknown>("POST", `/v1/storage/copies/${encodeURIComponent(result.codigoGeneracion)}/byos`, {
+            kind: "invalidation",
+            secretId: destination.canonicalCopy!.secretId,
+            jsonPath: file.ruta,
+          }, signal ? { signal } : {});
+          const copy = isRecord(response) && isRecord(response.copy) ? response.copy : undefined;
+          if (copy?.recorded !== true) throw new FactaError("service_unavailable", "Facta did not confirm the copy report.", 502);
+          row.report = "reported";
+        } catch (cause) {
+          if (signal?.aborted) break;
+          row.report = "failed";
+          const reason = cause instanceof FactaError ? cause.code : "network_error";
+          row.detail = `The event file is stored but Facta was not told (${reason}).`;
+          warnings.push({
+            code: "copy_report_failed",
+            destinationId: destination.id,
+            detail: `The invalidation event at "${destination.label}" is stored but Facta was not told (${reason}). Report the original document's copy first if it was never reported.`,
+          });
+        }
+      }
+      return finish();
+    } catch {
+      return finish();
     }
   }
 
@@ -2315,7 +2428,14 @@ export class Facta {
 
   /** Invalidate a sealed document. This sends the signing key and is irreversible. */
   invalidate(generationCode: string, request: InvalidationRequest, options: CallOptions = {}): Promise<InvalidationResult> {
-    return this.#request<InvalidationResult>("POST", `/v1/dte/${encodeURIComponent(generationCode)}/invalidate`, request, options);
+    return this.#invalidate(generationCode, request, options);
+  }
+
+  async #invalidate(generationCode: string, request: InvalidationRequest, options: CallOptions): Promise<InvalidationResult> {
+    const result = await this.#request<InvalidationResult>("POST", `/v1/dte/${encodeURIComponent(generationCode)}/invalidate`, request, options);
+    // Marvin: the event is saved in EVERY storage. The managed copy is the API's;
+    // the BYOS copies are ours, and a failure there never fails the invalidation.
+    return "jws" in result ? await this.#archiveInvalidationEvent(result, options.signal) : result;
   }
 
   /**
@@ -2498,9 +2618,14 @@ export class Facta {
   /** Download JSON/PDF bytes or regenerate a ticket PDF without issuing again. */
   async downloadDocument(
     generationCode: string,
-    kind: "json" | "pdf" | "ticket" = "json",
+    kind: "json" | "pdf" | "ticket" | "invalidation" = "json",
     options: CallOptions & DownloadOptions = {},
   ): Promise<DownloadedDocument> {
+    if (kind === "invalidation") {
+      // The event of the invalidated document lives only in Facta-managed storage.
+      if (options.source !== undefined && options.source !== "managed") throw new TypeError("kind=invalidation is only served with source=managed.");
+      options = { ...options, source: "managed" };
+    }
     if (options.source !== undefined && (options.source !== "managed" || kind === "ticket")) {
       throw new TypeError("source=managed is only valid for JSON/PDF downloads.");
     }

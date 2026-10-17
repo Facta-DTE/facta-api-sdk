@@ -171,7 +171,7 @@ Spanish field names and enum values from the wire contract.
 | `getStorageStatus(options?)` | Optional `{ signal? }` → `ManagedStorageStatus` | `download` | Checks capability v1, managed coverage/quota/integration, and verified BYOS readiness for the key's issuer/environment. Old servers (404/501) become `storage_unsupported`; malformed present responses fail as `storage_contract_invalid`. |
 | `getDocumentCopies(options?)` | Optional `{ generationCode?, signal? }` → `ManagedDocumentCopy[]` | `download` | Lists only managed JSON/PDF receipts for the authenticated issuer/environment. Includes pending/failed states; never returns object paths or signed URLs. |
 | `retryDocumentStorage(generationCode, options?)` | UUID and optional `{ signal? }` → `ManagedStorageReceipt` | `download` + `issue` | Repairs stored bytes for an already sealed DTE. It never calls `issue`, reserves a fiscal number, or accepts replacement content; errors when the API cannot recover originals. |
-| `downloadDocument(generationCode, kind="json", options?)` | `kind`: `json`, `pdf`, or `ticket`; optional `{ paperWidthMm?, raw?, source?, signal? }` → `DownloadedDocument` | `download` | Returns exact server bytes, content type, and suggested filename. **JSON is the Archivo DTE by default** (document + `firmaElectronica` + `selloRecibido`) and `jsonFormat` reports `archivo-dte` or `raw` from `X-Facta-Json-Format`; `raw: true` (JSON only) returns the stored original `{codigoGeneracion, ambiente, jws}`. A document with no seal (contingency) answers `409 not_sealed`; retry with `raw: true`. `storageSource` identifies managed, holding, or archive retrieval when the server reports it. Ticket is regenerated from an already sealed API-issued document without another DTE; documents issued in the web app are not available through this regeneration route. `paperWidthMm` applies only to ticket and must be an integer from 40 to 120; default is 80. |
+| `downloadDocument(generationCode, kind="json", options?)` | `kind`: `json`, `pdf`, `ticket`, or `invalidation` (the sealed invalidation event of that document, `<CODIGO>.invalidacion.json`; Facta-managed storage only, `source=managed` is implied); optional `{ paperWidthMm?, raw?, source?, signal? }` → `DownloadedDocument` | `download` | Returns exact server bytes, content type, and suggested filename. **JSON is the Archivo DTE by default** (document + `firmaElectronica` + `selloRecibido`) and `jsonFormat` reports `archivo-dte` or `raw` from `X-Facta-Json-Format`; `raw: true` (JSON only) returns the stored original `{codigoGeneracion, ambiente, jws}`. A document with no seal (contingency) answers `409 not_sealed`; retry with `raw: true`. `storageSource` identifies managed, holding, or archive retrieval when the server reports it. Ticket is regenerated from an already sealed API-issued document without another DTE; documents issued in the web app are not available through this regeneration route. `paperWidthMm` applies only to ticket and must be an integer from 40 to 120; default is 80. |
 | `issueAndArchive(request, options)` | Requires stable `operationId` and `idempotencyKey`; archive and remote destinations may come from `runtime`, with per-call overrides; optional signal and `ticketPaperWidthMm=80` → `ArchiveEmissionResult` | `issue` + `download` (ticket and recovery); `signKey` for issuance; `unlockKey` only when resolving catalog references | Verifies local archive readiness before reserving a number, records a restart-safe journal, and stores the exact server-returned signed JSON and PDF bytes without fetching them again. It derives the JWS from that JSON and downloads only the optional receipt ticket. Older API responses fall back to artifact downloads. Inspect `result.archive.state` separately from fiscal success; archive failure does not undo an issued DTE. Remote copy outcomes are separate. With `unlockKey` and a published snapshot it also replicates to the synced destinations (canonical `DTE/…` paths) unless `replicate: false` or `remoteDestinations` is given, reports verified copies to Facta when the server advertises `byosCopyReport`, and returns non-throwing `warnings` (`byos_not_replicated`, `copy_report_failed`). See [storage adapters](storage-adapters.md#where-documents-go-each-mode). |
 | `recoverOperation(operationId, options?)` | Journal ID and optional `{ request?, archive?, signal?, remoteDestinations?, replicate? }` → `ArchiveEmissionResult` | `issue` and possibly `download`; signing key needed only if the saved operation was never confirmed | Uses the encrypted request snapshot when available and verifies its fingerprint; accepts `request` for legacy journals without a saved snapshot. Reuses the saved idempotency key. Verifies API endpoint, key identity, issuer, and environment before any fiscal request. Expired or mismatched operations stop for manual reconciliation. Also retries unconfirmed BYOS copies and unsent copy reports. |
 | `listPendingOperations(archive?)` | Optional archive override → `PendingArchiveOperation[]` | No Facta scope; requires a ready local archive | Lists local operations that still need archive completion or remote-copy reconciliation. Returns an allow-listed summary without the stored fiscal request. Journal contents are encrypted by the archive adapter. |
@@ -194,9 +194,12 @@ A new successful invalidation also carries, on servers that support them:
   `invalidationEventFileOf(result)` returns it validated, or `null` when there
   is none (a sparse «already invalidated» answer, an older server, or an event
   the server could not build).
-- `storage`: the receipt of the Facta-managed copy of that event file (or
-  `null`), the same `ManagedStorageReceipt` as on issuance; only `json` is
-  used, `pdf` is not applicable to an event.
+- `storage`: the receipt of the Facta-managed copy of that event file, or `null`
+  (the index could not note the invalidation, or the event could not be built).
+  It is `{ destination, environment, invalidation, operationId }`: a single
+  file (no `json`/`pdf` parts), bound to the ORIGINAL document's code. A failed
+  write shows in `invalidation.state` (`failed`/`pending`) with its `errorCode`
+  and never undoes the invalidation.
 - `avisoCliente: { estado, destino, motivo? }`: the automatic «Documento
   invalidado» e-mail to the customer (PDF marked INVALIDADO plus the event
   JSON). It follows the company's automatic e-mail setting and **never undoes or
@@ -208,6 +211,26 @@ A new successful invalidation also carries, on servers that support them:
 | `en_proceso` | The provider is slow; the send continues and is logged under the document's deliveries. | none |
 | `no_enviado` | Nothing was sent. | `envio_automatico_desactivado` (setting off), `servidor_de_correo_propio` (company mails from its own SMTP, which only its browser holds), `documento_no_disponible` (document was emitted from the app; the server holds no copy), `sin_correo` (no receiver e-mail), `evento_ilegible`, `pdf_no_disponible`, `no_anotado_en_el_indice` |
 | `fallido` | A send was tried and failed. | `quota_exceeded`, `smtp_rejected`, `document_rejected`, `provider_unavailable` |
+
+**BYOS copies of the event (added by the SDK).** With an `unlockKey` (and
+`runtime.replicate` not `false`), `invalidate()` and `invalidateAndArchive()`
+also write `archivoEvento.contenido` to every synced S3-compatible or Supabase
+Storage destination at exactly `archivoEvento.ruta`
+(`DTE[/pruebas]/YYYY/MM/<CODIGO>.invalidacion.json`) and report each with
+`POST /v1/storage/copies/{codigoGeneracion}/byos` (`kind: "invalidation"`,
+`secretId`, `jsonPath`; never `pdfPath`) when the server advertises it
+(`capabilities.byosCopyReport >= 2`, or `invalidation` in `supportedKinds`);
+an older server still gets the file, without the report. The outcome is on the
+result, never an error: `eventCopies` (`{ destinationId, label, state, report }`
+per destination, `report` being `reported`, `failed` or `skipped`) and
+`sdkWarnings` (`byos_not_replicated`, `copy_report_failed`). The original
+document's copy must have been reported to that destination first (otherwise
+the server answers 400 `details.field: "secretId"`, surfaced as
+`copy_report_failed`). Destinations that need a person (Drive, OneDrive, FTP) are
+reported as `byos_not_replicated`; custom `runtime.remoteDestinations` are not
+used for the event because their paths are fixed to the DTE files.
+`downloadDocument(code, "invalidation")` fetches the managed copy
+(`source=managed` is implied).
 
 Treat `motivo` as an open string: newer servers may add codes. The server
 handler (`createFactaHandler` data actions) forwards only the notice state to

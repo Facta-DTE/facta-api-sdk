@@ -440,15 +440,19 @@ export interface ManagedStorageStatus {
     backupState: string | null;
   };
   byos: { ready: boolean };
-  supportedKinds: Array<"json" | "pdf">;
+  /** `invalidation` appears on servers that store the invalidation event. */
+  supportedKinds: Array<"json" | "pdf" | "invalidation">;
   unsupportedKinds: Array<"ticket" | "invalidation">;
-  /** Absent on servers that predate the capability. `byosCopyReport: 1` accepts BYOS copy reports. */
+  /**
+   * Absent on servers that predate the capability. `byosCopyReport: 1` accepts BYOS
+   * copy reports; `2` also accepts `kind: "invalidation"`.
+   */
   capabilities?: { byosCopyReport?: number };
 }
 
 export interface ManagedDocumentCopy {
   generationCode: string;
-  kind: "json" | "pdf";
+  kind: "json" | "pdf" | "invalidation";
   environment: "00" | "01";
   state: "stored" | "pending" | "failed";
   bytes: number;
@@ -578,6 +582,36 @@ export interface InvalidationRequest {
   solicita: InvalidationPerson;
 }
 
+/** The managed copy of an invalidation event: one file, bound to the ORIGINAL document's code. */
+export interface ManagedInvalidationReceipt {
+  destination: "managed" | "none";
+  environment: "00" | "01";
+  invalidation: ManagedStorageArtifactReceipt;
+  /** The generation code of the original (invalidated) document. */
+  operationId: string;
+}
+
+/** One BYOS destination's outcome for the event file. */
+export interface InvalidationEventCopy {
+  destinationId: string;
+  label: string;
+  /** Whether the file is at `archivoEvento.ruta` in that destination. */
+  state: "stored" | "unknown" | "failed" | "unavailable";
+  /**
+   * Whether Facta was told (`POST /v1/storage/copies/{cg}/byos`, `kind:
+   * "invalidation"`): `skipped` when the server predates it or the file was
+   * not stored; `failed` when the report was refused or did not arrive.
+   */
+  report: "reported" | "failed" | "skipped";
+  detail?: string;
+}
+
+export interface InvalidationSdkWarning {
+  code: "byos_not_replicated" | "copy_report_failed";
+  destinationId?: string;
+  detail: string;
+}
+
 /** The sealed invalidation event as the receiver's Archivo DTE, ready to file next to the original. */
 export interface InvalidationEventFile {
   /** `<CODIGO-DEL-DOCUMENTO>.invalidacion.json`. */
@@ -633,8 +667,23 @@ export interface CompleteInvalidationResult {
    * could not be built. Absent on servers that predate it.
    */
   archivoEvento?: InvalidationEventFile | null;
-  /** Receipt of the Facta-managed copy of the event file, when the company has one. */
-  storage?: ManagedStorageReceipt | null;
+  /**
+   * Receipt of the Facta-managed copy of the event file (one file, no `pdf`
+   * part), or `null` when the index could not note the invalidation or the
+   * event could not be built. A failed write is `invalidation.state`
+   * (`failed`/`pending`) with its `errorCode`; it never undoes the invalidation.
+   */
+  storage?: ManagedInvalidationReceipt | null;
+  /**
+   * Added by the SDK, never by the API: where the event file was written in the
+   * customer's own (BYOS) destinations and whether Facta was told. Absent when
+   * nothing was attempted (no `unlockKey`, `runtime.replicate: false`, no
+   * `archivoEvento`, no synced destination). A failed write or report is here
+   * and in `sdkWarnings`; the invalidation itself is never reported as failed.
+   */
+  eventCopies?: InvalidationEventCopy[];
+  /** Added by the SDK: problems writing or reporting the event file. */
+  sdkWarnings?: InvalidationSdkWarning[];
   /** Outcome of the automatic customer notice. Absent on servers that predate it. */
   avisoCliente?: InvalidationNotice;
 }
@@ -753,7 +802,7 @@ export interface HoldingPage { documentos: RetainedDocument[]; }
 
 export interface DownloadedDocument {
   codigoGeneracion: string;
-  kind: "json" | "pdf" | "ticket";
+  kind: "json" | "pdf" | "ticket" | "invalidation";
   bytes: Uint8Array;
   contentType: string;
   filename: string | null;
