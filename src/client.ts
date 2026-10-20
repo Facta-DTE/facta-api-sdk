@@ -37,6 +37,7 @@
 import { FactaError, type FactaErrorCode } from "./errors.ts";
 import { validateFactaConfig } from "./config-validation.ts";
 import { resolveCatalogRefs } from "./catalog.ts";
+import { envelopeDigest, fingerprintV1 } from "./jcs.ts";
 import {
   CATALOG_WRITE_MESSAGES,
   nextCursor,
@@ -258,6 +259,14 @@ export interface CallOptions {
   signal?: AbortSignal;
 }
 
+/** Header carrying fingerprint-v1 (see conformance/fingerprint-v1.md). */
+const FINGERPRINT_HEADER = "X-Facta-Request-Fingerprint";
+/** The only routes whose idempotency claim may be hashed by fingerprint. */
+const FINGERPRINT_PATHS: ReadonlySet<string> = new Set(["/v1/dte", "/v1/dte/prepare"]);
+
+/** Internal: `CallOptions` plus the fingerprint some routes send. Never public. */
+type RequestOptions = CallOptions & { fingerprint?: string };
+
 /** `CallOptions` of the calls that can mark delivery channels. */
 export interface IssueOptions extends CallOptions {
   /**
@@ -340,10 +349,8 @@ function newIdempotencyKey(): string {
   return `facta-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 }
 
-async function digestEnvelope(envelope: object): Promise<string> {
-  const bytes = new TextEncoder().encode(JSON.stringify([envelope]));
-  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
-  return Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('');
+function digestEnvelope(envelope: object): Promise<string> {
+  return envelopeDigest(envelope);
 }
 
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
@@ -397,15 +404,24 @@ function isManagedStorageStatus(value: unknown): value is ManagedStorageStatus {
     [managed.quotaBytes, managed.usedBytes, managed.reservedBytes, managed.usedBytesTotal, managed.reservedBytesTotal].every(nullableBytes) &&
     [managed.coveredUntil, managed.accessUntil].every((field) => field === null || validTimestamp(field)) &&
     [managed.bucketState, managed.backupState].every(nullableString) && typeof value.byos.ready === "boolean" &&
-    Array.isArray(value.supportedKinds) && value.supportedKinds.length === 2 && new Set(value.supportedKinds).size === 2 &&
-    value.supportedKinds.every((kind) => kind === "json" || kind === "pdf") && Array.isArray(value.unsupportedKinds) &&
-    value.unsupportedKinds.every((kind) => kind === "ticket" || kind === "invalidation");
+    isKindList(value.supportedKinds) && value.supportedKinds.includes("json") && value.supportedKinds.includes("pdf") &&
+    isKindList(value.unsupportedKinds) && !value.unsupportedKinds.some((kind) => (value.supportedKinds as string[]).includes(kind));
+}
+
+// The kind lists are capabilities, so they grow: since the server stores the
+// invalidation event as its own file it answers supportedKinds
+// [json, pdf, invalidation] and unsupportedKinds [ticket]. Demanding exactly
+// [json, pdf] made every getStorageStatus() on that server fail with
+// storage_contract_invalid. Unique lowercase kind names; extra kinds accepted.
+function isKindList(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((kind) => typeof kind === "string" && /^[a-z][a-z0-9_]*$/.test(kind)) &&
+    new Set(value).size === value.length;
 }
 
 function isManagedDocumentCopies(value: unknown): value is { capabilityVersion: 1; copies: ManagedDocumentCopy[] } {
   return isRecord(value) && value.capabilityVersion === 1 && Array.isArray(value.copies) &&
     new Set(value.copies.map((copy) => isRecord(copy) ? `${String(copy.generationCode).toUpperCase()}:${String(copy.kind)}` : "invalid")).size === value.copies.length && value.copies.every((copy) =>
-    isRecord(copy) && typeof copy.generationCode === "string" && uuidPattern.test(copy.generationCode) && (copy.kind === "json" || copy.kind === "pdf") &&
+    isRecord(copy) && typeof copy.generationCode === "string" && uuidPattern.test(copy.generationCode) && (copy.kind === "json" || copy.kind === "pdf" || copy.kind === "invalidation") &&
     (copy.environment === "00" || copy.environment === "01") && ["stored", "pending", "failed"].includes(String(copy.state)) &&
     validBytes(copy.bytes) && typeof copy.sha256 === "string" && digestPattern.test(copy.sha256) && typeof copy.issuedDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(copy.issuedDate) && Number.isFinite(Date.parse(copy.issuedDate)) && new Date(copy.issuedDate).toISOString().slice(0, 10) === copy.issuedDate &&
     (copy.storedAt === null || validTimestamp(copy.storedAt)) && (copy.state !== "stored" || validTimestamp(copy.storedAt))
@@ -1312,9 +1328,12 @@ export class Facta {
   async issue(request: DteRequest, options: IssueOptions = {}): Promise<IssueResult> {
     throwIfAborted(options.signal);
     const { deliver, ...call } = options;
+    // Taken before catalog resolution, so a catalog change between an attempt and its retry
+    // cannot change what the server's idempotency claim compares.
+    const fingerprint = await fingerprintV1(withDelivery(request, deliver));
     const resolved = withDelivery(await this.#resolveCatalogRefs(request), deliver);
     throwIfAborted(options.signal);
-    return await this.#guard(await this.#request<IssueResult>("POST", "/v1/dte", resolved, call), []);
+    return await this.#guard(await this.#request<IssueResult>("POST", "/v1/dte", resolved, { ...call, fingerprint }), []);
   }
 
   /**
@@ -1392,6 +1411,7 @@ export class Facta {
     throwIfAborted(signal);
     await this.#clock?.ensure();
     const identity = await this.#archiveIdentity(signal);
+    const requestFingerprint = await fingerprintV1(withDelivery(request, options.deliver));
     const resolved = withDelivery(await this.#resolveCatalogRefs(request), options.deliver);
     throwIfAborted(signal);
     const requestBytes = new TextEncoder().encode(JSON.stringify(resolved));
@@ -1401,6 +1421,8 @@ export class Facta {
       identity,
       idempotencyKey,
       requestSha256,
+      idempotencyHash: "fingerprint-v1",
+      requestFingerprint,
       request: resolved,
       createdAt: this.#stamp(),
       state: "started",
@@ -1416,7 +1438,7 @@ export class Facta {
       });
     }
 
-    const emission = await this.#request<IssueResult>("POST", "/v1/dte", resolved, { idempotencyKey, ...(signal ? { signal } : {}) });
+    const emission = await this.#request<IssueResult>("POST", "/v1/dte", resolved, { idempotencyKey, fingerprint: requestFingerprint, ...(signal ? { signal } : {}) });
     return await this.#archiveEmission({ id: operationId, idempotencyKey, requestSha256, createdAt: this.#stamp(), state: "started", ...(ticketPaperWidthMm === undefined ? {} : { ticketPaperWidthMm }) }, emission, archive, signal, remote);
   }
 
@@ -1539,10 +1561,30 @@ export class Facta {
         await archive.markNeedsAttention(operationId, detail);
         throw new Error(detail);
       }
-      const emission = await this.#request<IssueResult>("POST", "/v1/dte", resolved, {
+      // `idempotencyHash` says how the server claim was hashed. "fingerprint-v1" sends the stored
+      // fingerprint; "body" sends no header. A record without it (written by an older SDK, or the
+      // field was dropped by a custom archive) is ambiguous: try without the header first, and if
+      // the server says `idempotency_key_reuse` (it did not act on that attempt) resend the SAME
+      // body once with the fingerprint. Never a third attempt.
+      const send = (fingerprint: string | undefined) => this.#request<IssueResult>("POST", "/v1/dte", resolved, {
         idempotencyKey: operation.idempotencyKey,
+        ...(fingerprint === undefined ? {} : { fingerprint }),
         ...(signal ? { signal } : {}),
       });
+      const fingerprintFor = async () => operation.requestFingerprint ?? await fingerprintV1(recoveryRequest);
+      let emission: IssueResult;
+      if (operation.idempotencyHash === "fingerprint-v1") {
+        emission = await send(await fingerprintFor());
+      } else if (operation.idempotencyHash === "body") {
+        emission = await send(undefined);
+      } else {
+        try {
+          emission = await send(undefined);
+        } catch (cause) {
+          if (!(cause instanceof FactaError) || cause.code !== "idempotency_key_reuse") throw cause;
+          emission = await send(await fingerprintFor());
+        }
+      }
       return await this.#archiveEmission(operation, emission, archive, signal, remote);
     }
   }
@@ -2145,9 +2187,10 @@ export class Facta {
   /** Reserve the correlative and get the canonical document, unsigned. */
   async prepare(request: DteRequest, options: CallOptions = {}): Promise<PreparedDte> {
     throwIfAborted(options.signal);
+    const fingerprint = await fingerprintV1(request);
     const resolved = await this.#resolveCatalogRefs(request);
     throwIfAborted(options.signal);
-    return this.#request<PreparedDte>("POST", "/v1/dte/prepare", resolved, options);
+    return this.#request<PreparedDte>("POST", "/v1/dte/prepare", resolved, { ...options, fingerprint });
   }
 
   /**
@@ -2562,7 +2605,7 @@ export class Facta {
     method: string,
     path: string,
     body?: unknown,
-    options: CallOptions = {},
+    options: RequestOptions = {},
     binary = false,
   ): Promise<T> {
     throwIfAborted(options.signal);
@@ -2583,6 +2626,7 @@ export class Facta {
     // exactly the failure this header prevents.
     if (method === "POST") {
       headers["Idempotency-Key"] = options.idempotencyKey ?? newIdempotencyKey();
+      if (options.fingerprint !== undefined && FINGERPRINT_PATHS.has(path)) headers[FINGERPRINT_HEADER] = options.fingerprint;
     }
 
     let lastError: FactaError | null = null;

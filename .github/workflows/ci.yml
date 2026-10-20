@@ -1,7 +1,10 @@
 name: SDK CI
 
+# Pull requests run only when ready for review: a draft spends no Actions
+# minutes, and marking it "Ready for review" starts the run.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches:
       - dev
       - main
@@ -16,6 +19,7 @@ permissions:
 jobs:
   validate:
     name: Test and pack
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

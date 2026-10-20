@@ -382,6 +382,49 @@ Deno.test("storage capability, copy status, and repair use additive API routes",
   assertEquals(calls[1].url.endsWith(`?generationCode=${generationCode}`), true);
 });
 
+Deno.test("storage status accepts the kind lists the server sends since invalidation files, and refuses broken ones", async () => {
+  const base = {
+    capabilityVersion: 1,
+    managed: {
+      configured: true, ready: true, state: "ready", integration: "ready",
+      quotaBytes: 1000, usedBytes: 0, reservedBytes: 0, usedBytesTotal: 0,
+      reservedBytesTotal: 0, coveredUntil: null, accessUntil: null,
+      bucketState: "ready", backupState: null,
+    },
+    byos: { ready: false },
+  };
+  // What staging and production answer today, an older server, and a future kind.
+  const accepted: Array<[unknown, unknown]> = [
+    [["json", "pdf", "invalidation"], ["ticket"]],
+    [["json", "pdf"], ["ticket", "invalidation"]],
+    [["pdf", "json", "invalidation", "some_future_kind"], []],
+  ];
+  const refused: Array<[unknown, unknown]> = [
+    [["json"], ["ticket"]],
+    [["json", "pdf", "pdf"], ["ticket"]],
+    [["json", "pdf", "ticket"], ["ticket"]],
+    [["json", "pdf", 7], ["ticket"]],
+    [["json", "pdf"], "ticket"],
+  ];
+  const all = [...accepted, ...refused];
+  const { fetch } = fakeFetch(all.map(([supportedKinds, unsupportedKinds]) => ({ status: 200, body: { ...base, supportedKinds, unsupportedKinds } })));
+  const facta = new Facta({ region: false, apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch, maxRetries: 0 });
+  for (const [supportedKinds] of accepted) assertEquals((await facta.getStorageStatus()).supportedKinds, supportedKinds);
+  for (const _ of refused) {
+    const error = await assertRejects(() => facta.getStorageStatus(), FactaError);
+    assertEquals(error.code, "storage_contract_invalid");
+  }
+});
+
+Deno.test("document copies include the invalidation event file", async () => {
+  const generationCode = "33333333-3333-4333-8333-333333333333";
+  const copy = (kind: "json" | "pdf" | "invalidation") => ({ generationCode, kind, environment: "00" as const, state: "stored" as const, bytes: 12, sha256: "b".repeat(64), issuedDate: "2026-10-20", storedAt: "2026-10-20T10:00:00Z" });
+  const copies = [copy("json"), copy("pdf"), copy("invalidation")];
+  const { fetch } = fakeFetch([{ status: 200, body: { capabilityVersion: 1, copies } }]);
+  const facta = new Facta({ region: false, apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch });
+  assertEquals(await facta.getDocumentCopies(), copies);
+});
+
 Deno.test("older storage routes report unsupported instead of malformed success", async () => {
   const { fetch } = fakeFetch([{
     status: 404,

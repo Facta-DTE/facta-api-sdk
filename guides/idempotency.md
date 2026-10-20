@@ -42,6 +42,31 @@ These come from the published API contract:
 - A minted key lives only in memory. If your process restarts, the next attempt
   gets a different key. **That is why you should supply your own.**
 
+## The request fingerprint
+
+On `POST /v1/dte` (`issue`, `issueAndArchive`, `recoverOperation`) and
+`POST /v1/dte/prepare` (`prepare`) the SDK also sends
+`X-Facta-Request-Fingerprint`: the SHA-256 (lowercase hex) of the RFC 8785
+canonical form of **your request as you wrote it**, before any `customerId` /
+`productId` is replaced by catalog data, and including delivery options. The
+server compares that value instead of the bytes of the body, so:
+
+- A catalog edit (a price, a customer's address) between an attempt and its
+  retry no longer ends in `422 idempotency_key_reuse`: the retry replays the
+  document of the first attempt. Before, the SDK resolved the ids again, built a
+  different body and the server refused it.
+- Changing something **you** wrote (a quantity, a note, `deliver`) is still a
+  different request and still answers `422 idempotency_key_reuse`.
+- The body is unchanged and every automatic retry of one call resends identical
+  bytes. Nothing else about the request changes.
+
+Operations journaled by an older SDK version were claimed by body. The journal
+records which mode each operation used (`idempotencyHash`), and
+`recoverOperation` resends the header only for operations that used it, so an
+upgrade in the middle of a 24-hour window is safe. The exact definition, with
+test vectors for other languages, is in
+[`conformance/fingerprint-v1.md`](https://github.com/Facta-DTE/facta-api-sdk/blob/main/conformance/fingerprint-v1.md).
+
 ## Pattern: one key per business operation
 
 Use an identifier your system already has and that survives restarts: an order
