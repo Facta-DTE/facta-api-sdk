@@ -1380,3 +1380,65 @@ Deno.test("the fingerprint covers delivery options, which the journal also snaps
   assertEquals(typeof body.entrega, "object");
   assertEquals(issues[0].fingerprint, await fingerprintV1(body));
 });
+
+function strictServerTransport(storedBy: "body" | "fingerprint") {
+  const { fetch: inner } = transport();
+  const issues: Array<{ fingerprint: string | null; body: string | null }> = [];
+  const fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input).endsWith("/v1/dte") && init?.method === "POST") {
+      const fingerprint = new Headers(init.headers).get("X-Facta-Request-Fingerprint");
+      issues.push({ fingerprint, body: typeof init.body === "string" ? init.body : null });
+      if (storedBy === "fingerprint" && fingerprint === null) {
+        return Promise.resolve(Response.json({ error: { code: "idempotency_key_reuse", message: "different body" } }, { status: 422 }));
+      }
+    }
+    return inner(input, init);
+  }) as typeof globalThis.fetch;
+  return { fetch, issues };
+}
+
+Deno.test("a record without idempotencyHash: server claim hashed by body succeeds on the first try, no header", async () => {
+  const archive = new MemoryArchive();
+  archive.operation = { id: "amb-1", identity: IDENTITY_X, idempotencyKey: "k", requestSha256: await bodyHash(request), createdAt: new Date().toISOString(), state: "started" };
+  const { fetch, issues } = strictServerTransport("body");
+  const result = await new Facta({ region: false, apiKey: "facta_test_x.secret", fetch }).recoverOperation("amb-1", { request, archive });
+  assertEquals(result.archive.state, "complete");
+  assertEquals(issues.length, 1);
+  assertEquals(issues[0].fingerprint, null);
+});
+
+Deno.test("a record without idempotencyHash: server claim hashed by fingerprint gets 422, then exactly one resend with the header", async () => {
+  for (const withStoredFingerprint of [false, true]) {
+    const archive = new MemoryArchive();
+    archive.operation = {
+      id: "amb-2", identity: IDENTITY_X, idempotencyKey: "k2", requestSha256: await bodyHash(request), createdAt: new Date().toISOString(), state: "started",
+      ...(withStoredFingerprint ? { requestFingerprint: await fingerprintV1(request) } : {}),
+    };
+    const { fetch, issues } = strictServerTransport("fingerprint");
+    const result = await new Facta({ region: false, apiKey: "facta_test_x.secret", fetch }).recoverOperation("amb-2", { request, archive });
+    assertEquals(result.archive.state, "complete");
+    assertEquals(issues.length, 2);
+    assertEquals(issues[0].fingerprint, null);
+    assertEquals(issues[1].fingerprint, await fingerprintV1(request));
+    assertEquals(issues[1].body, issues[0].body);
+  }
+});
+
+Deno.test("an ambiguous record whose resend is also refused stops after two attempts", async () => {
+  const archive = new MemoryArchive();
+  archive.operation = { id: "amb-3", identity: IDENTITY_X, idempotencyKey: "k3", requestSha256: await bodyHash(request), createdAt: new Date().toISOString(), state: "started" };
+  let attempts = 0;
+  const fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input).endsWith("/v1/dte") && init?.method === "POST") {
+      attempts++;
+      return Promise.resolve(Response.json({ error: { code: "idempotency_key_reuse", message: "no" } }, { status: 422 }));
+    }
+    return transport().fetch(input, init);
+  }) as typeof globalThis.fetch;
+  let code = "";
+  try {
+    await new Facta({ region: false, apiKey: "facta_test_x.secret", fetch }).recoverOperation("amb-3", { request, archive });
+  } catch (error) { code = (error as { code?: string }).code ?? ""; }
+  assertEquals(code, "idempotency_key_reuse");
+  assertEquals(attempts, 2);
+});

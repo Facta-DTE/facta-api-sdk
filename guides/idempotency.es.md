@@ -68,7 +68,7 @@ reclamaron por cuerpo. El diario registra qué modo usó cada operación
 (`idempotencyHash`) y `recoverOperation` reenvía el encabezado solo en las que lo
 usaron, así que actualizar el SDK en medio de una ventana de 24 horas es seguro.
 La definición exacta, con vectores de prueba para otros lenguajes, está en
-[`conformance/fingerprint-v1.md`](../conformance/fingerprint-v1.md).
+[`conformance/fingerprint-v1.md`](https://github.com/Facta-DTE/facta-api-sdk/blob/main/conformance/fingerprint-v1.md).
 
 ## Patrón: una llave por operación de negocio
 

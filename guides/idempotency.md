@@ -65,7 +65,7 @@ records which mode each operation used (`idempotencyHash`), and
 `recoverOperation` resends the header only for operations that used it, so an
 upgrade in the middle of a 24-hour window is safe. The exact definition, with
 test vectors for other languages, is in
-[`conformance/fingerprint-v1.md`](../conformance/fingerprint-v1.md).
+[`conformance/fingerprint-v1.md`](https://github.com/Facta-DTE/facta-api-sdk/blob/main/conformance/fingerprint-v1.md).
 
 ## Pattern: one key per business operation
 

@@ -1552,16 +1552,30 @@ export class Facta {
         await archive.markNeedsAttention(operationId, detail);
         throw new Error(detail);
       }
-      // Journals written before fingerprint-v1 have no `idempotencyHash`: their claim was hashed
-      // by body, so they recover without the header (the server would compare it with a body hash).
-      const fingerprint = operation.idempotencyHash === "fingerprint-v1"
-        ? operation.requestFingerprint ?? await fingerprintV1(recoveryRequest)
-        : undefined;
-      const emission = await this.#request<IssueResult>("POST", "/v1/dte", resolved, {
+      // `idempotencyHash` says how the server claim was hashed. "fingerprint-v1" sends the stored
+      // fingerprint; "body" sends no header. A record without it (written by an older SDK, or the
+      // field was dropped by a custom archive) is ambiguous: try without the header first, and if
+      // the server says `idempotency_key_reuse` (it did not act on that attempt) resend the SAME
+      // body once with the fingerprint. Never a third attempt.
+      const send = (fingerprint: string | undefined) => this.#request<IssueResult>("POST", "/v1/dte", resolved, {
         idempotencyKey: operation.idempotencyKey,
         ...(fingerprint === undefined ? {} : { fingerprint }),
         ...(signal ? { signal } : {}),
       });
+      const fingerprintFor = async () => operation.requestFingerprint ?? await fingerprintV1(recoveryRequest);
+      let emission: IssueResult;
+      if (operation.idempotencyHash === "fingerprint-v1") {
+        emission = await send(await fingerprintFor());
+      } else if (operation.idempotencyHash === "body") {
+        emission = await send(undefined);
+      } else {
+        try {
+          emission = await send(undefined);
+        } catch (cause) {
+          if (!(cause instanceof FactaError) || cause.code !== "idempotency_key_reuse") throw cause;
+          emission = await send(await fingerprintFor());
+        }
+      }
       return await this.#archiveEmission(operation, emission, archive, signal, remote);
     }
   }
