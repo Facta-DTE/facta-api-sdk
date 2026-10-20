@@ -259,6 +259,14 @@ export interface CallOptions {
   signal?: AbortSignal;
 }
 
+/** Header carrying fingerprint-v1 (see conformance/fingerprint-v1.md). */
+const FINGERPRINT_HEADER = "X-Facta-Request-Fingerprint";
+/** The only routes whose idempotency claim may be hashed by fingerprint. */
+const FINGERPRINT_PATHS: ReadonlySet<string> = new Set(["/v1/dte", "/v1/dte/prepare"]);
+
+/** Internal: `CallOptions` plus the fingerprint some routes send. Never public. */
+type RequestOptions = CallOptions & { fingerprint?: string };
+
 /** `CallOptions` of the calls that can mark delivery channels. */
 export interface IssueOptions extends CallOptions {
   /**
@@ -1311,9 +1319,12 @@ export class Facta {
   async issue(request: DteRequest, options: IssueOptions = {}): Promise<IssueResult> {
     throwIfAborted(options.signal);
     const { deliver, ...call } = options;
+    // Taken before catalog resolution, so a catalog change between an attempt and its retry
+    // cannot change what the server's idempotency claim compares.
+    const fingerprint = await fingerprintV1(withDelivery(request, deliver));
     const resolved = withDelivery(await this.#resolveCatalogRefs(request), deliver);
     throwIfAborted(options.signal);
-    return await this.#guard(await this.#request<IssueResult>("POST", "/v1/dte", resolved, call), []);
+    return await this.#guard(await this.#request<IssueResult>("POST", "/v1/dte", resolved, { ...call, fingerprint }), []);
   }
 
   /**
@@ -1391,6 +1402,7 @@ export class Facta {
     throwIfAborted(signal);
     await this.#clock?.ensure();
     const identity = await this.#archiveIdentity(signal);
+    const requestFingerprint = await fingerprintV1(withDelivery(request, options.deliver));
     const resolved = withDelivery(await this.#resolveCatalogRefs(request), options.deliver);
     throwIfAborted(signal);
     const requestBytes = new TextEncoder().encode(JSON.stringify(resolved));
@@ -1400,6 +1412,8 @@ export class Facta {
       identity,
       idempotencyKey,
       requestSha256,
+      idempotencyHash: "fingerprint-v1",
+      requestFingerprint,
       request: resolved,
       createdAt: this.#stamp(),
       state: "started",
@@ -1415,7 +1429,7 @@ export class Facta {
       });
     }
 
-    const emission = await this.#request<IssueResult>("POST", "/v1/dte", resolved, { idempotencyKey, ...(signal ? { signal } : {}) });
+    const emission = await this.#request<IssueResult>("POST", "/v1/dte", resolved, { idempotencyKey, fingerprint: requestFingerprint, ...(signal ? { signal } : {}) });
     return await this.#archiveEmission({ id: operationId, idempotencyKey, requestSha256, createdAt: this.#stamp(), state: "started", ...(ticketPaperWidthMm === undefined ? {} : { ticketPaperWidthMm }) }, emission, archive, signal, remote);
   }
 
@@ -1538,8 +1552,14 @@ export class Facta {
         await archive.markNeedsAttention(operationId, detail);
         throw new Error(detail);
       }
+      // Journals written before fingerprint-v1 have no `idempotencyHash`: their claim was hashed
+      // by body, so they recover without the header (the server would compare it with a body hash).
+      const fingerprint = operation.idempotencyHash === "fingerprint-v1"
+        ? operation.requestFingerprint ?? await fingerprintV1(recoveryRequest)
+        : undefined;
       const emission = await this.#request<IssueResult>("POST", "/v1/dte", resolved, {
         idempotencyKey: operation.idempotencyKey,
+        ...(fingerprint === undefined ? {} : { fingerprint }),
         ...(signal ? { signal } : {}),
       });
       return await this.#archiveEmission(operation, emission, archive, signal, remote);
@@ -2144,9 +2164,10 @@ export class Facta {
   /** Reserve the correlative and get the canonical document, unsigned. */
   async prepare(request: DteRequest, options: CallOptions = {}): Promise<PreparedDte> {
     throwIfAborted(options.signal);
+    const fingerprint = await fingerprintV1(request);
     const resolved = await this.#resolveCatalogRefs(request);
     throwIfAborted(options.signal);
-    return this.#request<PreparedDte>("POST", "/v1/dte/prepare", resolved, options);
+    return this.#request<PreparedDte>("POST", "/v1/dte/prepare", resolved, { ...options, fingerprint });
   }
 
   /**
@@ -2561,7 +2582,7 @@ export class Facta {
     method: string,
     path: string,
     body?: unknown,
-    options: CallOptions = {},
+    options: RequestOptions = {},
     binary = false,
   ): Promise<T> {
     throwIfAborted(options.signal);
@@ -2582,6 +2603,7 @@ export class Facta {
     // exactly the failure this header prevents.
     if (method === "POST") {
       headers["Idempotency-Key"] = options.idempotencyKey ?? newIdempotencyKey();
+      if (options.fingerprint !== undefined && FINGERPRINT_PATHS.has(path)) headers[FINGERPRINT_HEADER] = options.fingerprint;
     }
 
     let lastError: FactaError | null = null;

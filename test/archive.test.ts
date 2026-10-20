@@ -6,6 +6,7 @@ import {
 import { Facta } from "../src/client.ts";
 import { FactaError } from "../src/errors.ts";
 import { FileInvoiceArchive } from "../src/file-archive.ts";
+import { fingerprintV1 } from "../src/jcs.ts";
 import type {
   ArchiveArtifact,
   ArchiveOperation,
@@ -1293,4 +1294,89 @@ Deno.test("malformed storage receipt stays observable while exact inline archiva
     assertEquals((await facta.listPendingOperations(archive))[0].storageErrorCode, "storage_contract_invalid");
     assertEquals(base.calls.filter(call => call.url.endsWith('/v1/dte')).length, 1);
   } finally { await Deno.remove(directory, { recursive: true }); }
+});
+
+// ── fingerprint-v1 and the journal (conformance/fingerprint-v1.md) ──────────────────────────────
+
+function recordingTransport() {
+  const { fetch: inner, calls } = transport();
+  const issues: Array<{ fingerprint: string | null; body: string | null }> = [];
+  const fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input).endsWith("/v1/dte") && init?.method === "POST") {
+      issues.push({
+        fingerprint: new Headers(init.headers).get("X-Facta-Request-Fingerprint"),
+        body: typeof init.body === "string" ? init.body : null,
+      });
+    }
+    return inner(input, init);
+  }) as typeof globalThis.fetch;
+  return { fetch, calls, issues };
+}
+
+async function bodyHash(value: unknown): Promise<string> {
+  return await sha256Hex(new TextEncoder().encode(JSON.stringify(value)));
+}
+
+Deno.test("a journal record from an older SDK recovers WITHOUT the fingerprint header", async () => {
+  const archive = new MemoryArchive();
+  archive.operation = {
+    id: "legacy-1",
+    identity: IDENTITY_X,
+    idempotencyKey: "legacy-key",
+    requestSha256: await bodyHash(request),
+    createdAt: new Date().toISOString(),
+    state: "started",
+  };
+  const { fetch, issues } = recordingTransport();
+  const facta = new Facta({ region: false, apiKey: "facta_test_x.secret", fetch });
+  const result = await facta.recoverOperation("legacy-1", { request, archive });
+  assertEquals(result.archive.state, "complete");
+  assertEquals(issues.length, 1);
+  assertEquals(issues[0].fingerprint, null);
+  assertEquals(issues[0].body, JSON.stringify(request));
+});
+
+Deno.test("a record marked body-hashed recovers without the header even if it names a fingerprint", async () => {
+  const archive = new MemoryArchive();
+  archive.operation = {
+    id: "legacy-2",
+    identity: IDENTITY_X,
+    idempotencyKey: "legacy-key-2",
+    requestSha256: await bodyHash(request),
+    idempotencyHash: "body",
+    createdAt: new Date().toISOString(),
+    state: "started",
+  };
+  const { fetch, issues } = recordingTransport();
+  await new Facta({ region: false, apiKey: "facta_test_x.secret", fetch }).recoverOperation("legacy-2", { request, archive });
+  assertEquals(issues[0].fingerprint, null);
+});
+
+Deno.test("issueAndArchive records fingerprint-v1 and sends it; recovery resends the same value", async () => {
+  const archive = new MemoryArchive();
+  const { fetch, issues } = recordingTransport();
+  const facta = new Facta({ region: false, apiKey: "facta_test_x.secret", fetch, runtime: { version: 1, archive } });
+  await facta.issueAndArchive(request, { operationId: "new-1", idempotencyKey: "new-key", includeTicket: false });
+  const expected = await fingerprintV1(request);
+  assertEquals(issues[0].fingerprint, expected);
+  assertEquals(archive.operation?.idempotencyHash, "fingerprint-v1");
+  assertEquals(archive.operation?.requestFingerprint, expected);
+
+  // An interrupted new-format operation: recovery sends the stored fingerprint, same body bytes.
+  const interrupted = new MemoryArchive();
+  interrupted.operation = { ...archive.operation!, state: "started", codigoGeneracion: undefined };
+  delete interrupted.operation.codigoGeneracion;
+  await new Facta({ region: false, apiKey: "facta_test_x.secret", fetch }).recoverOperation("new-1", { archive: interrupted });
+  assertEquals(issues[1].fingerprint, expected);
+  assertEquals(issues[1].body, issues[0].body);
+});
+
+Deno.test("the fingerprint covers delivery options, which the journal also snapshots", async () => {
+  const archive = new MemoryArchive();
+  const { fetch, issues } = recordingTransport();
+  const facta = new Facta({ region: false, apiKey: "facta_test_x.secret", fetch, runtime: { version: 1, archive } });
+  await facta.issueAndArchive(request, { operationId: "new-2", idempotencyKey: "new-key-2", includeTicket: false, deliver: { email: "cliente@ejemplo.com" } });
+  const body = JSON.parse(issues[0].body!);
+  assertEquals(typeof body.entrega, "object");
+  assertEquals(issues[0].fingerprint, await fingerprintV1(body));
 });

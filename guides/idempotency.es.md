@@ -44,6 +44,32 @@ Vienen del contrato publicado de la API:
   el siguiente intento lleva otra llave. **Por eso conviene que usted ponga la
   suya.**
 
+## La huella de la petición
+
+En `POST /v1/dte` (`issue`, `issueAndArchive`, `recoverOperation`) y en
+`POST /v1/dte/prepare` (`prepare`) el SDK envía además
+`X-Facta-Request-Fingerprint`: el SHA-256 (hexadecimal en minúsculas) de la
+forma canónica RFC 8785 de **su petición tal como usted la escribió**, antes de
+que cualquier `customerId` / `productId` se reemplace con datos del catálogo, e
+incluyendo las opciones de entrega. El servidor compara ese valor y no los bytes
+del cuerpo, de modo que:
+
+- Una edición del catálogo (un precio, la dirección de un cliente) entre un
+  intento y su reintento ya no termina en `422 idempotency_key_reuse`: el
+  reintento devuelve el documento del primer intento. Antes, el SDK resolvía de
+  nuevo los ids, armaba otro cuerpo y el servidor lo rechazaba.
+- Si cambia algo que **usted** escribió (una cantidad, una nota, `deliver`),
+  sigue siendo otra petición y sigue respondiendo `422 idempotency_key_reuse`.
+- El cuerpo no cambia y cada reintento automático de una llamada reenvía
+  exactamente los mismos bytes. Nada más de la petición se modifica.
+
+Las operaciones anotadas en el diario por una versión anterior del SDK se
+reclamaron por cuerpo. El diario registra qué modo usó cada operación
+(`idempotencyHash`) y `recoverOperation` reenvía el encabezado solo en las que lo
+usaron, así que actualizar el SDK en medio de una ventana de 24 horas es seguro.
+La definición exacta, con vectores de prueba para otros lenguajes, está en
+[`conformance/fingerprint-v1.md`](../conformance/fingerprint-v1.md).
+
 ## Patrón: una llave por operación de negocio
 
 Use un identificador que su sistema ya tenga y que sobreviva a un reinicio: un
