@@ -13,6 +13,15 @@ export interface ArchiveOperation {
   identity?: ArchiveOperationIdentity;
   idempotencyKey: string;
   requestSha256: string;
+  /**
+   * How the server's idempotency claim for this operation was hashed. `"fingerprint-v1"`
+   * (new operations) means the request carried `X-Facta-Request-Fingerprint`; a record
+   * without this field was written by an older SDK, was hashed by body and is recovered
+   * WITHOUT the header.
+   */
+  idempotencyHash?: "body" | "fingerprint-v1";
+  /** fingerprint-v1 of the request as the caller supplied it (before catalog resolution). */
+  requestFingerprint?: string;
   /** Immutable catalog-resolved request snapshot, protected by the archive implementation. */
   request?: DteRequest;
   createdAt: string;
