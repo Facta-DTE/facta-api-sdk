@@ -6,6 +6,7 @@ concurrency:
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches:
       - dev
   workflow_dispatch:
@@ -29,7 +30,7 @@ jobs:
   live-test:
     if: >-
       (github.event_name == 'workflow_dispatch' && (inputs.confirmation == 'emit-test-fe' || inputs.confirmation == 'emit-enabled-dte-fixtures')) ||
-      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+      (github.event_name == 'pull_request' && github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     environment:
       name: staging-live-test
