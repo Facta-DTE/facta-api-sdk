@@ -37,6 +37,7 @@
 import { FactaError, type FactaErrorCode } from "./errors.ts";
 import { validateFactaConfig } from "./config-validation.ts";
 import { resolveCatalogRefs } from "./catalog.ts";
+import { envelopeDigest, fingerprintV1 } from "./jcs.ts";
 import {
   CATALOG_WRITE_MESSAGES,
   nextCursor,
@@ -340,10 +341,8 @@ function newIdempotencyKey(): string {
   return `facta-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 }
 
-async function digestEnvelope(envelope: object): Promise<string> {
-  const bytes = new TextEncoder().encode(JSON.stringify([envelope]));
-  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
-  return Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('');
+function digestEnvelope(envelope: object): Promise<string> {
+  return envelopeDigest(envelope);
 }
 
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
