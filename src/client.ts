@@ -404,15 +404,24 @@ function isManagedStorageStatus(value: unknown): value is ManagedStorageStatus {
     [managed.quotaBytes, managed.usedBytes, managed.reservedBytes, managed.usedBytesTotal, managed.reservedBytesTotal].every(nullableBytes) &&
     [managed.coveredUntil, managed.accessUntil].every((field) => field === null || validTimestamp(field)) &&
     [managed.bucketState, managed.backupState].every(nullableString) && typeof value.byos.ready === "boolean" &&
-    Array.isArray(value.supportedKinds) && value.supportedKinds.length === 2 && new Set(value.supportedKinds).size === 2 &&
-    value.supportedKinds.every((kind) => kind === "json" || kind === "pdf") && Array.isArray(value.unsupportedKinds) &&
-    value.unsupportedKinds.every((kind) => kind === "ticket" || kind === "invalidation");
+    isKindList(value.supportedKinds) && value.supportedKinds.includes("json") && value.supportedKinds.includes("pdf") &&
+    isKindList(value.unsupportedKinds) && !value.unsupportedKinds.some((kind) => (value.supportedKinds as string[]).includes(kind));
+}
+
+// The kind lists are capabilities, so they grow: since the server stores the
+// invalidation event as its own file it answers supportedKinds
+// [json, pdf, invalidation] and unsupportedKinds [ticket]. Demanding exactly
+// [json, pdf] made every getStorageStatus() on that server fail with
+// storage_contract_invalid. Unique lowercase kind names; extra kinds accepted.
+function isKindList(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((kind) => typeof kind === "string" && /^[a-z][a-z0-9_]*$/.test(kind)) &&
+    new Set(value).size === value.length;
 }
 
 function isManagedDocumentCopies(value: unknown): value is { capabilityVersion: 1; copies: ManagedDocumentCopy[] } {
   return isRecord(value) && value.capabilityVersion === 1 && Array.isArray(value.copies) &&
     new Set(value.copies.map((copy) => isRecord(copy) ? `${String(copy.generationCode).toUpperCase()}:${String(copy.kind)}` : "invalid")).size === value.copies.length && value.copies.every((copy) =>
-    isRecord(copy) && typeof copy.generationCode === "string" && uuidPattern.test(copy.generationCode) && (copy.kind === "json" || copy.kind === "pdf") &&
+    isRecord(copy) && typeof copy.generationCode === "string" && uuidPattern.test(copy.generationCode) && (copy.kind === "json" || copy.kind === "pdf" || copy.kind === "invalidation") &&
     (copy.environment === "00" || copy.environment === "01") && ["stored", "pending", "failed"].includes(String(copy.state)) &&
     validBytes(copy.bytes) && typeof copy.sha256 === "string" && digestPattern.test(copy.sha256) && typeof copy.issuedDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(copy.issuedDate) && Number.isFinite(Date.parse(copy.issuedDate)) && new Date(copy.issuedDate).toISOString().slice(0, 10) === copy.issuedDate &&
     (copy.storedAt === null || validTimestamp(copy.storedAt)) && (copy.state !== "stored" || validTimestamp(copy.storedAt))

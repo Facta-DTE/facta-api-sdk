@@ -440,15 +440,17 @@ export interface ManagedStorageStatus {
     backupState: string | null;
   };
   byos: { ready: boolean };
-  supportedKinds: Array<"json" | "pdf">;
-  unsupportedKinds: Array<"ticket" | "invalidation">;
+  /** Always names `json` and `pdf`; newer servers add kinds (today `invalidation`). */
+  supportedKinds: Array<"json" | "pdf" | "invalidation" | (string & {})>;
+  unsupportedKinds: Array<"ticket" | "invalidation" | (string & {})>;
   /** Absent on servers that predate the capability. `byosCopyReport: 1` accepts BYOS copy reports. */
   capabilities?: { byosCopyReport?: number };
 }
 
 export interface ManagedDocumentCopy {
   generationCode: string;
-  kind: "json" | "pdf";
+  /** `invalidation`: the invalidation event file stored under the document's code. */
+  kind: "json" | "pdf" | "invalidation";
   environment: "00" | "01";
   state: "stored" | "pending" | "failed";
   bytes: number;
