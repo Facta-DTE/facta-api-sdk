@@ -1,10 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.5.3 (2026-10-20)
 
+- **Storage status and copies stay readable whatever kinds the server lists.** `getStorageStatus` and `getDocumentCopies` now accept any kind lists that include `json` and `pdf`, have no duplicate and put no kind in both lists, and copy entries may carry `invalidation`. On 20-Oct the API briefly listed `invalidation` as a supported kind, which 0.5.2 rejected with `storage_contract_invalid`; the API has since frozen its answer (`["json","pdf"]` / `["ticket","invalidation"]`, plus `capabilities.invalidationFile`), so 0.5.2 works again, and 0.5.3 no longer depends on the exact lists.
 - **`X-Facta-Request-Fingerprint` on `POST /v1/dte` and `POST /v1/dte/prepare`.** `issue`, `issueAndArchive`, `recoverOperation` and `prepare` now send the SHA-256 (lowercase hex) of the RFC 8785 canonical form of the request as the caller wrote it: before `customerId` / `productId` are resolved from the catalog, delivery options included (fingerprint-v1, `conformance/fingerprint-v1.md`). The header is sent on those two routes only; request bodies are unchanged and retries resend identical bytes.
 - **Behaviour change:** a catalog edit between an attempt and its retry now replays the original document instead of answering `422 idempotency_key_reuse`. Changing something the caller wrote still answers 422.
-- **Requires the server first:** deploy the API change that lets a fingerprinted retry also match a claim hashed by body (the mixed-retry tolerance, FactaDTE branch `claude/sdk-php-technical-analysis-n5b2xp`) before releasing this version. Without it, an operation started by 0.5.x and retried after upgrading within 24 h would answer `422 idempotency_key_reuse`.
+- **Server requirement (met):** the API lets a fingerprinted retry also match a claim hashed by body (mixed-retry tolerance, in production since 20-Oct-2026), so an operation started by 0.5.x and retried after upgrading within 24 h replays instead of answering `422 idempotency_key_reuse`.
 - Archive journal: operation records gain `idempotencyHash` (`"body"` | `"fingerprint-v1"`) and `requestFingerprint`. `recoverOperation` sends the header for `"fingerprint-v1"`, none for `"body"`, and for a record without the field (older SDK, or dropped by a custom archive) tries without it first and, only if the server answers `422 idempotency_key_reuse`, resends the same body once with the fingerprint (never a third attempt). Journals remain readable.
 - New shared conformance material for other SDKs: `conformance/fingerprint-v1.md`, generated vectors `conformance/fingerprint-v1.vectors.json` (regenerate with `node scripts/build-conformance-vectors.mjs`) and a dependency-free RFC 8785 module (`src/jcs.ts`, internal).
 
