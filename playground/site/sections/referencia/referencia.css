@@ -1,0 +1,65 @@
+/* «Referencia del SDK»: a rail of groups and a column of capability cards. Tokens come from ../../styles.css. */
+.rf { display: grid; grid-template-columns: 260px minmax(0, 1fr); min-height: calc(100vh - var(--pg-header)); align-items: stretch; }
+.rf-select { display: none; }
+
+.rf-rail { background: var(--pg-surface); border-right: 1px solid var(--pg-border); padding: 18px 12px; display: flex; flex-direction: column; gap: 2px; position: sticky; top: var(--pg-header); align-self: start; max-height: calc(100vh - var(--pg-header)); overflow-y: auto; }
+.rf-rail-title { margin: 0 0 8px 12px; font: 600 11px/1.4 var(--pg-body); letter-spacing: .07em; text-transform: uppercase; color: var(--pg-muted); }
+.rf-rail-item { display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%; text-align: left; border: 0; background: transparent; color: var(--pg-text-2); padding: 8px 12px; border-radius: var(--pg-radius-sm); font: 14px var(--pg-body); cursor: pointer; min-height: 40px; }
+.rf-rail-item:hover:not(:disabled) { background: var(--pg-surface-2); }
+.rf-rail-item:disabled { opacity: .45; cursor: default; }
+.rf-rail-item small { color: var(--pg-muted); font-size: 12px; }
+.rf-rail-item[aria-current="true"] { background: var(--pg-accent-soft); color: var(--pg-accent-text); font-weight: 600; }
+
+.rf-main { min-width: 0; padding: 24px 28px 40px; display: flex; flex-direction: column; gap: 14px; max-width: 980px; }
+.rf-head h1 { margin: 2px 0 8px; font-size: 32px; letter-spacing: -0.015em; line-height: 1.15; }
+.rf-lead { margin: 0 0 12px; color: var(--pg-text-2); max-width: 720px; }
+.rf-legend { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 14px; color: var(--pg-text-2); }
+.rf-legend b { font-family: var(--pg-display); font-size: 18px; color: var(--pg-text); margin-right: 4px; }
+.rf-notice { margin: 0 0 14px; padding: 12px 14px; border-radius: var(--pg-radius-md); background: var(--pg-warn-soft); color: var(--pg-warn); font-size: 14px; max-width: 760px; }
+.rf-search { display: grid; gap: 6px; max-width: 720px; }
+.rf-search label, .rf-select label { font-size: 12px; color: var(--pg-muted); font-weight: 600; }
+.rf-search input, .rf-select select { min-height: 44px; padding: 0 14px; border: 1px solid var(--pg-border-strong); border-radius: var(--pg-radius-sm); background: var(--pg-surface); color: var(--pg-text); font: 16px var(--pg-body); width: 100%; }
+.rf-search input:focus-visible, .rf-select select:focus-visible, .rf-code-toggle:focus-visible, .rf-link:focus-visible { outline: 3px solid var(--pg-accent); outline-offset: 2px; }
+.rf-count { margin: 4px 0 0; font-size: 13px; color: var(--pg-muted); }
+
+.rf-group { display: flex; flex-direction: column; gap: 12px; margin-top: 10px; }
+.rf-group h2 { margin: 12px 0 0; font-size: 22px; letter-spacing: -0.01em; }
+.rf-group-blurb { margin: -6px 0 2px; color: var(--pg-muted); font-size: 14px; }
+
+.rf-card { background: var(--pg-surface); border: 1px solid var(--pg-border); border-radius: var(--pg-radius); padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; scroll-margin-top: calc(var(--pg-header) + 12px); min-width: 0; }
+.rf-card:target { border-color: var(--pg-accent); box-shadow: 0 0 0 3px var(--pg-accent-soft); }
+.rf-card-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.rf-group-tag { font: 600 11px/1.4 var(--pg-body); letter-spacing: .07em; text-transform: uppercase; color: var(--pg-muted); }
+.rf-status { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; }
+.rf-status--live { background: var(--pg-ok-soft); color: var(--pg-ok); }
+.rf-status--simulated { background: var(--pg-accent-soft); color: var(--pg-accent-text); }
+.rf-status--documented { background: var(--pg-warn-soft); color: var(--pg-warn); }
+.rf-card h3 { margin: 0; font: 700 18px/1.3 var(--pg-body); letter-spacing: 0; overflow-wrap: anywhere; }
+.rf-summary { margin: 0; color: var(--pg-text-2); }
+.rf-covers { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.rf-covers code { font: 12px/1.6 var(--pg-mono); background: var(--pg-surface-2); border: 1px solid var(--pg-border); border-radius: 6px; padding: 1px 7px; overflow-wrap: anywhere; }
+.rf-link { background: none; border: 0; padding: 4px 2px; color: var(--pg-accent-text); font: 600 13px var(--pg-body); cursor: pointer; text-decoration: underline; min-height: 32px; }
+
+.rf-demo { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: var(--pg-radius-md); font-size: 14px; border: 1px solid var(--pg-border); background: var(--pg-surface-2); color: var(--pg-text-2); }
+.rf-demo--live { border-color: #bfe3cf; background: var(--pg-ok-soft); }
+.rf-demo--simulated { border-color: #b9dbec; background: var(--pg-accent-soft); }
+.rf-demo--documented { border-color: #ecd9aa; background: var(--pg-warn-soft); color: var(--pg-warn); }
+.rf-demo-link { font-weight: 700; min-height: 32px; display: inline-flex; align-items: center; }
+
+.rf-code { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.rf-code-toggle { align-self: flex-start; min-height: 44px; padding: 0 14px; border: 1px solid var(--pg-border-strong); border-radius: var(--pg-radius-sm); background: var(--pg-surface); color: var(--pg-text); font: 600 14px var(--pg-body); cursor: pointer; }
+.rf-code-toggle:hover { background: var(--pg-surface-2); }
+.rf-code .pg-code pre { max-height: 60vh; font-size: 12.5px; }
+
+.rf-links { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; padding-top: 4px; border-top: 1px solid var(--pg-track); }
+.rf-links a { overflow-wrap: anywhere; min-height: 28px; display: inline-flex; align-items: center; }
+.rf-links .mono { font-family: var(--pg-mono); font-size: 12px; }
+
+@media (max-width: 900px) {
+  .rf { grid-template-columns: minmax(0, 1fr); }
+  .rf-rail { display: none; }
+  .rf-select { display: grid; gap: 6px; margin-top: 8px; max-width: 720px; }
+  .rf-main { padding: 16px var(--pg-gutter) 32px; }
+  .rf-head h1 { font-size: 26px; }
+  .rf-card { padding: 16px; }
+}

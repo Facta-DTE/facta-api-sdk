@@ -1,0 +1,95 @@
+/* «Las tres formas del documento» (board Ticket.dc.html).
+   ISOLATED ON PURPOSE: this block is shown inside very different hosts (the playground page, a result tab, and used to be
+   the themed «Mi propia implementación» cards). Host rules such as `.hl-outcome button` (specificity 0,1,1) restyled its
+   `.pg-primary` / `.pg-secondary` buttons (0,1,0) into currentColor outlines. So every rule below is scoped under
+   `.docforms` (>= 0,2,0), buttons use their own `.docforms-btn` classes, and the tokens are re-declared here as literals
+   so that a host redefining `--pg-*` cannot recolour it either. */
+.docforms {
+  --pg-accent: #1677a8; --pg-accent-ink: #ffffff; --pg-accent-text: #135f87; --pg-accent-strong: #0e4a6a; --pg-accent-soft: #e3f1f8;
+  --pg-bg: #f7f9fb; --pg-surface: #ffffff; --pg-surface-2: #f2f5f8; --pg-track: #eef1f5;
+  --pg-text: #1f2d36; --pg-text-2: #4a5a65; --pg-muted: #5f6f7a; --pg-border: #e2e7ec; --pg-border-strong: #d4dce3;
+  --pg-danger: #a33a28; --pg-danger-soft: #fde8e4; --pg-danger-ink: #7f2b1d; --pg-warn: #7a4f00; --pg-warn-soft: #fbf0d9;
+  --pg-radius: 16px; --pg-radius-md: 12px; --pg-radius-sm: 10px;
+  color: var(--pg-text); background: transparent; text-align: left; text-transform: none; letter-spacing: normal;
+  font: 400 15px/1.5 var(--pg-body); color-scheme: light;
+  border: 0; padding: 0; margin: 0;
+}
+.docforms :is(p, ul, dl, dd, h3, pre) { margin: 0; padding: 0; }
+.docforms button { margin: 0; text-transform: none; letter-spacing: normal; }
+.docforms strong { display: inline; margin: 0; }
+.docforms .pg-error { color: var(--pg-danger); font-size: 14px; }
+.docforms .pg-note { color: var(--pg-muted); font-size: 14px; }
+.docforms .pg-hint { color: var(--pg-muted); font-size: 13px; }
+/* The same look as .pg-primary / .pg-secondary / .pg-btn in styles.css, at a specificity no host selector reaches. */
+.docforms .docforms-btn, .docforms .pg-btn, .docforms .pg-primary, .docforms .pg-secondary {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 20px; border-radius: var(--pg-radius-md);
+  font: 600 15px/1.2 var(--pg-body); cursor: pointer; text-decoration: none; border: 1px solid var(--pg-border-strong); background: var(--pg-surface); color: var(--pg-text);
+}
+.docforms .docforms-btn--primary, .docforms .pg-primary { border-color: var(--pg-accent); background: var(--pg-accent); color: var(--pg-accent-ink); }
+.docforms .docforms-btn:hover:not(:disabled), .docforms .pg-btn:hover:not(:disabled), .docforms .pg-secondary:hover:not(:disabled) { border-color: var(--pg-accent); }
+.docforms .docforms-btn--primary:hover:not(:disabled), .docforms .pg-primary:hover:not(:disabled) { background: var(--pg-accent-strong); border-color: var(--pg-accent-strong); color: var(--pg-accent-ink); }
+.docforms .docforms-btn:disabled, .docforms .pg-btn:disabled, .docforms .pg-primary:disabled, .docforms .pg-secondary:disabled { opacity: .55; cursor: not-allowed; }
+.docforms .docforms-btn:focus-visible, .docforms .docforms-seg button:focus-visible { outline: 2px solid var(--pg-accent); outline-offset: 2px; }
+.docforms .pg-btn--sm { min-height: 36px; padding: 0 14px; font-size: 13px; border-radius: 8px; }
+.docforms { container-type: inline-size; display: flex; flex-direction: column; gap: 16px; min-width: 0; width: 100%; }
+.docforms-head { display: flex; flex-direction: column; gap: 12px; }
+.docforms-lead { margin: 0; color: var(--pg-muted); font-size: 14px; max-width: 760px; }
+.docforms .docforms-seg { display: inline-flex; gap: 2px; padding: 4px; background: var(--pg-track); border-radius: 12px; align-self: flex-start; max-width: 100%; overflow-x: auto; }
+.docforms .docforms-seg button { border: 0; box-shadow: none; background: transparent; font: inherit; font-size: 14px; font-weight: 600; color: var(--pg-muted); padding: 0 14px; min-height: 40px; border-radius: 9px; cursor: pointer; white-space: nowrap; }
+.docforms .docforms-seg button[aria-selected="true"], .docforms .docforms-seg button[aria-checked="true"] { background: var(--pg-surface); color: var(--pg-text); box-shadow: 0 1px 2px rgba(0, 0, 0, .12); }
+.docforms-seg--small { padding: 3px; }
+.docforms .docforms-seg--small button { min-height: 34px; padding: 0 12px; font-size: 13px; }
+.docforms-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 340px); gap: 16px; align-items: start; }
+.docforms-stage { background: var(--pg-surface-2, var(--pg-bg)); border: 1px solid var(--pg-border); border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.docforms-roll { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.docforms-roll-label { font-size: 13px; color: var(--pg-text-2); }
+.docforms-roll-note { margin-left: auto; font-size: 12px; color: var(--pg-muted); }
+.docforms-other { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.docforms-other input { width: 76px; min-height: 40px; border: 1px solid var(--pg-border-strong); border-radius: var(--pg-radius-sm); padding: 0 10px; font: inherit; font-size: 16px; background: var(--pg-surface); }
+.docforms-view { min-height: 120px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; min-width: 0; }
+.docforms-pdf { width: 100%; height: 520px; border: 0; background: #fff; border-radius: 6px; box-shadow: 0 1px 6px rgba(0, 0, 0, .15); }
+.docforms-pdf--carta { height: 600px; }
+.docforms-unavailable { margin: 0; padding: 12px 14px; border-radius: 10px; background: var(--pg-warn-soft); color: var(--pg-warn); font-size: 14px; max-width: 520px; }
+.docforms-nopreview { text-align: center; max-width: 440px; font-size: 14px; color: var(--pg-text-2); }
+.docforms-nopreview p { margin: 0 0 10px; }
+.docforms-side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.docforms-card { background: var(--pg-surface); border: 1px solid var(--pg-border); border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.docforms-card h3 { margin: 0; font: 600 11px/1.4 var(--pg-body); letter-spacing: .07em; text-transform: uppercase; color: var(--pg-muted); }
+.docforms-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.docforms-actions > * { flex: 1 1 auto; }
+.docforms-code { margin: 0; padding: 12px 14px; background: #13232d; color: #e3eef5; border-radius: 12px; font: 400 12px/1.6 var(--pg-mono); overflow-x: auto; }
+.docforms-how { margin: 0; font-size: 13px; }
+.docforms-how > div { display: flex; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--pg-track); }
+.docforms-how > div:last-child { border-bottom: 0; }
+.docforms-how dt { flex: 0 0 64px; color: var(--pg-muted); }
+.docforms-how dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+@container (max-width: 700px) {
+  .docforms-grid { grid-template-columns: minmax(0, 1fr); }
+  .docforms-roll-note { margin-left: 0; flex-basis: 100%; }
+}
+@media (max-width: 899px) {
+  .docforms-grid { grid-template-columns: minmax(0, 1fr); }
+  .docforms-seg { width: 100%; }
+  .docforms-seg > button { flex: 1 1 auto; }
+  .docforms-roll-note { margin-left: 0; flex-basis: 100%; }
+  .docforms-actions > * { min-height: 48px; }
+  .docforms-pdf { height: 460px; }
+}
+
+/* Short labels exist only for narrow containers. */
+.docforms .df-short { display: none; }
+@container (max-width: 419px) {
+  .docforms .docforms-seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; width: 100%; overflow: visible; }
+  .docforms .docforms-seg button { min-width: 0; padding: 0 6px; font-size: 13.5px; }
+  .docforms .df-long { display: none; }
+  .docforms .df-short { display: inline; }
+  .docforms .docforms-roll-label { flex-basis: 100%; }
+  .docforms .docforms-roll .docforms-seg { width: 100%; }
+  .docforms .docforms-stage { padding: 10px; gap: 10px; }
+  .docforms .docforms-pdf, .docforms .docforms-pdf--carta { height: 400px; }
+  .docforms .docforms-actions { flex-direction: column; }
+  .docforms .docforms-actions > * { width: 100%; }
+  /* One card on a phone: the downloads sit flat under the preview instead of a second white box. */
+  .docforms .docforms-card:not(:has(.docforms-code)) { background: transparent; border: 0; padding: 0; }
+  .docforms .docforms-lead { font-size: 13.5px; }
+}

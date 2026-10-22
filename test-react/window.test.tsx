@@ -79,6 +79,18 @@ describe("dialog: review", () => {
     expect(within(dialog).queryByText("Pruebas")).toBeNull();
   });
 
+  it("names a catalog customer by its masked label, never «Consumidor final»", async () => {
+    const { client } = makeClient({
+      // The draft only carries `customerId` (the window cannot read the catalog): the server sent a label.
+      describe: sessionInfo({ draft: { tipoDte: "03", receptor: { customerId: "cat-1" } as never, items: [{ descripcion: "x", cantidad: 1, precioUni: 1 }] }, display: { recipient: "Ferretería San Miguel · NIT ••••890" } }),
+    });
+    render(<Harness client={client} />);
+    await openDialog();
+    const dialog = await screen.findByRole("dialog");
+    await within(dialog).findByText("Ferretería San Miguel · NIT ••••890");
+    expect(within(dialog).queryByText("Consumidor final")).toBeNull();
+  });
+
   it("shows a skeleton while loading", async () => {
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));

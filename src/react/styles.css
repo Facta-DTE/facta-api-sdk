@@ -1092,7 +1092,7 @@
 .facta-dl-icon:where([data-state="done"]) { color: var(--facta-i-success); border-color: var(--facta-i-success); }
 
 /* Pickers */
-.facta-combo { position: relative; }
+.facta-combo { position: relative; min-width: 0; }
 .facta-combo-label { display: block; margin-bottom: 6px; font-size: 13px; font-weight: 600; }
 .facta-pop { margin-top: 6px; padding: 6px; max-height: 340px; overflow-y: auto; border: 1px solid var(--facta-i-border); border-radius: 12px; background: var(--facta-i-bg); box-shadow: var(--facta-i-shadow); }
 .facta-pop:where([hidden]) { display: none; }
@@ -1108,11 +1108,11 @@
 .facta-pop-keys { margin-top: 4px; border-top: 1px solid var(--facta-i-border); font-size: 11.5px; }
 .facta-pop-empty { display: grid; gap: 4px; padding: 20px 16px; text-align: center; font-size: 14px; }
 .facta-pop-empty span { color: var(--facta-i-muted); font-size: 13px; }
-.facta-sel { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--facta-i-border); border-radius: var(--facta-i-radius-sm); background: var(--facta-i-surface); }
+.facta-sel { display: flex; align-items: center; gap: 12px; min-width: 0; max-width: 100%; padding: 10px 12px; border: 1px solid var(--facta-i-border); border-radius: var(--facta-i-radius-sm); background: var(--facta-i-surface); }
 .facta-av { display: grid; place-items: center; flex: none; width: 36px; height: 36px; border-radius: 50%; background: var(--facta-i-accent-soft); color: var(--facta-i-accent); font-size: 13px; font-weight: 700; }
 .facta-sel-tx { flex: 1; min-width: 0; }
 .facta-sel-tx b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
-.facta-sel-tx span { color: var(--facta-i-muted); font-size: 12.5px; }
+.facta-sel-tx span { display: block; color: var(--facta-i-muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Status pill */
 .facta-svc { position: relative; display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px 0 10px; border-radius: 999px; font-size: 12.5px; font-weight: 600; line-height: 1; white-space: nowrap; background: var(--facta-i-surface); color: var(--facta-i-muted); border: 1px solid var(--facta-i-border); }

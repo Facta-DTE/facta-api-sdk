@@ -1,0 +1,47 @@
+{
+  // Facta DTE playground: a Worker with static assets (docs/playground.md §2).
+  // `wrangler dev` / `wrangler deploy` run from the repository root with
+  // `-c playground/wrangler.jsonc`; paths below are relative to this file.
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "facta-playground-dev",
+  "main": "worker.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Only /api/* runs the Worker; every other path is a static file or the SPA shell.
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+
+  "durable_objects": {
+    "bindings": [{ "name": "QUOTA", "class_name": "QuotaCounter" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["QuotaCounter"] }],
+
+  // Non-secret variables. Everything else, including TURNSTILE_SITEKEY and TURNSTILE_SECRET (and the optional
+  // ACCESS_* of `PLAYGROUND_AUTH=access`), is set per Worker with `wrangler secret put` (see README), so a deploy never overwrites it.
+  "vars": {
+    "FACTA_API_BASE_URL": "https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1"
+  },
+
+  "env": {
+    // `main` branch: https://playground.factadte.com
+    "production": {
+      "name": "facta-playground",
+      "routes": [{ "pattern": "playground.factadte.com", "custom_domain": true }],
+      "assets": {
+        "directory": "./dist",
+        "binding": "ASSETS",
+        "not_found_handling": "single-page-application",
+        "run_worker_first": ["/api/*"]
+      },
+      "durable_objects": { "bindings": [{ "name": "QUOTA", "class_name": "QuotaCounter" }] },
+      "vars": {
+        "FACTA_API_BASE_URL": "https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1"
+      }
+    }
+  }
+}

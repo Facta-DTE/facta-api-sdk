@@ -15,6 +15,11 @@ export interface FactaSessionDisplay {
   total?: number;
   reference?: string;
   title?: string;
+  /**
+   * Who the document is for, as the review window shows it when the request names the receiver only by
+   * `customerId` (the window cannot read your catalog). Keep it short and masked: «Ferretería Díaz · NIT ••••123».
+   */
+  recipient?: string;
 }
 
 export interface CreateFactaSessionInput {
@@ -126,7 +131,7 @@ function normalizeDisplay(display: FactaSessionDisplay | undefined): FactaSessio
     }
     out.total = display.total;
   }
-  for (const [key, max] of [["reference", 80], ["title", 120]] as const) {
+  for (const [key, max] of [["reference", 80], ["title", 120], ["recipient", 120]] as const) {
     const value = display[key];
     if (value === undefined) continue;
     if (typeof value !== "string" || value.length > max) {
