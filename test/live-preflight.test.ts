@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@1";
-import { requireLiveSnapshots, validateLiveCatalogReads, validateLiveCatalogWriteGate } from "../scripts/live-preflight.mjs";
+import { requireLiveSnapshots, validateLiveCatalogChanges, validateLiveCatalogReads, validateLiveCatalogWriteGate } from "../scripts/live-preflight.mjs";
 import { createValidationResults } from "../scripts/live-report.mjs";
 
 Deno.test("full live gate opens the destinations snapshot before fiscal work", async () => {
@@ -84,4 +84,34 @@ Deno.test("catalog write gate only warns before the routes are deployed or witho
 Deno.test("catalog write gate fails on a success or an unexpected error", async () => {
   assertEquals(await gate("accepted"), { state: "Failed", code: "catalog_write_gate_failed" });
   assertEquals((await gate({ code: "internal_error", status: 500 })).code, "catalog_write_gate_failed");
+});
+
+Deno.test("catalog write gate passes where writes are enabled and an unknown id answers not_found", async () => {
+  const checks = createValidationResults();
+  const facta = {
+    status: () => Promise.resolve({ llave: { catalogoEscritura: true } }),
+    deactivateCustomer: () => Promise.reject(Object.assign(new Error("x"), { code: "not_found", status: 404 })),
+  };
+  await validateLiveCatalogWriteGate(facta, checks);
+  assertEquals(checks["catalog-write-gate"], "Passed (writes enabled; an unknown id answers not_found)");
+});
+
+Deno.test("change feed check needs the feed shape, an expired-cursor refusal with the head, and secret-free webhooks", async () => {
+  const feed = (overrides: Record<string, unknown> = {}) => ({
+    listCatalogChanges: ({ since }: { since: number }) => since === 0
+      ? Promise.resolve({ changes: [], head: 5, next: 0, hasMore: false })
+      : Promise.reject(Object.assign(new Error("x"), { code: "catalog_cursor_expired", details: { cabeza: 5 } })),
+    listWebhooks: () => Promise.resolve([{ id: "w" }]),
+    ...overrides,
+  });
+  const ok = createValidationResults();
+  await validateLiveCatalogChanges(feed(), ok);
+  assertEquals(ok["catalog-changes"], "Passed (change feed and webhook list)");
+  const leaked = createValidationResults();
+  const error = await validateLiveCatalogChanges(feed({ listWebhooks: () => Promise.resolve([{ id: "w", secret: "whsec_x" }]) }), leaked).then(() => null, (cause) => cause);
+  assertEquals((error as { code: string }).code, "catalog_changes_failed");
+  assertEquals(leaked["catalog-changes"], "Failed");
+  const scoped = createValidationResults();
+  await validateLiveCatalogChanges(feed({ listCatalogChanges: () => Promise.reject(Object.assign(new Error("x"), { code: "forbidden_scope" })) }), scoped);
+  assertEquals(scoped["catalog-changes"], "Not applicable (empty authorized catalog)");
 });
