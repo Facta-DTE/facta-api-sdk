@@ -318,9 +318,7 @@ resultado es `unknown`, concílialo con el adaptador antes de reintentarlo.
 
 ## Datos guardados y migración
 
-El API/SDK no guarda clientes ni productos. El propietario los mantiene o los
-importa por CSV en Facta y publica snapshots cifrados desde la app web. El SDK
-solo los lee y resuelve sus IDs en memoria. Los nombres inline, la lista de
+El API/SDK no guarda clientes ni productos por sí mismo: el propietario los mantiene (o los importa por CSV) en Facta y el servidor resuelve `customerId` / `productId` en cada solicitud. Los nombres inline, la lista de
 facturas y el contenido fiscal obedecen los límites de acceso de la llave.
 Para pasar de otro cliente HTTP, conserva la misma `Idempotency-Key`, mapea
 su respuesta a `IssueResult` y no recalcules totales ni el documento

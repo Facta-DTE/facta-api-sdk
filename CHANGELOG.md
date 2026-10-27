@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.6.0 (2026-10-26)
+
+The shared data key: the server resolves catalogue ids, so the SDK no longer carries a copy of the catalogue.
+
+### Breaking removals
+
+- **`syncCatalog()` is removed**, with the per-key catalogue snapshot it opened (`CatalogSnapshot`, the in-memory cache and `src/catalog.ts`). `customerId` / `productId` are sent to the API untouched and the server resolves them in every catalogue mode (`encrypted` at rest, `readable`, `plain`). An unknown id answers `not_found` with `details.reason: "catalog_unknown_id"`.
+- **`catalogState()` and the `CatalogState` type are removed**: there is no local revision to compare.
+- **`allowStale` (per call) and `allowStaleCatalogReads` (config) no longer do anything.** Both are still accepted and ignored so existing calls and saved configs keep compiling; remove them at your convenience.
+- **`listCustomers`, `getCustomer`, `searchCustomers` and the product reads always call the API** (`GET /v1/customers`, `GET /v1/products`). They no longer need `unlockKey` for an encrypted catalogue, and no longer fail with `unauthorized` when it is missing.
+- **`diagnose()` no longer reports a `catalog-sync` check**, and `DiagnosticsReport.revisions` no longer has `catalog`. `Status.sincronizacion.catalog` is deprecated and optional.
+- **No `X-Facta-Request-Fingerprint` header** on `issue`, `issueAndArchive`, `recoverOperation` and `prepare`: the SDK no longer rewrites the body, so the server's idempotency claim hashes the body again (AP-07). New journal records are `idempotencyHash: "body"` with no `requestFingerprint`. Journals written by 0.3 to 0.5 still recover: a `"fingerprint-v1"` record resends its stored fingerprint. `fingerprintV1` stays internal for that purpose and `conformance/fingerprint-v1.*` stays published for other clients. A 0.5 journal of an encrypted-catalogue company that held a locally resolved body must be recovered without passing a new `request` (the saved one is used).
+- The sealed catalogue inbox (`/v1/catalog/changes`) and the per-key snapshot are retired on the server (`inbox_retired`, `catalog_snapshot_retired`, HTTP 410); `GET /v1/vault/destinations` may still carry a `vault.catalog` item with `syncStatus: "retired"`, which the SDK ignores. Drafts (`/v1/drafts`) are unaffected.
+
+### Added
+
+- Error codes the server now returns: `catalog_revision_conflict`, `catalog_record_inactive`, `catalog_search_too_broad`, `catalog_cursor_expired`, `data_grant_unavailable`, `data_grant_revoked`, `data_epoch_stale`, `inbox_retired`, `catalog_snapshot_retired` (typed, documented in `guides/errors*.md` and the skill).
+- Docs: `guides/catalog*.md` rewritten as "Catalog reads and id resolution"; the reference, README, Deno/Node guides and the skill no longer describe a local catalogue snapshot.
+
 ## 0.5.3 (2026-10-20)
 
 - **Storage status and copies stay readable whatever kinds the server lists.** `getStorageStatus` and `getDocumentCopies` now accept any kind lists that include `json` and `pdf`, have no duplicate and put no kind in both lists, and copy entries may carry `invalidation`. On 20-Oct the API briefly listed `invalidation` as a supported kind, which 0.5.2 rejected with `storage_contract_invalid`; the API has since frozen its answer (`["json","pdf"]` / `["ticket","invalidation"]`, plus `capabilities.invalidationFile`), so 0.5.2 works again, and 0.5.3 no longer depends on the exact lists.

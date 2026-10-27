@@ -210,13 +210,11 @@ if (!informe.canIssueAndArchive) {
 }
 ```
 
-### Clientes y productos sincronizados
+### Clientes y productos
 
-El SDK descifra el snapshot en el proceso del integrador. Los métodos de
-búsqueda filtran localmente los registros autorizados a esa llave; no exponen
-un endpoint de escritura ni crean clientes/productos. Cada llamada compara la
-revisión publicada con la revisión local y vuelve a sincronizar si cambió.
-Requieren `unlockKey`.
+Desde la 0.6 las lecturas siempre van por el API y no requieren `unlockKey`: el servidor
+lee solo el catálogo, también cuando la empresa lo guarda cifrado, y resuelve
+`customerId` / `productId` al emitir. No existe copia local que sincronizar.
 
 ```typescript
 const cliente = await facta.getCustomer("cliente-id");
@@ -227,8 +225,8 @@ const todoElCatalogoActivo = await facta.listProducts();
 
 | Método | Resultado y comportamiento |
 | --- | --- |
-| `listCustomers(options?)` | Devuelve los clientes autorizados; `allowStale` es opt-in; `includeInactive` incluye los desactivados. Lee el snapshot (`encrypted`) o el API (`readable`, `plain`). |
-| `getCustomer(id, options?)` | Busca por ID y devuelve `null` si no existe en el snapshot. |
+| `listCustomers(options?)` | Devuelve los clientes autorizados; `includeInactive` incluye los desactivados. |
+| `getCustomer(id, options?)` | Busca por ID y devuelve `null` si no existe. |
 | `searchCustomers(query, options?)` | Busca nombre, documento, NRC y correo; límite 1–500, 50 por defecto. |
 | `listProducts(options?)` | Devuelve productos activos; `includeInactive` los incluye todos. |
 | `getProduct(id, options?)` | Devuelve `null` si no existe o está inactivo. |
@@ -240,33 +238,20 @@ const todoElCatalogoActivo = await facta.listProducts();
 | `updateProduct(id, changes, options?)` | Cambia solo los campos indicados. |
 | `deactivateProduct(id, options?)` | Desactiva el producto; los documentos ya emitidos no cambian. |
 
-Las lecturas eligen su camino según `catalogMode`, que el SDK aprende una vez de `/v1/status`: con `encrypted` descifran el snapshot con `unlockKey`; con `readable` o `plain` leen por el API y no necesitan `unlockKey`. Las escrituras se explican en la [guía de escritura del catálogo](catalog-write.es.md).
+Las escrituras se explican en la [guía de escritura del catálogo](catalog-write.es.md).
 
-Las búsquedas ignoran mayúsculas y acentos, y solo consultan los campos
-descargados en el snapshot local.
+### `syncDestinations()`
 
-### `syncDestinations()`, `syncCatalog()` y `catalogState()`
-
-El dueño sincroniza los destinos y el catálogo desde la aplicación web. El SDK
+El dueño sincroniza los destinos desde la aplicación web. El SDK
 usa `unlockKey` para abrir las envolturas localmente en el proceso integrador;
 la contraseña no se envía a Facta. `syncDestinations()` devuelve la
-configuración descifrada en memoria y no sube facturas a esos destinos.
-`syncCatalog()` reemplaza la copia local por el snapshot publicado más
-reciente. Ambos fallan si falta `unlockKey` o la revisión que necesitan aún
-no se publicó desde la aplicación. Un error criptográfico con una clave
-incorrecta puede venir de Web Crypto; no es una respuesta de la API.
-
-`catalogState()` compara la revisión local con el estado público y devuelve
-`missing`, `fresh` o `stale`, las revisiones disponibles y un código de error
-seguro; nunca devuelve datos de clientes o productos. Las llamadas de lectura
-se actualizan al detectar una revisión nueva. `allowStale: true` sirve solo
-para búsquedas y lecturas informativas cuando no se puede getDocumentStatus el estado;
-el SDK nunca resuelve referencias fiscales con un snapshot viejo.
+configuración descifrada en memoria y no sube facturas a esos destinos. Falla si
+falta `unlockKey` o la revisión aún no se publicó desde la aplicación. Un error
+criptográfico con una clave incorrecta puede venir de Web Crypto; no es una
+respuesta de la API. (`syncCatalog()` y `catalogState()` se eliminaron en la 0.6.)
 
 ```typescript
 const { destinos } = await facta.syncDestinations();
-const { customers, products } = await facta.syncCatalog();
-const estadoCatalogo = await facta.catalogState();
 ```
 
 El paquete tiene adaptadores de archivo para S3/S3-compatible, Supabase

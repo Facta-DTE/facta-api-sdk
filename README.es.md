@@ -92,7 +92,7 @@ Todas las guías de `guides/`, en español y en inglés. Las dos guías de React
 | El Archivo DTE (lo que recibe el receptor) | [archivo-dte.es.md](guides/archivo-dte.es.md) | [archivo-dte.md](guides/archivo-dte.md) |
 | Entrega por correo y WhatsApp | [delivery.es.md](guides/delivery.es.md) | [delivery.md](guides/delivery.md) |
 | Devoluciones (Evento de Retorno) | [return-event.es.md](guides/return-event.es.md) | [return-event.md](guides/return-event.md) |
-| Diagnóstico, `catalogState`, `diagnoseDestinations` | [diagnose.es.md](guides/diagnose.es.md) | [diagnose.md](guides/diagnose.md) |
+| Diagnóstico, `diagnoseDestinations` | [diagnose.es.md](guides/diagnose.es.md) | [diagnose.md](guides/diagnose.md) |
 | Fijación de región | [region.es.md](guides/region.es.md) | [region.md](guides/region.md) |
 | Tiempos de depuración | [timings.es.md](guides/timings.es.md) | [timings.md](guides/timings.md) |
 | Reloj de referencia | [reference-clock.es.md](guides/reference-clock.es.md) | [reference-clock.md](guides/reference-clock.md) |
@@ -120,7 +120,6 @@ const facta = new Facta({
     requiredScopes: ["issue", "query", "download"],
     timeoutMs: 60_000,
     maxRetries: 3,
-    allowStaleCatalogReads: false,
     ticketPaperWidthMm: 80,
   },
 });
@@ -152,9 +151,8 @@ de respaldo al correo del dueño. Guía y ejemplo: [`guides/emergency.es.md`](gu
 | `getDocumentCopies()` | Recibos JSON/PDF administrados de la empresa/ambiente de la llave; no devuelve rutas ni enlaces. Requiere `download`. | No |
 | `retryDocumentStorage(codigoGeneracion)` | Repara copias de un DTE sellado sin volver a emitir; requiere scopes `download` e `issue`. | No |
 | `syncDestinations()` | Descarga el snapshot cifrado y abre destinos localmente. | No |
-| `syncCatalog()` | Descarga el snapshot cifrado y abre clientes/productos localmente. | No |
-| `listCustomers()`, `getCustomer(id)`, `searchCustomers(query)` | Lee o busca clientes ya autorizados para esta llave desde el snapshot descifrado localmente. | No |
-| `listProducts()`, `getProduct(id)`, `searchProducts(query)` | Lee o busca productos del snapshot descifrado localmente. | No |
+| `listCustomers()`, `getCustomer(id)`, `searchCustomers(query)` | Lee o busca clientes ya autorizados para esta llave por el API (el servidor lee el catálogo, también si está cifrado). | No |
+| `listProducts()`, `getProduct(id)`, `searchProducts(query)` | Lee o busca productos por el API. | No |
 | `createCustomer(input)`, `updateCustomer(id, cambios)`, `deactivateCustomer(id)` | Alta, edición, desactivación y reactivación (`updateCustomer(id, { activo: true })`) de clientes por el API. Requiere `catalog:write` y que la empresa pase su catálogo a texto plano y lo habilite. Ver la [guía](guides/catalog-write.es.md). | Alta con `idempotencyKey` |
 | `createProduct(input)`, `updateProduct(id, cambios)`, `deactivateProduct(id)` | Lo mismo para productos. No hay borrado definitivo. | Alta con `idempotencyKey` |
 | `issue(request, options?)` | Prepara, firma y transmite un DTE en una operación. | Sí |
@@ -193,14 +191,12 @@ importan desde `@facta-dte/api`).
 | `getDocumentCopies` | `getDocumentCopies(options?: { generationCode?: string; signal?: AbortSignal })`; requiere `download` | `Promise<ManagedDocumentCopy[]>`; recibos JSON/PDF del ambiente autenticado |
 | `retryDocumentStorage` | `retryDocumentStorage(codigoGeneracion, options?: { signal?: AbortSignal })`; requiere `download` e `issue` | `Promise<ManagedStorageReceipt>`; reparación sin reemisión |
 | `syncDestinations` | `syncDestinations()`; requiere `unlockKey` | `Promise<DestinationSnapshot>`; descifra destino solo en memoria |
-| `syncCatalog` | `syncCatalog()`; requiere `unlockKey` | `Promise<CatalogSnapshot>`; reemplaza la copia de catálogo de este proceso |
-| `catalogState` | `catalogState()` | `Promise<CatalogState>`; revisiones pública/local y frescura, sin devolver contenido |
-| `listCustomers` | `listCustomers(options?: { allowStale?: boolean })` | `Promise<CatalogCustomer[]>`; caché antigua solo con opt-in explícito |
-| `getCustomer` | `getCustomer(customerId: string, options?: { allowStale?: boolean })` | `Promise<CatalogCustomer \| null>` |
-| `searchCustomers` | `searchCustomers(query: string, options?: { limit?: number; allowStale?: boolean })`; limit 50, 1–500 | `Promise<CatalogCustomer[]>`; busca nombre/documento/NRC/correo, localmente sin acentos |
-| `listProducts` | `listProducts(options?: { includeInactive?: boolean; allowStale?: boolean })`; default false | `Promise<CatalogProduct[]>` |
-| `getProduct` | `getProduct(productId: string, options?: { allowStale?: boolean })` | `Promise<CatalogProduct \| null>`; devuelve `null` también para producto inactivo |
-| `searchProducts` | `searchProducts(query: string, options?: { limit?: number; allowStale?: boolean })`; limit 50, 1–500 | `Promise<CatalogProduct[]>`; busca descripción/código/barra en memoria |
+| `listCustomers` | `listCustomers(options?: { includeInactive?: boolean })` | `Promise<CatalogCustomer[]>` |
+| `getCustomer` | `getCustomer(customerId: string, options?: { includeInactive?: boolean })` | `Promise<CatalogCustomer \| null>` |
+| `searchCustomers` | `searchCustomers(query: string, options?: { limit?: number })`; limit 50, 1–500 | `Promise<CatalogCustomer[]>`; busca nombre/documento/NRC/correo, localmente sin acentos |
+| `listProducts` | `listProducts(options?: { includeInactive?: boolean })`; default false | `Promise<CatalogProduct[]>` |
+| `getProduct` | `getProduct(productId: string, options?: { includeInactive?: boolean })` | `Promise<CatalogProduct \| null>`; devuelve `null` también para producto inactivo |
+| `searchProducts` | `searchProducts(query: string, options?: { limit?: number })`; limit 50, 1–500 | `Promise<CatalogProduct[]>`; busca descripción/código/barra en memoria |
 | `issue` | `issue(request: DteRequest, options?: CallOptions)` | `Promise<IssueResult>` (`sellado` o `contingencia`) |
 | `issueAndArchive` | `issueAndArchive(request: DteRequest, options: ArchiveEmissionOptions)`; el archivo, `operationId` e `idempotencyKey` son obligatorios; `remoteDestinations` opcional | `Promise<ArchiveEmissionResult>`; resultado fiscal, archivo local y copias remotas se informan por separado |
 | `recoverOperation` | `recoverOperation(operationId, options?: { request?, archive?, signal?, remoteDestinations? })` | `Promise<ArchiveEmissionResult>`; recuperación por ID sin reconstruir la solicitud |
@@ -233,8 +229,8 @@ Todas las llamadas autenticadas envían `apiKey`. Los alcances adicionales son:
 
 | Operaciones | Alcance de API | Credencial local adicional | Resultado / efecto principal |
 |---|---|---|---|
-| `status()`, `getContract()`, `syncDestinations()`, `syncCatalog()` | Ninguno | Sync de vaults requiere `unlockKey`; nunca se envía | Estado, contrato público o snapshot descifrado localmente. |
-| Lecturas locales `list*`, `get*`, `search*` | Ninguno | `unlockKey` al primer sync; solo memoria del proceso después | Retornan registros del snapshot; `get*` usa `null` si no existe. |
+| `status()`, `getContract()`, `syncDestinations()` | Ninguno | Sync de vaults requiere `unlockKey`; nunca se envía | Estado, contrato público o destinos descifrados localmente. |
+| Lecturas `list*`, `get*`, `search*` | Ninguno (`catalog:read`) | Ninguna | Retornan registros por el API; `get*` usa `null` si no existe. |
 | `getDocumentStatus()`, `listDocuments()` | `query` | Ninguna | Estado individual o página resumida. |
 | `downloadDocument()`, `listHolding()` | `download` | None | Exact JSON/PDF/ticket bytes or bounded holding-area evidence. |
 | `issue()`, `prepare()`, `sign()`, `invalidate()`, `registerReturn()` | `issue` | `signKey` en `issue`, `sign`, `invalidate` y `registerReturn`; no en `prepare` | Emisión puede gastar correlativo; `invalidate` es una acción fiscal irreversible. |
@@ -529,16 +525,16 @@ que representan los seis códigos soportados.
 | Sujeto excluido (14) | `excludedSubjectInvoice` | Usa `ExcludedSubjectRecipient` y `aplicarReteRenta`. |
 
 Recipient y productos inline nunca crean ni actualizan registros. Para usar un
-`customerId` o `productId`, habilita la llave para ese snapshot, llama
-`syncCatalog()` y deja que el SDK resuelva los campos antes de llamar la API.
+`customerId` o `productId`, envíelos tal cual: desde la 0.6 el servidor los resuelve
+(el SDK ya no descarga ni descifra una copia del catálogo).
 En ambos flujos el servidor valida el documento y calcula los importes.
 
 El catálogo es opcional para issue. Si no guarda clientes en Facta, envíe los
 datos inline en `receptor`: el SDK no crea ni actualiza una ficha. Para una
 FE (`01`) de consumidor final puede omitir el receptor. Para un CCF (`03`) debe
 enviar los datos exigidos por Hacienda, incluido el nombre, aunque el cliente
-no esté guardado en Facta. Este flujo inline no necesita `unlockKey`; usar
-`customerId` sí requiere que el cliente exista en el snapshot local de esa llave.
+no esté guardado en Facta. Este flujo inline no necesita catálogo; usar
+`customerId` sí requiere que el cliente exista y esté autorizado para esa llave.
 
 ```ts
 const dte = await facta.issue({
@@ -568,42 +564,24 @@ importación CSV) o, si la empresa guarda su catálogo en texto plano y habilit�
 la escritura, desde la API: `createCustomer`, `updateCustomer` y
 `deactivateCustomer` (lo mismo para productos), con el alcance
 `catalog:write`. Ver la [guía de escritura del catálogo](guides/catalog-write.es.md).
-Lo que sigue describe el modo cifrado. Al sincronizar desde la aplicación, la
-llave recibe un snapshot cifrado: los clientes respetan la selección configurada para esa
-llave, los clientes futuros se agregan automáticamente salvo exclusión
-explícita, y se publican los productos activos.
-
-En el proceso del integrador, configura `unlockKey` con `FACTA_UNLOCK_KEY` y
-llama `syncCatalog()` para descargar y abrir localmente el snapshot. Las
-funciones `list*`, `get*` y `search*` leen esa copia local. Antes de reutilizarla,
-el SDK consulta el estado público; si cambió la revisión publicada, descarga y
-abre el snapshot más reciente automáticamente. También puedes forzar la carga
-con `syncCatalog()`. Sin `unlockKey` siguen funcionando las emisiones que
-incluyen `receptor` y datos completos de `items` en línea.
+Desde la 0.6 las funciones `list*`, `get*` y `search*` siempre leen por el API y no
+necesitan `unlockKey`: el servidor lee el catálogo por usted, también cuando la
+empresa lo guarda cifrado, y resuelve `customerId` / `productId` al emitir. Los
+clientes respetan la selección configurada para la llave.
 
 ```ts
 const facta = new Facta({
   apiKey: process.env.FACTA_API_KEY!,
   signKey: process.env.FACTA_SIGN_KEY!,
-  unlockKey: process.env.FACTA_UNLOCK_KEY!,
 });
 
-const status = await facta.status();
-if (status.sincronizacion?.catalog?.status === "pending") {
-  // Primero el propietario debe completar la sincronización desde la app web.
-  throw new Error("El catálogo de esta llave aún no se ha publicado");
-}
-await facta.syncCatalog();
 const customer = await facta.getCustomer("customer-id");
 const product = await facta.getProduct("product-id");
 ```
 
-El snapshot es una copia autorizada, no un mecanismo de edición o sync
-bidireccional desde el SDK. La resolución de `customerId`/`productId` sustituye
-campos faltantes localmente; los campos explícitos del request prevalecen.
-Un ID ausente o producto inactivo produce `FactaError` con código
-`not_found`; `error.details` identifica el ID y `catalogRevision` usada en la
-resolución. No se reintenta automáticamente con otro cliente ni se muta el
+La resolución de `customerId`/`productId` la hace el servidor; los campos
+explícitos del request prevalecen. Un ID ausente o producto inactivo produce
+`FactaError` con código `not_found`; `error.details` identifica el ID. No se reintenta automáticamente con otro cliente ni se muta el
 catálogo. La importación CSV disponible en la app admite previsualización,
 validación y hasta 5,000 filas; clientes se emparejan por documento y
 productos por código. Confirma la selección de llave y sincroniza otra vez para
@@ -716,18 +694,15 @@ Consecuencias prácticas:
 
 `test/architecture.test.ts` falla si alguna de las dos deja de ser cierta.
 
-## Synchronize the destination vault and catalog
+## Synchronize the destination vault
 
 Set `unlockKey` from the deployment secret manager when this integration needs
-the company's storage destinations or encrypted customer/product catalog.
-`syncDestinations()` and `syncCatalog()` download only encrypted envelopes,
-derive their wrapping keys, and decrypt them in the SDK process. The unlock key
-is never added to an HTTP header, body, retry, or error message. Both methods
-return their snapshots in memory; persist them only if your own application
-has a suitable secret store. During the lifetime of one `Facta` instance, the
-catalog snapshot stays in memory. A catalog reference checks the server's
-published/desired revision and downloads a replacement only when that revision
-changes; there is no disk cache.
+the company's storage destinations. `syncDestinations()` downloads only encrypted
+envelopes, derives their wrapping keys, and decrypts them in the SDK process. The
+unlock key is never added to an HTTP header, body, retry, or error message. The method
+returns the snapshot in memory; persist it only if your own application has a suitable
+secret store. (The catalog snapshot and `syncCatalog()` were removed in 0.6: the server
+reads and resolves the catalog.)
 
 ```ts
 const facta = new Facta({
@@ -737,7 +712,6 @@ const facta = new Facta({
 });
 
 const { destinos } = await facta.syncDestinations();
-const { customers, products } = await facta.syncCatalog();
 ```
 
 `syncDestinations()` decrypts destination configurations but does not itself
@@ -936,16 +910,11 @@ The Facta app remains the writer. If the API reports a stale or pending
 destination revision, synchronize the key from **Configuración → API de Facta**
 while the company vault is open, then retry. `legacy` means the key has not yet
 been enrolled; its old snapshot remains readable during the migration window.
-When `receptor.customerId` or `items[].productId` is supplied, the SDK resolves
-those references from the local snapshot and sends the complete fiscal fields
-inline. Inline data remains usable without a catalog reference. New customers
-and products appear in a key after the owner publishes its snapshot from the
-app. The API-key creation screen can limit which existing customers are in a
-key's local SDK catalog. Later customer additions are included automatically;
-existing exclusions are retained in the encrypted sync policy. This is a
-catalog-resolution boundary: an integrator that calls HTTP directly and sends
-a complete inline receptor remains responsible for that data and is not
-restricted by the local SDK snapshot.
+When `receptor.customerId` or `items[].productId` is supplied, the server resolves
+those references (0.6) and the SDK sends them untouched. Inline data remains usable without a
+catalog reference. The API-key creation screen can limit which existing customers a key may
+resolve; later customer additions are included automatically and the exclusions are enforced
+by the server.
 
 ## Lo que sí hace, y por qué vale las líneas que ocupa
 
@@ -992,7 +961,7 @@ incluidos en errores de comparación.
 
 Los datos del receptor en consultas y listados pueden ser nulos para documentos cifrados en la app Facta, importados o restaurados con una clave de empresa que la API no tiene. El SDK conserva ese valor: un cliente del catálogo actual no demuestra quién era el receptor del documento histórico. `unlockKey` abre solamente los snapshots publicados del catálogo y los destinos, no los datos cifrados del receptor de facturas históricas.
 
-El workflow completo de staging exige abrir el catálogo publicado por el dueño y, para BYOS, su snapshot de destinos antes de emitir la factura de pruebas. Si solamente usa Facta y está listo, no requiere un snapshot BYOS. Si falta un snapshot requerido, la ejecución falla. La compatibilidad del SDK con respuestas de estado anteriores no elimina este requisito de integración.
+El workflow completo de staging exige, para BYOS, abrir el snapshot de destinos antes de emitir la factura de pruebas. Si solamente usa Facta y está listo, no requiere un snapshot BYOS. Si falta un snapshot requerido, la ejecución falla. La compatibilidad del SDK con respuestas de estado anteriores no elimina este requisito de integración.
 
 ### Ejemplos ejecutables y fallas de almacenamiento
 

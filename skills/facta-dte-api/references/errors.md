@@ -49,7 +49,7 @@ Everything else is final for that request.
 | `invalid_request` | 400 / 422 | Missing/non-JSON/over-1 MB body, wrong field shape, non-UUID code (`details.field`); locally: invalid catalog product type/unit or VAT-basis mismatch → fix the request. |
 | `validation_failed` | 422 | Fails Hacienda's official schema (`details.issues`); also thrown locally by catalog writes → fix the listed fields. |
 | `retention_mixed_class_unsupported` | 422 | `aplicarReteRenta` with an `exenta`/`no_sujeta` line → issue those lines separately or drop the withholding. |
-| `not_found` | 404 | No such document/customer/product/route for this key's company; also locally for an id not in the catalog snapshot → check id and company; sync the catalog. |
+| `not_found` | 404 | No such document/customer/product/route for this key's company; also for an id the server cannot resolve (`details.reason: "catalog_unknown_id"`) → check id and company. |
 | `method_not_allowed` | 405 | Route exists, wrong method (only outside the SDK). |
 | `prepare_token_invalid` | 422 | Token expired (15 min), other key, or document changed → `prepare` again. |
 | `include_limit_exceeded` | 400 | `listDocuments` with `include: ["dte"]` asked for more than 25 rows (`details.maximo`) → ask for 25 or fewer and follow `siguiente`. |
@@ -106,7 +106,7 @@ Everything else is final for that request.
 
 | Code | HTTP | Retried | Meaning → action |
 | --- | --- | --- | --- |
-| `no_storage_destination` | 422 | no | No verified destination (older issuance behaviour); locally from `syncDestinations` (snapshot not published) and `syncCatalog` (`details.reason: "catalog_out_of_sync"`) → connect/re-sync in the app. Per the current contract issuance proceeds with the warning `sin_almacenamiento_duradero` instead. |
+| `no_storage_destination` | 422 | no | No verified destination (older issuance behaviour); locally from `syncDestinations` (snapshot not published) → connect/re-sync in the app. Per the current contract issuance proceeds with the warning `sin_almacenamiento_duradero` instead. |
 | `storage_unsupported` | 501 | no | Server lacks the managed-storage route, or `source: "managed"` got no proof → update the server before depending on it. |
 | `storage_unavailable` | 503 | yes | Managed copy cannot be read/repaired right now → retry only the storage operation; never re-issue. |
 | `storage_contract_invalid` | 502 (SDK) | no | Malformed storage response/receipt; on a successful issue it appears as `result.storageErrorCode` with the sealed result intact → repair later (`recoverOperation` / `retryDocumentStorage`). |

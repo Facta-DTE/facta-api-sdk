@@ -61,7 +61,7 @@ In the tables, "Retried" means retried automatically by the SDK.
 
 | Code | HTTP | Retried | Meaning | What to do |
 | --- | --- | --- | --- | --- |
-| `unauthorized` | 401 (0 locally) | no | No `X-Facta-Key` reached the API. Locally: `apiKey` missing, an unlock key (`factauk_`) passed as `signKey`, a malformed `unlockKey`, or `syncCatalog`/`syncDestinations` without `unlockKey`. | Configure the credential named in the message. |
+| `unauthorized` | 401 (0 locally) | no | No `X-Facta-Key` reached the API. Locally: `apiKey` missing, an unlock key (`factauk_`) passed as `signKey`, a malformed `unlockKey`, or `syncDestinations` without `unlockKey`. | Configure the credential named in the message. |
 | `invalid_api_key` | 401 | no | The key does not exist, is mistyped, or its secret does not match. | Copy the whole key, including the dot. |
 | `key_revoked` | 403 | no | Revoked from the app. | Mint a new key. |
 | `key_expired` | 403 | no | Past its expiry date. | Mint a new key. |
@@ -83,7 +83,7 @@ In the tables, "Retried" means retried automatically by the SDK.
 | `include_limit_exceeded` | 400 | no | `listDocuments` with `include: ["dte"]` asked for more than 25 rows (`details.maximo`). | Ask for 25 or fewer and follow `siguiente`. |
 | `validation_failed` | 422 | no | The document fails Hacienda's official schema (`details.issues`). Also thrown locally (422, before any request) by catalog writes. | Fix the listed fields. No number was spent. |
 | `retention_mixed_class_unsupported` | 422 | no | `aplicarReteRenta` was requested on a document with an `exenta` or `no_sujeta` line (`items[].tipoVenta`). | Nothing was signed and no number was spent. Issue the exempt or non-subject lines in another document, or do not apply the withholding. |
-| `not_found` | 404 | no | No such document, customer, product or route for this key's company. Also thrown locally when a `customerId`/`productId` is not in the catalog snapshot. | Check the identifier and the key's company; sync the catalog. |
+| `not_found` | 404 | no | No such document, customer, product or route for this key's company. Also returned when a `customerId`/`productId` does not exist for this key (`details.reason: "catalog_unknown_id"`). | Check the identifier and the key's company; sync the catalog. |
 | `method_not_allowed` | 405 | no | The route exists, but not with that method. | Only seen when calling the API outside the SDK's methods. |
 | `prepare_token_invalid` | 422 | no | The `prepareToken` expired (15 min), belongs to another key, or the document changed. | Call `prepare` again. See [prepare-sign.md](prepare-sign.md). |
 | `not_sealed` | 409 | no | Default JSON download of a document with no seal yet (contingency). | Use `{ raw: true }` or wait for the seal. See [archivo-dte.md](archivo-dte.md). |
@@ -144,7 +144,7 @@ document is signed and Facta will retransmit it.
 
 | Code | HTTP | Retried | Meaning | What to do |
 | --- | --- | --- | --- | --- |
-| `no_storage_destination` | 422 | no | The company has no storage destination connected and verified in the last 30 days. Checked before reserving. Also thrown locally (422) by `syncDestinations` when the destination snapshot is not published, and by `syncCatalog` when the catalog is out of sync (`details.reason: "catalog_out_of_sync"`). | Connect or re-sync a destination (or the catalog) in the app. |
+| `no_storage_destination` | 422 | no | The company has no storage destination connected and verified in the last 30 days. Checked before reserving. Also thrown locally (422) by `syncDestinations` when the destination snapshot is not published. | Connect or re-sync a destination in the app. |
 | `storage_unsupported` | 501 | no | The server does not expose the managed-storage route (the SDK also maps 404 to it), or a `source: "managed"` download got no source proof. | Update the server before depending on it. |
 | `storage_unavailable` | 503 | **yes** | The managed copy could not be read or repaired right now. | Retry only the storage operation; never re-issue. |
 | `storage_contract_invalid` | 502 (SDK) | no | A storage response or receipt is malformed. On a successful issue it appears as `result.storageErrorCode` instead, with the sealed result intact. | Repair the copy later (`recoverOperation` / `retryDocumentStorage`). |

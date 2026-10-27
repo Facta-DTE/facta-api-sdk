@@ -8,21 +8,14 @@ receiver and line data depends on no catalog at all.** Use the catalog only if
 you want to refer to customers/products by id (`receptor: { customerId }`,
 `items: [{ productId, cantidad }]`).
 
-## Three modes
+## One road since 0.6
 
-`GET /v1/status` tells the SDK which one the key is in
-(`llave.catalogMode`, also `facta.catalogState().catalogMode` and
-`diagnose().catalogMode`):
-
-| Mode | Who can read the catalog | How ids resolve | Needs `unlockKey`? |
-| --- | --- | --- | --- |
-| `encrypted` | Only the company (end-to-end). Facta cannot read names or documents. | **The SDK resolves locally** from the key's encrypted snapshot, in memory. A direct HTTP call cannot. | Yes (`factauk_…`) |
-| `readable` | The owner enabled «Catálogo legible por la API». | **The server resolves** `customerId`/`productId`; the SDK sends the ids as they are. Unknown id → `404` with `detail.reason: "catalog_unknown_id"` (`detail.catalogStale` says if the published catalog lags). | No |
-| `plain` | Facta DTE and any key allowed to read the catalog. | Server, always live. Reads via `GET /v1/customers` and `/v1/products`. | No |
-
-An older server that does not advertise the mode behaves as `encrypted`. The SDK
-asks for the mode about once a minute and, if it cannot read it, keeps resolving
-locally; that check is never the reason an emission fails.
+The **server** resolves `customerId` / `productId` for every key, whether the company keeps
+its catalog `encrypted` at rest, `readable` or `plain`. The SDK sends the ids as they are:
+no `unlockKey`, no snapshot to download, nothing to refresh. `GET /v1/status` still
+reports `llave.catalogMode` (also `diagnose().catalogMode`) for information. An unknown id is
+`404` with `detail.reason: "catalog_unknown_id"`. `syncCatalog()`, `catalogState()` and
+`allowStale` were removed in 0.6.
 
 ## Reading (all modes)
 
@@ -31,20 +24,9 @@ locally; that check is never the reason an emission fails.
 Deactivated records are left out; pass `includeInactive: true` to see them.
 `limit` is an integer 1–500 (default 50). Search is case- and diacritic-insensitive.
 
-```ts
-const state = await facta.catalogState(); // { catalogMode, freshness, localRevision, desiredRevision, publishedRevision, syncStatus, statusError }
-if (state.catalogMode === "encrypted" && state.freshness !== "fresh") await facta.syncCatalog(); // needs unlockKey
-```
-
-- **Encrypted catalogs and fiscal requests:** `issue` / `issueAndArchive` resolve
-  ids against a **fresh** snapshot and never accept stale data. If the snapshot is
-  pending or its status cannot be confirmed, resolution fails *before* anything is
-  sent (`no_storage_destination` with `details.reason: "catalog_out_of_sync"`, or
-  `not_found` for an id that is not in it). Fix it by publishing the snapshot from
-  the Facta app. Do not retry with stale data.
-- `allowStale: true` exists for **non-fiscal reads only** (a UI, local search) and
-  only reuses this process's cache; it does not persist across restarts and does not
-  suppress integrity errors.
+- If the server cannot open the company's encrypted catalog right now it answers
+  `data_grant_unavailable` / `data_epoch_stale` (503, retry shortly) or
+  `data_grant_revoked` (403, the owner removed the key's access).
 - Explicit fields in the request win over catalog values. Inline receiver data never
   creates or edits a customer.
 - A catalog price carries a VAT basis (`vat_included`). If it does not match the
@@ -111,10 +93,7 @@ await facta.deactivateProduct(product.id); // DELETE deactivates; there is no ha
   `barcode`, `vat_included`) are **still accepted** (deprecated): do not mix both for the same
   field. On an SDK older than 0.5.0 only the old spellings exist.
 - Every record the SDK returns carries **both** spellings, in every catalog mode, plus
-  `activo`; the product's `tipoVenta` rides on every line issued from it, and
-  `customerId` / `productId` resolve to the same line in all three modes. Timestamps
-  (`creadoEn`, `actualizadoEn`) read `null` from an encrypted snapshot. An encrypted catalog
-  without `unlockKey` fails with `unauthorized` (`details.missing` names it).
+  `activo`; the product's `tipoVenta` rides on every line issued from it.
 - Direct HTTP uses the same names; list queries use `buscar`, `limite`, `incluirInactivos` and
   responses use `clientes` / `productos`. The SDK methods keep their signatures
   (`searchCustomers(query, { limit, includeInactive })`).

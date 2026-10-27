@@ -106,14 +106,12 @@ may throw `SyntaxError`; the unlock key is not transmitted in either case.
 | Method | Inputs / return | Scope | Behavior and important outcomes |
 |---|---|---|---|
 | `syncDestinations()` | None → `Promise<DestinationSnapshot>` | No additional API scope; local `unlockKey` required | Opens the per-key storage destination snapshot in memory. Accepts `ready` and legacy synchronization state; pending/missing state fails with `no_storage_destination`. Does not write artifacts to those destinations. |
-| `syncCatalog()` | None → `Promise<CatalogSnapshot>` | No additional API scope; local `unlockKey` required | Opens the latest authorized customer/product snapshot and replaces this instance's in-memory cache. Requires a ready published catalog and verifies the encrypted envelope digest. |
-| `catalogState()` | None → `Promise<CatalogState>` | No additional API scope | Compares the local catalog revision with public status. Returns `catalogMode` (`encrypted`, `readable`, `plain` or `null`), `missing`/`fresh`/`stale` plus revisions, fetch time, and a safe status error code; never returns catalog contents. A `plain` catalog is read live and reports `fresh`. |
-| `listCustomers(options?)` | `{ allowStale?: boolean, includeInactive?: boolean }` → customer array | Local snapshot (`encrypted`) or the API (`readable`, `plain`) | Returns a copy of authorized customers. Stale cache is used only when explicitly opted in and current status is unavailable. |
-| `getCustomer(id, options?)` | Stable Facta customer ID and optional `{ allowStale?: boolean, includeInactive?: boolean }` → customer or `null` | Local snapshot or the API | Returns the matching authorized customer, or `null` when absent. |
-| `searchCustomers(query, options?)` | Query and optional `{ limit=50, allowStale?: boolean, includeInactive?: boolean }` → customer array | Local snapshot or the API | Case/diacritic-insensitive search over name, document number, NRC, and email. `limit` must be an integer from 1 through 500. |
-| `listProducts(options?)` | `{ includeInactive?: false, allowStale?: boolean }` → product array | Local snapshot or the API | Returns active products by default; `includeInactive: true` includes inactive records. |
-| `getProduct(id, options?)` | Stable Facta product ID and optional `{ allowStale?: boolean, includeInactive?: boolean }` → product or `null` | Local snapshot or the API | Returns `null` for missing or inactive products. |
-| `searchProducts(query, options?)` | Query and optional `{ limit=50, allowStale?: boolean, includeInactive?: boolean }` → product array | Local snapshot or the API |
+| `listCustomers(options?)` | `{ includeInactive?: boolean }` → customer array | The API | Returns a copy of authorized customers. |
+| `getCustomer(id, options?)` | Stable Facta customer ID and optional `{ includeInactive?: boolean }` → customer or `null` | The API | Returns the matching authorized customer, or `null` when absent. |
+| `searchCustomers(query, options?)` | Query and optional `{ limit=50, includeInactive?: boolean }` → customer array | The API | Case/diacritic-insensitive search over name, document number, NRC, and email. `limit` must be an integer from 1 through 500. |
+| `listProducts(options?)` | `{ includeInactive?: false }` → product array | The API | Returns active products by default; `includeInactive: true` includes inactive records. |
+| `getProduct(id, options?)` | Stable Facta product ID and optional `{ includeInactive?: boolean }` → product or `null` | The API | Returns `null` for missing or inactive products. |
+| `searchProducts(query, options?)` | Query and optional `{ limit=50, includeInactive?: boolean }` → product array | The API |
 | `createCustomer(input, options?)` | `CustomerInput` and optional `{ idempotencyKey?, signal? }` → `CatalogCustomer` | `catalog:write`; plain catalog | Creates a customer. `name` is required. DUI is 9 digits, NIT 14, NRC 1–8; dashes are accepted and removed. A retried create with the same `idempotencyKey` does not duplicate it. See the [catalog write guide](catalog-write.md). |
 | `updateCustomer(id, changes, options?)` | Customer ID and a partial `CustomerInput` → `CatalogCustomer` | `catalog:write`; plain catalog | `PATCH`: only the fields passed change; `null` clears an optional field. |
 | `deactivateCustomer(id, options?)` | Customer ID → `CatalogCustomer` (`active: false`) | `catalog:write`; plain catalog | `DELETE` deactivates; there is no hard delete. Listed again with `includeInactive: true`; `updateCustomer(id, { activo: true })` reactivates. |
@@ -121,18 +119,14 @@ may throw `SyntaxError`; the unlock key is not transmitted in either case.
 | `updateProduct(id, changes, options?)` | Product ID and a partial `ProductInput` → `CatalogProduct` | `catalog:write`; plain catalog | `PATCH`: only the fields passed change. |
 | `deactivateProduct(id, options?)` | Product ID → `CatalogProduct` (`active: false`) | `catalog:write`; plain catalog | `DELETE` deactivates; the product can no longer be issued and past documents are untouched. |
 
-The catalog read methods pick their path from `catalogMode` (learned once from `/v1/status`, together with the region): `encrypted` decrypts the key's snapshot with `unlockKey`; `readable` and `plain` read through `GET /v1/customers` and `GET /v1/products`, with no `unlockKey`. Write methods fail locally with `validation_failed` (HTTP 422, before any request) when a field breaks a rule the server also enforces, and with `catalog_write_disabled` (403) or `catalog_encrypted` (409) when the company has not enabled catalog administration from the API. Case/diacritic-insensitive search over description, code, and barcode; inactive products are omitted. `limit` must be an integer from 1 through 500. |
+The catalog read methods call `GET /v1/customers` and `GET /v1/products` in every catalog mode; the server reads an encrypted catalog itself, so no `unlockKey` is needed. Write methods fail locally with `validation_failed` (HTTP 422, before any request) when a field breaks a rule the server also enforces, and with `catalog_write_disabled` (403) when the company has not enabled catalog administration from the API.
 
 Invalid limits and missing runtime configuration fail locally with `TypeError`
-or `RangeError`. Snapshot/API failures use `FactaError`; the specific method
+or `RangeError`. API failures use `FactaError`; the specific method
 descriptions above identify the relevant state and fallback. Read methods do
 not reserve fiscal numbers or mutate the remote catalog.
 
-Every customer/product reference used for fiscal resolution requires a fresh
-catalog. Explicit inline fields win over snapshot values. Missing customers,
-missing products, or inactive products fail with `not_found` and identify the
-record ID/revision in error details. Stale catalog opt-in applies only to
-non-fiscal lookup; it never permits stale issuance resolution. Inline request
+`customerId` / `productId` in a fiscal request are resolved by the server (0.6), never by the SDK. Explicit inline fields win over stored values. Missing or inactive records fail with `not_found`. Inline request
 data does not create or update catalog records.
 
 ## DTE operations

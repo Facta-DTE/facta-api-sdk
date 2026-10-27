@@ -62,7 +62,7 @@ En las tablas, «Reintento» significa que el SDK lo reintenta automáticamente.
 
 | Código | HTTP | Reintento | Significado | Qué hacer |
 | --- | --- | --- | --- | --- |
-| `unauthorized` | 401 (0 local) | no | No llegó `X-Facta-Key` a la API. Localmente: falta `apiKey`, se pasó una llave de apertura (`factauk_`) como `signKey`, un `unlockKey` mal formado, o `syncCatalog`/`syncDestinations` sin `unlockKey`. | Configure la credencial que nombra el mensaje. |
+| `unauthorized` | 401 (0 local) | no | No llegó `X-Facta-Key` a la API. Localmente: falta `apiKey`, se pasó una llave de apertura (`factauk_`) como `signKey`, un `unlockKey` mal formado, o `syncDestinations` sin `unlockKey`. | Configure la credencial que nombra el mensaje. |
 | `invalid_api_key` | 401 | no | La llave no existe, está mal escrita o su secreto no coincide. | Copie la llave completa, con el punto. |
 | `key_revoked` | 403 | no | Revocada desde la aplicación. | Acuñe una llave nueva. |
 | `key_expired` | 403 | no | Pasó su fecha de vencimiento. | Acuñe una llave nueva. |
@@ -84,7 +84,7 @@ En las tablas, «Reintento» significa que el SDK lo reintenta automáticamente.
 | `include_limit_exceeded` | 400 | no | `listDocuments` con `include: ["dte"]` pidió más de 25 filas (`details.maximo`). | Pida 25 o menos y siga con `siguiente`. |
 | `validation_failed` | 422 | no | El documento no cumple el esquema oficial de Hacienda (`details.issues`). También lo lanzan localmente (422, antes de cualquier petición) las escrituras de catálogo. | Corrija los campos indicados. No se gastó número. |
 | `retention_mixed_class_unsupported` | 422 | no | Se pidió `aplicarReteRenta` en un documento con alguna línea `exenta` o `no_sujeta` (`items[].tipoVenta`). | No se firmó nada ni se gastó número. Emita las líneas exentas o no sujetas en otro documento, o no aplique la retención. |
-| `not_found` | 404 | no | No existe ese documento, cliente, producto o ruta para la empresa de la llave. También se lanza localmente cuando un `customerId`/`productId` no está en la foto del catálogo. | Revise el identificador y la empresa de la llave; sincronice el catálogo. |
+| `not_found` | 404 | no | No existe ese documento, cliente, producto o ruta para la empresa de la llave. También cuando un `customerId`/`productId` no existe para esta llave (`details.reason: "catalog_unknown_id"`). | Revise el identificador y la empresa de la llave; revise el catálogo en la aplicación. |
 | `method_not_allowed` | 405 | no | La ruta existe, pero no con ese método. | Solo aparece al llamar a la API fuera de los métodos del SDK. |
 | `prepare_token_invalid` | 422 | no | El `prepareToken` venció (15 min), es de otra llave o el documento cambió. | Llame a `prepare` otra vez. Vea [prepare-sign.es.md](prepare-sign.es.md). |
 | `not_sealed` | 409 | no | Descarga JSON por defecto de un documento que todavía no tiene sello (contingencia). | Use `{ raw: true }` o espere el sello. Vea [archivo-dte.es.md](archivo-dte.es.md). |
@@ -145,7 +145,7 @@ documento está firmado y Facta lo retransmitirá.
 
 | Código | HTTP | Reintento | Significado | Qué hacer |
 | --- | --- | --- | --- | --- |
-| `no_storage_destination` | 422 | no | La empresa no tiene ningún destino de almacenamiento conectado y verificado en los últimos 30 días. Se revisa antes de reservar. También lo lanzan localmente (422) `syncDestinations`, cuando la foto de destinos no está publicada, y `syncCatalog`, cuando el catálogo está desactualizado (`details.reason: "catalog_out_of_sync"`). | Conecte o vuelva a sincronizar un destino (o el catálogo) en la aplicación. |
+| `no_storage_destination` | 422 | no | La empresa no tiene ningún destino de almacenamiento conectado y verificado en los últimos 30 días. Se revisa antes de reservar. También lo lanzan localmente (422) `syncDestinations`, cuando la foto de destinos no está publicada. | Conecte o vuelva a sincronizar un destino en la aplicación. |
 | `storage_unsupported` | 501 | no | El servidor no expone la ruta de almacenamiento administrado (el SDK también le asigna los 404), o una descarga con `source: "managed"` no trajo la prueba de origen. | Actualice el servidor antes de depender de ello. |
 | `storage_unavailable` | 503 | **sí** | La copia administrada no se pudo leer o reparar en este momento. | Reintente solo la operación de almacenamiento; nunca vuelva a emitir. |
 | `storage_contract_invalid` | 502 (SDK) | no | Una respuesta o un recibo de almacenamiento viene mal formado. En una emisión exitosa aparece en cambio como `result.storageErrorCode`, con el resultado sellado intacto. | Repare la copia después (`recoverOperation` / `retryDocumentStorage`). |

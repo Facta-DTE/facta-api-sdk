@@ -1,6 +1,6 @@
 # Create, edit and deactivate customers and products
 
-[Spanish guide](catalog-write.es.md) · [Catalog snapshots](catalog.md) · [English README](../README.md)
+[Spanish guide](catalog-write.es.md) · [Catalog reads](catalog.md) · [English README](../README.md)
 
 From 0.5.0 the SDK can manage the company's customers and products through the
 API: `createCustomer`, `updateCustomer`, `deactivateCustomer`, `createProduct`,
@@ -39,31 +39,15 @@ everywhere else. Invoices already issued keep their own privacy rules.
 
 ## Reading works in every mode
 
-You do not have to choose a path. The SDK asks `/v1/status` once, together with the
-region discovery it already does, and uses:
+Since 0.6 the read methods always go through the API (`GET /v1/customers`, `GET /v1/products`),
+whatever the company's catalog mode, and need no `unlockKey`: the server reads an encrypted
+catalog itself. `diagnose()` still reports the `catalogMode` the key advertises, for information.
 
-| `catalogMode` | How `listCustomers`, `getCustomer`, `searchCustomers` and the product reads work |
-|---|---|
-| `encrypted` | Decrypts the key's snapshot locally with `unlockKey`, as before. |
-| `readable` | Reads through the API (`GET /v1/customers`, `GET /v1/products`); no `unlockKey`. Falls back to the snapshot only if the routes are missing and an `unlockKey` is set. |
-| `plain` | Reads through the API; always live; no `unlockKey`. |
-
-```ts
-const state = await facta.catalogState();
-console.log(state.catalogMode); // "encrypted" | "readable" | "plain" | null
-```
-
-**The result is the same in every mode; only the latency differs.** Every customer and
-product has the same fields whichever way it was read: both spellings of each name
-(`nombre` and `name`...), the product's VAT treatment (`tipoVenta` / `sale_class`),
-the whole address (`distrito`, and `pais` when there is one), numbers as numbers and
-`activo` always present. `customerId` / `productId` at issue time resolve to the same
-line and receiver in all three modes (the SDK resolves locally from the decrypted
-snapshot, or the server does it). An encrypted catalog is slower: the SDK downloads and
-decrypts the snapshot. Without an `unlockKey` it fails with `unauthorized`, naming
-`unlockKey` in `details.missing`; it never returns a partial record.
-The only field that can differ is a timestamp (`creadoEn`, `actualizadoEn`), which a
-snapshot never held and which reads `null` there.
+**The result is the same in every mode.** Every customer and product has the same fields
+whichever way the company stores it: both spellings of each name (`nombre` and `name`...),
+the product's VAT treatment (`tipoVenta` / `sale_class`), the whole address (`distrito`, and
+`pais` when there is one), numbers as numbers and `activo` always present. `customerId` /
+`productId` at issue time are resolved by the server.
 
 `diagnose()` reports the same `catalogMode`. Deactivated records are left out of
 lists and searches; pass `includeInactive: true` to see them.
