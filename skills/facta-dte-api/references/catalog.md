@@ -116,3 +116,9 @@ await facta.deactivateProduct(product.id); // DELETE deactivates; there is no ha
   adds six `catalog.customers|products.create|update|deactivate` actions; it
   **requires an `authorize` function** (`"session-only"` is refused at construction).
   The pickers `FactaCustomerPicker` / `FactaProductPicker` work in plain mode unchanged.
+
+## Changes, revisions and webhooks (scope `catalog:read`)
+
+- `listCatalogChanges({ since, generation, limit })` returns ids, revisions, operation and actor, never content; follow `next` while `hasMore`. `catalog_cursor_expired` (410) keeps `reason`, `cabeza` and `generacion` in `error.details`: re-read everything, then continue from `cabeza`.
+- Webhooks: `createWebhook` (the `secret` is returned once), `listWebhooks`, `getWebhook`, `updateWebhook`, `deleteWebhook`, `rotateWebhookSecret`, `testWebhook`. Verify every delivery on the RAW body with `verifyWebhook` / `constructWebhookEvent` (header `Facta-Signature`), refuse a repeated `deliveryId` with a replay store, answer 2xx fast.
+- A company that shares its data key gives single records a `revision`; pass it as `ifMatch` to `updateCustomer` / `updateProduct`. A plain catalogue ignores `ifMatch`.
