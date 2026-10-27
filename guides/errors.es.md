@@ -91,6 +91,15 @@ En las tablas, «Reintento» significa que el SDK lo reintenta automáticamente.
 | `catalog_write_disabled` | 403 | no | La empresa no activó «Permitir administrar clientes y productos desde el API». | Actívelo en la aplicación. Vea [catalog-write.es.md](catalog-write.es.md). |
 | `catalog_encrypted` | 409 | no | El catálogo de la empresa sigue cifrado, así que la API no puede escribirlo. | Pase el catálogo a texto plano en la aplicación. |
 | `catalog_duplicate` | 409 | no | Ya existe un cliente con ese documento, o un producto con ese código. | `details.id` dice cuál; edítelo, o reactívelo si está desactivado. |
+| `catalog_revision_conflict` | 409 | no | El registro cambió desde la revisión que envió en `If-Match`. | `details.revisionActual` es la revisión vigente; léalo de nuevo y aplique otra vez el cambio. |
+| `catalog_record_inactive` | 409 | no | Se editó un registro desactivado sin enviar `activo: true`. | Reactívelo de forma explícita, o déjelo así. |
+| `catalog_search_too_broad` | 422 | no | Una búsqueda de texto sobre más filas de las que el servidor revisa en memoria. | Busque por documento (`documento`). |
+| `catalog_cursor_expired` | 410 | no | El cursor del catálogo es más viejo de lo que el servidor guarda. | Lea otra vez desde la primera página. |
+| `data_grant_unavailable` | 503 | sí | El servidor no pudo abrir ahora el acceso de la llave al catálogo cifrado. | Reintente en unos segundos; no cuenta contra su llave. |
+| `data_grant_revoked` | 403 | no | La dueña quitó a esta llave el acceso a los datos del catálogo. | Pídale que lo restablezca, o acuñe otra llave. |
+| `data_epoch_stale` | 503 | sí | La clave de datos de la empresa se está rotando. | Reintente en unos segundos. |
+| `inbox_retired` | 410 | no | Las rutas del buzón sellado del catálogo (`/v1/catalog/changes`) se retiraron. | Escriba el catálogo con `createCustomer`, `updateCustomer` y los equivalentes de productos. |
+| `catalog_snapshot_retired` | 410 | no | La foto del catálogo por llave se retiró. | No hace falta nada: envíe `customerId` / `productId` y el servidor los resuelve. |
 
 ## Idempotencia
 

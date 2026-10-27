@@ -108,37 +108,11 @@ export type DteRequest =
   | (DteRequestBase & { tipoDte: "11"; receptor: ExportRecipient; exportacion: ExportDetails; documentosRelacionados?: never; aplicarReteRenta?: never; numPagoElectronico?: never })
   | (DteRequestBase & { tipoDte: "14"; receptor: ExcludedSubjectRecipient; aplicarReteRenta?: boolean; documentosRelacionados?: never; exportacion?: never; numPagoElectronico?: never });
 
-export interface CatalogSnapshot {
-  version: 1;
-  customers: CatalogCustomer[];
-  products: CatalogProduct[];
-}
-
 /** How the key's company stores the catalog the API can see. */
 export type CatalogMode = "encrypted" | "readable" | "plain";
 
-/** Public synchronization facts for this process-local catalog cache. */
-export interface CatalogState {
-  /**
-   * How this key reaches the catalog, from `/v1/status`: `encrypted` (decrypt the key's snapshot
-   * with `unlockKey`), `readable` (the owner published a readable snapshot) or `plain` (the company
-   * catalog is stored unencrypted and is read and written through the API). `null` when the
-   * server did not say (older API) or status could not be read.
-   */
-  catalogMode: CatalogMode | null;
-  /** `plain` reads are always live, so they report `fresh`. */
-  freshness: "fresh" | "stale" | "missing";
-  localRevision: number | null;
-  fetchedAt: string | null;
-  desiredRevision: number | null;
-  publishedRevision: number | null;
-  syncStatus: string | null;
-  /** Safe error code when the API could not be reached; never includes response data. */
-  statusError: string | null;
-}
-
-/** Explicit opt-in for non-fiscal catalog reads from the last process-local snapshot. */
 export interface CatalogReadOptions {
+  /** @deprecated No effect since 0.6: catalogue reads are always live (there is no local snapshot). */
   allowStale?: boolean;
   /** Include deactivated records (`active: false`). Default false. */
   includeInactive?: boolean;
@@ -234,7 +208,7 @@ export interface ProductInput {
 }
 
 /**
- * A customer, as the API returns it (Ministry names) and as an encrypted snapshot holds it
+ * A customer, as the API returns it (Ministry names) and as the stored record holds it
  * (stored names). Every record the SDK returns carries both spellings, so code written
  * against either keeps working in every catalog mode.
  */
@@ -741,6 +715,7 @@ export interface ApiSyncStatus {
   environment?: "00" | "01";
   sign?: SyncRevision;
   destinations?: SyncRevision;
+  /** @deprecated Retired in 0.6: the server no longer publishes a catalogue snapshot. */
   catalog?: SyncRevision;
 }
 
@@ -762,10 +737,9 @@ export interface Status {
     venceEl: string | null;
     /**
      * `plain`: the company catalog is unencrypted and the API reads and writes it.
-     * `readable`: the owner enabled «Catálogo legible por la API», so the
-     * server resolves `customerId` / `productId` and the SDK just sends the
-     * ids. `encrypted` (or absent on older servers): the SDK resolves them
-     * locally from the encrypted catalog and needs the unlock key.
+     * Since 0.6 the server resolves `customerId` / `productId` in every mode
+     * (also when the company keeps the catalog encrypted at rest) and the SDK
+     * just sends the ids; this field is informational.
      */
     catalogMode?: CatalogMode;
     /** true when the company stores its catalog unencrypted: the API reads and writes it. Advertised alongside `catalogMode: "readable"` for older SDKs. */
@@ -790,7 +764,7 @@ export interface Status {
       environment: string | null;
     } | null;
   };
-  /** Published/current revisions for signing, storage destinations, and the encrypted catalog. */
+  /** Published/current revisions for signing, and storage destinations. */
   sincronizacion?: ApiSyncStatus | null;
   /** Absent on older servers; use getStorageStatus() to negotiate the contract. */
   storage?: ManagedStorageStatus;

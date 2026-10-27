@@ -57,6 +57,15 @@ Everything else is final for that request.
 | `catalog_write_disabled` | 403 | Company did not enable catalog administration from the API → enable it in the app. |
 | `catalog_encrypted` | 409 | Catalog still encrypted, API cannot write → switch to plain text in the app. |
 | `catalog_duplicate` | 409 | A customer with that document, or a product with that code, already exists (`details.id` names it) → edit it, or reactivate it if deactivated. |
+| `catalog_revision_conflict` | 409 | The record changed since your `If-Match` revision (`details.revisionActual`) → read it again and re-apply. |
+| `catalog_record_inactive` | 409 | Edit of a deactivated record without `activo: true` → reactivate explicitly or leave it. |
+| `catalog_search_too_broad` | 422 | Text search over too many rows → search by `documento`. |
+| `catalog_cursor_expired` | 410 | Catalogue cursor expired → read from the first page. |
+| `data_grant_unavailable` | 503 | The server could not open the key's catalogue access right now → retry shortly. |
+| `data_grant_revoked` | 403 | The owner removed the key's catalogue access → ask them to restore it. |
+| `data_epoch_stale` | 503 | The company's data key is rotating → retry in a few seconds. |
+| `inbox_retired` | 410 | The sealed catalogue inbox was retired → write with `createCustomer` / `updateCustomer` and the product methods. |
+| `catalog_snapshot_retired` | 410 | The per-key catalogue snapshot was retired → send ids; the server resolves them. |
 
 ## Idempotency
 

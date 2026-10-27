@@ -138,10 +138,10 @@ try {
   const storageCapability = await facta.getStorageStatus();
   assert(storageCapability.managed.ready, "Full managed live validation requires ready managed storage.");
   const snapshots = await requireLiveSnapshots(facta, checks, (check) => { currentCheck = check; }, storageCapability.managed.ready && !storageCapability.byos.ready);
-  await validateLiveCatalogReads(facta, snapshots.catalog, checks, (check) => { currentCheck = check; });
+  await validateLiveCatalogReads(facta, checks, (check) => { currentCheck = check; });
   await validateLiveCatalogWriteGate(facta, checks, (check) => { currentCheck = check; });
   console.log(`${checks["catalog-write-gate"].startsWith("Warning") ? "WARN" : "PASS"} catalog write gate: ${checks["catalog-write-gate"]}`);
-  console.log("PASS snapshots: catalog and required BYOS destinations verified locally");
+  console.log("PASS snapshots: required BYOS destinations verified locally");
   currentCheck = "preflight";
 
   if (!diagnostics.canIssue || !diagnostics.canQuery || !diagnostics.canDownload || !diagnostics.canIssueAndArchive) {

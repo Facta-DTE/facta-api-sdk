@@ -1,35 +1,32 @@
 import { safeFailureCode } from "./live-report.mjs";
 
-/** Full live validation requires owner-published snapshots before fiscal work. */
+/** Full live validation requires the owner-published destinations snapshot before fiscal work (BYOS only). */
 export async function requireLiveSnapshots(facta, checks, onCheck = (_check) => {}, managedOnlyReady = false) {
-  const snapshots = { catalog: null, destinations: null };
-  for (const [check, method] of [["catalog", "syncCatalog"], ["destinations", "syncDestinations"]]) {
-    if (check === "destinations" && managedOnlyReady) { checks[check] = "Not applicable (managed only)"; continue; }
-    onCheck(check);
-    try {
-      // Discard decrypted contents; only the capability result may be reported.
-      snapshots[check] = await facta[method]();
-      checks[check] = "Passed";
-    } catch (cause) {
-      checks[check] = "Failed";
-      const error = new Error("Required snapshot is unavailable for full live validation.");
-      error.code = safeFailureCode(cause);
-      throw error;
-    }
+  const snapshots = { destinations: null };
+  if (managedOnlyReady) { checks.destinations = "Not applicable (managed only)"; return snapshots; }
+  onCheck("destinations");
+  try {
+    // Discard decrypted contents; only the capability result may be reported.
+    snapshots.destinations = await facta.syncDestinations();
+    checks.destinations = "Passed";
+  } catch (cause) {
+    checks.destinations = "Failed";
+    const error = new Error("Required snapshot is unavailable for full live validation.");
+    error.code = safeFailureCode(cause);
+    throw error;
   }
   return snapshots;
 }
 
-/** Exercise only local reads against the explicitly opened encrypted catalog. */
-export async function validateLiveCatalogReads(facta, snapshot, checks, onCheck = (_check) => {}) {
+/** Exercise the catalogue reads the server answers (since 0.6 there is no local snapshot to compare with). */
+export async function validateLiveCatalogReads(facta, checks, onCheck = (_check) => {}) {
   const fail = () => { throw Object.assign(new Error("Catalog read validation failed."), { code: "catalog_read_failed" }); };
-  if (!snapshot || !Array.isArray(snapshot.customers) || !Array.isArray(snapshot.products)) fail();
 
   const [customers, products] = await Promise.all([
     facta.listCustomers(),
     facta.listProducts({ includeInactive: true }),
   ]);
-  if (customers.length !== snapshot.customers.length || products.length !== snapshot.products.length) fail();
+  if (!Array.isArray(customers) || !Array.isArray(products)) fail();
   onCheck("customer-catalog");
   if (customers.length === 0) {
     if ((await facta.searchCustomers("", { limit: 1 })).length !== 0) fail();

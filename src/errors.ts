@@ -36,6 +36,24 @@ export type FactaErrorCode =
   | "catalog_encrypted"
   /** A customer with that document, or a product with that code, already exists (HTTP 409). */
   | "catalog_duplicate"
+  /** The record changed since `If-Match` (HTTP 409); `details.revisionActual` carries the current revision. */
+  | "catalog_revision_conflict"
+  /** An edit of an inactive record without `activo: true` (HTTP 409). */
+  | "catalog_record_inactive"
+  /** A `buscar` over more rows than the server searches in memory (HTTP 422); use the document filter. */
+  | "catalog_search_too_broad"
+  /** A catalogue cursor that expired (HTTP 410); read from the start. */
+  | "catalog_cursor_expired"
+  /** The shared data grant could not be opened by the server (HTTP 503); retry later. */
+  | "data_grant_unavailable"
+  /** The key's data grant was revoked (HTTP 403). */
+  | "data_grant_revoked"
+  /** The company's data key is rotating (HTTP 503); retry shortly. */
+  | "data_epoch_stale"
+  /** The sealed catalogue/draft inbox routes that were retired (HTTP 410). Write the catalogue with `createCustomer` and friends. */
+  | "inbox_retired"
+  /** The per-key catalogue snapshot was retired (HTTP 410). The server resolves ids itself. */
+  | "catalog_snapshot_retired"
   | "idempotency_key_required"
   | "idempotency_key_reuse"
   | "idempotency_in_flight"

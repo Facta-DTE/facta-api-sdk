@@ -90,6 +90,15 @@ In the tables, "Retried" means retried automatically by the SDK.
 | `catalog_write_disabled` | 403 | no | The company did not enable «Permitir administrar clientes y productos desde el API». | Enable it in the app. See [catalog-write.md](catalog-write.md). |
 | `catalog_encrypted` | 409 | no | The company catalog is still encrypted, so the API cannot write it. | Switch the catalog to plain text in the app. |
 | `catalog_duplicate` | 409 | no | A customer with that document, or a product with that code, already exists. | `details.id` names it; edit it, or reactivate it if it is deactivated. |
+| `catalog_revision_conflict` | 409 | no | The record changed since the `If-Match` revision you sent. | `details.revisionActual` is the current revision; read it again and re-apply the change. |
+| `catalog_record_inactive` | 409 | no | An edit of a deactivated record that did not send `activo: true`. | Reactivate it explicitly, or leave it. |
+| `catalog_search_too_broad` | 422 | no | A text search over more rows than the server searches in memory. | Search by document (`documento`) instead. |
+| `catalog_cursor_expired` | 410 | no | The catalogue cursor is older than the server keeps. | Read again from the first page. |
+| `data_grant_unavailable` | 503 | yes | The server could not open the key's access to the encrypted catalogue right now. | Retry shortly; it never counts against your key. |
+| `data_grant_revoked` | 403 | no | The owner removed this key's access to the catalogue data. | Ask the owner to restore it, or mint a new key. |
+| `data_epoch_stale` | 503 | yes | The company's data key is rotating. | Retry after a few seconds. |
+| `inbox_retired` | 410 | no | The sealed catalogue inbox routes (`/v1/catalog/changes`) were retired. | Write the catalogue with `createCustomer`, `updateCustomer` and the product equivalents. |
+| `catalog_snapshot_retired` | 410 | no | The per-key catalogue snapshot was retired. | Nothing to do: send `customerId` / `productId` and the server resolves them. |
 
 ## Idempotency
 

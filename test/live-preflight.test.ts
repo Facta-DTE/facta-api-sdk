@@ -2,50 +2,39 @@ import { assertEquals, assertRejects } from "jsr:@std/assert@1";
 import { requireLiveSnapshots, validateLiveCatalogReads, validateLiveCatalogWriteGate } from "../scripts/live-preflight.mjs";
 import { createValidationResults } from "../scripts/live-report.mjs";
 
-Deno.test("full live gate opens both snapshots before fiscal work", async () => {
+Deno.test("full live gate opens the destinations snapshot before fiscal work", async () => {
   const calls: string[] = [];
   const checks = createValidationResults();
   await requireLiveSnapshots({
-    syncCatalog: () => { calls.push("catalog"); return Promise.resolve({ customers: ["private"] }); },
     syncDestinations: () => { calls.push("destinations"); return Promise.resolve({ credentials: "private" }); },
   }, checks, (check: string) => { calls.push(`check:${check}`); });
   calls.push("issue");
-  assertEquals(calls, ["check:catalog", "catalog", "check:destinations", "destinations", "issue"]);
-  assertEquals(checks.catalog, "Passed");
+  assertEquals(calls, ["check:destinations", "destinations", "issue"]);
   assertEquals(checks.destinations, "Passed");
 });
 
-for (const failingCheck of ["catalog", "destinations"]) {
-  Deno.test(`unavailable ${failingCheck} blocks fiscal work and discards raw error details`, async () => {
-    const checks = createValidationResults();
-    const calls: string[] = [];
-    let currentCheck = "preflight";
-    const open = (check: string) => {
-      calls.push(check);
-      if (check === failingCheck) throw Object.assign(new Error("PRIVATE-RESPONSE-NIT"), { code: "no_storage_destination" });
-      return Promise.resolve({ private: "PRIVATE-RESPONSE-NIT" });
-    };
-    const error = await assertRejects(async () => {
-      await requireLiveSnapshots({
-        syncCatalog: () => open("catalog"),
-        syncDestinations: () => open("destinations"),
-      }, checks, (check: string) => { currentCheck = check; });
-      calls.push("issue");
-    }, Error);
-    assertEquals(currentCheck, failingCheck);
-    assertEquals(checks[failingCheck], "Failed");
-    assertEquals(calls.includes("issue"), false);
-    assertEquals(error.message.includes("PRIVATE"), false);
-    assertEquals((error as Error & { code: string }).code, "no_storage_destination");
-  });
-}
+Deno.test("unavailable destinations block fiscal work and discard raw error details", async () => {
+  const checks = createValidationResults();
+  const calls: string[] = [];
+  let currentCheck = "preflight";
+  const error = await assertRejects(async () => {
+    await requireLiveSnapshots({
+      syncDestinations: () => { throw Object.assign(new Error("PRIVATE-RESPONSE-NIT"), { code: "no_storage_destination" }); },
+    }, checks, (check: string) => { currentCheck = check; });
+    calls.push("issue");
+  }, Error);
+  assertEquals(currentCheck, "destinations");
+  assertEquals(checks.destinations, "Failed");
+  assertEquals(calls.includes("issue"), false);
+  assertEquals(error.message.includes("PRIVATE"), false);
+  assertEquals((error as Error & { code: string }).code, "no_storage_destination");
+});
 
-Deno.test("positive managed-only capability makes BYOS snapshot optional while retaining catalog verification", async () => {
+Deno.test("positive managed-only capability makes the BYOS snapshot optional", async () => {
   const checks = createValidationResults();
   let destinations = 0;
-  await requireLiveSnapshots({ syncCatalog: () => Promise.resolve({}), syncDestinations: () => { destinations++; throw new Error("not configured"); } }, checks, () => {}, true);
+  await requireLiveSnapshots({ syncDestinations: () => { destinations++; throw new Error("not configured"); } }, checks, () => {}, true);
   assertEquals(destinations, 0);
-  assertEquals(checks.catalog, "Passed");
   assertEquals(checks.destinations, "Not applicable (managed only)");
 });
 
@@ -65,7 +54,7 @@ Deno.test("catalog live checks exercise list, get, and search without returning 
     getProduct: (id: string) => { calls.push("products:get"); return Promise.resolve(snapshot.products.find((row) => row.id === id)); },
     searchProducts: (query: string) => { calls.push("products:search"); return Promise.resolve(snapshot.products.filter((row) => row.description.includes(query))); },
   };
-  await validateLiveCatalogReads(facta, snapshot, checks);
+  await validateLiveCatalogReads(facta, checks);
   assertEquals(calls, ["customers:list", "products:list", "customers:get", "customers:search", "products:get", "products:search"]);
   assertEquals(checks["customer-catalog"], "Passed");
   assertEquals(checks["product-catalog"], "Passed");

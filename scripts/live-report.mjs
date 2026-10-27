@@ -1,7 +1,6 @@
 const LABELS = Object.freeze({
   status: "Staging API and test environment",
   preflight: "Issuance permissions and readiness",
-  catalog: "Encrypted catalog snapshot opened locally",
   "customer-catalog": "Authorized customer catalog reads",
   "product-catalog": "Authorized product catalog reads",
   "catalog-write-gate": "Catalog writes refused while the company catalog is encrypted",
