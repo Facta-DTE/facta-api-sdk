@@ -21,6 +21,7 @@ The shared data key: the server resolves catalogue ids, so the SDK no longer car
 - **Webhook management**: `createWebhook`, `listWebhooks`, `getWebhook`, `updateWebhook`, `deleteWebhook`, `rotateWebhookSecret`, `testWebhook` (`WebhookWithSecret.secret` is returned once). New codes `webhook_limit_reached` and `webhook_duplicate`.
 - **Receiver-side verifier**, dependency-free (WebCrypto): `verifyWebhook`, `constructWebhookEvent` (throws `WebhookVerificationError`), `signWebhook`, `MemoryWebhookReplayStore`, `WEBHOOK_EVENTS`. Guide: `guides/webhooks.md`.
 - **`revision` on single catalogue records and `ifMatch` on `updateCustomer` / `updateProduct`** (read from `Facta-Catalog-Revision` / `ETag`). Honoured by a company that shares its data key; a plain catalogue ignores `If-Match` (last write wins per field sent).
+- **Fix: `invalidateAndArchive` / `recoverInvalidation` no longer fail with `internal_error` when the server echoes the document code in lower case** (it does once the document is indexed, while `issue` returned it in upper case). The target code is compared case-insensitively. Found by the staging live run.
 - **`data_grant_unavailable` and `data_epoch_stale` are now retried** like the other 503s (the docs already said so); `data_grant_revoked` (403, the owner's decision) is never retried.
 - Docs: `guides/catalog*.md` rewritten as "Catalog reads and id resolution"; the reference, README, Deno/Node guides and the skill no longer describe a local catalogue snapshot.
 

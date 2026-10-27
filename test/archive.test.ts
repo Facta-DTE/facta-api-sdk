@@ -1221,6 +1221,25 @@ Deno.test("invalidation archive refuses a response for a different target docume
   assertEquals((await archive.findInvalidation("mismatched-invalidation"))?.state, "needs_attention");
 });
 
+Deno.test("invalidation archive accepts the server's lower-case spelling of the target code", async () => {
+  const archive = new MemoryInvalidationArchive();
+  const facta = new Facta({ region: false,
+    apiKey: "facta_test_a.bbbbbbbbbbbbbbbb",
+    signKey: "factask_signing-secret",
+    maxRetries: 0,
+    fetch: (async (input) => String(input).endsWith("/v1/status")
+      ? Response.json({ ok: true, ambiente: "00", emisor: { nit: IDENTITY_A.issuerNit, nombre: "Issuer", ambiente: "00" }, llave: { keyId: IDENTITY_A.keyId, label: null, modo: "byok", alcances: [], tiposDte: [], venceEl: null } })
+      : Response.json({ ...INVALIDATION_RESULT, codigoGeneracion: issuance.codigoGeneracion.toLowerCase() })) as typeof globalThis.fetch,
+  });
+  const done = await facta.invalidateAndArchive(issuance.codigoGeneracion.toUpperCase(), INVALIDATION_REQUEST, {
+    archive,
+    operationId: "lower-case-echo",
+    idempotencyKey: "lower-case-echo",
+  });
+  assertEquals((await archive.findInvalidation("lower-case-echo"))?.state, "complete");
+  assertEquals(done.invalidation?.estado, "invalidado");
+});
+
 Deno.test("inline archival can explicitly omit the unsupported optional ticket and recover that choice", async () => {
   const archive = new MemoryArchive();
   const { fetch, calls } = transport();

@@ -2258,7 +2258,8 @@ export class Facta {
     result: InvalidationResult,
     archive: InvalidationArchive,
   ): Promise<InvalidationArchiveResult> {
-    if (result.codigoGeneracion !== targetCodigoGeneracion) {
+    // The server answers a document's code in lower case once it is indexed; the caller may hold either spelling.
+    if (typeof result.codigoGeneracion !== "string" || result.codigoGeneracion.toUpperCase() !== targetCodigoGeneracion.toUpperCase()) {
       const detail = "Invalidation response identifies a different document than the requested one.";
       await archive.markInvalidationNeedsAttention(operationId, detail, result).catch(() => undefined);
       throw new FactaError(
