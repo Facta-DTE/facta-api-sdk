@@ -7,6 +7,20 @@ API: `createCustomer`, `updateCustomer`, `deactivateCustomer`, `createProduct`,
 `updateProduct` and `deactivateProduct`. This is off until the company turns it
 on, because it changes who can read the catalog.
 
+## Concurrent edits: `ifMatch`
+
+When the company shares its data key, a record you read one at a time carries `revision`.
+Pass it back as `ifMatch` and the edit applies only if nobody changed the record since:
+
+```ts
+const customer = await facta.getCustomer(id);
+await facta.updateCustomer(id, { telefono: "22223333" }, { ifMatch: customer!.revision! });
+// a stale revision throws FactaError catalog_revision_conflict; details.revisionActual is the current one
+```
+
+A plain-text catalogue has no revision to compare: it ignores `ifMatch` and the last write wins
+per field you send.
+
 ## What you need
 
 All three, in this order:

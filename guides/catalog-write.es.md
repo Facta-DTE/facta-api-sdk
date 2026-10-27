@@ -7,6 +7,20 @@ por el API: `createCustomer`, `updateCustomer`, `deactivateCustomer`,
 `createProduct`, `updateProduct` y `deactivateProduct`. Está apagado hasta que la
 empresa lo active, porque cambia quién puede leer el catálogo.
 
+## Ediciones simultáneas: `ifMatch`
+
+Cuando la empresa comparte su clave de datos, una ficha leída de una en una trae `revision`.
+Páselo como `ifMatch` y la edición se aplica solo si nadie cambió la ficha mientras tanto:
+
+```ts
+const customer = await facta.getCustomer(id);
+await facta.updateCustomer(id, { telefono: "22223333" }, { ifMatch: customer!.revision! });
+// una revisión vieja lanza FactaError catalog_revision_conflict; details.revisionActual es la vigente
+```
+
+Un catálogo en texto plano no tiene revisión que comparar: ignora `ifMatch` y gana la última
+escritura por campo enviado.
+
 ## Qué necesita
 
 Las tres cosas, en este orden:

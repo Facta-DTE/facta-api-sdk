@@ -35,6 +35,17 @@
 //     error-handling story.
 
 import { FactaError, type FactaErrorCode } from "./errors.ts";
+import {
+  catalogChangesOf,
+  type CatalogChangesOptions,
+  type CatalogChangesPage,
+  type Webhook,
+  type WebhookChanges,
+  type WebhookInput,
+  type WebhookWithSecret,
+  webhookBody,
+  webhookOf,
+} from "./webhooks.ts";
 import { validateFactaConfig } from "./config-validation.ts";
 import { envelopeDigest, fingerprintV1 } from "./jcs.ts";
 import {
@@ -262,7 +273,7 @@ const FINGERPRINT_HEADER = "X-Facta-Request-Fingerprint";
 const FINGERPRINT_PATHS: ReadonlySet<string> = new Set(["/v1/dte", "/v1/dte/prepare"]);
 
 /** Internal: `CallOptions` plus the fingerprint some routes send. Never public. */
-type RequestOptions = CallOptions & { fingerprint?: string };
+type RequestOptions = CallOptions & { fingerprint?: string; headers?: Record<string, string>; onHeaders?: (headers: Headers) => void };
 
 /** `CallOptions` of the calls that can mark delivery channels. */
 export interface IssueOptions extends CallOptions {
@@ -307,6 +318,11 @@ const RETRYABLE: ReadonlySet<FactaErrorCode> = new Set([
   "service_unavailable",
   "correlative_unavailable",
   "storage_unavailable",
+  // The shared data key could not be opened for this request, or is mid-rotation: both are the
+  // server's 503 and clear on their own. `data_grant_revoked` (403) is the owner's decision and
+  // is never retried.
+  "data_grant_unavailable",
+  "data_epoch_stale",
   "network_error",
 ]);
 
@@ -993,12 +1009,15 @@ export class Facta {
     options: CatalogWriteOptions,
     id?: string,
   ): Promise<T> {
+    let revision: number | null = null;
     const payload = await this.#request<unknown>(method, path, body, {
       ...(options.idempotencyKey === undefined ? {} : { idempotencyKey: options.idempotencyKey }),
       ...(options.signal === undefined ? {} : { signal: options.signal }),
+      ...(method === 'PATCH' && options.ifMatch !== undefined ? { headers: { 'If-Match': ifMatchHeader(options.ifMatch) } } : {}),
+      onHeaders: (headers) => { revision = catalogRevisionOf(headers); },
     });
     const record = recordOf<T>(payload, keys);
-    if (record !== null) return normalizeRecord(path, record);
+    if (record !== null) return withRevision(normalizeRecord(path, record), revision);
     if (method === 'DELETE' && id !== undefined) return normalizeRecord(path, { id, activo: false } as unknown as T);
     throw new FactaError('internal_error', 'La respuesta del catálogo no trae el registro.', 502);
   }
@@ -1046,9 +1065,13 @@ export class Facta {
 
   async #getOne<T extends { id: string }>(path: string, keys: readonly string[], options: { signal?: AbortSignal }): Promise<T | null> {
     try {
-      const payload = await this.#request<unknown>('GET', path, undefined, options.signal ? { signal: options.signal } : {});
+      let revision: number | null = null;
+      const payload = await this.#request<unknown>('GET', path, undefined, {
+        ...(options.signal ? { signal: options.signal } : {}),
+        onHeaders: (headers) => { revision = catalogRevisionOf(headers); },
+      });
       const record = recordOf<T>(payload, keys);
-      return record === null ? null : normalizeRecord(path, record);
+      return record === null ? null : withRevision(normalizeRecord(path, record), revision);
     } catch (cause) {
       if (cause instanceof FactaError && cause.status === 404 && cause.code === 'not_found') return null;
       throw cause;
@@ -2321,6 +2344,64 @@ export class Facta {
     return this.#request<HoldingPage>("GET", `/v1/dte/holding?limit=${encodeURIComponent(String(limit))}`);
   }
 
+  // --- Catalogue changes and webhooks (scope `catalog:read`) --------------------------------------
+
+  /**
+   * What changed in the company catalogue since revision `since` (0 to start): ids, revisions and
+   * who did it, never the content (read the record with `getCustomer` / `getProduct`). Follow `next`
+   * while `hasMore`, and send back the `generation` you got. When Facta can no longer continue from
+   * your cursor it throws `FactaError` `catalog_cursor_expired` (HTTP 410) and `error.details` carries
+   * `reason` (`generation_changed`, `history_pruned`, `cursor_ahead` or `too_many`), `cabeza` and
+   * `generacion`: read everything again, then continue from there.
+   */
+  async listCatalogChanges(options: CatalogChangesOptions = {}): Promise<CatalogChangesPage> {
+    const query = new URLSearchParams({ since: String(options.since ?? 0) });
+    if (options.generation !== undefined && options.generation !== null) query.set('generacion', options.generation);
+    if (options.limit !== undefined) query.set('limite', String(options.limit));
+    const payload = await this.#request<unknown>('GET', `/v1/catalog/changes?${query}`, undefined, options.signal ? { signal: options.signal } : {});
+    return catalogChangesOf(payload);
+  }
+
+  /** Register a webhook. The returned `secret` is shown ONCE: store it to verify deliveries. */
+  async createWebhook(input: WebhookInput, options: CallOptions = {}): Promise<WebhookWithSecret> {
+    const payload = await this.#request<unknown>('POST', '/v1/webhooks', webhookBody(input, true), options);
+    return webhookOf(payload, true);
+  }
+
+  /** The key's webhooks (never with their secrets). */
+  async listWebhooks(options: CallOptions = {}): Promise<Webhook[]> {
+    const payload = await this.#request<unknown>('GET', '/v1/webhooks', undefined, options);
+    const rows = isRecord(payload) && Array.isArray(payload['webhooks']) ? payload['webhooks'] : [];
+    return rows.map((row) => webhookOf(row, false));
+  }
+
+  /** One webhook of this key. */
+  async getWebhook(webhookId: string, options: CallOptions = {}): Promise<Webhook> {
+    return webhookOf(await this.#request<unknown>('GET', `/v1/webhooks/${encodeURIComponent(requireId(webhookId, 'webhook'))}`, undefined, options), false);
+  }
+
+  /** Change a webhook's URL, events, description, or switch it on and off (`active: true` clears a failure shutdown). */
+  async updateWebhook(webhookId: string, changes: WebhookChanges, options: CallOptions = {}): Promise<Webhook> {
+    return webhookOf(await this.#request<unknown>('PATCH', `/v1/webhooks/${encodeURIComponent(requireId(webhookId, 'webhook'))}`, webhookBody(changes, false), options), false);
+  }
+
+  /** Delete a webhook, its secret and whatever it had queued. */
+  async deleteWebhook(webhookId: string, options: CallOptions = {}): Promise<void> {
+    await this.#request<unknown>('DELETE', `/v1/webhooks/${encodeURIComponent(requireId(webhookId, 'webhook'))}`, undefined, options);
+  }
+
+  /** Replace the signing secret. The old one stops verifying at once; the new one is shown ONCE. */
+  async rotateWebhookSecret(webhookId: string, options: CallOptions = {}): Promise<WebhookWithSecret> {
+    return webhookOf(await this.#request<unknown>('POST', `/v1/webhooks/${encodeURIComponent(requireId(webhookId, 'webhook'))}/rotate-secret`, {}, options), true);
+  }
+
+  /** Queue a signed `webhook.test` delivery (it leaves within the next minute). */
+  async testWebhook(webhookId: string, options: CallOptions = {}): Promise<{ deliveryId: string; event: 'webhook.test' }> {
+    const payload = await this.#request<unknown>('POST', `/v1/webhooks/${encodeURIComponent(requireId(webhookId, 'webhook'))}/test`, {}, options);
+    const row = isRecord(payload) ? payload : {};
+    return { deliveryId: String(row['entregaId'] ?? ''), event: 'webhook.test' };
+  }
+
   /** Fetch the server's published OpenAPI JSON contract. */
   getContract(): Promise<unknown> { return this.#request("GET", "/v1/openapi.json"); }
 
@@ -2339,6 +2420,7 @@ export class Facta {
       headers["X-Facta-Sign-Key"] = this.#signKey;
     }
     if (body !== undefined) headers["Content-Type"] = "application/json";
+    if (options.headers !== undefined) Object.assign(headers, options.headers);
     // A debugging aid: asked for per client or per call, never by default.
     const timings = options.debug?.timings ?? this.#debug.timings ?? false;
     if (timings) headers[DEBUG_HEADER] = DEBUG_TIMINGS;
@@ -2358,7 +2440,7 @@ export class Facta {
       if (attempt > 0) await sleep(Math.min(250 * 2 ** (attempt - 1), 4_000), options.signal);
       throwIfAborted(options.signal);
       try {
-        return await this.#attempt<T>(method, path, headers, body, binary, options.signal, timings);
+        return await this.#attempt<T>(method, path, headers, body, binary, options.signal, timings, this.#timeoutMs, options.onHeaders);
       } catch (cause) {
         if (!(cause instanceof FactaError) || !RETRYABLE.has(cause.code)) throw cause;
         lastError = cause;
@@ -2376,6 +2458,7 @@ export class Facta {
     signal?: AbortSignal,
     timings = false,
     timeoutMs = this.#timeoutMs,
+    onHeaders?: (headers: Headers) => void,
   ): Promise<T> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -2404,6 +2487,7 @@ export class Facta {
         0,
       );
     }
+    onHeaders?.(response.headers);
     const served = response.headers.get("x-sb-edge-region");
     if (served !== null && REGION_PATTERN.test(served)) this.#servedRegion = served;
 
@@ -2484,6 +2568,26 @@ export class Facta {
       redactErrorValue(error?.details, this.#secrets),
     );
   }
+}
+
+/** The `If-Match` value for a revision: the API's ETag is the quoted revision (`"7"`). */
+function ifMatchHeader(value: string | number): string {
+  const text = String(value).trim();
+  if (text === '*') return text;
+  const bare = text.replace(/^W\//, '').replace(/^"(.*)"$/, '$1');
+  if (!/^\d+$/.test(bare)) throw new TypeError('ifMatch must be the revision number read from the record (for example 7).');
+  return `"${bare}"`;
+}
+
+/** The catalogue revision of a record, from `Facta-Catalog-Revision` or the ETag (shared catalogue only). */
+function catalogRevisionOf(headers: Headers): number | null {
+  const raw = headers.get('facta-catalog-revision') ?? headers.get('etag');
+  const match = raw === null ? null : /(\d+)/.exec(raw);
+  return match === null ? null : Number(match[1]);
+}
+
+function withRevision<T extends { id: string }>(record: T, revision: number | null): T {
+  return revision === null ? record : { ...record, revision };
 }
 
 /** Both spellings on a record read through the API; the path says what kind it is. */

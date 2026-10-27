@@ -50,6 +50,10 @@ export type FactaErrorCode =
   | "data_grant_revoked"
   /** The company's data key is rotating (HTTP 503); retry shortly. */
   | "data_epoch_stale"
+  /** The key already holds the most webhooks it may (5) (HTTP 409). */
+  | "webhook_limit_reached"
+  /** A webhook with that URL already exists on this key (HTTP 409). */
+  | "webhook_duplicate"
   /** The sealed catalogue/draft inbox routes that were retired (HTTP 410). Write the catalogue with `createCustomer` and friends. */
   | "inbox_retired"
   /** The per-key catalogue snapshot was retired (HTTP 410). The server resolves ids itself. */

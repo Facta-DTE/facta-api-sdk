@@ -49,7 +49,8 @@ los campos con nombre de credencial.
 
 El SDK reintenta solo, con la misma `Idempotency-Key`, únicamente estos códigos:
 `idempotency_in_flight`, `network_error`, `service_unavailable`,
-`correlative_unavailable`, `mh_unreachable` y `storage_unavailable`. Hace hasta
+`correlative_unavailable`, `mh_unreachable`, `storage_unavailable`,
+`data_grant_unavailable` y `data_epoch_stale`. Hace hasta
 `maxRetries` intentos adicionales (por defecto 3), esperando 250 ms, 500 ms,
 1 s… (con un tope de 4 s). Cuando se agotan recibe el último error; el resultado
 de un POST queda entonces **incierto**: repita la misma petición con la misma
@@ -94,10 +95,12 @@ En las tablas, «Reintento» significa que el SDK lo reintenta automáticamente.
 | `catalog_revision_conflict` | 409 | no | El registro cambió desde la revisión que envió en `If-Match`. | `details.revisionActual` es la revisión vigente; léalo de nuevo y aplique otra vez el cambio. |
 | `catalog_record_inactive` | 409 | no | Se editó un registro desactivado sin enviar `activo: true`. | Reactívelo de forma explícita, o déjelo así. |
 | `catalog_search_too_broad` | 422 | no | Una búsqueda de texto sobre más filas de las que el servidor revisa en memoria. | Busque por documento (`documento`). |
-| `catalog_cursor_expired` | 410 | no | El cursor del catálogo es más viejo de lo que el servidor guarda. | Lea otra vez desde la primera página. |
+| `catalog_cursor_expired` | 410 | no | `listCatalogChanges` no puede continuar desde su `since`. `details.reason` es `generation_changed`, `history_pruned`, `cursor_ahead` o `too_many`; `details.cabeza` y `details.generacion` son la cabeza y la generación vigentes. | Lea el catálogo completo otra vez y siga desde `details.cabeza` con `details.generacion`. |
 | `data_grant_unavailable` | 503 | sí | El servidor no pudo abrir ahora el acceso de la llave al catálogo cifrado. | Reintente en unos segundos; no cuenta contra su llave. |
 | `data_grant_revoked` | 403 | no | La dueña quitó a esta llave el acceso a los datos del catálogo. | Pídale que lo restablezca, o acuñe otra llave. |
 | `data_epoch_stale` | 503 | sí | La clave de datos de la empresa se está rotando. | Reintente en unos segundos. |
+| `webhook_limit_reached` | 409 | no | La llave ya tiene 5 webhooks. | Borre uno con `deleteWebhook`, o reutilícelo con `updateWebhook`. |
+| `webhook_duplicate` | 409 | no | Esta llave ya tiene un webhook con esa dirección. | Use `listWebhooks` y `updateWebhook` sobre el que existe. |
 | `inbox_retired` | 410 | no | Las rutas del buzón sellado del catálogo (`/v1/catalog/changes`) se retiraron. | Escriba el catálogo con `createCustomer`, `updateCustomer` y los equivalentes de productos. |
 | `catalog_snapshot_retired` | 410 | no | La foto del catálogo por llave se retiró. | No hace falta nada: envíe `customerId` / `productId` y el servidor los resuelve. |
 

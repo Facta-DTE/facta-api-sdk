@@ -124,6 +124,12 @@ export interface CatalogReadOptions {
 export interface CatalogWriteOptions {
   /** Create only: reuse the same key to make a retried create safe. One is minted when omitted. */
   idempotencyKey?: string;
+  /**
+   * Update only: apply the change only if the record is still at this revision (the `revision` you read).
+   * Otherwise `FactaError` `catalog_revision_conflict` (409) with `details.revisionActual`. Honoured by a
+   * company that shares its data key; a plain-catalogue company ignores it (last write wins per field).
+   */
+  ifMatch?: number | string;
   signal?: AbortSignal;
 }
 
@@ -234,6 +240,8 @@ export interface CatalogCustomer {
   phone?: string | null;
   email?: string | null;
   active?: boolean;
+  /** The record's catalogue revision, on single reads and writes of a company that shares its data key. Pass it as `ifMatch`. */
+  revision?: number;
   [field: string]: unknown;
 }
 
@@ -261,6 +269,8 @@ export interface CatalogProduct {
   unit_price?: number | null;
   vat_included?: boolean | null;
   active?: boolean;
+  /** See `CatalogCustomer.revision`. */
+  revision?: number;
   [field: string]: unknown;
 }
 

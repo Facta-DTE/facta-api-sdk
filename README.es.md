@@ -96,8 +96,9 @@ Todas las guías de `guides/`, en español y en inglés. Las dos guías de React
 | Fijación de región | [region.es.md](guides/region.es.md) | [region.md](guides/region.md) |
 | Tiempos de depuración | [timings.es.md](guides/timings.es.md) | [timings.md](guides/timings.md) |
 | Reloj de referencia | [reference-clock.es.md](guides/reference-clock.es.md) | [reference-clock.md](guides/reference-clock.md) |
-| Fotos del catálogo y lecturas sin conexión | [catalog.es.md](guides/catalog.es.md) | [catalog.md](guides/catalog.md) |
+| Lecturas del catálogo y resolución de ids | [catalog.es.md](guides/catalog.es.md) | [catalog.md](guides/catalog.md) |
 | Escritura del catálogo (clientes y productos) | [catalog-write.es.md](guides/catalog-write.es.md) | [catalog-write.md](guides/catalog-write.md) |
+| Cambios del catálogo y webhooks | [webhooks.es.md](guides/webhooks.es.md) | [webhooks.md](guides/webhooks.md) |
 | Adaptadores de almacenamiento | [storage-adapters.es.md](guides/storage-adapters.es.md) | [storage-adapters.md](guides/storage-adapters.md) |
 | Salvaguarda de emergencia | [emergency.es.md](guides/emergency.es.md) | [emergency.md](guides/emergency.md) |
 | Cliente de navegador sin interfaz (`@facta-dte/api/browser`) | [browser.es.md](guides/browser.es.md) | [browser.md](guides/browser.md) |
@@ -154,7 +155,9 @@ de respaldo al correo del dueño. Guía y ejemplo: [`guides/emergency.es.md`](gu
 | `listCustomers()`, `getCustomer(id)`, `searchCustomers(query)` | Lee o busca clientes ya autorizados para esta llave por el API (el servidor lee el catálogo, también si está cifrado). | No |
 | `listProducts()`, `getProduct(id)`, `searchProducts(query)` | Lee o busca productos por el API. | No |
 | `createCustomer(input)`, `updateCustomer(id, cambios)`, `deactivateCustomer(id)` | Alta, edición, desactivación y reactivación (`updateCustomer(id, { activo: true })`) de clientes por el API. Requiere `catalog:write` y que la empresa pase su catálogo a texto plano y lo habilite. Ver la [guía](guides/catalog-write.es.md). | Alta con `idempotencyKey` |
-| `createProduct(input)`, `updateProduct(id, cambios)`, `deactivateProduct(id)` | Lo mismo para productos. No hay borrado definitivo. | Alta con `idempotencyKey` |
+| `createProduct(input)`, `updateProduct(id, cambios)`, `deactivateProduct(id)` | Lo mismo para productos. No hay borrado definitivo. `updateCustomer` y `updateProduct` aceptan `ifMatch` (la `revision` que trae la ficha leída de una empresa con clave de datos compartida). | Alta con `idempotencyKey` |
+| `listCatalogChanges(options)` | Qué cambió en el catálogo desde una revisión (solo ids). Requiere `catalog:read`. Ver la [guía](guides/webhooks.es.md). | No |
+| `createWebhook(input)`, `listWebhooks()`, `getWebhook(id)`, `updateWebhook(id, cambios)`, `deleteWebhook(id)`, `rotateWebhookSecret(id)`, `testWebhook(id)` | Webhooks de la llave; `verifyWebhook`, `constructWebhookEvent` y `signWebhook` verifican las entregas. | No |
 | `issue(request, options?)` | Prepara, firma y transmite un DTE en una operación. | Sí |
 | `deliverEmail(codigoGeneracion, token)`, `deliverWhatsApp(codigoGeneracion, token)` | Inician la entrega por correo o WhatsApp de un DTE sellado con el token de entrega de `issue(…, { deliver })` (válido 5 minutos). | No |
 | `getDelivery(codigoGeneracion)`, `waitForDelivery(codigoGeneracion, options?)` | Leen el estado de cada canal; `waitForDelivery` consulta hasta que todos sean finales. | No |

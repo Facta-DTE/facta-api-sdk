@@ -17,6 +17,11 @@ The shared data key: the server resolves catalogue ids, so the SDK no longer car
 ### Added
 
 - Error codes the server now returns: `catalog_revision_conflict`, `catalog_record_inactive`, `catalog_search_too_broad`, `catalog_cursor_expired`, `data_grant_unavailable`, `data_grant_revoked`, `data_epoch_stale`, `inbox_retired`, `catalog_snapshot_retired` (typed, documented in `guides/errors*.md` and the skill).
+- **`listCatalogChanges({ since, generation, limit })`** (`GET /v1/catalog/changes`): ids, revisions, operation and actor of what changed in the company catalogue. An expired cursor is `catalog_cursor_expired` with `reason`, `cabeza` and `generacion` kept in `error.details`.
+- **Webhook management**: `createWebhook`, `listWebhooks`, `getWebhook`, `updateWebhook`, `deleteWebhook`, `rotateWebhookSecret`, `testWebhook` (`WebhookWithSecret.secret` is returned once). New codes `webhook_limit_reached` and `webhook_duplicate`.
+- **Receiver-side verifier**, dependency-free (WebCrypto): `verifyWebhook`, `constructWebhookEvent` (throws `WebhookVerificationError`), `signWebhook`, `MemoryWebhookReplayStore`, `WEBHOOK_EVENTS`. Guide: `guides/webhooks.md`.
+- **`revision` on single catalogue records and `ifMatch` on `updateCustomer` / `updateProduct`** (read from `Facta-Catalog-Revision` / `ETag`). Honoured by a company that shares its data key; a plain catalogue ignores `If-Match` (last write wins per field sent).
+- **`data_grant_unavailable` and `data_epoch_stale` are now retried** like the other 503s (the docs already said so); `data_grant_revoked` (403, the owner's decision) is never retried.
 - Docs: `guides/catalog*.md` rewritten as "Catalog reads and id resolution"; the reference, README, Deno/Node guides and the skill no longer describe a local catalogue snapshot.
 
 ## 0.5.3 (2026-10-20)

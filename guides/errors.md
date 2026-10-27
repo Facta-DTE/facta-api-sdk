@@ -49,7 +49,8 @@ tokens from `message` and `details`, and drops credential-named fields from
 
 The SDK retries automatically, with the same `Idempotency-Key`, only these
 codes: `idempotency_in_flight`, `network_error`, `service_unavailable`,
-`correlative_unavailable`, `mh_unreachable` and `storage_unavailable`. It makes
+`correlative_unavailable`, `mh_unreachable`, `storage_unavailable`,
+`data_grant_unavailable` and `data_epoch_stale`. It makes
 up to `maxRetries` extra attempts (default 3), waiting 250 ms, 500 ms, 1 s…
 (capped at 4 s). When they are exhausted you receive the last error; the outcome
 of a POST is then **uncertain**: replay the same request with the same key (see
@@ -93,10 +94,12 @@ In the tables, "Retried" means retried automatically by the SDK.
 | `catalog_revision_conflict` | 409 | no | The record changed since the `If-Match` revision you sent. | `details.revisionActual` is the current revision; read it again and re-apply the change. |
 | `catalog_record_inactive` | 409 | no | An edit of a deactivated record that did not send `activo: true`. | Reactivate it explicitly, or leave it. |
 | `catalog_search_too_broad` | 422 | no | A text search over more rows than the server searches in memory. | Search by document (`documento`) instead. |
-| `catalog_cursor_expired` | 410 | no | The catalogue cursor is older than the server keeps. | Read again from the first page. |
+| `catalog_cursor_expired` | 410 | no | `listCatalogChanges` cannot continue from your `since`. `details.reason` is `generation_changed`, `history_pruned`, `cursor_ahead` or `too_many`; `details.cabeza` and `details.generacion` are the current head and generation. | Read the catalogue again in full, then continue from `details.cabeza` with `details.generacion`. |
 | `data_grant_unavailable` | 503 | yes | The server could not open the key's access to the encrypted catalogue right now. | Retry shortly; it never counts against your key. |
 | `data_grant_revoked` | 403 | no | The owner removed this key's access to the catalogue data. | Ask the owner to restore it, or mint a new key. |
 | `data_epoch_stale` | 503 | yes | The company's data key is rotating. | Retry after a few seconds. |
+| `webhook_limit_reached` | 409 | no | The key already has 5 webhooks. | Delete one with `deleteWebhook`, or reuse it with `updateWebhook`. |
+| `webhook_duplicate` | 409 | no | This key already has a webhook with that URL. | Use `listWebhooks` and `updateWebhook` on the existing one. |
 | `inbox_retired` | 410 | no | The sealed catalogue inbox routes (`/v1/catalog/changes`) were retired. | Write the catalogue with `createCustomer`, `updateCustomer` and the product equivalents. |
 | `catalog_snapshot_retired` | 410 | no | The per-key catalogue snapshot was retired. | Nothing to do: send `customerId` / `productId` and the server resolves them. |
 

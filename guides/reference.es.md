@@ -226,16 +226,23 @@ const todoElCatalogoActivo = await facta.listProducts();
 | Método | Resultado y comportamiento |
 | --- | --- |
 | `listCustomers(options?)` | Devuelve los clientes autorizados; `includeInactive` incluye los desactivados. |
-| `getCustomer(id, options?)` | Busca por ID y devuelve `null` si no existe. |
+| `getCustomer(id, options?)` | Busca por ID y devuelve `null` si no existe. En una empresa con clave de datos compartida el registro trae `revision` (páselo como `ifMatch`). |
 | `searchCustomers(query, options?)` | Busca nombre, documento, NRC y correo; límite 1–500, 50 por defecto. |
 | `listProducts(options?)` | Devuelve productos activos; `includeInactive` los incluye todos. |
 | `getProduct(id, options?)` | Devuelve `null` si no existe o está inactivo. |
 | `searchProducts(query, options?)` | Busca descripción, código y código de barras de productos activos; límite 1–500, 50 por defecto. |
 | `createCustomer(input, options?)` | Crea un cliente (`name` obligatorio; DUI 9 dígitos, NIT 14, NRC 1–8). `idempotencyKey` evita duplicados al reintentar. Requiere `catalog:write` y catálogo en texto plano. |
-| `updateCustomer(id, changes, options?)` | Cambia solo los campos indicados (`PATCH`); `null` borra un campo opcional. |
+| `updateCustomer(id, changes, options?)` | Cambia solo los campos indicados (`PATCH`); `null` borra un campo opcional. `ifMatch` (la `revision` que leyó) hace que una empresa con clave de datos compartida rechace una edición vieja con `catalog_revision_conflict`; un catálogo en texto plano lo ignora. |
 | `deactivateCustomer(id, options?)` | Desactiva al cliente (`DELETE`); no existe borrado definitivo. `updateCustomer(id, { activo: true })` lo reactiva. |
 | `createProduct(input, options?)` | Crea un producto (`description`, `item_type` 1/2/3 y `unit_price` obligatorios; el tipo nunca se supone). |
-| `updateProduct(id, changes, options?)` | Cambia solo los campos indicados. |
+| `updateProduct(id, changes, options?)` | Cambia solo los campos indicados; `ifMatch` como en `updateCustomer`. |
+| `listCatalogChanges(options?)` | Lee qué cambió en el catálogo desde `since` (ids, revisiones, operación y actor; nunca el contenido). Siga `next` mientras `hasMore`. `catalog_cursor_expired` (410) conserva `reason`, `cabeza` y `generacion` en `error.details`: lea todo otra vez y siga desde `cabeza`. Requiere `catalog:read`. |
+| `createWebhook(input, options?)` | Registra un webhook (`url`, `events`, `description`); el `secret` se devuelve una sola vez. Hasta 5 por llave. Ver la [guía de webhooks](webhooks.es.md). |
+| `listWebhooks()`, `getWebhook(id)` | Los webhooks de la llave, sin secretos. |
+| `updateWebhook(id, cambios)` | Cambia dirección, eventos, descripción o `active` (`true` lo enciende y borra la cuenta de fallos). |
+| `deleteWebhook(id)` | Lo borra con su secreto y lo que tuviera en cola. |
+| `rotateWebhookSecret(id)` | Cambia el secreto: el anterior deja de servir al instante; el nuevo se muestra una vez. |
+| `testWebhook(id)` | Pone en cola una entrega `webhook.test` firmada. |
 | `deactivateProduct(id, options?)` | Desactiva el producto; los documentos ya emitidos no cambian. |
 
 Las escrituras se explican en la [guía de escritura del catálogo](catalog-write.es.md).
