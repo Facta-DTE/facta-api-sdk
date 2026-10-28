@@ -46,6 +46,17 @@ import {
   webhookBody,
   webhookOf,
 } from "./webhooks.ts";
+import {
+  type Draft,
+  type DraftInput,
+  type DraftPage,
+  type ListDraftsOptions,
+  draftBody,
+  draftOf,
+  draftPageOf,
+  draftKey,
+  draftVersion,
+} from "./drafts.ts";
 import { validateFactaConfig } from "./config-validation.ts";
 import { envelopeDigest, fingerprintV1 } from "./jcs.ts";
 import {
@@ -470,6 +481,8 @@ function throwIfAborted(signal?: AbortSignal): void {
 const SIGNING_PATHS: ReadonlySet<string> = new Set(["/v1/dte", "/v1/dte/sign"]);
 /** The two events signed on a document's own path: `/invalidate` and `/return`. */
 const SIGNING_EVENT_PATH = /^\/v1\/dte\/[^/?]+\/(?:invalidate|return)$/;
+/** Issuing a draft opens the signing vault like `POST /v1/dte`, so it carries the second password too. */
+const SIGNING_DRAFT_PATH = /^\/v1\/drafts\/[^/?]+\/issue$/;
 const SENSITIVE_ERROR_FIELD = /(?:authorization|api[-_]?key|sign[-_]?key|unlock[-_]?key|password|passphrase|secret|token|credential|private[-_]?key|ciphertext|refresh[-_]?token|service[-_]?key)/i;
 
 function redactErrorValue(value: unknown, secrets: readonly string[], depth = 0): unknown {
@@ -2403,6 +2416,69 @@ export class Facta {
     return { deliveryId: String(row['entregaId'] ?? ''), event: 'webhook.test' };
   }
 
+  // --- Drafts (scope `draft`; issuing also needs `issue` and the signing password) ---------------
+
+  /**
+   * Leave an invoice as a draft for a person of the company to review and issue. Pass the same
+   * request as `issue` (plus your own `id` and `reference` if you like). No control number is spent.
+   * Repeating the call with the same `idempotencyKey` returns the same draft; a different body under
+   * that key is `idempotency_key_reuse`. `drafts_not_ready` (409) means the owner has not opened Facta
+   * with their vault since the company began sharing its data key: ask them to open it once.
+   */
+  async createDraft(input: DraftInput, options: CallOptions = {}): Promise<Draft> {
+    return draftOf(await this.#request<unknown>("POST", "/v1/drafts", draftBody(input), options));
+  }
+
+  /** The drafts this key left, newest first, with filters. Follow `next` for more. */
+  async listDrafts(options: ListDraftsOptions = {}): Promise<DraftPage> {
+    const query = new URLSearchParams();
+    if (options.state !== undefined) query.set("estado", options.state);
+    if (options.reference !== undefined) query.set("referencia", options.reference);
+    if (options.limit !== undefined) query.set("limite", String(options.limit));
+    if (options.cursor !== undefined) query.set("cursor", options.cursor);
+    if (options.include !== undefined) query.set("include", options.include);
+    const suffix = query.size === 0 ? "" : `?${query}`;
+    return draftPageOf(await this.#request<unknown>("GET", `/v1/drafts${suffix}`, undefined, options.signal ? { signal: options.signal } : {}));
+  }
+
+  /** One draft and, when it was issued, the document it became. */
+  async getDraft(draftId: string, options: CallOptions = {}): Promise<Draft> {
+    return draftOf(await this.#request<unknown>("GET", `/v1/drafts/${encodeURIComponent(requireId(draftId, "draft"))}`, undefined, options));
+  }
+
+  /** Follow draft → invoice without knowing the generation code: read a draft by the `idempotencyKey` it was created with. */
+  async getDraftByKey(idempotencyKey: string, options: CallOptions = {}): Promise<Draft> {
+    return draftOf(await this.#request<unknown>("GET", `/v1/drafts/by-key/${encodeURIComponent(draftKey(idempotencyKey))}`, undefined, options));
+  }
+
+  /** Save a new version of a draft that is still pending. `version` is the one you read (`If-Match`). */
+  async updateDraft(draftId: string, version: number, input: DraftInput, options: CallOptions = {}): Promise<Draft> {
+    return draftOf(await this.#request<unknown>("PUT", `/v1/drafts/${encodeURIComponent(requireId(draftId, "draft"))}`, draftBody(input), {
+      ...options,
+      headers: { "If-Match": String(draftVersion(version)) },
+    }));
+  }
+
+  /** Cancel a draft that is still pending and closed. */
+  async cancelDraft(draftId: string, options: CallOptions = {}): Promise<Draft> {
+    return draftOf(await this.#request<unknown>("DELETE", `/v1/drafts/${encodeURIComponent(requireId(draftId, "draft"))}`, undefined, options));
+  }
+
+  /**
+   * Issue a draft through the same road as `issue` (needs the `issue` scope and the signing password;
+   * spends a control number). `version` is the draft's current version. One door prevents double
+   * issuing: `draft_issuing` or `draft_claimed` (409) spent nothing. A Hacienda rejection counts as
+   * issued and the draft is not reopened. The result is the one of `issue` plus `borradorId`.
+   */
+  async issueDraft(draftId: string, version: number, request: DteRequest, options: IssueOptions = {}): Promise<IssueResult & { borradorId: string }> {
+    throwIfAborted(options.signal);
+    const { deliver, ...call } = options;
+    const resolved = withDelivery(request, deliver);
+    const body = { ...resolved, version: draftVersion(version) };
+    const result = await this.#request<IssueResult & { borradorId: string }>("POST", `/v1/drafts/${encodeURIComponent(requireId(draftId, "draft"))}/issue`, body, call);
+    return await this.#guard(result, []);
+  }
+
   /** Fetch the server's published OpenAPI JSON contract. */
   getContract(): Promise<unknown> { return this.#request("GET", "/v1/openapi.json"); }
 
@@ -2417,7 +2493,7 @@ export class Facta {
     const headers: Record<string, string> = { "X-Facta-Key": this.#apiKey };
     // Sent ONLY where it is needed. A password that rides along on every
     // request is a password in every proxy log the request passes through.
-    if (this.#signKey !== null && method === "POST" && (SIGNING_PATHS.has(path) || SIGNING_EVENT_PATH.test(path))) {
+    if (this.#signKey !== null && method === "POST" && (SIGNING_PATHS.has(path) || SIGNING_EVENT_PATH.test(path) || SIGNING_DRAFT_PATH.test(path))) {
       headers["X-Facta-Sign-Key"] = this.#signKey;
     }
     if (body !== undefined) headers["Content-Type"] = "application/json";

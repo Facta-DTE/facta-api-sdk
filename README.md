@@ -82,6 +82,7 @@ The `Facta` client exposes the following English methods:
 - **Destinations and catalog reads:** `syncDestinations`, `listCustomers`, `getCustomer`, `searchCustomers`, `listProducts`, `getProduct`, `searchProducts`.
 - **Catalog writes (plain-text catalog, scope `catalog:write`):** `createCustomer`, `updateCustomer`, `deactivateCustomer`, `createProduct`, `updateProduct`, `deactivateProduct`. Reads go through the API in every catalog mode; the server resolves `customerId` / `productId`. See the [catalog write guide](guides/catalog-write.md).
 - **Catalogue changes and webhooks (scope `catalog:read`):** `listCatalogChanges`, `createWebhook`, `listWebhooks`, `getWebhook`, `updateWebhook`, `deleteWebhook`, `rotateWebhookSecret`, `testWebhook`, and the receiver-side `verifyWebhook` / `constructWebhookEvent` / `signWebhook`. Records read one at a time carry `revision`; pass it as `ifMatch` to `updateCustomer` / `updateProduct`. See the [webhooks guide](guides/webhooks.md).
+- **Drafts (scope `draft`):** `createDraft`, `listDrafts`, `getDraft`, `getDraftByKey`, `updateDraft` (`version` sent as `If-Match`), `cancelDraft` and `issueDraft`: leave an invoice for a person of the company to review and issue. See the [drafts guide](guides/drafts.md).
 - **DTE lifecycle:** `issue`, `prepare`, `sign`, `getDocumentStatus`, `listDocuments`, `invalidate`, `registerReturn`, `listHolding`, `downloadDocument`, `getDocumentCopies`, `retryDocumentStorage`.
 - **Durable archival:** `issueAndArchive`, `recoverOperation`, `listPendingOperations`, `invalidateAndArchive`, `recoverInvalidation`, `listPendingInvalidations`, `replicateArchive`, `diagnoseDestinations`.
 - **Delivery by e-mail and WhatsApp:** `issue(request, { deliver })`, `deliverEmail`, `deliverWhatsApp`, `getDelivery`, `waitForDelivery`. Issuing never waits for delivery; each channel is a separate request with a five-minute token and failures are reported as states.
@@ -221,6 +222,7 @@ Every guide in `guides/`, in English and Spanish. The two React guides are Engli
 | Catalog reads and id resolution | [catalog.md](guides/catalog.md) | [catalog.es.md](guides/catalog.es.md) |
 | Catalog writes (customers and products) | [catalog-write.md](guides/catalog-write.md) | [catalog-write.es.md](guides/catalog-write.es.md) |
 | Catalogue changes and webhooks | [webhooks.md](guides/webhooks.md) | [webhooks.es.md](guides/webhooks.es.md) |
+| Drafts | [drafts.md](guides/drafts.md) | [drafts.es.md](guides/drafts.es.md) |
 | Storage adapters | [storage-adapters.md](guides/storage-adapters.md) | [storage-adapters.es.md](guides/storage-adapters.es.md) |
 | Emergency safeguard | [emergency.md](guides/emergency.md) | [emergency.es.md](guides/emergency.es.md) |
 | Headless browser client (`@facta-dte/api/browser`) | [browser.md](guides/browser.md) | [browser.es.md](guides/browser.es.md) |

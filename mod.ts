@@ -68,6 +68,14 @@ export {
   type WebhookVerifyResult,
   type WebhookWithSecret,
 } from "./src/webhooks.ts";
+export {
+  DRAFT_STATES,
+  type Draft,
+  type DraftInput,
+  type DraftPage,
+  type DraftState,
+  type ListDraftsOptions,
+} from "./src/drafts.ts";
 export { type ArchivoDteSource, archivoDteOf } from "./src/archivo-dte.ts";
 export { type DteResumen, type DteResumenReceptor, summarizeArchivoDte } from "./src/archivo-dte-summary.ts";
 export {

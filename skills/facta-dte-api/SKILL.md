@@ -71,6 +71,7 @@ put one in a test job, a seed script or a developer machine.
 | handle contingency, cancel (invalidate) a document, register a return | [references/contingency-invalidation-return.md](references/contingency-invalidation-return.md) |
 | give the customer the JSON/PDF/ticket, list documents, send by e-mail or WhatsApp | [references/files-and-delivery.md](references/files-and-delivery.md) |
 | use saved customers/products, or manage them from the API | [references/catalog.md](references/catalog.md) |
+| leave an invoice as a draft for a person of the company to review and issue | [references/drafts.md](references/drafts.md) |
 | keep copies of the documents, or survive a storage failure | [references/storage-and-emergency.md](references/storage-and-emergency.md) |
 | show a checkout/invoice window in a web page (server handler, browser client, React) | [references/browser-and-react.md](references/browser-and-react.md) |
 | understand or handle an error code | [references/errors.md](references/errors.md) |

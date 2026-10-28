@@ -125,6 +125,13 @@ may throw `SyntaxError`; the unlock key is not transmitted in either case.
 | `deleteWebhook(id, options?)` | Webhook ID → `void` | `catalog:read` | Deletes it, its secret and what it had queued. |
 | `rotateWebhookSecret(id, options?)` | Webhook ID → `WebhookWithSecret` | `catalog:read` | The old secret stops verifying at once; the new one is shown once. |
 | `testWebhook(id, options?)` | Webhook ID → `{ deliveryId, event: "webhook.test" }` | `catalog:read` | Queues a signed test delivery; it leaves within the next minute. |
+| `createDraft(input, options?)` | The `issue` request plus `{ id?, reference? }`, and optional `{ idempotencyKey?, signal? }` → `Draft` (`id`, `state`, `version`, `totals`) | `draft` | `POST /v1/drafts`: leaves an invoice for a person of the company to review and issue; spends no number. `drafts_not_ready` (409) until the owner opens Facta once. See [drafts.md](drafts.md). |
+| `listDrafts(options?)` | `{ state?, reference?, limit?, cursor?, include?, signal? }` → `DraftPage` (`drafts[]`, `next`) | `draft` | This key's drafts. |
+| `getDraft(id, options?)` | Draft ID → `Draft` | `draft` | An issued draft carries its document (`generationCode`, `controlNumber`, `sealed`). |
+| `getDraftByKey(idempotencyKey, options?)` | The key the draft was created with → `Draft` | `draft` | Follows draft → invoice without the generation code. |
+| `updateDraft(id, version, input, options?)` | Draft ID, the `version` you read (sent as `If-Match`) and the request → `Draft` | `draft` | `PUT /v1/drafts/{id}`; `version_mismatch` (409) when stale. |
+| `cancelDraft(id, options?)` | Draft ID → `Draft` | `draft` | Only while pending and closed. |
+| `issueDraft(id, version, request, options?)` | Draft ID, version, the `issue` request and `IssueOptions` → `IssueResult & { borradorId }` | `draft` + `issue` | Spends a control number through the same road as `issue` (needs the signing key). `draft_issuing` / `draft_claimed` (409) spent nothing. |
 | `deactivateProduct(id, options?)` | Product ID → `CatalogProduct` (`active: false`) | `catalog:write`; plain catalog | `DELETE` deactivates; the product can no longer be issued and past documents are untouched. |
 
 The catalog read methods call `GET /v1/customers` and `GET /v1/products` in every catalog mode; the server reads an encrypted catalog itself, so no `unlockKey` is needed. Write methods fail locally with `validation_failed` (HTTP 422, before any request) when a field breaks a rule the server also enforces, and with `catalog_write_disabled` (403) when the company has not enabled catalog administration from the API.

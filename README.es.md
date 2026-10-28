@@ -99,6 +99,7 @@ Todas las guías de `guides/`, en español y en inglés. Las dos guías de React
 | Lecturas del catálogo y resolución de ids | [catalog.es.md](guides/catalog.es.md) | [catalog.md](guides/catalog.md) |
 | Escritura del catálogo (clientes y productos) | [catalog-write.es.md](guides/catalog-write.es.md) | [catalog-write.md](guides/catalog-write.md) |
 | Cambios del catálogo y webhooks | [webhooks.es.md](guides/webhooks.es.md) | [webhooks.md](guides/webhooks.md) |
+| Borradores | [drafts.es.md](guides/drafts.es.md) | [drafts.md](guides/drafts.md) |
 | Adaptadores de almacenamiento | [storage-adapters.es.md](guides/storage-adapters.es.md) | [storage-adapters.md](guides/storage-adapters.md) |
 | Salvaguarda de emergencia | [emergency.es.md](guides/emergency.es.md) | [emergency.md](guides/emergency.md) |
 | Cliente de navegador sin interfaz (`@facta-dte/api/browser`) | [browser.es.md](guides/browser.es.md) | [browser.md](guides/browser.md) |
@@ -158,6 +159,7 @@ de respaldo al correo del dueño. Guía y ejemplo: [`guides/emergency.es.md`](gu
 | `createProduct(input)`, `updateProduct(id, cambios)`, `deactivateProduct(id)` | Lo mismo para productos. No hay borrado definitivo. `updateCustomer` y `updateProduct` aceptan `ifMatch` (la `revision` que trae la ficha leída de una empresa con clave de datos compartida). | Alta con `idempotencyKey` |
 | `listCatalogChanges(options)` | Qué cambió en el catálogo desde una revisión (solo ids). Requiere `catalog:read`. Ver la [guía](guides/webhooks.es.md). | No |
 | `createWebhook(input)`, `listWebhooks()`, `getWebhook(id)`, `updateWebhook(id, cambios)`, `deleteWebhook(id)`, `rotateWebhookSecret(id)`, `testWebhook(id)` | Webhooks de la llave; `verifyWebhook`, `constructWebhookEvent` y `signWebhook` verifican las entregas. | No |
+| `createDraft(input)`, `listDrafts()`, `getDraft(id)`, `getDraftByKey(llave)`, `updateDraft(id, version, input)`, `cancelDraft(id)`, `issueDraft(id, version, solicitud)` | Borradores: deje una factura para que una persona de la empresa la revise y la emita. Requiere `draft` (y `issue` para emitir). Ver la [guía](guides/drafts.es.md). | `issueDraft`: Sí |
 | `issue(request, options?)` | Prepara, firma y transmite un DTE en una operación. | Sí |
 | `deliverEmail(codigoGeneracion, token)`, `deliverWhatsApp(codigoGeneracion, token)` | Inician la entrega por correo o WhatsApp de un DTE sellado con el token de entrega de `issue(…, { deliver })` (válido 5 minutos). | No |
 | `getDelivery(codigoGeneracion)`, `waitForDelivery(codigoGeneracion, options?)` | Leen el estado de cada canal; `waitForDelivery` consulta hasta que todos sean finales. | No |
