@@ -41,4 +41,4 @@ productos) están en la [guía de escritura](catalog-write.es.md).
 | `data_grant_unavailable` (503) / `data_epoch_stale` (503) | El servidor no pudo abrir ahora el catálogo cifrado de la empresa, o su clave de datos se está rotando. Reintente en unos segundos. |
 | `data_grant_revoked` (403) | La dueña quitó a esta llave el acceso a los datos del catálogo. |
 | `catalog_revision_conflict` (409) | El registro cambió desde la revisión que envió en `If-Match`. |
-| `inbox_retired` / `catalog_snapshot_retired` (410) | El buzón sellado y la instantánea por llave ya no existen; use los métodos de arriba. |
+| `inbox_retired` (410) | El buzón sellado del catálogo ya no existe (la instantánea por llave solo está marcada como obsoleta y este SDK la ignora); use los métodos de arriba. |

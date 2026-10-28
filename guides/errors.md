@@ -70,7 +70,7 @@ In the tables, "Retried" means retried automatically by the SDK.
 | `forbidden_scope` | 403 | no | The key lacks the route's scope (`details.required`, `details.granted`). | Mint a key with that scope; scopes cannot be edited. |
 | `dte_type_not_allowed` | 403 | no | The key may not issue that `tipoDte` (`details.allowed`). | Mint a key that includes the type. |
 | `ip_not_allowed` | 403 | no | The key has an IP allow-list and the caller is not in it. | Add the address or CIDR range when minting. |
-| `environment_not_allowed` | 403 | no | Key prefix and key row disagree, or the key's environment differs from its company's. | Use a production key for a company already in production. |
+| `environment_not_allowed` | 403 | no | Key prefix and key row disagree, or a production key (`facta_live_`) reaches a company that is not in production yet: emission and the company-level routes (customers, products, webhooks, the catalogue feed, drafts, destinations, templates) refuse it, while a test key is always allowed and document reads are filtered to the key's environment. | Use a production key only for a company already in production; keep using the test key until the owner completes the step to production. |
 | `sign_key_required` | 401 | no | A signing route without `X-Facta-Sign-Key`, or with the unlock key. | Pass `signKey` (`factask_…`). |
 | `sign_key_invalid` | 401 | no | The signing key does not open the vault (`details.intentosRestantes`). | Fix the key before the vault locks. |
 | `sign_vault_locked` | 403 | no | Five failed attempts in an hour; the key is suspended. | Reactivate it in the app; waiting does not help. |
@@ -89,7 +89,7 @@ In the tables, "Retried" means retried automatically by the SDK.
 | `prepare_token_invalid` | 422 | no | The `prepareToken` expired (15 min), belongs to another key, or the document changed. | Call `prepare` again. See [prepare-sign.md](prepare-sign.md). |
 | `not_sealed` | 409 | no | Default JSON download of a document with no seal yet (contingency). | Use `{ raw: true }` or wait for the seal. See [archivo-dte.md](archivo-dte.md). |
 | `catalog_write_disabled` | 403 | no | The company did not enable «Permitir administrar clientes y productos desde el API». | Enable it in the app. See [catalog-write.md](catalog-write.md). |
-| `catalog_encrypted` | 409 | no | The company catalog is still encrypted, so the API cannot write it. | Switch the catalog to plain text in the app. |
+| `catalog_encrypted` | 409 | no | The company catalog is still encrypted at rest and this key has no access to it: the company does not share its data key with the API (or this key was never granted it), so the API can neither read nor write it. The scope of the key is judged first: a read-only key hears `forbidden_scope` before this. `details.hint` says which of the two applies. | Ask the owner to give the key access to the shared data (Account → API), or to switch the catalog to plain text. |
 | `catalog_duplicate` | 409 | no | A customer with that document, or a product with that code, already exists. | `details.id` names it; edit it, or reactivate it if it is deactivated. |
 | `catalog_revision_conflict` | 409 | no | The record changed since the `If-Match` revision you sent. | `details.revisionActual` is the current revision; read it again and re-apply the change. |
 | `catalog_record_inactive` | 409 | no | An edit of a deactivated record that did not send `activo: true`. | Reactivate it explicitly, or leave it. |
@@ -100,8 +100,25 @@ In the tables, "Retried" means retried automatically by the SDK.
 | `data_epoch_stale` | 503 | yes | The company's data key is rotating. | Retry after a few seconds. |
 | `webhook_limit_reached` | 409 | no | The key already has 5 webhooks. | Delete one with `deleteWebhook`, or reuse it with `updateWebhook`. |
 | `webhook_duplicate` | 409 | no | This key already has a webhook with that URL. | Use `listWebhooks` and `updateWebhook` on the existing one. |
-| `inbox_retired` | 410 | no | The sealed catalogue inbox routes (`/v1/catalog/changes`) were retired. | Write the catalogue with `createCustomer`, `updateCustomer` and the product equivalents. |
-| `catalog_snapshot_retired` | 410 | no | The per-key catalogue snapshot was retired. | Nothing to do: send `customerId` / `productId` and the server resolves them. |
+| `inbox_retired` | 410 | no | The sealed catalogue inbox (`POST /v1/catalog/changes` and `/v1/catalog/changes/{id}`, `by-key/{key}`) was retired; `GET /v1/catalog/changes?since=` is the change feed and still works. | Write the catalogue with `createCustomer`, `updateCustomer` and the product equivalents. |
+
+## Drafts
+
+Scope `draft` (issuing also needs `issue` and the signing key). See [drafts.md](drafts.md).
+
+| Code | HTTP | Retried | Meaning | What to do |
+| --- | --- | --- | --- | --- |
+| `drafts_not_ready` | 409 | no | The company has no draft-box key for its current data key yet: its owner has not opened Facta with their vault since the company began sharing it. | Ask the owner to open Facta once, then repeat the same call. |
+| `version_mismatch` | 409 | no | The `version` (or `If-Match`) is not the draft's current one. | Read the draft again with `getDraft` and re-apply. |
+| `draft_claimed` | 409 | no | A person of the company has the draft open in the app. Nothing was spent. | Wait, or read it again later. |
+| `draft_issuing` | 409 | no | The draft is being issued right now. Nothing was spent. | Read it with `getDraft`; do not issue it again. |
+| `draft_issued` | 409 | no | The draft already became a document. | `getDraft` returns the document (`generationCode`). |
+| `draft_not_issuable` | 409 | no | The draft is cancelled, expired or otherwise not in a state that can be issued. | Create a new draft. |
+| `item_final` | 409 | no | The draft is already resolved and cannot be changed or cancelled. | Read it with `getDraft`. |
+| `id_conflict` | 409 | no | That draft `id` is taken by another item. | Pick another UUID, or omit `id`. |
+| `inbox_cap_reached` | 429 | no | The key or the company holds the maximum number of open drafts (500 per company). | Cancel or issue some; they also expire after 30 days. |
+| `content_hash_mismatch` | 422 | no | Legacy sealed drafts only: the plaintext does not hash to `contentHash`. | Send the plain request instead (`createDraft`). |
+| `catalog_write_test_key` | 403 | no | A test key tried to write after the company went live. | Use the production key. |
 
 ## Idempotency
 
@@ -138,6 +155,8 @@ See [return-event.md](return-event.md).
 | `mh_unreachable` | 502 | **yes** | Reserved: the current API never returns it on issuance, where a transport failure becomes a 202 contingency. On invalidation it means nothing was invalidated. | Replay the same key. |
 | `correlative_unavailable` | 503 | **yes** | The control number could not be reserved. No number spent. | Replay the same key. |
 | `service_unavailable` | 503 | **yes** | A Facta dependency did not answer. Also thrown locally (503) when a vault or catalog envelope fails its digest or format check. | Replay the same key; for a local envelope error, re-sync from the app. |
+| `mh_auth_failed` | 424 | no | Hacienda answered the login and refused the company's own transmission credentials (not your Facta key). | The owner updates the credentials in the app; retrying cannot fix it. |
+| `paid_plan_required` | 402 | no | An extra company of a multi-company owner on a free or trial plan, issuing in production. | The owner chooses a paid plan. |
 | `internal_error` | 500 | no | An unexpected failure. Also thrown locally when a response is not valid JSON, an invalidation response names another document, or a catalog response lacks its record. | If it repeats, contact support with the time and your `keyId`. |
 
 A contingency (`estado: "contingencia"`, HTTP 202) is **not** an error: the
@@ -151,6 +170,17 @@ document is signed and Facta will retransmit it.
 | `storage_unsupported` | 501 | no | The server does not expose the managed-storage route (the SDK also maps 404 to it), or a `source: "managed"` download got no source proof. | Update the server before depending on it. |
 | `storage_unavailable` | 503 | **yes** | The managed copy could not be read or repaired right now. | Retry only the storage operation; never re-issue. |
 | `storage_contract_invalid` | 502 (SDK) | no | A storage response or receipt is malformed. On a successful issue it appears as `result.storageErrorCode` instead, with the sealed result intact. | Repair the copy later (`recoverOperation` / `retryDocumentStorage`). |
+
+## Google Drive token broker
+
+Only for `GET`/`POST /v1/destinations/{id}/drive-token`, which the SDK does not wrap. Drive does not count as API storage.
+
+| Code | HTTP | Retried | Meaning | What to do |
+| --- | --- | --- | --- | --- |
+| `drive_not_available_for_api` | 403 | no | Drive is switched off for the API. | Use Facta Storage or another destination. |
+| `drive_not_configured` | 503 | no | This deployment has no Google OAuth client. | Nothing the caller can fix. |
+| `drive_reauthorization_required` | 409 | no | Google retired the grant. | A person confirms Google again in the app. |
+| `drive_token_failed` | 502 | no | Google failed or refused for another reason. | Try later. |
 
 ## Delivery
 

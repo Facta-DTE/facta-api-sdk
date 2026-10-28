@@ -40,4 +40,4 @@ methods) are explained in the [catalog write guide](catalog-write.md).
 | `data_grant_unavailable` (503) / `data_epoch_stale` (503) | The server could not open the company's encrypted catalog just now, or the company's data key is rotating. Retry shortly. |
 | `data_grant_revoked` (403) | The owner removed this key's access to the catalog data. |
 | `catalog_revision_conflict` (409) | The record changed since the `If-Match` revision you sent. |
-| `inbox_retired` / `catalog_snapshot_retired` (410) | The old sealed inbox and the per-key snapshot are gone; use the methods above. |
+| `inbox_retired` (410) | The old sealed catalogue inbox is gone (the per-key snapshot is only marked deprecated and ignored by this SDK); use the methods above. |

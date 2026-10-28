@@ -37,7 +37,7 @@ change:
 | Error | HTTP | Meaning |
 |---|---|---|
 | `catalog_write_disabled` | 403 | The company did not enable catalog administration from the API. |
-| `catalog_encrypted` | 409 | The catalog is still encrypted; the API cannot write to it. |
+| `catalog_encrypted` | 409 | The catalog is encrypted and this key has no access to it (`details.hint`): the owner shares the data with the key (Account → API), or stores the catalog unencrypted. A read-only key hears `forbidden_scope` first. |
 | `forbidden_scope` | 403 | The key does not carry `catalog:write`. |
 | `validation_failed` | 422 | A field breaks a rule (the SDK checks the same rules before sending). |
 

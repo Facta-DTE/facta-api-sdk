@@ -36,7 +36,7 @@ Si falta algo, el API responde y el SDK explica en español qué cambiar:
 | Error | HTTP | Qué significa |
 |---|---|---|
 | `catalog_write_disabled` | 403 | La empresa no activó la administración del catálogo por el API. |
-| `catalog_encrypted` | 409 | El catálogo sigue cifrado; el API no puede escribir en él. |
+| `catalog_encrypted` | 409 | El catálogo está cifrado y esta llave no tiene acceso (`details.hint`): la persona titular comparte los datos con la llave (Cuenta → API) o guarda el catálogo sin cifrar. Una llave de solo lectura recibe `forbidden_scope` primero. |
 | `forbidden_scope` | 403 | La llave no tiene `catalog:write`. |
 | `validation_failed` | 422 | Un campo incumple una regla (el SDK revisa las mismas reglas antes de enviar). |
 

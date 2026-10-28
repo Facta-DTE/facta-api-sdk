@@ -54,10 +54,41 @@ export type FactaErrorCode =
   | "webhook_limit_reached"
   /** A webhook with that URL already exists on this key (HTTP 409). */
   | "webhook_duplicate"
-  /** The sealed catalogue/draft inbox routes that were retired (HTTP 410). Write the catalogue with `createCustomer` and friends. */
+  /** The sealed catalogue inbox routes were retired (HTTP 410). Write the catalogue with `createCustomer` and friends. */
   | "inbox_retired"
-  /** The per-key catalogue snapshot was retired (HTTP 410). The server resolves ids itself. */
-  | "catalog_snapshot_retired"
+  /** A test key tried to write the catalogue after the company went live (HTTP 403). */
+  | "catalog_write_test_key"
+  /** An extra company of a Multiempresa owner on a free or trial plan, issuing in production (HTTP 402). */
+  | "paid_plan_required"
+  /** Hacienda answered the login and refused the company's API credentials (HTTP 424); the owner fixes them, retrying cannot. */
+  | "mh_auth_failed"
+  // Google Drive token broker (`GET`/`POST /v1/destinations/{id}/drive-token`).
+  | "drive_not_configured"
+  | "drive_reauthorization_required"
+  | "drive_token_failed"
+  /** Drive does not count as API storage (HTTP 403); use Facta Storage or another destination. */
+  | "drive_not_available_for_api"
+  // Drafts (scope `draft`).
+  /** The company has no draft-box key yet (HTTP 409): its owner opens Facta with their vault once, then it works. */
+  | "drafts_not_ready"
+  /** The plaintext of a legacy sealed draft did not hash to `contentHash` (HTTP 422). */
+  | "content_hash_mismatch"
+  /** That draft id is already taken by another item (HTTP 409). */
+  | "id_conflict"
+  /** The draft is already resolved (HTTP 409). */
+  | "item_final"
+  /** A person of the company has the draft open (HTTP 409); nothing was spent. */
+  | "draft_claimed"
+  /** The draft is being issued right now (HTTP 409); nothing was spent. */
+  | "draft_issuing"
+  /** The draft was already issued (HTTP 409). */
+  | "draft_issued"
+  /** The draft cannot be issued in its state (HTTP 409). */
+  | "draft_not_issuable"
+  /** The `version` sent is not the draft's current one (HTTP 409); read it again. */
+  | "version_mismatch"
+  /** A per-key or per-company cap of drafts (HTTP 429). */
+  | "inbox_cap_reached"
   | "idempotency_key_required"
   | "idempotency_key_reuse"
   | "idempotency_in_flight"
