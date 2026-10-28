@@ -1,6 +1,8 @@
 # Changelog
 
-## 0.6.0 (2026-10-26)
+## 0.6.0-next.1 (2026-10-28)
+
+**Pre-release.** Published to npm under the `next` dist-tag only; `latest` stays on 0.5.3 until the shared data key is in production. Install with `npm i @facta-dte/api@next`. The notes below are the planned 0.6.0 notes.
 
 The shared data key: the server resolves catalogue ids, so the SDK no longer carries a copy of the catalogue.
 
