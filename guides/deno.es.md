@@ -90,9 +90,8 @@ console.log(result.estado, result.codigoGeneracion, result.numeroControl);
 ```
 
 El ejemplo `01` es una factura de consumidor final sin ficha de cliente. Para
-un CCF (`03`), entrega el receptor requerido de forma inline o usa un
-`customerId` que ya figure en el snapshot de esa llave. Inline no necesita la
-clave de apertura del catálogo ni crea/actualiza clientes. Al reintentar esa
+un CCF (`03`), entrega el receptor requerido de forma inline o envía un
+`customerId` (el servidor lo resuelve). Inline no crea ni actualiza clientes. Al reintentar esa
 misma venta conserva la misma clave de idempotencia.
 
 Si `result.estado` es `contingencia`, el documento está firmado, pero el MH no
@@ -101,26 +100,23 @@ el resultado después; no emitas otra factura con una clave nueva.
 
 ## Catálogo y vaults
 
-Al sincronizar desde la app web, el dueño publica un snapshot cifrado. Para
-leerlo desde Deno, concede acceso a `FACTA_UNLOCK_KEY` y configura `unlockKey`:
+Los clientes y productos se leen por el API; el servidor resuelve `customerId` y
+`productId` por sí mismo, también cuando la empresa guarda el catálogo cifrado, así que
+el catálogo no necesita `FACTA_UNLOCK_KEY` (se sigue usando para abrir localmente los
+destinos BYOS y nunca se manda en HTTP):
 
 ```ts
 const facta = new Facta({
   apiKey: Deno.env.get("FACTA_API_KEY")!,
   signKey: Deno.env.get("FACTA_SIGN_KEY")!,
-  unlockKey: Deno.env.get("FACTA_UNLOCK_KEY")!,
 });
 
-await facta.syncCatalog();
 const customers = await facta.listCustomers();
 const products = await facta.listProducts();
 ```
 
-La clave de apertura no se manda en HTTP. Las consultas posteriores comparan
-la revisión del snapshot con `/v1/status`; si cambió, el SDK descarga y abre
-otra vez. El SDK mantiene la copia solo en memoria. Clientes nuevos CSV entran
-al siguiente snapshot de acuerdo con la selección de la llave; el API/SDK no
-escribe el catálogo.
+Las escrituras del catálogo piden `catalog:write` y el interruptor de la empresa (vea la
+[guía de escritura](catalog-write.es.md)).
 
 Antes de reservar un correlativo, `diagnose()` revisa también el estado
 público del certificado asociado. Usa solo huella, vigencia, NIT y ambiente

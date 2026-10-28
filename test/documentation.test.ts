@@ -8,8 +8,6 @@ Deno.test("method reference covers every public Facta client method", () => {
     "status",
     "diagnose",
     "syncDestinations",
-    "syncCatalog",
-    "catalogState",
     "listCustomers",
     "getCustomer",
     "searchCustomers",
@@ -48,6 +46,21 @@ Deno.test("method reference covers every public Facta client method", () => {
     "deliverWhatsApp",
     "getDelivery",
     "waitForDelivery",
+    "listCatalogChanges",
+    "createWebhook",
+    "listWebhooks",
+    "getWebhook",
+    "updateWebhook",
+    "deleteWebhook",
+    "rotateWebhookSecret",
+    "testWebhook",
+    "createDraft",
+    "listDrafts",
+    "getDraft",
+    "getDraftByKey",
+    "updateDraft",
+    "cancelDraft",
+    "issueDraft",
   ];
 
   for (const method of publicMethods) {
@@ -60,7 +73,7 @@ Deno.test("method reference covers every public Facta client method", () => {
       `Expected the method reference to document ${method}`,
     );
   }
-  assert(publicMethods.length === 43, "Update the method coverage list with the public API");
+  assert(publicMethods.length === 56, "Update the method coverage list with the public API");
 });
 
 Deno.test("package Markdown links resolve to files or in-page anchors", async () => {
@@ -94,6 +107,7 @@ Deno.test("runtime and catalog guides have equivalent Spanish and English struct
   for (const stem of [
     "catalog",
     "catalog-write",
+    "webhooks",
     "storage-adapters",
     "node",
     "deno",

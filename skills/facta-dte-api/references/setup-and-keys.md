@@ -51,7 +51,7 @@ window), `/browser` (credential-free headless client), `/react` and
 | --- | --- | --- | --- |
 | `apiKey` / `FACTA_API_KEY` | `facta_test_…` or `facta_live_…` | Identifies the integration, carries its scopes, allowed DTE types, limits and its environment. Sent as `X-Facta-Key`. | Server only |
 | `signKey` / `FACTA_SIGN_KEY` | `factask_…` | Second factor that opens the signing vault. Sent only on `issue`, `sign`, `invalidate`, `registerReturn`. Not needed for `prepare`, queries, downloads or delivery. | Server only; only the process that signs |
-| `unlockKey` / `FACTA_UNLOCK_KEY` | `factauk_…` | Decrypts, **locally**, the published catalog and storage-destination snapshots. **Never sent to the API.** Not needed for plain/readable catalogs or if you send complete data. | Server only |
+| `unlockKey` / `FACTA_UNLOCK_KEY` | `factauk_…` | Decrypts, **locally**, the published storage-destination snapshot (BYOS). **Never sent to the API.** Not needed for the catalog (since 0.6 the server reads it) or if you send complete data. | Server only |
 
 Rules:
 
@@ -110,7 +110,7 @@ import { Facta } from "@facta-dte/api";
 const facta = new Facta({
   apiKey: process.env.FACTA_API_KEY!,
   signKey: process.env.FACTA_SIGN_KEY,      // omit in processes that never sign
-  // unlockKey: process.env.FACTA_UNLOCK_KEY, // only for encrypted catalogs / BYOS snapshots
+  // unlockKey: process.env.FACTA_UNLOCK_KEY, // only for BYOS destination snapshots
   // Do not set baseUrl: the default is Facta's public API (both environments).
   timeoutMs: 60_000, // default; includes reading the body
   maxRetries: 3,     // default; only explicitly retryable codes (see errors.md)

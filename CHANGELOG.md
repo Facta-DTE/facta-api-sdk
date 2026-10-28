@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.6.0-next.1 (2026-10-28)
+
+**Pre-release.** Published to npm under the `next` dist-tag only; `latest` stays on 0.5.3 until the shared data key is in production. Install with `npm i @facta-dte/api@next`. The notes below are the planned 0.6.0 notes.
+
+The shared data key: the server resolves catalogue ids, so the SDK no longer carries a copy of the catalogue.
+
+### Breaking removals
+
+- **`syncCatalog()` is removed**, with the per-key catalogue snapshot it opened (`CatalogSnapshot`, the in-memory cache and `src/catalog.ts`). `customerId` / `productId` are sent to the API untouched and the server resolves them in every catalogue mode (`encrypted` at rest, `readable`, `plain`). An unknown id answers `not_found` with `details.reason: "catalog_unknown_id"`.
+- **`catalogState()` and the `CatalogState` type are removed**: there is no local revision to compare.
+- **`allowStale` (per call) and `allowStaleCatalogReads` (config) no longer do anything.** Both are still accepted and ignored so existing calls and saved configs keep compiling; remove them at your convenience.
+- **`listCustomers`, `getCustomer`, `searchCustomers` and the product reads always call the API** (`GET /v1/customers`, `GET /v1/products`). They no longer need `unlockKey` for an encrypted catalogue, and no longer fail with `unauthorized` when it is missing.
+- **`diagnose()` no longer reports a `catalog-sync` check**, and `DiagnosticsReport.revisions` no longer has `catalog`. `Status.sincronizacion.catalog` is deprecated and optional.
+- **No `X-Facta-Request-Fingerprint` header** on `issue`, `issueAndArchive`, `recoverOperation` and `prepare`: the SDK no longer rewrites the body, so the server's idempotency claim hashes the body again (AP-07). New journal records are `idempotencyHash: "body"` with no `requestFingerprint`. Journals written by 0.3 to 0.5 still recover: a `"fingerprint-v1"` record resends its stored fingerprint. `fingerprintV1` stays internal for that purpose and `conformance/fingerprint-v1.*` stays published for other clients. A 0.5 journal of an encrypted-catalogue company that held a locally resolved body must be recovered without passing a new `request` (the saved one is used).
+- The sealed catalogue inbox (`/v1/catalog/changes`) and the per-key snapshot are retired on the server (`inbox_retired`, HTTP 410); `GET /v1/vault/destinations` may still carry a `vault.catalog` item with `syncStatus: "retired"` (and `Deprecation`/`Sunset` headers until 1-Jan-2027), which the SDK ignores. `GET /v1/catalog/changes?since=` is the change feed and works; drafts (`/v1/drafts`) are unaffected and now have client methods.
+
+### Added
+
+- Error codes the server now returns: `catalog_revision_conflict`, `catalog_record_inactive`, `catalog_search_too_broad`, `catalog_cursor_expired`, `data_grant_unavailable`, `data_grant_revoked`, `data_epoch_stale`, `inbox_retired` (typed, documented in `guides/errors*.md` and the skill).
+- **`listCatalogChanges({ since, generation, limit })`** (`GET /v1/catalog/changes`): ids, revisions, operation and actor of what changed in the company catalogue. An expired cursor is `catalog_cursor_expired` with `reason`, `cabeza` and `generacion` kept in `error.details`.
+- **Webhook management**: `createWebhook`, `listWebhooks`, `getWebhook`, `updateWebhook`, `deleteWebhook`, `rotateWebhookSecret`, `testWebhook` (`WebhookWithSecret.secret` is returned once). New codes `webhook_limit_reached` and `webhook_duplicate`.
+- **Drafts** (scope `draft`): `createDraft`, `listDrafts`, `getDraft`, `getDraftByKey`, `updateDraft` (`version` sent as `If-Match`), `cancelDraft`, `issueDraft` (carries the signing key, returns the `issue` result plus `borradorId`). New codes: `drafts_not_ready`, `version_mismatch`, `draft_claimed`, `draft_issuing`, `draft_issued`, `draft_not_issuable`, `item_final`, `id_conflict`, `inbox_cap_reached`, `content_hash_mismatch`, `catalog_write_test_key`. Guide: `guides/drafts.md`.
+- **Every code the server can answer is a typed `FactaErrorCode`**, including `mh_auth_failed` (424), `paid_plan_required` (402) and the Drive broker codes. `catalog_snapshot_retired` is removed: the server never sent it. Tests compare the code union with the contract snapshot in both directions, and the client's retry set with the one the errors guide marks as retried (it caught `data_grant_unavailable` / `data_epoch_stale` missing the **yes** marker).
+- **Contract coverage test**: every operation of the contract snapshot (`test/fixtures/openapi.yaml`, refreshed from staging) is wrapped by a client method or listed as deliberately not wrapped (`GET /v1/representacion/plantillas` and `DELETE …/return/{evento}` have no method yet).
+- Docs follow the staging contract: a production key (`facta_live_`) is refused with `environment_not_allowed` on emission and on the company-level routes (customers, products, webhooks, the change feed, drafts, destinations, templates) unless the company is in production; a read-only key hears `forbidden_scope` before `catalog_encrypted`, whose `details.hint` says whether the key lacks access or the catalogue is simply not shared.
+- **Receiver-side verifier**, dependency-free (WebCrypto): `verifyWebhook`, `constructWebhookEvent` (throws `WebhookVerificationError`), `signWebhook`, `MemoryWebhookReplayStore`, `WEBHOOK_EVENTS`. Guide: `guides/webhooks.md`.
+- **`revision` on single catalogue records and `ifMatch` on `updateCustomer` / `updateProduct`** (read from `Facta-Catalog-Revision` / `ETag`). Honoured by a company that shares its data key; a plain catalogue ignores `If-Match` (last write wins per field sent).
+- **Fix: `invalidateAndArchive` / `recoverInvalidation` no longer fail with `internal_error` when the server echoes the document code in lower case** (it does once the document is indexed, while `issue` returned it in upper case). The target code is compared case-insensitively. Found by the staging live run.
+- **`data_grant_unavailable` and `data_epoch_stale` are now retried** like the other 503s (the docs already said so); `data_grant_revoked` (403, the owner's decision) is never retried.
+- Docs: `guides/catalog*.md` rewritten as "Catalog reads and id resolution"; the reference, README, Deno/Node guides and the skill no longer describe a local catalogue snapshot.
+
 ## 0.5.3 (2026-10-20)
 
 - **Storage status and copies stay readable whatever kinds the server lists.** `getStorageStatus` and `getDocumentCopies` now accept any kind lists that include `json` and `pdf`, have no duplicate and put no kind in both lists, and copy entries may carry `invalidation`. On 20-Oct the API briefly listed `invalidation` as a supported kind, which 0.5.2 rejected with `storage_contract_invalid`; the API has since frozen its answer (`["json","pdf"]` / `["ticket","invalidation"]`, plus `capabilities.invalidationFile`), so 0.5.2 works again, and 0.5.3 no longer depends on the exact lists.

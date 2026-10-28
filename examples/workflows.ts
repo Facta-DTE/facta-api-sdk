@@ -24,7 +24,7 @@ export async function recoverByos(facta: Facta, archive: InvoiceArchive, operati
 }
 
 export async function catalogRequest(facta: Facta, customerId: string, productId: string): Promise<DteRequest> {
-  await facta.syncCatalog();
+  // The server resolves customerId / productId; reading them first only confirms they exist.
   const [customer, product] = await Promise.all([facta.getCustomer(customerId), facta.getProduct(productId)]);
   if (!customer || !product) throw new Error("Select authorized current catalog entries.");
   return { tipoDte: "01", receptor: { customerId }, items: [{ productId, cantidad: 1 }] };

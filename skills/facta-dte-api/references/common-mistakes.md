@@ -27,7 +27,6 @@ Each one is documented in the SDK guides or contract; use this as a review list.
 | `waitForDelivery` on a channel that was not marked | Waits until timeout | Wait only for marked channels |
 | Calling `prepare` speculatively | Reserved numbers nobody signs | Use `issue` unless a review step exists |
 | Catalog `productId` with an encrypted catalog and no `unlockKey` | Cannot resolve | Send full line data, enable a readable catalog, or provide `unlockKey` |
-| Stale catalog for fiscal issuing (`allowStale`) | Not allowed for issuing | Publish the snapshot from the app |
 | Turning on a plain catalog without telling the owner | Facta DTE can then read customers | Explain the privacy trade-off first |
 | `diagnose().overall === "ready"` as a gate | Healthy integrations read `attention` | Gate on `canIssue` etc. |
 | Leaving `debug.timings` on | Larger responses, internal names in logs | Only while investigating |

@@ -7,7 +7,7 @@ that) you want to know: is the key valid, in the right environment, with the
 right scopes, able to sign, with somewhere to store documents? `diagnose()`
 answers those questions from public status data, without opening a vault and
 without reserving a control number. Two smaller tools complement it:
-`catalogState()` for the catalog and `diagnoseDestinations()` for remote copies.
+`diagnoseDestinations()` for remote copies.
 
 ## `diagnose(options?)`
 
@@ -79,28 +79,11 @@ a missing archive adds `unknown` checks, so many healthy integrations read
 | `certificate-metadata`, `certificate-identity`, `certificate-environment`, `certificate-validity` | Public certificate facts: fingerprint, NIT matches the issuer, registered environment, validity (warning within 30 days). |
 | `signing`, `sign-sync` | A signing vault is provisioned and synchronized. |
 | `destinations-sync` | BYOS destination snapshot synchronized (optional when managed storage is ready). |
-| `catalog-sync` | Catalog snapshot synchronized; only ever `ok` or `warning`. |
 | `managed-storage` | Managed storage or a verified BYOS destination is ready; `unknown` when the server or key does not expose it. |
 | `archive`, `archive-pending` | With an archive: it can read and write, and how many operations are pending. |
 | `emergency-store` | Informational: whether `runtime.emergencyStore` is configured. Always `ok` and never changes `overall`. |
 
 Messages are English prose for logs and may change; switch on `id` and `state`.
-
-## `catalogState()`
-
-`catalogState()` compares the local catalog snapshot with what the server
-publishes, without returning any catalog content:
-
-```ts
-const catalog = await facta.catalogState();
-// { catalogMode, freshness: "fresh" | "stale" | "missing", localRevision, fetchedAt,
-//   desiredRevision, publishedRevision, syncStatus, statusError }
-if (catalog.catalogMode === "encrypted" && catalog.freshness !== "fresh") await facta.syncCatalog();
-```
-
-A `plain` catalog is read live from the API and always reports `fresh`. When
-status cannot be read, `statusError` carries a safe error code and the call does
-not throw. See [catalog.md](catalog.md).
 
 ## `diagnoseDestinations(operationId, archive, destinations, options?)`
 

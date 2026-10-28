@@ -17,7 +17,6 @@ const SOURCES = [
   "src/archive.ts",
   "src/client.ts",
   "src/printing.ts",
-  "src/catalog.ts",
   "src/catalog-write.ts",
   "src/diagnostics.ts",
   "src/errors.ts",

@@ -17,7 +17,7 @@ export const CATALOG_WRITE_MESSAGES = {
     `La llave también necesita el alcance catalog:write. ${WARNING}`,
   catalog_encrypted:
     `El catálogo de esta empresa está cifrado, y el API solo puede modificarlo en texto plano. Para cambiarlo, abra Facta DTE, vaya a ${WHERE}, pase el catálogo a texto plano y marque «Permitir administrar clientes y productos desde el API». ` +
-    `${WARNING} Mientras siga cifrado, el catálogo solo se puede leer con la clave de desbloqueo (unlockKey).`,
+    `${WARNING}`,
 } as const;
 
 function invalid(issues: string[]): never {

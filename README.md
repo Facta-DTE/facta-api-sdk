@@ -1,6 +1,6 @@
 # `@facta-dte/api` — TypeScript SDK
 
-The official TypeScript and JavaScript client for Facta's electronic tax document API. It uses the server as the fiscal authority: the SDK sends DTE data, handles credentials and retries, resolves encrypted local catalog snapshots, and can archive exact issued bytes for restart-safe recovery.
+The official TypeScript and JavaScript client for Facta's electronic tax document API. It uses the server as the fiscal authority: the SDK sends DTE data, handles credentials and retries, and can archive exact issued bytes for restart-safe recovery.
 
 Read the [Spanish README](README.es.md). The full [method reference](guides/reference.md) documents each public method's arguments, return value, required scope, side effects, errors, retries, and recovery behavior. The [published API contract](https://hcnvknpsbadplnfcflxx.supabase.co/functions/v1/api-v1/v1/openapi.json) remains authoritative for HTTP fields and responses.
 
@@ -57,7 +57,7 @@ An `IssueResult` is a discriminated union. Check `result.estado`: `"sellado"` me
 | --- | --- |
 | `apiKey` | Required `facta_test_…` or `facta_live_…` key. The key selects the Hacienda environment. |
 | `signKey` | Required for `issue`, `prepare` + `sign`, `invalidate`, and `registerReturn`. Sent only on signing operations. |
-| `unlockKey` | Optional `factauk_…` key used locally to decrypt synchronized catalog and destination bundles. Never sent to the API. |
+| `unlockKey` | Optional `factauk_…` key used locally to decrypt the synchronized destination bundle. Never sent to the API. |
 | `baseUrl` | Optional API host. Defaults to Facta's public API URL. |
 | `timeoutMs` | Request timeout, default 60,000 ms, including response-body reading. |
 | `region` | Functions region sent as `x-region` so requests run next to the database. Default: read once from `/v1/status` (fallback `us-west-2` for older APIs). A string overrides, `false` disables; also `config.region` and the `FACTA_API_REGION` environment variable. `await facta.region()` returns it; `diagnose()` reports the served region. |
@@ -79,8 +79,10 @@ A document's own date and time are set by Facta's server, never by this SDK. The
 The `Facta` client exposes the following English methods:
 
 - **Status and diagnostics:** `status`, `diagnose`, `getContract`, `getStorageStatus`.
-- **Synchronization and catalog:** `syncDestinations`, `syncCatalog`, `catalogState`, `listCustomers`, `getCustomer`, `searchCustomers`, `listProducts`, `getProduct`, `searchProducts`.
-- **Catalog writes (plain-text catalog, scope `catalog:write`):** `createCustomer`, `updateCustomer`, `deactivateCustomer`, `createProduct`, `updateProduct`, `deactivateProduct`. Reads work in all three catalog modes (`encrypted`, `readable`, `plain`). See the [catalog write guide](guides/catalog-write.md).
+- **Destinations and catalog reads:** `syncDestinations`, `listCustomers`, `getCustomer`, `searchCustomers`, `listProducts`, `getProduct`, `searchProducts`.
+- **Catalog writes (plain-text catalog, scope `catalog:write`):** `createCustomer`, `updateCustomer`, `deactivateCustomer`, `createProduct`, `updateProduct`, `deactivateProduct`. Reads go through the API in every catalog mode; the server resolves `customerId` / `productId`. See the [catalog write guide](guides/catalog-write.md).
+- **Catalogue changes and webhooks (scope `catalog:read`):** `listCatalogChanges`, `createWebhook`, `listWebhooks`, `getWebhook`, `updateWebhook`, `deleteWebhook`, `rotateWebhookSecret`, `testWebhook`, and the receiver-side `verifyWebhook` / `constructWebhookEvent` / `signWebhook`. Records read one at a time carry `revision`; pass it as `ifMatch` to `updateCustomer` / `updateProduct`. See the [webhooks guide](guides/webhooks.md).
+- **Drafts (scope `draft`):** `createDraft`, `listDrafts`, `getDraft`, `getDraftByKey`, `updateDraft` (`version` sent as `If-Match`), `cancelDraft` and `issueDraft`: leave an invoice for a person of the company to review and issue. See the [drafts guide](guides/drafts.md).
 - **DTE lifecycle:** `issue`, `prepare`, `sign`, `getDocumentStatus`, `listDocuments`, `invalidate`, `registerReturn`, `listHolding`, `downloadDocument`, `getDocumentCopies`, `retryDocumentStorage`.
 - **Durable archival:** `issueAndArchive`, `recoverOperation`, `listPendingOperations`, `invalidateAndArchive`, `recoverInvalidation`, `listPendingInvalidations`, `replicateArchive`, `diagnoseDestinations`.
 - **Delivery by e-mail and WhatsApp:** `issue(request, { deliver })`, `deliverEmail`, `deliverWhatsApp`, `getDelivery`, `waitForDelivery`. Issuing never waits for delivery; each channel is a separate request with a five-minute token and failures are reported as states.
@@ -147,11 +149,11 @@ The type system helps construct payloads but does not replace server-side tax va
 
 ## Catalog and destination snapshots
 
-`syncCatalog()` and `syncDestinations()` decrypt their respective published snapshots in memory using `unlockKey`. They do not create or update server records and do not write artifacts to storage destinations. Catalog-backed customer/product lookup uses only a fresh snapshot for fiscal issuance; stale opt-in is limited to non-fiscal reads.
+`syncDestinations()` decrypts the published destinations snapshot in memory using `unlockKey`. It does not create or update server records and does not write artifacts to storage destinations. Since 0.6 there is no catalog snapshot: `customerId` / `productId` are resolved by the server, and the catalog reads call the API.
 
 `issue()` never writes to storage. With `unlockKey` and a published snapshot, `issueAndArchive()` and `recoverOperation()` also replicate the legal JSON and PDF to your synced destinations under Facta's canonical `DTE/…/YYYY/MM/<numeroControl>` paths (opt out with `replicate: false`), report verified copies to Facta, and surface problems as non-throwing `warnings`. See [what each mode does](guides/storage-adapters.md#where-documents-go-each-mode).
 
-- [Catalog snapshots and offline reads](guides/catalog.md)
+- [Catalog reads and id resolution](guides/catalog.md)
 - [Create, edit and deactivate customers and products](guides/catalog-write.md)
 - [Storage adapters](guides/storage-adapters.md)
 - [Emergency safeguard](guides/emergency.md): `runtime.emergencyStore` saves the JSON and PDF when Facta could not store them durably
@@ -213,12 +215,14 @@ Every guide in `guides/`, in English and Spanish. The two React guides are Engli
 | The Archivo DTE (what the receiver gets) | [archivo-dte.md](guides/archivo-dte.md) | [archivo-dte.es.md](guides/archivo-dte.es.md) |
 | Delivery by e-mail and WhatsApp | [delivery.md](guides/delivery.md) | [delivery.es.md](guides/delivery.es.md) |
 | Returns (Evento de Retorno) | [return-event.md](guides/return-event.md) | [return-event.es.md](guides/return-event.es.md) |
-| Diagnostics, `catalogState`, `diagnoseDestinations` | [diagnose.md](guides/diagnose.md) | [diagnose.es.md](guides/diagnose.es.md) |
+| Diagnostics, `diagnoseDestinations` | [diagnose.md](guides/diagnose.md) | [diagnose.es.md](guides/diagnose.es.md) |
 | Regional pinning | [region.md](guides/region.md) | [region.es.md](guides/region.es.md) |
 | Debug timings | [timings.md](guides/timings.md) | [timings.es.md](guides/timings.es.md) |
 | Reference clock | [reference-clock.md](guides/reference-clock.md) | [reference-clock.es.md](guides/reference-clock.es.md) |
-| Catalog snapshots and offline reads | [catalog.md](guides/catalog.md) | [catalog.es.md](guides/catalog.es.md) |
+| Catalog reads and id resolution | [catalog.md](guides/catalog.md) | [catalog.es.md](guides/catalog.es.md) |
 | Catalog writes (customers and products) | [catalog-write.md](guides/catalog-write.md) | [catalog-write.es.md](guides/catalog-write.es.md) |
+| Catalogue changes and webhooks | [webhooks.md](guides/webhooks.md) | [webhooks.es.md](guides/webhooks.es.md) |
+| Drafts | [drafts.md](guides/drafts.md) | [drafts.es.md](guides/drafts.es.md) |
 | Storage adapters | [storage-adapters.md](guides/storage-adapters.md) | [storage-adapters.es.md](guides/storage-adapters.es.md) |
 | Emergency safeguard | [emergency.md](guides/emergency.md) | [emergency.es.md](guides/emergency.es.md) |
 | Headless browser client (`@facta-dte/api/browser`) | [browser.md](guides/browser.md) | [browser.es.md](guides/browser.es.md) |
@@ -239,7 +243,7 @@ control numbers, raw API errors or assertion payloads.
 
 Document query and listing receiver metadata can be null when a document was encrypted in the Facta app, imported or restored with a company key unavailable to the API. The SDK preserves null; a current catalog customer does not establish the historical receiver. `unlockKey` opens only the published catalog/destination snapshots, not historical invoice receiver blobs.
 
-The full staging live workflow requires its owner-published catalog snapshot and, for BYOS setups, its destination snapshot to open before issuing its test invoice. Ready managed-only setups do not require a BYOS snapshot. An unavailable required snapshot fails the run; library issuance compatibility with legacy status responses does not waive this integration gate.
+The full staging live workflow requires, for BYOS setups, its owner-published destination snapshot to open before issuing its test invoice. Ready managed-only setups do not require a BYOS snapshot. An unavailable required snapshot fails the run; library issuance compatibility with legacy status responses does not waive this integration gate.
 
 ### Executable workflow examples and storage failures
 

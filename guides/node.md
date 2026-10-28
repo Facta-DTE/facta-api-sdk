@@ -327,9 +327,7 @@ retrying it.
 
 ## Stored data and migration
 
-The API/SDK does not store customers or products. The owner maintains or CSV
-imports them in Facta and publishes encrypted snapshots from the web app. The
-SDK only reads the snapshot and resolves IDs in memory. Inline names, invoice
+The API/SDK does not store customers or products on its own: the owner maintains them in Facta (or imports a CSV), and the server resolves `customerId` / `productId` per request. Inline names, invoice
 lists, and fiscal content follow the key’s access limits. When migrating from
 another HTTP client, keep the same `Idempotency-Key`, map its response to
 `IssueResult`, and do not recalculate totals or the canonical document.

@@ -17,7 +17,7 @@ re-issue and never turns a sealed document into an error.**
    Per the current contract, issuance **no longer fails** when no durable storage is
    available: the document is issued and the response carries the warning
    `sin_almacenamiento_duradero`. (`no_storage_destination` is still thrown locally by
-   `syncDestinations` / `syncCatalog` when a snapshot is not published.) The optional
+   `syncDestinations` when a snapshot is not published.) The optional
    header `X-Facta-Copies: deferred` trades a faster answer for `pending` receipts.
 2. **Local archive (your server).** `issueAndArchive` journals before the fiscal
    request and stores the exact JSON, PDF and JWS (optionally a ticket) in an
