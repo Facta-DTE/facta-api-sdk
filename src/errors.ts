@@ -5,6 +5,9 @@
 // reading a log and may be rewritten at any time. A client that branches on
 // the message is a client that breaks on a typo fix.
 
+import { unknownFieldWarnings } from "./warnings.ts";
+import type { UnknownFieldWarning } from "./types.ts";
+
 export type FactaErrorCode =
   | "unauthorized"
   | "invalid_api_key"
@@ -164,6 +167,14 @@ export class FactaError extends Error {
     const nc = details?.["numeroControl"];
     if (typeof cg !== "string" || typeof nc !== "string") return null;
     return { codigoGeneracion: cg, numeroControl: nc };
+  }
+
+  /**
+   * The `campo_desconocido` warnings the server attached to this failure (`details.advertencias`): request
+   * fields Facta DTE ignored. Empty when there are none. Unknown fields are warnings, never errors.
+   */
+  get unknownFields(): UnknownFieldWarning[] {
+    return unknownFieldWarnings(this.details);
   }
 
   /** What Hacienda said, word for word, when it refused. */

@@ -77,6 +77,15 @@ export interface LineItem {
    * `montoDescu`. There is no global discount on the wire yet.
    */
   montoDescu?: number;
+  /**
+   * How this line treats VAT: `gravada` (the default, 13 %), `exenta` (`ventaExenta` column) or `no_sujeta`
+   * (`ventaNoSuj` column). Chosen by you, never deduced by Facta. Valid in 01, 03, 05 and 06; on 11 and 14 the
+   * server refuses it (`422 validation_failed`) even when it says `gravada`, so leave it out there. In a note
+   * use the class the corrected line had. With `productId` the product's class does not reach the API yet:
+   * send `tipoVenta` on the line. `aplicarReteRenta` next to an `exenta` or `no_sujeta` line is
+   * `422 retention_mixed_class_unsupported`.
+   */
+  tipoVenta?: SaleType;
 }
 
 /** One row of `pagos[]`: a payment method and the amount paid with it. */
@@ -156,14 +165,33 @@ interface DteRequestBase {
   observaciones?: string | null;
 }
 
+/** Own fields of other types: the server answers `400` (not a silent ignore) when a type receives them. */
+interface VatOwnFieldsNever {
+  aplicarRetencionIva?: never;
+  aplicarPercepcionIva?: never;
+}
+
+/** 01 and 03: the 1 % VAT withholding the RECEIVER practises (art. 162 CT) on the taxable net after discounts. Never automatic: you ask for it. */
+interface VatWithholdingField {
+  aplicarRetencionIva?: boolean;
+}
+
 /** DTE request union. DTE-specific fields are available only on their type. */
 export type DteRequest =
-  | (DteRequestBase & { tipoDte: "01"; receptor?: Recipient | null; documentosRelacionados?: never; exportacion?: never; aplicarReteRenta?: never; numPagoElectronico?: never })
-  | (DteRequestBase & { tipoDte: "03"; receptor?: Recipient | null; documentosRelacionados?: never; exportacion?: never; aplicarReteRenta?: never; numPagoElectronico?: never })
-  | (Omit<DteRequestBase, "pagos"> & { pagos?: never; tipoDte: "05"; receptor?: Recipient | null; documentosRelacionados: RelatedDocument[]; exportacion?: never; aplicarReteRenta?: never; numPagoElectronico?: never })
-  | (Omit<DteRequestBase, "pagos"> & { pagos?: never; tipoDte: "06"; receptor?: Recipient | null; documentosRelacionados: RelatedDocument[]; numPagoElectronico?: string | null; exportacion?: never; aplicarReteRenta?: never })
-  | (DteRequestBase & { tipoDte: "11"; receptor: ExportRecipient; exportacion: ExportDetails; documentosRelacionados?: never; aplicarReteRenta?: never; numPagoElectronico?: never })
-  | (DteRequestBase & { tipoDte: "14"; receptor: ExcludedSubjectRecipient; aplicarReteRenta?: boolean; documentosRelacionados?: never; exportacion?: never; numPagoElectronico?: never });
+  | (DteRequestBase & VatWithholdingField & { aplicarPercepcionIva?: never; tipoDte: "01"; receptor?: Recipient | null; documentosRelacionados?: never; exportacion?: never; aplicarReteRenta?: never; numPagoElectronico?: never })
+  | (DteRequestBase & VatWithholdingField & {
+    tipoDte: "03"; receptor?: Recipient | null; documentosRelacionados?: never; exportacion?: never; aplicarReteRenta?: never; numPagoElectronico?: never;
+    /**
+     * Only 03. The 1 % VAT perception (art. 163 CT) on the taxable net of the GOODS lines (`tipoItem` 1) after
+     * the proportional share of any global discount; services are not in the base. Added to the total to pay,
+     * not part of `montoTotalOperacion`. Never automatic: you ask for it.
+     */
+    aplicarPercepcionIva?: boolean;
+  })
+  | (Omit<DteRequestBase, "pagos"> & VatOwnFieldsNever & { pagos?: never; tipoDte: "05"; receptor?: Recipient | null; documentosRelacionados: RelatedDocument[]; exportacion?: never; aplicarReteRenta?: never; numPagoElectronico?: never })
+  | (Omit<DteRequestBase, "pagos"> & VatOwnFieldsNever & { pagos?: never; tipoDte: "06"; receptor?: Recipient | null; documentosRelacionados: RelatedDocument[]; numPagoElectronico?: string | null; exportacion?: never; aplicarReteRenta?: never })
+  | (DteRequestBase & VatOwnFieldsNever & { tipoDte: "11"; receptor: ExportRecipient; exportacion: ExportDetails; documentosRelacionados?: never; aplicarReteRenta?: never; numPagoElectronico?: never })
+  | (DteRequestBase & VatOwnFieldsNever & { tipoDte: "14"; receptor: ExcludedSubjectRecipient; aplicarReteRenta?: boolean; documentosRelacionados?: never; exportacion?: never; numPagoElectronico?: never });
 
 /** How the key's company stores the catalog the API can see. */
 export type CatalogMode = "encrypted" | "readable" | "plain";
@@ -524,6 +552,12 @@ export interface PreparedDte {
   prepareToken: string;
   /** Only with `debug: { timings: true }`. */
   debug?: DebugInfo;
+  /** Server warnings, e.g. `campo_desconocido`. Present only when there is something to review. */
+  advertencias?: Array<string | ServerWarning>;
+  /** The `campo_desconocido` warnings of `advertencias`. Present only when the request carried a field Facta DTE does not know. */
+  unknownFields?: UnknownFieldWarning[];
+  /** The `Facta-Warning` response header, parsed. Present only when the server sent it. */
+  factaWarning?: FactaWarningHeader;
 }
 
 export interface DocumentStatus {

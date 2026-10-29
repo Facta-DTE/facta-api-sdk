@@ -207,7 +207,7 @@ the SDK: mark channels with `issue(…, { deliver })` and start them with
 
 `SealedDte.archivoDte?: string` is the exact UTF-8 Archivo DTE: the signed document plus `firmaElectronica` and `selloRecibido`. It is absent in contingency and on API servers that predate it. `archivoDteOf(result)` returns it, or builds the same bytes from `documento`, `jws` and `selloRecibido` (two-space pretty print, document keys first), or `null` when there is no seal. `archivoJson` and `jws` are unchanged. `FactaErrorCode` gains `not_sealed` (HTTP 409): the JSON download of an unsealed document.
 
-## Testing on staging (`0.6.0-next.2`)
+## Testing on staging (`0.6.0-next.3`)
 
 Install the staging SDK with `npm i @facta-dte/api@next` and point the client at the staging API with a `facta_test_` key created in https://staging.factadte.com. The default `baseUrl` is the PRODUCTION host, so staging needs it explicitly; a staging key sent to the default host fails with `401`, and production keys never go to staging.
 
@@ -223,8 +223,11 @@ const facta = new Facta({
 | Field / helper | What it does |
 |---|---|
 | `LineItem.montoDescu` | Discount of one line in money, between 0 and `cantidad × precioUni`, in the same VAT basis as `precioUni`. No global or percentage discount yet. |
+| `LineItem.tipoVenta` | VAT treatment of the line: `gravada` (default), `exenta` or `no_sujeta`. Chosen by you, never deduced. 01, 03, 05, 06 only; `422` on 11 and 14. |
+| `DteRequest.aplicarRetencionIva` / `aplicarPercepcionIva` | 1 % VAT withholding (01, 03) and perception (03 only, goods lines). Never automatic; `400` on other types, refused by the types. |
 | `DteRequest.pagos` / `Pago` | 1 to 10 `{ codigo, montoPago, referencia? }` rows (01, 03, 11, 14) that add up to the total to pay to the cent. Not with `formaPago`, not on 05/06 (the types refuse it), not with `condicionOperacion` 2 (`422`). |
 | `result.unknownFields`, `unknownFieldWarnings(source)` | `campo_desconocido` warnings of `advertencias`: a request field Facta DTE does not know is ignored and is not in the document. Each has `campo` and, when obvious, `sugerencia`. |
+| `prepared.unknownFields`, `error.unknownFields` | The same warnings on `prepare()` results and on a `FactaError` (from `details.advertencias`). Unknown fields are always warnings, never errors. |
 | `result.factaWarning`, `parseFactaWarning(header)` | The `Facta-Warning: campo_desconocido; campos=N` response header, parsed to `{ code, count }`. |
 | `FACTA_STAGING_BASE_URL` | The staging API base. |
 

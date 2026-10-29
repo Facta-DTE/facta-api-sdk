@@ -3,7 +3,7 @@
 Para quien prueba con TypeScript en **staging** (`@facta-dte/api@next`, API base
 `https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1`, llave `facta_test_`, ambiente
 `00`). Cada punto de las dos listas se comprobó contra el contrato publicado
-(https://staging.factadte.com/api/openapi.yaml) y contra el SDK `0.6.0-next.2`.
+(https://staging.factadte.com/api/openapi.yaml) y contra el SDK `0.6.0-next.3`.
 
 ## Disponible ahora en staging
 
@@ -30,6 +30,20 @@ Para quien prueba con TypeScript en **staging** (`@facta-dte/api@next`, API base
   y `parseFactaWarning`. **Revise la primera respuesta de su integración**: un campo ignorado
   es un descuento, un pago o un régimen que el documento no lleva. Si la petición falla por
   otra razón, las advertencias vienen en `error.details.advertencias`.
+- **Los campos desconocidos son siempre una advertencia, nunca un error.** Es una regla fija,
+  hoy y en adelante: Facta DTE ignora el campo que no conoce y lo informa con
+  `campo_desconocido`; no hay ni habrá un rechazo `400` por eso. Dentro de `entrega`,
+  `apendice` y `representacion` un campo de más ya es `400` (esos tres objetos son estrictos).
+- **Tratamiento del IVA por línea: `items[].tipoVenta`** (`gravada` por omisión, `exenta`,
+  `no_sujeta`). Lo elige usted; Facta no lo deduce. Vale en 01, 03, 05 y 06; en 11 y 14 es
+  `422 validation_failed`. Tipado: `LineItem.tipoVenta`.
+- **Retención y percepción de IVA del 1 %.** `aplicarRetencionIva` (01 y 03) y
+  `aplicarPercepcionIva` (solo 03, sobre las líneas de bienes) son booleanos que usted pide;
+  nunca son automáticos y en otro tipo son `400`. Tipados en `DteRequest`: el compilador los
+  rechaza en los demás tipos.
+- **SDK de PHP.** `v0.2.0-rc.2` incluye `montoDescu`, `pagos` / `Pago`, `tipoVenta`,
+  `aplicarRetencionIva` / `aplicarPercepcionIva` y las advertencias `campo_desconocido`
+  (`facta-dte/api` en Packagist, pre-lanzamiento).
 - **Apuntar el cliente a staging.** `baseUrl: FACTA_STAGING_BASE_URL` (exportado por el SDK) y
   `expectedEnvironment: "00"`.
 - **Ya estaban en `0.6.0-next.1`:** el servidor resuelve `customerId` / `productId` (sin
@@ -49,7 +63,7 @@ if (result.estado === "sellado" && result.unknownFields) {
 
 ## En la próxima versión
 
-Nada de esto existe hoy en staging; no escriba código que lo suponga.
+Nada de esto existe hoy en staging; no escriba código que lo suponga. (Los campos desconocidos no están en esta lista: son advertencia para siempre.)
 
 - **Descuento global o por porcentaje.** Hoy solo hay `montoDescu` por línea, en dinero; el
   contrato dice que el descuento global no existe todavía en el cable.
@@ -63,15 +77,6 @@ Nada de esto existe hoy en staging; no escriba código que lo suponga.
 - **Advertencias en el buzón de borradores.** `POST/PUT /v1/drafts` todavía no avisa de campos
   desconocidos (los descarta del borrador sin decirlo). Emitir (`POST /v1/dte`), preparar
   (`/v1/dte/prepare`) y emitir un borrador sí avisan.
-- **Campos desconocidos como error.** Hoy solo se ignoran y se avisan. Facta no ha publicado
-  ningún cambio ni fecha para rechazarlos; trate cada advertencia como un defecto a corregir
-  en su integración. Dentro de `entrega`, `apendice` y `representacion` un campo de más ya es
-  `400`.
-- **Tipos del SDK de campos que el contrato ya tiene.** `LineItem.tipoVenta`,
-  `aplicarRetencionIva` y `aplicarPercepcionIva` existen en la API pero `@facta-dte/api` aún no
-  los declara; con el SDK, agréguelos con un cast o llame a la API HTTP.
-- **SDK de PHP.** `v0.2.0-rc.1` no incluye `montoDescu`, `pagos` ni las advertencias
-  `campo_desconocido`.
 
 ## Si algo no coincide
 
