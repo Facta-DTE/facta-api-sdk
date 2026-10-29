@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.0-next.2 (2026-10-29)
+
+**Pre-release** (`npm i @facta-dte/api@next`; `latest` stays on 0.5.3). Matches the staging API after its 29-Oct release.
+
+- **`LineItem.montoDescu`**: discount of one line, in money (0 to `cantidad × precioUni`). No global discount on the wire yet.
+- **`pagos` and the `Pago` type**: 1 to 10 payment rows (01, 03, 11, 14) that add up to the total to pay; the types refuse `pagos` on 05/06. `formaPago`, `exportacion.recintoFiscal`, `.tipoRegimen` and `.regimen` are checked against the Ministry's catalogues by the server (`422 validation_failed` with `details.field`, `details.catalog`, `details.supported`).
+- **`campo_desconocido` warnings**: `ServerWarning` (with `campo`, `sugerencia`, `motivo`), `UnknownFieldWarning`, `result.unknownFields` and `unknownFieldWarnings()`; the `Facta-Warning` response header is read into `result.factaWarning` (`FactaWarningHeader`) and `parseFactaWarning()`. Both members exist on `issue()` results only when there is something to report. These warnings never trigger the emergency safeguard.
+- **`FACTA_STAGING_BASE_URL`**: the staging API base. The client still defaults to the production host, so staging needs `baseUrl` explicitly; the README and guides no longer say there is no staging URL.
+- Agent skill, staging variant `facta-dte-api-staging` (release `skill-staging`): ready to test with TypeScript on staging, with «Disponible ahora» and «En la próxima versión».
+
 ## 0.6.0-next.1 (2026-10-28)
 
 **Pre-release.** Published to npm under the `next` dist-tag only; `latest` stays on 0.5.3 until the shared data key is in production. Install with `npm i @facta-dte/api@next`. The notes below are the planned 0.6.0 notes.

@@ -664,6 +664,29 @@ La `Idempotency-Key` se acuña **una vez, fuera del bucle**. Generar una nueva p
 
 Y un `202` no es un error, así que no pasa por aquí: llega como un resultado con `estado: "contingencia"`. Lo cuenta entera la guía [Contingencia y resultados inciertos](/guias/contingencia-y-resultados-inciertos/).
 
+## Probar en staging (`0.6.0-next.2`)
+
+Instale el SDK de staging con `npm i @facta-dte/api@next` y apunte el cliente a la API de staging con una llave `facta_test_` creada en https://staging.factadte.com. El `baseUrl` por defecto es el de PRODUCCIÓN, así que en staging hay que ponerlo explícito; una llave de staging enviada al servidor por defecto falla con `401`, y las llaves de producción nunca van a staging.
+
+```ts
+import { Facta, FACTA_STAGING_BASE_URL } from "@facta-dte/api";
+const facta = new Facta({
+  apiKey: process.env.FACTA_API_KEY!, signKey: process.env.FACTA_SIGN_KEY,
+  baseUrl: FACTA_STAGING_BASE_URL, // https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1
+  config: { version: 1, expectedEnvironment: "00" },
+});
+```
+
+| Campo / ayudante | Qué hace |
+|---|---|
+| `LineItem.montoDescu` | Descuento de una línea en dinero, entre 0 y `cantidad × precioUni`, en la misma base de IVA que `precioUni`. Todavía no hay descuento global ni por porcentaje. |
+| `DteRequest.pagos` / `Pago` | De 1 a 10 filas `{ codigo, montoPago, referencia? }` (01, 03, 11, 14) que suman el total a pagar al centavo. No junto a `formaPago`, no en 05/06 (los tipos lo rechazan), no con `condicionOperacion` 2 (`422`). |
+| `result.unknownFields`, `unknownFieldWarnings(source)` | Las advertencias `campo_desconocido` de `advertencias`: un campo que Facta DTE no conoce se ignora y no está en el documento. Cada una trae `campo` y, si es obvio, `sugerencia`. |
+| `result.factaWarning`, `parseFactaWarning(header)` | La cabecera `Facta-Warning: campo_desconocido; campos=N`, convertida a `{ code, count }`. |
+| `FACTA_STAGING_BASE_URL` | La API base de staging. |
+
+Un código que no es del catálogo del Ministerio (`formaPago`, `exportacion.recintoFiscal`, `.regimen`, `.tipoRegimen`) responde `422 validation_failed` con `details.field`, `details.catalog` y `details.supported`, antes de gastar un correlativo.
+
 ## Tipos
 
 Los tipos se leen del contrato TypeScript (`mod.ts`), no de un `.d.ts` generado. Los que se usan a diario:

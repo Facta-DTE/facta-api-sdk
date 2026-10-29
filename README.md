@@ -19,7 +19,7 @@ The official package supports TypeScript and JavaScript. SDKs for other language
 
 The SDK root entry works in Node.js 22+, Deno, and Bun and does not eagerly import filesystem modules. The `@facta-dte/api/node` entry adds Node-only encrypted file archives and config-file loading. The dedicated `@facta-dte/api/file-archive` entry is also Node-only.
 
-The portable client relies on standard `fetch`, Web Crypto, `AbortSignal`, and `crypto.randomUUID`. Every request uses the configured API endpoint; a `facta_test_` key selects Hacienda's test environment at that same endpoint. There is no separate staging API URL.
+The portable client relies on standard `fetch`, Web Crypto, `AbortSignal`, and `crypto.randomUUID`. Every request uses the configured API endpoint; a `facta_test_` key selects Hacienda's test environment at that same endpoint. The client defaults to the production URL; to test on staging pass `baseUrl: FACTA_STAGING_BASE_URL` (`https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1`) with a `facta_test_` key from the staging app.
 
 ## Quick start
 

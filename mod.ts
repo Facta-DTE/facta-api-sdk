@@ -7,6 +7,7 @@ export {
   type FactaConfigV1,
   type FactaEmergencyApi,
   type FactaInvalidationArchiveOptions,
+  FACTA_STAGING_BASE_URL,
   type FactaOptions,
   type FactaRuntimeConfigV1,
   type IssueOptions,
@@ -45,6 +46,7 @@ export {
   type SpentCorrelative,
 } from "./src/errors.ts";
 export type * from "./src/types.ts";
+export { parseFactaWarning, unknownFieldWarnings } from "./src/warnings.ts";
 export {
   constructWebhookEvent,
   MemoryWebhookReplayStore,

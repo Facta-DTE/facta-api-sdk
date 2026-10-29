@@ -31,7 +31,8 @@ Copy the tracked placeholder file `.env.example` into an ignored local file
 and replace each placeholder through your secret manager. It contains no live
 credentials and is never loaded automatically by the SDK.
 
-Staging validation pins `FACTA_API_BASE_URL` to
+Staging validation (and any integration that tests on staging) points the client at staging with
+`baseUrl: FACTA_STAGING_BASE_URL` (exported by the package) or `FACTA_API_BASE_URL` set to
 `https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1` and uses only
 `facta_test_` API/signing keys. Production keys and issuance are outside this
 validation flow.
