@@ -1992,7 +1992,11 @@ export class Facta {
   /** Reserve the correlative and get the canonical document, unsigned. */
   async prepare(request: DteRequest, options: CallOptions = {}): Promise<PreparedDte> {
     throwIfAborted(options.signal);
-    return this.#request<PreparedDte>("POST", "/v1/dte/prepare", request, options);
+    let warningHeader: string | null = null;
+    const prepared = await this.#request<PreparedDte>("POST", "/v1/dte/prepare", request, {
+      ...options, onHeaders: (headers) => { warningHeader = headers.get("facta-warning"); },
+    });
+    return withWarnings(prepared, warningHeader);
   }
 
   /**

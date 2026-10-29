@@ -1,4 +1,4 @@
-import type { FactaWarningHeader, IssueResult, UnknownFieldWarning } from "./types.ts";
+import type { FactaWarningHeader, UnknownFieldWarning } from "./types.ts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -38,8 +38,8 @@ export function parseFactaWarning(value: string | null | undefined): FactaWarnin
   return { code: head, count };
 }
 
-/** Attach `unknownFields` and `factaWarning` to an issue result; the result is returned untouched when there are none. */
-export function withWarnings<T extends IssueResult>(result: T, header: string | null): T {
+/** Attach `unknownFields` and `factaWarning` to an issue or prepare result; the result is returned untouched when there are none. */
+export function withWarnings<T extends object>(result: T, header: string | null): T {
   const unknownFields = unknownFieldWarnings(result);
   const factaWarning = parseFactaWarning(header);
   if (unknownFields.length === 0 && factaWarning === null) return result;

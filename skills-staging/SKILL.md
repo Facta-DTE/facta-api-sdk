@@ -23,7 +23,7 @@ npm i @facta-dte/api@next      # SDK de prueba (dist-tag `next`); `latest` es el
 | Documentación del SDK (vista previa de staging) | https://staging.factadte-sdk.pages.dev |
 
 ```ts
-import { Facta, FACTA_STAGING_BASE_URL } from "@facta-dte/api"; // 0.6.0-next.2 o posterior
+import { Facta, FACTA_STAGING_BASE_URL } from "@facta-dte/api"; // 0.6.0-next.3 o posterior
 
 const facta = new Facta({
   apiKey: process.env.FACTA_API_KEY!,     // facta_test_… creada en staging.factadte.com
@@ -78,7 +78,7 @@ sources, it is not in the skill: say so to the developer instead of guessing.
 7. **Test environment only**: a `facta_test_` key created in the staging app
    (environment `00`). A `facta_live_` key must never be used with this skill.
 8. **Always set `baseUrl` to the staging API** (`FACTA_STAGING_BASE_URL`, exported by
-   `@facta-dte/api` 0.6.0-next.2 and later) and `expectedEnvironment: "00"`. The SDK
+   `@facta-dte/api` 0.6.0-next.2 and later (`tipoVenta`, `aplicarRetencionIva` and `aplicarPercepcionIva` are typed from 0.6.0-next.3)) and `expectedEnvironment: "00"`. The SDK
    default is the PRODUCTION host. When the integration goes live, remove `baseUrl`
    and use the production skill (`facta-dte-api`) and a `facta_live_` key.
 9. **Do not invent.** If a method, field or code is not in the references, check
@@ -106,7 +106,7 @@ if `ambiente !== "00"` (`config.expectedEnvironment: "00"` does the same check).
 | show a checkout/invoice window in a web page (server handler, browser client, React) | [references/browser-and-react.md](references/browser-and-react.md) |
 | understand or handle an error code | [references/errors.md](references/errors.md) |
 | find out why a call is slow or a key is not ready | [references/debugging.md](references/debugging.md) |
-| see what staging has now and what comes next, test the 0.6 fields (`montoDescu`, `pagos`, warnings) | [references/staging.md](references/staging.md) |
+| see what staging has now and what comes next, test the 0.6 fields (`montoDescu`, `pagos`, `tipoVenta`, VAT withholding/perception, warnings) | [references/staging.md](references/staging.md) |
 | go live (switch to the production skill) | [references/production-checklist.md](references/production-checklist.md) |
 | review code for typical integration bugs | [references/common-mistakes.md](references/common-mistakes.md) |
 | find a real, tested example of any of the above to copy (the playground's recipes, with live links) | [references/recipes.md](references/recipes.md) |
@@ -154,7 +154,7 @@ try {
   the key allow? (`await facta.status()` → `llave.tiposDte`, `llave.alcances`.)
 - Does the company's catalog use `customerId` / `productId`, and in which mode?
   (`encrypted`, `readable`, `plain` — see the catalog reference.)
-- Is the SDK version installed the one with the method you need? `0.6.0-next.2` (`@facta-dte/api@next`) is
+- Is the SDK version installed the one with the method you need? `0.6.0-next.3` (`@facta-dte/api@next`) is
   needed for the staging fields; see setup. When in doubt, read `node_modules/@facta-dte/api/src/types.ts`.
 
 ## Spanish

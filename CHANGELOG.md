@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.0-next.3 (2026-10-29)
+
+**Pre-release** (`npm i @facta-dte/api@next`; `latest` stays on 0.5.3). Additive only: every 0.5.3 / 0.6.0-next.1 / 0.6.0-next.2 call, type and default keeps working (`test/compat-0.6.0-next.2.test.ts` pins the old surface).
+
+- **`LineItem.tipoVenta`** (`gravada` | `exenta` | `no_sujeta`): the VAT treatment of a line (01, 03, 05, 06; `422` on 11 and 14). Chosen by you, never deduced.
+- **`DteRequest.aplicarRetencionIva`** (01, 03) and **`aplicarPercepcionIva`** (03 only): the 1 % VAT withholding and perception. Typed per `tipoDte`: the other types declare them `never`, matching the server's `400`.
+- **Warnings reach more places**: `prepare()` results carry `advertencias`, `unknownFields` and `factaWarning` (only when there is something to report), and `FactaError.unknownFields` reads `details.advertencias`.
+- Unknown request fields are, and stay, warnings (`campo_desconocido`); they are never rejected. The staging skill says so in «Disponible ahora» and no longer lists it under «próxima versión», and its lists were refreshed.
+- Contract snapshot refreshed from staging.
+
 ## 0.6.0-next.2 (2026-10-29)
 
 **Pre-release** (`npm i @facta-dte/api@next`; `latest` stays on 0.5.3). Matches the staging API after its 29-Oct release.
