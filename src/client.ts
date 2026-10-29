@@ -106,6 +106,7 @@ import type {
   RemoteDestinationProbeReport,
   RemoteReplicationReport,
 } from "./archive.ts";
+import { withWarnings } from "./warnings.ts";
 import { DEBUG_HEADER, DEBUG_TIMINGS, debugFromBody, debugFromServerTiming } from "./debug.ts";
 import { deliveryRequestFor, GENERATION_CODE, isFinalDeliveryState } from "./delivery.ts";
 import type {
@@ -323,6 +324,11 @@ interface RemoteOptions {
 const SERVER_CATALOG_PAGE = 200;
 
 const DEFAULT_BASE_URL = "https://hcnvknpsbadplnfcflxx.supabase.co/functions/v1/api-v1";
+/**
+ * The staging API (test key `facta_test_…`, MH test environment 00; nothing reaches production). The
+ * client defaults to the production URL, so a staging integration passes `baseUrl: FACTA_STAGING_BASE_URL`.
+ */
+export const FACTA_STAGING_BASE_URL = "https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1";
 const RETRYABLE: ReadonlySet<FactaErrorCode> = new Set([
   "idempotency_in_flight",
   "mh_unreachable",
@@ -1130,7 +1136,11 @@ export class Facta {
     // request and the server's idempotency claim hashes the body (no fingerprint header, AP-07).
     const resolved = withDelivery(request, deliver);
     throwIfAborted(options.signal);
-    return await this.#guard(await this.#request<IssueResult>("POST", "/v1/dte", resolved, call), []);
+    let warningHeader: string | null = null;
+    const result = await this.#guard(await this.#request<IssueResult>("POST", "/v1/dte", resolved, {
+      ...call, onHeaders: (headers) => { warningHeader = headers.get("facta-warning"); },
+    }), []);
+    return withWarnings(result, warningHeader);
   }
 
   /**

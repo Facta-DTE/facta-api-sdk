@@ -70,6 +70,53 @@ export interface LineItem {
   codigo?: string | null;
   tipoItem?: 1 | 2 | 3 | 4;
   uniMedida?: number;
+  /**
+   * Discount of THIS line, in money (not a percentage), in the same VAT basis as `precioUni`.
+   * Between 0 and `cantidad × precioUni`, otherwise `400`. The exact spelling matters: `descuento`,
+   * `discount` or `descu` do not exist and come back as a `campo_desconocido` warning that suggests
+   * `montoDescu`. There is no global discount on the wire yet.
+   */
+  montoDescu?: number;
+}
+
+/** One row of `pagos[]`: a payment method and the amount paid with it. */
+export interface Pago {
+  /** Payment-method code of the Ministry's catalogue (e.g. "01"); the server checks it (`422 validation_failed`, `details.supported`). */
+  codigo: string;
+  /** Paid with this method, at most two decimals, greater than zero. */
+  montoPago: number;
+  /** Voucher, cheque number, etc. (at most 50 characters). */
+  referencia?: string | null;
+}
+
+/** A server warning in the sealed response (`advertencias`). Only the fields of its code are present. */
+export interface ServerWarning {
+  codigo?: string;
+  code?: string;
+  mensaje?: string;
+  detalle?: string;
+  /** `campo_desconocido`: exact path of the ignored field (`items[2].descuento`). `plantilla_no_aplicada`: the template field. */
+  campo?: string;
+  /** `campo_desconocido` only: the field the caller probably meant (`items[2].montoDescu`). */
+  sugerencia?: string;
+  /** `plantilla_no_aplicada` only: `plan`, `no_existe` or `incompatible`. */
+  motivo?: string;
+  [field: string]: unknown;
+}
+
+/** A request field Facta DTE does not know: it was ignored and is NOT part of the document. */
+export interface UnknownFieldWarning {
+  codigo: "campo_desconocido";
+  campo: string;
+  mensaje: string;
+  sugerencia?: string;
+}
+
+/** The parsed `Facta-Warning` response header (`campo_desconocido; campos=2`). */
+export interface FactaWarningHeader {
+  code: string;
+  /** The `campos=N` parameter, when the header carries it. */
+  count: number | null;
 }
 
 export type DteType = "01" | "03" | "05" | "06" | "11" | "14";
@@ -83,8 +130,11 @@ export type RelatedDocument =
 export interface ExportDetails {
   tipoItemExpor: 1 | 2 | 3;
   incoterms?: string | null;
+  /** Customs-precinct code; a code outside the catalogue is `422 validation_failed`. */
   recintoFiscal?: string | null;
+  /** Regime type code (`EX-1`, `EX-2`, `EX-3`, `TA-1`); checked like `recintoFiscal`. */
   tipoRegimen?: string | null;
+  /** Regime code, or the composite `<type>.<regime>`; checked like `recintoFiscal`. */
   regimen?: string | null;
   flete?: number;
   seguro?: number;
@@ -95,7 +145,14 @@ interface DteRequestBase {
   condicionOperacion?: 1 | 2 | 3;
   plazo?: "01" | "02" | "03" | null;
   periodo?: number | null;
+  /** Payment-method code. A code outside the catalogue is `422 validation_failed` (`details.field`, `details.supported`). Not combined with `pagos`. */
   formaPago?: string;
+  /**
+   * Several payment methods for one document (01, 03, 11, 14): 1 to 10 rows whose `montoPago` add up to the
+   * total to pay, to the cent. Refused (`400`) together with `formaPago` and on 05/06; refused (`422`) with
+   * `condicionOperacion` 2 (credit).
+   */
+  pagos?: Pago[];
   observaciones?: string | null;
 }
 
@@ -103,8 +160,8 @@ interface DteRequestBase {
 export type DteRequest =
   | (DteRequestBase & { tipoDte: "01"; receptor?: Recipient | null; documentosRelacionados?: never; exportacion?: never; aplicarReteRenta?: never; numPagoElectronico?: never })
   | (DteRequestBase & { tipoDte: "03"; receptor?: Recipient | null; documentosRelacionados?: never; exportacion?: never; aplicarReteRenta?: never; numPagoElectronico?: never })
-  | (DteRequestBase & { tipoDte: "05"; receptor?: Recipient | null; documentosRelacionados: RelatedDocument[]; exportacion?: never; aplicarReteRenta?: never; numPagoElectronico?: never })
-  | (DteRequestBase & { tipoDte: "06"; receptor?: Recipient | null; documentosRelacionados: RelatedDocument[]; numPagoElectronico?: string | null; exportacion?: never; aplicarReteRenta?: never })
+  | (Omit<DteRequestBase, "pagos"> & { pagos?: never; tipoDte: "05"; receptor?: Recipient | null; documentosRelacionados: RelatedDocument[]; exportacion?: never; aplicarReteRenta?: never; numPagoElectronico?: never })
+  | (Omit<DteRequestBase, "pagos"> & { pagos?: never; tipoDte: "06"; receptor?: Recipient | null; documentosRelacionados: RelatedDocument[]; numPagoElectronico?: string | null; exportacion?: never; aplicarReteRenta?: never })
   | (DteRequestBase & { tipoDte: "11"; receptor: ExportRecipient; exportacion: ExportDetails; documentosRelacionados?: never; aplicarReteRenta?: never; numPagoElectronico?: never })
   | (DteRequestBase & { tipoDte: "14"; receptor: ExcludedSubjectRecipient; aplicarReteRenta?: boolean; documentosRelacionados?: never; exportacion?: never; numPagoElectronico?: never });
 
@@ -349,7 +406,11 @@ export interface SealedDte {
   /** Only with `debug: { timings: true }`. */
   debug?: DebugInfo;
   /** Server warnings (e.g. `sin_almacenamiento_duradero`); the emergency safeguard reads them. */
-  advertencias?: Array<string | { codigo?: string; code?: string; mensaje?: string; detalle?: string }>;
+  advertencias?: Array<string | ServerWarning>;
+  /** The `campo_desconocido` warnings of `advertencias`, ready to read. Present only when the request carried a field Facta DTE does not know. */
+  unknownFields?: UnknownFieldWarning[];
+  /** The `Facta-Warning` response header, parsed. Present only when the server sent it. */
+  factaWarning?: FactaWarningHeader;
   /** Present only when the emergency safeguard ran. */
   emergency?: import("./emergency.ts").EmergencyReport;
   /** SDK-side notices; `emergency_saved` / `emergency_failed`. */
@@ -378,7 +439,11 @@ export interface DteInContingency {
   /** Only with `debug: { timings: true }`. */
   debug?: DebugInfo;
   /** Server warnings (e.g. `sin_almacenamiento_duradero`); the emergency safeguard reads them. */
-  advertencias?: Array<string | { codigo?: string; code?: string; mensaje?: string; detalle?: string }>;
+  advertencias?: Array<string | ServerWarning>;
+  /** The `campo_desconocido` warnings of `advertencias`, ready to read. Present only when the request carried a field Facta DTE does not know. */
+  unknownFields?: UnknownFieldWarning[];
+  /** The `Facta-Warning` response header, parsed. Present only when the server sent it. */
+  factaWarning?: FactaWarningHeader;
   /** Present only when the emergency safeguard ran. */
   emergency?: import("./emergency.ts").EmergencyReport;
   /** SDK-side notices; `emergency_saved` / `emergency_failed`. */

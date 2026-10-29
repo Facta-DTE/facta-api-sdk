@@ -207,6 +207,29 @@ the SDK: mark channels with `issue(…, { deliver })` and start them with
 
 `SealedDte.archivoDte?: string` is the exact UTF-8 Archivo DTE: the signed document plus `firmaElectronica` and `selloRecibido`. It is absent in contingency and on API servers that predate it. `archivoDteOf(result)` returns it, or builds the same bytes from `documento`, `jws` and `selloRecibido` (two-space pretty print, document keys first), or `null` when there is no seal. `archivoJson` and `jws` are unchanged. `FactaErrorCode` gains `not_sealed` (HTTP 409): the JSON download of an unsealed document.
 
+## Testing on staging (`0.6.0-next.2`)
+
+Install the staging SDK with `npm i @facta-dte/api@next` and point the client at the staging API with a `facta_test_` key created in https://staging.factadte.com. The default `baseUrl` is the PRODUCTION host, so staging needs it explicitly; a staging key sent to the default host fails with `401`, and production keys never go to staging.
+
+```ts
+import { Facta, FACTA_STAGING_BASE_URL } from "@facta-dte/api";
+const facta = new Facta({
+  apiKey: process.env.FACTA_API_KEY!, signKey: process.env.FACTA_SIGN_KEY,
+  baseUrl: FACTA_STAGING_BASE_URL, // https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1
+  config: { version: 1, expectedEnvironment: "00" },
+});
+```
+
+| Field / helper | What it does |
+|---|---|
+| `LineItem.montoDescu` | Discount of one line in money, between 0 and `cantidad × precioUni`, in the same VAT basis as `precioUni`. No global or percentage discount yet. |
+| `DteRequest.pagos` / `Pago` | 1 to 10 `{ codigo, montoPago, referencia? }` rows (01, 03, 11, 14) that add up to the total to pay to the cent. Not with `formaPago`, not on 05/06 (the types refuse it), not with `condicionOperacion` 2 (`422`). |
+| `result.unknownFields`, `unknownFieldWarnings(source)` | `campo_desconocido` warnings of `advertencias`: a request field Facta DTE does not know is ignored and is not in the document. Each has `campo` and, when obvious, `sugerencia`. |
+| `result.factaWarning`, `parseFactaWarning(header)` | The `Facta-Warning: campo_desconocido; campos=N` response header, parsed to `{ code, count }`. |
+| `FACTA_STAGING_BASE_URL` | The staging API base. |
+
+Catalogue codes that are not in the Ministry's catalogue (`formaPago`, `exportacion.recintoFiscal`, `.regimen`, `.tipoRegimen`) answer `422 validation_failed` with `details.field`, `details.catalog` and `details.supported`, before any control number is spent.
+
 ## Types and deeper references
 
 - Public request/response types and DTE union: [`../src/types.ts`](../src/types.ts)

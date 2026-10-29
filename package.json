@@ -1,7 +1,7 @@
 {
   "//": "This SDK builds and releases independently and has no runtime dependency on the Facta application monorepo. Its HTTP contract is checked against the published OpenAPI document.",
   "name": "@facta-dte/api",
-  "version": "0.6.0-next.1",
+  "version": "0.6.0-next.2",
   "description": "TypeScript client for the Facta electronic invoicing API (DTE) in El Salvador.",
   "repository": {
     "type": "git",
@@ -59,6 +59,7 @@
     ".env.example",
     "guides",
     "skills",
+    "skills-staging",
     "README.md",
     "CHANGELOG.md"
   ],
@@ -78,7 +79,8 @@
     "build:preview": "node scripts/build-preview.mjs",
     "skill:typecheck": "tsc -p tsconfig.skill.json",
     "skill:check": "pnpm skill:typecheck && node scripts/check-skill.mjs",
-    "skill:pack": "node scripts/pack-skill.mjs"
+    "skill:pack": "node scripts/pack-skill.mjs",
+    "skill:pack-staging": "node scripts/pack-skill-staging.mjs"
   },
   "devDependencies": {
     "@testing-library/dom": "10.4.2",
