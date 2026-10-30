@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+Additive only: every existing call, type and default keeps working.
+
+**How the temporary copy works.** Facta keeps an encrypted temporary copy of every sealed document. It deletes it **2 days after the document is marked as stored**, or **30 days after sealing** if nobody marks it. The company owner is mailed from day one (production only) with the full table of what will be deleted and when, then weekly, 7 days before and 1 day before. A document is marked when Facta verified a copy of its own, when the SDK reported a copy it wrote to a synced destination, or when you report it. `runtime.emergencyStore` protects against the one-hour holding copy and does **not** mark anything: report after it. New guide: [the temporary copy, the confirmation and the emergency store](guides/temporary-copy.md).
+
+- **`listUnconfirmedDocuments({ limit?, cursor? })`** (`GET /v1/storage/unconfirmed`, scope `download`): the documents that still depend on the temporary copy, each with `borradoEl` (the deletion date) and `diasRestantes`.
+- **`confirmDocumentStorage(code, { where, sha256 | bytes })`** (`POST /v1/dte/{codigoGeneracion}/storage-confirmation`, scope `issue`): report a document stored. Pass the SHA-256 of the JSON you stored, or the bytes and the SDK hashes them. Idempotent. Throws `storage_unsupported` unless the server advertises `capabilities.storageConfirmation`.
+- **`storeAndConfirmUnconfirmed({ store, ... })`**: lists, downloads the JSON and PDF, calls your `store`, confirms with the hash of the bytes you received. Bounded (`limit`, `maxFailures`), never throws for one bad document, returns a report (`stopped`, `results`, `remaining`, `firstDeletionAt`). Run it daily. See `examples/drain-unconfirmed.ts`.
+- **`issueAndArchive` / `recoverOperation`** now return `confirmation` (`confirmed`, `pending`, `failed` or `unsupported`). A copy reported to a synced destination, or a Facta Storage copy, counts as confirmed. `runtime.confirmArchive: true` (or `{ confirmArchive: true }` per call) reports the local archive as the stored copy; it is off by default because only you know whether the archive is durable. A failed confirmation adds the warning `confirmation_failed`; `pending` is not a warning.
+- **New error codes:** `temporary_copy_expired` (410: the copy was deleted), `nothing_to_repair_from` (409: `retryDocumentStorage` after deletion) and `storage_hash_mismatch` (422: the hash is not the document's).
+- **Types:** `ManagedStorageStatus.sinConfirmar` (`{ total, primeroSeBorraEl }`) and `capabilities.storageConfirmation`; `ManagedDocumentCopy.confirmado` (`{ en, por }`).
+- **Fix:** the copy report to `/v1/storage/copies/{cg}/byos` is now sent when the server advertises `byosCopyReport` 1 **or higher** (it was `=== 1`, which silently disabled it on servers that advertise 2).
+- **Wording:** the report to Facta of a copy you wrote is a report, not a verification (Facta cannot read your bucket). The guides and the skill no longer say «verified copy» for it.
+- Agent skill `facta-dte-api`: after every emission, store and report, or poll the unconfirmed list daily; the deadline, the owner mails and the emergency store's limits are in `references/storage-and-emergency.md`.
+- Contract snapshot refreshed with the two routes, the new errors and the new fields.
+
 ## 0.6.0-next.3 (2026-10-29)
 
 **Pre-release** (`npm i @facta-dte/api@next`; `latest` stays on 0.5.3). Additive only: every 0.5.3 / 0.6.0-next.1 / 0.6.0-next.2 call, type and default keeps working (`test/compat-0.6.0-next.2.test.ts` pins the old surface).
