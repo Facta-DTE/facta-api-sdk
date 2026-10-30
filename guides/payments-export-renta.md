@@ -93,13 +93,14 @@ await facta.issue({
 
 ## Income-tax withholding (14)
 
-`aplicarReteRenta: true` (type 14 only) withholds **10 %** (art. 156 of the Código Tributario). It is the only rate; Facta calculates no other. Exactly what it does today:
+`aplicarReteRenta` (type 14 only) is optional: omitted or `false` means no withholding (`reteRenta` is `0`); `true` applies the **current** income-tax rate (10 % today, art. 156 of the Código Tributario) to the **whole subtotal after per-line discounts** (`montoDescu`; there is no global discount on type 14). What that means:
 
-- It is computed on the **whole document subtotal, including goods lines**, not only on services.
+- It does **not** select lines by `tipoItem`. If a service includes goods as inputs, those materials are part of the operation and stay inside the subtotal. Example: materials of $100 plus labour of $50 give a $150 subtotal; at 10 % the withholding is $15 and the total to pay is $135.
 - It is subtracted from the total to pay: `totalPagar = subTotal − reteRenta`.
-- It is never automatic. Omitted or `false`, `reteRenta` is `0`.
-- Read the amount in `result.documento.resumen.reteRenta`, and in `result.totales.reteRenta`.
-- If one purchase mixes goods and services and the withholding applies only to the services, **issue the services in a separate document** and apply the withholding only there.
+- A goods-only purchase is not automatically subject just because it carries no VAT; do not present art. 156 as an automatic rule for every purchase from a natural person.
+- A **partial base** (withholding only the service when one document joins an independent goods purchase with a service) is **not supported** and is pending confirmation.
+- `tipoVenta: "exenta"` or `"no_sujeta"` together with `aplicarReteRenta: true` is `422 retention_mixed_class_unsupported`, before a number is spent.
+- Read the amount in `result.documento.resumen.reteRenta` and in `result.totales.reteRenta`.
 
 ## What `totales` carries
 

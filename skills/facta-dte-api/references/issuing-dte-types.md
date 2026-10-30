@@ -88,12 +88,16 @@ do not declare the first three, so use a direct HTTP call for them. Sending a ty
 
 ### Income-tax withholding (14), exactly as it works today
 
-`aplicarReteRenta: true` withholds a fixed **10 %** (art. 156 CT), computed on the
-**whole document subtotal, goods lines included**, and subtracted from
-`totalPagar`. There are no other rates. If a purchase mixes goods and services,
-issue the services in a separate document. Read it in
-`documento.resumen.reteRenta` and `totales.reteRenta` (also `ivaRete` on 01/03
-and `ivaPerci` on 03 when present). Next to an `exenta` or `no_sujeta` line it is
+`aplicarReteRenta` is optional: omitted or `false` = no withholding (`reteRenta` 0);
+`true` applies the **current** income-tax rate (10 % today, art. 156 CT) to the
+**whole subtotal after per-line discounts** (`montoDescu`; no global discount on
+14). It does not select lines by `tipoItem`: goods used as inputs of a service
+stay in the base (materials $100 + labour $50 → subtotal $150 → withholding $15,
+total $135). A goods-only purchase is not automatically subject just because it
+has no VAT. A partial base (goods purchase independent of a service in the same
+document) is **not supported** and pending confirmation. Read it in
+`documento.resumen.reteRenta` and `totales.reteRenta` (also `ivaRete` on 01/03 and
+`ivaPerci` on 03 when present). With an `exenta` or `no_sujeta` line it is
 `422 retention_mixed_class_unsupported`.
 
 ### Exports (11): what Hacienda requires
@@ -177,7 +181,7 @@ const fse: DteRequest = {
     codActividad: "47111",
     direccion: { departamento: "06", municipio: "20", complemento: "Downtown, San Miguel" },
   },
-  aplicarReteRenta: false, // 10 % income-tax withholding (art. 156 CT); never automatic, you ask for it
+  aplicarReteRenta: false, // income-tax withholding at the current rate (10 % today) on the whole subtotal; never automatic, you ask for it
   items: [{ descripcion: "Local service", cantidad: 1, precioUni: 50 }],
 };
 ```

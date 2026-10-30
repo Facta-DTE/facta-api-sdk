@@ -374,7 +374,7 @@ export interface Totals {
   montoTotalOperacion: number;
   totalPagar: number;
   totalLetras: string;
-  /** Type 14 only: the 10 % income-tax withholding (art. 156 CT), already subtracted from `totalPagar`; 0 when not requested. Absent against a server that does not report it yet. */
+  /** Type 14 only: the income-tax withholding at the current rate (10 % today) on the whole subtotal, already subtracted from `totalPagar`; 0 when not requested. Absent against a server that does not report it yet. */
   reteRenta?: number;
   /** 01 and 03: the 1 % VAT withheld by the receiver, already subtracted from `totalPagar`; 0 when not requested. */
   ivaRete?: number;

@@ -93,13 +93,14 @@ await facta.issue({
 
 ## Retención de renta (14)
 
-`aplicarReteRenta: true` (solo en el tipo 14) retiene el **10 %** (art. 156 del Código Tributario). Es la única tasa; Facta no calcula otras. Qué hace exactamente hoy:
+`aplicarReteRenta` (solo en el tipo 14) es opcional: omitida o `false` no retiene (`reteRenta` vale `0`); `true` aplica la tasa **vigente** de renta (hoy 10 %, art. 156 del Código Tributario) sobre **todo el subtotal después de los descuentos por línea** (`montoDescu`; en el tipo 14 no hay descuento global). Qué significa:
 
-- Se calcula sobre el **subtotal completo del documento, incluidas las líneas de bienes**, no solo sobre los servicios.
+- **No** selecciona líneas según `tipoItem`. Si un servicio incluye bienes como insumos, esos materiales forman parte de la operación y quedan dentro del subtotal. Ejemplo: materiales de $100 más mano de obra de $50 dan un subtotal de $150; al 10 % la retención es $15 y el total a pagar es $135.
 - Se resta del total a pagar: `totalPagar = subTotal − reteRenta`.
-- Nunca es automática. Omitida o `false`, `reteRenta` es `0`.
+- Una compra solo de bienes no queda sujeta automáticamente por no llevar IVA; no presente el art. 156 como regla automática para toda compra a una persona natural.
+- Una **base parcial** (retener solo el servicio cuando un mismo documento reúne una compra de bienes independiente y un servicio) **no está soportada** y sigue pendiente de confirmación.
+- `tipoVenta: "exenta"` o `"no_sujeta"` junto con `aplicarReteRenta: true` es `422 retention_mixed_class_unsupported`, antes de gastar correlativo.
 - El monto se lee en `result.documento.resumen.reteRenta` y en `result.totales.reteRenta`.
-- Si una misma compra mezcla bienes y servicios y la retención solo corresponde a los servicios, **emita los servicios en un documento aparte** y aplique la retención solo ahí.
 
 ## Qué trae `totales`
 
