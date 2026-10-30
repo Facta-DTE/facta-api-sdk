@@ -521,7 +521,13 @@ export interface ManagedStorageStatus {
   supportedKinds: Array<"json" | "pdf" | "invalidation" | (string & {})>;
   unsupportedKinds: Array<"ticket" | "invalidation" | (string & {})>;
   /** Absent on servers that predate the capability. `byosCopyReport: 1` accepts BYOS copy reports. */
-  capabilities?: { byosCopyReport?: number };
+  capabilities?: { byosCopyReport?: number; invalidationFile?: number; storageConfirmation?: number };
+  /**
+   * Sealed documents that still depend on Facta's temporary encrypted copy, and the earliest deletion
+   * date. `null` when the server could not count them now; absent on servers that predate the rule.
+   * The list is `listUnconfirmedDocuments()`.
+   */
+  sinConfirmar?: { total: number; primeroSeBorraEl: string | null } | null;
 }
 
 export interface ManagedDocumentCopy {
@@ -534,6 +540,8 @@ export interface ManagedDocumentCopy {
   sha256: string;
   issuedDate: string;
   storedAt: string | null;
+  /** The document's stored mark (not this file's): who and when. `null` while unmarked; absent on older servers. */
+  confirmado?: { en: string; por: "facta_managed" | "facta_byos" | "sdk_report" | "api_report" | "app_report" | "admin" } | null;
 }
 
 export interface ManagedDocumentCopies {
