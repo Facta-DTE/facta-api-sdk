@@ -24,6 +24,9 @@ Each one is documented in the SDK guides or contract; use this as a review list.
 | `listDocuments({ include: ["dte"] })` with `limit` above 25, or on an SDK older than 0.5.0 | `include_limit_exceeded` / compile error | Ask for 25 or fewer and follow `siguiente`; check the installed `types.ts` |
 | Delivery token sent to a browser, or used after 5 minutes | Leak / `entrega_vencida` | Server-only; deliver right after issuing |
 | Re-issuing because e-mail/WhatsApp failed, or because storage failed | Duplicate document | Those are states/warnings; repair storage with `retryDocumentStorage` |
+| Treating a `200` from `issue` as «stored» and never reporting | Facta deletes its temporary copy on day 30 and the owner gets «se borrarán» mails | Store it, then `confirmDocumentStorage`, or run `storeAndConfirmUnconfirmed` daily |
+| Thinking `runtime.emergencyStore` confirms the document | It only saves the files; Facta still counts the document as unconfirmed | Call `confirmDocumentStorage` after it |
+| Confusing the one-hour holding with the 30-day temporary copy | Wrong deadline | Holding = 1 h; temporary copy = 30 d (2 d after the report) |
 | `waitForDelivery` on a channel that was not marked | Waits until timeout | Wait only for marked channels |
 | Calling `prepare` speculatively | Reserved numbers nobody signs | Use `issue` unless a review step exists |
 | Catalog `productId` with an encrypted catalog and no `unlockKey` | Cannot resolve | Send full line data, enable a readable catalog, or provide `unlockKey` |

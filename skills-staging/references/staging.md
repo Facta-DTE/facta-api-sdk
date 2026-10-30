@@ -61,6 +61,15 @@ if (result.estado === "sellado" && result.unknownFields) {
 }
 ```
 
+## Copia temporal y confirmación (siguiente `@next` después de 0.6.0-next.3)
+
+Facta borra su copia temporal cifrada **2 días después de que usted informa el documento como
+guardado, o 30 días después de sellado**; el dueño recibe un correo desde el primer día (solo en
+producción, no en staging). El SDK trae `listUnconfirmedDocuments`, `confirmDocumentStorage`,
+`storeAndConfirmUnconfirmed` y `runtime.confirmArchive`; `runtime.emergencyStore` guarda pero
+**no** confirma. Detalle en [storage-and-emergency.md](storage-and-emergency.md). Compruebe
+`capabilities.storageConfirmation` en `getStorageStatus()`: sin él, el servidor no ofrece las rutas.
+
 ## En la próxima versión
 
 Nada de esto existe hoy en staging; no escriba código que lo suponga. (Los campos desconocidos no están en esta lista: son advertencia para siempre.)

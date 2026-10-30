@@ -27,7 +27,11 @@ Work through it in order; do not skip because the test environment "worked".
    contingency shown as success; delivery/storage trouble shown as warnings.
 8. **Files:** store the Archivo DTE or `archivoJson` exactly as returned; keep the PDF;
    at least two copies in places you control. Decide what happens with
-   `sin_almacenamiento_duradero` (an `emergencyStore`, alerting).
+   `sin_almacenamiento_duradero` (an `emergencyStore`, alerting). Store alone is not
+   enough: **report** every stored document (`confirmDocumentStorage`, or a synced
+   destination through `issueAndArchive`) and schedule a **daily** `storeAndConfirmUnconfirmed`
+   job that alerts when `failed > 0`: Facta deletes its temporary copy 30 days after sealing
+   (2 after the report) and mails the owner from day one. `emergencyStore` does not confirm.
 9. **Delivery:** only mark WhatsApp with real consent (`consent: true` is your
    attestation). Start channels within 5 minutes; keep the token server-side.
 10. **Personal data:** do not log receivers, DUI/NIT or listing rows. Browser handler:
