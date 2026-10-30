@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+Documentation and types only; no behaviour change.
+
+- **New guide `payments-export-renta`** (English and Spanish): how payment is reported (`formaPago`, `pagos[]`, credit with `plazo` + `periodo`, nothing on 05/06) with the resulting `resumen.pagos`; what Hacienda requires of a goods export (`tipoRegimen`, `regimen`, `recintoFiscal`, which Facta does not enforce yet); and what `aplicarReteRenta` does today (10 % of the whole subtotal).
+- **`Totals.reteRenta`, `ivaRete`, `ivaPerci`** (optional): the API now returns them in `totales` when the document has the field.
+- Fixed the CAT-017 code `14` wording («giro bancario», not gift vouchers) in the contract snapshot and the skill; the `dte-types` export example used `incoterms: "FOB"` (not a CAT-031 code) and left out the goods-export fields; the skill's `issuing-dte-types` reference was out of date on `formaPago`, `pagos` and `tipoVenta`.
+
 ## 0.6.0-next.3 (2026-10-29)
 
 **Pre-release** (`npm i @facta-dte/api@next`; `latest` stays on 0.5.3). Additive only: every 0.5.3 / 0.6.0-next.1 / 0.6.0-next.2 call, type and default keeps working (`test/compat-0.6.0-next.2.test.ts` pins the old surface).
