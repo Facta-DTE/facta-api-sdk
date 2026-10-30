@@ -20,7 +20,7 @@ from `message` and `details`.
 
 **Automatic retries** (same `Idempotency-Key`, up to `maxRetries`): only
 `idempotency_in_flight`, `network_error`, `service_unavailable`,
-`correlative_unavailable`, `mh_unreachable`, `storage_unavailable`. After they are
+`correlative_unavailable`, `mh_unreachable`, `storage_unavailable`, `retry_in_progress`. After they are
 exhausted the outcome of a POST is **uncertain** → replay the same request and key.
 Everything else is final for that request.
 
@@ -111,7 +111,9 @@ Everything else is final for that request.
 | `mh_rejected` | 422 | no | Hacienda refused it; the number **was spent** (`error.spent`) → read `error.mhObservations`, fix the data, issue a corrected request with a new key. A replay of the same key returns the same rejection. |
 | `mh_unreachable` | 502 | yes | Reserved; issuance never returns it (transport failures become a 202 contingency). On invalidation: nothing was invalidated → replay the same key. |
 | `correlative_unavailable` | 503 | yes | Control number could not be reserved; none spent → replay the same key. |
-| `service_unavailable` | 503 | yes | A Facta dependency did not answer; locally, a vault/catalog envelope failed its digest → replay the same key; re-sync from the app for envelope errors. |
+| `service_unavailable` | 503 | yes | A Facta dependency did not answer, or the signed document could not be recorded (nothing was sent to Hacienda) → wait `retryAfterSeconds`, replay the SAME request with the SAME key, never a new key; if it had signed, `listPendingDocuments()`. Locally, a vault/catalog envelope failed its digest → re-sync from the app. |
+| `document_not_retryable` | 409 | no | `retryDocument()` on a document the API cannot finish (`details.motivo`: `documento_de_la_aplicacion`, `sin_copia_firmada`, `sin_documento_firmado`) → retry app documents from the app; never issue a new one. |
+| `retry_in_progress` | 409 | yes | Another retry of the same document is running; nothing was sent → the SDK waits `retryAfterSeconds` and replays. |
 | `mh_auth_failed` | 424 | no | Hacienda refused the company's own transmission credentials → the owner fixes them in the app; retrying cannot. |
 | `paid_plan_required` | 402 | no | Extra company of a multi-company owner on a free or trial plan, issuing in production → the owner picks a paid plan. |
 | `internal_error` | 500 | no | Unexpected; also locally for a non-JSON response or a mismatched invalidation → if it repeats, contact support with the time and your `keyId`. |
@@ -165,5 +167,6 @@ The browser client throws `FactaClientError` (same codes plus `session_invalid`,
 
 ## Contingency is not an error
 
-`estado: "contingencia"` (HTTP 202) means signed and owed to Hacienda; Facta
-retransmits. Never answer it by issuing again.
+`estado: "contingencia"` (HTTP 202) means signed and owed to Hacienda. Finish it
+with `retryDocument()` ([pending-documents.md](pending-documents.md)). Never answer
+it by issuing again.

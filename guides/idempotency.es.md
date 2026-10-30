@@ -26,8 +26,7 @@ Vienen del contrato publicado de la API:
 - **Misma llave, otro cuerpo**: `422 idempotency_key_reuse`.
 - **Mientras la primera petición sigue trabajando**: `409 idempotency_in_flight`;
   no se encola.
-- **Vigencia de 24 horas.** Después la llave queda libre: la misma petición un
-  día después es una **venta nueva**, no un reintento.
+- **La llave queda atada a su venta para siempre** (más estricto desde el 30-oct-2026). La respuesta guardada dura 7 días; después solo se borra la respuesta, y Facta sigue sabiendo a qué solicitud y documento pertenece la llave. La misma llave con el mismo cuerpo pasados los 7 días devuelve el documento que ya existe, reconstruido desde sus copias (estado, sello, totales; `Idempotency-Replay-Source: rebuilt`), nunca uno nuevo. La misma llave con otro cuerpo es `422 idempotency_key_reuse` siempre. Use **una llave por venta, para siempre**: no la reutilice para otra venta ni invente una nueva para reintentar la misma.
 
 ## Qué hace el SDK por usted
 
@@ -95,8 +94,9 @@ debajo de unos cientos de caracteres.
 Cuando `issue` termina lanzando `network_error` (u otro código reintentable
 después de los reintentos del SDK), usted no sabe si el servidor emitió el
 documento, y tampoco tiene su `codigoGeneracion`. Repita **la misma petición
-con la misma llave** dentro de las 24 horas: recibe la respuesta guardada,
-incluido el código. Después use `getDocumentStatus` para lo que pase más
+con la misma llave**: dentro de 7 días recibe la respuesta guardada; después, el
+documento que ya existe, reconstruido. En ambos casos recibe el código y nunca un
+segundo documento. Después use `getDocumentStatus` para lo que pase más
 adelante (que se selle una contingencia, por ejemplo).
 
 ```ts
@@ -182,8 +182,10 @@ ese número lo maneja el servidor y los registros de Facta, así que guarde
 - **`idempotency_in_flight` (409)** después de todos los reintentos: la primera
   petición sigue trabajando (Hacienda puede tardar unos 40 s). Espere y repita
   la misma llave.
-- **Repetir después de 24 horas**: emite un segundo documento. Concilie antes
-  con `getDocumentStatus` / `listDocuments`.
+- **Repetir después de 7 días**: devuelve el documento que ya existe
+  (reconstruido: estado, sello, totales), no uno segundo. El peligro es el
+  contrario: una llave **nueva** para la misma venta emite un segundo
+  documento. Vea [documentos pendientes](pending-documents.es.md).
 - **`AbortSignal`**: cancelar detiene la espera y los reintentos locales; no
   prueba que el servidor no aceptó la petición. Repita la llave para saberlo.
 - **Llaves aleatorias en un proceso sin estado**: una caída pierde la llave.

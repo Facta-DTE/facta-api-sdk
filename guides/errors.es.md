@@ -50,9 +50,10 @@ los campos con nombre de credencial.
 El SDK reintenta solo, con la misma `Idempotency-Key`, únicamente estos códigos:
 `idempotency_in_flight`, `network_error`, `service_unavailable`,
 `correlative_unavailable`, `mh_unreachable`, `storage_unavailable`,
-`data_grant_unavailable` y `data_epoch_stale`. Hace hasta
+`data_grant_unavailable`, `data_epoch_stale` y `retry_in_progress`. Hace hasta
 `maxRetries` intentos adicionales (por defecto 3), esperando 250 ms, 500 ms,
-1 s… (con un tope de 4 s). Cuando se agotan recibe el último error; el resultado
+1 s… (con un tope de 4 s), o lo que pida el servidor en `details.retryAfterSeconds`
+(el equivalente de `Retry-After`; máximo 15 s) cuando sea más. Cuando se agotan recibe el último error; el resultado
 de un POST queda entonces **incierto**: repita la misma petición con la misma
 llave (vea [idempotency.es.md](idempotency.es.md)). Cualquier otro código es
 definitivo para esa petición.
@@ -155,13 +156,17 @@ Vea [return-event.es.md](return-event.es.md).
 | `mh_rejected` | 422 | no | Hacienda leyó el documento y lo rechazó. El número de control **se gastó** (`error.spent`). | Lea `error.mhObservations` y corrija los datos. Repetir la misma llave devuelve el mismo rechazo. |
 | `mh_unreachable` | 502 | **sí** | Reservado: la API actual nunca lo devuelve al emitir, donde una falla de transporte se vuelve una contingencia 202. En una anulación significa que no se anuló nada. | Repita la misma llave. |
 | `correlative_unavailable` | 503 | **sí** | No se pudo reservar el número de control. No se gastó número. | Repita la misma llave. |
-| `service_unavailable` | 503 | **sí** | Una dependencia de Facta no respondió. También se lanza localmente (503) cuando un sobre del vault o del catálogo no pasa su revisión de huella o de formato. | Repita la misma llave; si el error es local, vuelva a sincronizar desde la aplicación. |
+| `service_unavailable` | 503 | **sí** | Una dependencia de Facta no respondió, o Facta no pudo dejar constancia del documento firmado antes de enviarlo (entonces **no se envió nada a Hacienda** y el número se devolvió). También se lanza localmente (503) cuando un sobre del vault o del catálogo no pasa su revisión de huella o de formato. `retryAfterSeconds` dice cuánto esperar. | Espere y repita la **misma** petición con la **misma** llave; nunca una llave nueva. Si la emisión ya había firmado y no sabe qué pasó, llame a `listPendingDocuments()` antes que nada. Si el error es local, vuelva a sincronizar desde la aplicación. |
+| `document_not_retryable` | 409 | no | `retryDocument()` sobre un documento que la API no puede terminar. `details.motivo`: `documento_de_la_aplicacion` (lo emitió la aplicación), `sin_copia_firmada`, `sin_documento_firmado`. | Si es de la aplicación, reintente desde Documentos → Pendientes con Hacienda. Nunca emita uno nuevo. |
+| `retry_in_progress` | 409 | **sí** | Otro `retryDocument()` del mismo documento está en curso; no se envió nada. | El SDK espera `retryAfterSeconds` y repite; o lea `getDocumentStatus`. |
 | `mh_auth_failed` | 424 | no | Hacienda respondió al inicio de sesión y rechazó las credenciales de transmisión de la propia empresa (no su llave de Facta). | La persona titular actualiza las credenciales en la aplicación; reintentar no lo arregla. |
 | `paid_plan_required` | 402 | no | Una empresa adicional de quien tiene varias empresas, con plan gratuito o de prueba, emitiendo en producción. | La persona titular elige un plan de pago. |
 | `internal_error` | 500 | no | Una falla no prevista. También se lanza localmente cuando una respuesta no es JSON válido, una respuesta de anulación nombra otro documento o una respuesta de catálogo no trae su registro. | Si se repite, escriba a soporte con la hora y su `keyId`. |
 
 Una contingencia (`estado: "contingencia"`, HTTP 202) **no** es un error: el
-documento está firmado y Facta lo retransmitirá.
+documento está firmado y se le debe a Hacienda. Termínelo con
+`retryDocument()` (vea [documentos pendientes](pending-documents.es.md)); nunca
+emitiendo de nuevo.
 
 ## Almacenamiento
 
