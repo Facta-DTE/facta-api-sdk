@@ -168,6 +168,9 @@ document is signed and Facta will retransmit it.
 | --- | --- | --- | --- | --- |
 | `no_storage_destination` | 422 | no | The company has no storage destination connected and verified in the last 30 days. Checked before reserving. Also thrown locally (422) by `syncDestinations` when the destination snapshot is not published. | Connect or re-sync a destination in the app. |
 | `storage_unsupported` | 501 | no | The server does not expose the managed-storage route (the SDK also maps 404 to it), or a `source: "managed"` download got no source proof. | Update the server before depending on it. |
+| `temporary_copy_expired` | 410 | no | The temporary encrypted copy was deleted (2 days after the document was marked stored, or 30 days after sealing) and Facta Storage has no copy. | Look in your own storage. To prevent it, report every document with `confirmDocumentStorage` and drain `storeAndConfirmUnconfirmed` daily ([guide](temporary-copy.md)). |
+| `nothing_to_repair_from` | 409 | no | `retryDocumentStorage` on a document whose temporary copy is gone: nothing is left to rewrite from. | Recover the JSON from your own storage. |
+| `storage_hash_mismatch` | 422 | no | The `sha256` of `confirmDocumentStorage` is not the one of that document's JSON (truncated file, another document). Nothing was recorded. | Download again with `downloadDocument` and hash the bytes you stored. |
 | `storage_unavailable` | 503 | **yes** | The managed copy could not be read or repaired right now. | Retry only the storage operation; never re-issue. |
 | `storage_contract_invalid` | 502 (SDK) | no | A storage response or receipt is malformed. On a successful issue it appears as `result.storageErrorCode` instead, with the sealed result intact. | Repair the copy later (`recoverOperation` / `retryDocumentStorage`). |
 

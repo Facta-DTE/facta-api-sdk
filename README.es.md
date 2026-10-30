@@ -101,6 +101,7 @@ Todas las guías de `guides/`, en español y en inglés. Las dos guías de React
 | Cambios del catálogo y webhooks | [webhooks.es.md](guides/webhooks.es.md) | [webhooks.md](guides/webhooks.md) |
 | Borradores | [drafts.es.md](guides/drafts.es.md) | [drafts.md](guides/drafts.md) |
 | Adaptadores de almacenamiento | [storage-adapters.es.md](guides/storage-adapters.es.md) | [storage-adapters.md](guides/storage-adapters.md) |
+| La copia temporal y la confirmación | [temporary-copy.es.md](guides/temporary-copy.es.md) | [temporary-copy.md](guides/temporary-copy.md) |
 | Salvaguarda de emergencia | [emergency.es.md](guides/emergency.es.md) | [emergency.md](guides/emergency.md) |
 | Cliente de navegador sin interfaz (`@facta-dte/api/browser`) | [browser.es.md](guides/browser.es.md) | [browser.md](guides/browser.md) |
 | Ventana de firma para React | — | [react.md](guides/react.md) |
@@ -142,6 +143,8 @@ la replicación falla), `runtime.emergencyStore` recibe el JSON, el PDF y lo que
 pasó, una sola vez por documento. Es opcional: sin ella, el resultado trae
 `emergency: { saved: false, reason: "not_configured" }` y Facta envía una copia
 de respaldo al correo del dueño. Guía y ejemplo: [`guides/emergency.es.md`](guides/emergency.es.md).
+**Por sí sola no avisa a Facta que el documento quedó guardado**: eso lo hace el informe
+(`confirmDocumentStorage`); vea [la copia temporal](guides/temporary-copy.es.md).
 
 ## Métodos del cliente
 
@@ -180,6 +183,9 @@ de respaldo al correo del dueño. Guía y ejemplo: [`guides/emergency.es.md`](gu
 | `getStorageStatus()` | Revisa capacidad administrada, cobertura, cupo e integración, además de BYOS verificado. Requiere `download`. | No |
 | `getDocumentCopies()` | Lista recibos JSON/PDF de esta empresa y ambiente; no devuelve rutas ni enlaces. Requiere `download`. | No |
 | `retryDocumentStorage(codigoGeneracion)` | Repara copias de un DTE sellado sin emitir de nuevo; requiere `download` e `issue`. | No |
+| `listUnconfirmedDocuments(options?)` | Documentos sellados que solo tienen la copia temporal cifrada de Facta, con su fecha de borrado (`borradoEl`). Requiere `download`. Vea [la copia temporal](guides/temporary-copy.es.md). | No |
+| `confirmDocumentStorage(codigoGeneracion, { where, sha256 \| bytes })` | Informa que usted guardó el JSON: la copia temporal se borra 2 días después en vez de a los 30. Requiere `issue`. | No |
+| `storeAndConfirmUnconfirmed({ store })` | Lista, descarga, llama a su `store` y confirma, con tope y sin lanzar error por un documento malo; córralo a diario. | No |
 | `getContract()` | Obtiene el contrato OpenAPI publicado por la API. | No |
 
 ### Firmas públicas y valores de argumentos
@@ -195,6 +201,9 @@ importan desde `@facta-dte/api`).
 | `getStorageStatus` | `getStorageStatus(options?: { signal?: AbortSignal })`; requiere `download` | `Promise<ManagedStorageStatus>`; capability v1, cobertura/cupo administrado y BYOS verificado |
 | `getDocumentCopies` | `getDocumentCopies(options?: { generationCode?: string; signal?: AbortSignal })`; requiere `download` | `Promise<ManagedDocumentCopy[]>`; recibos JSON/PDF del ambiente autenticado |
 | `retryDocumentStorage` | `retryDocumentStorage(codigoGeneracion, options?: { signal?: AbortSignal })`; requiere `download` e `issue` | `Promise<ManagedStorageReceipt>`; reparación sin reemisión |
+| `listUnconfirmedDocuments` | `listUnconfirmedDocuments(options?: { limit?: number; cursor?: string; signal?: AbortSignal })`; requiere `download` | `Promise<UnconfirmedPage>`; `documentos[]` con `borradoEl`, `total`, `siguiente` |
+| `confirmDocumentStorage` | `confirmDocumentStorage(codigoGeneracion, { where, sha256 } \| { where, bytes }, options?)`; requiere `issue` | `Promise<StorageConfirmation>`; `por`, `yaConfirmado`, `verificado`, `informado`, `borradoEl` |
+| `storeAndConfirmUnconfirmed` | `storeAndConfirmUnconfirmed({ store, limit?, pageSize?, where?, includePdf?, maxFailures?, signal? })`; requiere `download` e `issue` | `Promise<StoreAndConfirmReport>`; nunca lanza error por un documento |
 | `syncDestinations` | `syncDestinations()`; requiere `unlockKey` | `Promise<DestinationSnapshot>`; descifra destino solo en memoria |
 | `listCustomers` | `listCustomers(options?: { includeInactive?: boolean })` | `Promise<CatalogCustomer[]>` |
 | `getCustomer` | `getCustomer(customerId: string, options?: { includeInactive?: boolean })` | `Promise<CatalogCustomer \| null>` |
