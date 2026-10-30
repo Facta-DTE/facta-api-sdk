@@ -1329,6 +1329,7 @@ export class Facta {
   async issue(request: DteRequest, options: IssueOptions = {}): Promise<IssueResult> {
     validateFseWithholdingRequest(request);
     throwIfAborted(options.signal);
+    await this.#assertFseWithholdingSupported(request, options.signal);
     const { deliver, ...call } = options;
     // Taken before catalog resolution, so a catalog change between an attempt and its retry
     // cannot change what the server's idempotency claim compares.
@@ -1410,6 +1411,7 @@ export class Facta {
     if (ticketPaperWidthMm !== undefined && (!Number.isInteger(ticketPaperWidthMm) || ticketPaperWidthMm < 40 || ticketPaperWidthMm > 120)) {
       throw new TypeError("ticketPaperWidthMm must be an integer from 40 through 120 millimeters.");
     }
+    await this.#assertFseWithholdingSupported(request, signal);
     await archive.assertReady();
     throwIfAborted(signal);
     await this.#clock?.ensure();
@@ -1469,6 +1471,7 @@ export class Facta {
     } = {},
   ): Promise<ArchiveEmissionResult> {
     const request = options.request;
+    if (request !== undefined) validateFseWithholdingRequest(request);
     const archive = options.archive ?? this.#runtime.archive;
     const signal = options.signal;
     const remote: RemoteOptions = {
@@ -1542,6 +1545,7 @@ export class Facta {
     if (!recoveryRequest) {
       throw new Error("Legacy journal does not contain the original request; provide it to recover the operation.");
     }
+    validateFseWithholdingRequest(recoveryRequest);
     const resolved = await this.#resolveCatalogRefs(recoveryRequest);
     const requestSha256 = await sha256Hex(new TextEncoder().encode(JSON.stringify(resolved)));
     if (requestSha256 !== operation.requestSha256) {
@@ -1569,6 +1573,7 @@ export class Facta {
       // field was dropped by a custom archive) is ambiguous: try without the header first, and if
       // the server says `idempotency_key_reuse` (it did not act on that attempt) resend the SAME
       // body once with the fingerprint. Never a third attempt.
+      await this.#assertFseWithholdingSupported(recoveryRequest, signal);
       const send = (fingerprint: string | undefined) => this.#request<IssueResult>("POST", "/v1/dte", resolved, {
         idempotencyKey: operation.idempotencyKey,
         ...(fingerprint === undefined ? {} : { fingerprint }),
@@ -2191,10 +2196,25 @@ export class Facta {
   async prepare(request: DteRequest, options: CallOptions = {}): Promise<PreparedDte> {
     validateFseWithholdingRequest(request);
     throwIfAborted(options.signal);
+    await this.#assertFseWithholdingSupported(request, options.signal);
     const fingerprint = await fingerprintV1(request);
     const resolved = await this.#resolveCatalogRefs(request);
     throwIfAborted(options.signal);
     return this.#request<PreparedDte>("POST", "/v1/dte/prepare", resolved, { ...options, fingerprint });
+  }
+
+  /** Recheck every new operation so an earlier positive result cannot hide a rollback. */
+  async #assertFseWithholdingSupported(request: DteRequest, signal?: AbortSignal): Promise<void> {
+    if (request.incomeWithholding?.mode !== "per_line") return;
+    throwIfAborted(signal);
+    const status = await this.status(signal ? { signal } : {});
+    throwIfAborted(signal);
+    this.#rememberCatalogMode(status);
+    if (status.capabilities?.fseIncomeWithholdingPerLine !== true) {
+      throw new FactaError("fse_withholding_not_supported",
+        "Esta versión de la API no confirma soporte para retención de renta por línea. No se emitió el documento.",
+        0, { field: "incomeWithholding" });
+    }
   }
 
   /**

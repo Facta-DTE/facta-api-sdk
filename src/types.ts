@@ -767,6 +767,8 @@ export interface Status {
   ok: boolean;
   version: string;
   ambiente: string;
+  /** Absent on older servers; per-line requests require an explicit true. */
+  capabilities?: { fseIncomeWithholdingPerLine?: boolean };
   /** Functions region the API runs in (e.g. `us-west-2`); absent on older APIs. */
   region?: string;
   /** Region that served this very call, when the API reports it. */

@@ -148,9 +148,12 @@ Deno.test("legacy FSE and per-line FSE payloads pass through unchanged", async (
     PER_LINE_FSE,
   ]) {
     const original = JSON.stringify(request);
-    const { fetch, calls } = fakeFetch([{ status: 200, body: SEALED }]);
+    const answers = "incomeWithholding" in request
+      ? [{ status: 200, body: { capabilities: { fseIncomeWithholdingPerLine: true } } }, { status: 200, body: SEALED }]
+      : [{ status: 200, body: SEALED }];
+    const { fetch, calls } = fakeFetch(answers);
     await new Facta({ region: false, apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch }).issue(request as never);
-    const body = JSON.parse(calls[0].body!);
+    const body = JSON.parse(calls.find((call) => call.method === "POST")!.body!);
     assertEquals(body, JSON.parse(JSON.stringify(request)));
     assertEquals(JSON.stringify(request), original);
   }
@@ -161,7 +164,7 @@ Deno.test("per-line selections survive readable catalog resolution unchanged", a
   const fetch = ((url: string | URL | Request, init?: RequestInit) => {
     calls.push({ url: String(url), method: init?.method ?? "GET", headers: {}, body: typeof init?.body === "string" ? init.body : null });
     const body = String(url).endsWith("/v1/status")
-      ? { ok: true, llave: { keyId: "key-1", catalogMode: "readable" } }
+      ? { ok: true, capabilities: { fseIncomeWithholdingPerLine: true }, llave: { keyId: "key-1", catalogMode: "readable" } }
       : SEALED;
     return Promise.resolve(new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } }));
   }) as typeof globalThis.fetch;
