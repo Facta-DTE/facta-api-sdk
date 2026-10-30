@@ -132,6 +132,9 @@ import type {
   ListDocumentsFilters,
   ListPendingDocumentsFilters,
   PendingDocumentsPage,
+  PendingNotRetryableReason,
+  RecoverServerPendingOptions,
+  RecoverServerPendingReport,
   RetryResult,
   IssueResult,
   ManagedDocumentCopy,
@@ -2135,6 +2138,93 @@ export class Facta {
    */
   retryDocument(generationCode: string, options: { signal?: AbortSignal; debug?: DebugOptions } = {}): Promise<RetryResult> {
     return this.#request<RetryResult>("POST", `/v1/dte/${encodeURIComponent(generationCode)}/reintentar`, undefined, options);
+  }
+
+  /**
+   * Opt-in recovery of the documents Facta signed but Hacienda has not answered: call it at
+   * process start-up or on a schedule. It lists `GET /v1/dte/pendientes` and, for each retryable
+   * document, calls `retryDocument()` with this client's own keys (the signing key is required).
+   * `retryDocument()` asks Hacienda first and resends the SAME signed bytes only if Hacienda never
+   * received them: this never signs, numbers or issues anything.
+   *
+   * It never throws for a document; each ends as `sealed`, `rejected`, `pending`, `not_retryable`
+   * or `error` in the report, and the run goes on, oldest first, one at a time. It throws only when
+   * the list itself cannot be read (for example a revoked key) or when `signal` aborts.
+   */
+  async recoverServerPending(options: RecoverServerPendingOptions = {}): Promise<RecoverServerPendingReport> {
+    const limit = Math.max(1, Math.min(Math.floor(options.limit ?? 50), 500));
+    const signal = options.signal;
+    const report: RecoverServerPendingReport = {
+      examined: 0, sealed: 0, rejected: 0, pending: 0, notRetryable: 0, errors: 0, results: [], truncated: false,
+    };
+    let cursor: string | undefined;
+    for (;;) {
+      throwIfAborted(signal);
+      const page = await this.listPendingDocuments(
+        {
+          estado: "firmado",
+          limit: Math.min(100, limit - report.examined),
+          ...(options.tipoDte === undefined ? {} : { tipoDte: options.tipoDte }),
+          ...(cursor === undefined ? {} : { cursor }),
+        },
+        signal ? { signal } : {},
+      );
+      for (const doc of page.pendientes) {
+        if (report.examined >= limit) {
+          report.truncated = true;
+          return report;
+        }
+        throwIfAborted(signal);
+        report.examined++;
+        const base = { codigoGeneracion: doc.codigoGeneracion, numeroControl: doc.numeroControl, tipoDte: doc.tipoDte };
+        if (!doc.reintentable) {
+          report.notRetryable++;
+          report.results.push({ ...base, outcome: "not_retryable", motivo: doc.motivoNoReintentable ?? null });
+          continue;
+        }
+        try {
+          const result = await this.retryDocument(doc.codigoGeneracion, signal ? { signal } : {});
+          if (result.estado === "sellado") {
+            report.sealed++;
+            report.results.push({
+              ...base, outcome: "sealed", via: result.via,
+              ...(result.selloRecibido === undefined ? {} : { selloRecibido: result.selloRecibido }),
+            });
+          } else {
+            report.pending++;
+            report.results.push({ ...base, outcome: "pending" });
+          }
+        } catch (error) {
+          if (signal?.aborted) throw error;
+          if (error instanceof FactaError && error.isRejection) {
+            report.rejected++;
+            report.results.push({ ...base, outcome: "rejected", errorCode: error.code, message: error.message });
+          } else if (error instanceof FactaError && error.code === "retry_in_progress") {
+            report.pending++;
+            report.results.push({ ...base, outcome: "pending", errorCode: error.code });
+          } else if (error instanceof FactaError && error.code === "document_not_retryable") {
+            report.notRetryable++;
+            report.results.push({
+              ...base, outcome: "not_retryable",
+              motivo: ((error.details as { motivo?: PendingNotRetryableReason } | undefined)?.motivo) ?? null,
+            });
+          } else {
+            report.errors++;
+            report.results.push({
+              ...base, outcome: "error",
+              errorCode: error instanceof FactaError ? error.code : "unknown",
+              message: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+      }
+      if (page.siguiente === null || page.siguiente === undefined || page.pendientes.length === 0) return report;
+      if (report.examined >= limit) {
+        report.truncated = true;
+        return report;
+      }
+      cursor = page.siguiente;
+    }
   }
 
   /** List sealed/reconciliable documents using the server cursor. */

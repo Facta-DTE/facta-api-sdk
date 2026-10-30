@@ -610,6 +610,17 @@ Termina un documento pendiente **sin crear uno nuevo**: le pregunta a Hacienda p
 const resultado = await facta.retryDocument(codigoGeneracion);
 ```
 
+### `recoverServerPending(opciones?)`
+
+**Manda la llave de firma** (cada reintento la necesita). Devuelve `RecoverServerPendingReport`.
+
+Recuperación opcional de los documentos que Facta firmó y Hacienda no ha contestado. Lee `GET /v1/dte/pendientes` (50 por defecto, máximo 500, del más antiguo al más nuevo) y llama `retryDocument()` por cada uno reintentable, de a uno, con las llaves de este cliente. **No lanza error por un documento**: cada uno termina como `sealed`, `rejected`, `pending`, `not_retryable` o `error` en el informe. Solo lanza si no puede leer la lista o si `signal` cancela. Nunca firma, numera ni emite. Llámela al arrancar su proceso o en un horario. Vea [documentos pendientes](pending-documents.es.md).
+
+```typescript
+const informe = await facta.recoverServerPending({ limit: 50 });
+console.log(informe.sealed, informe.pending, informe.errors);
+```
+
 ### `getContract()`
 
 **No manda la llave de firma.** Devuelve el contrato OpenAPI.

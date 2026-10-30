@@ -38,3 +38,19 @@ export async function main() {
     cursor = page.siguiente ?? undefined;
   } while (cursor !== undefined);
 }
+
+// Or, at process start-up and on a schedule, let the SDK do the loop above for you.
+// It never throws for a document; it throws only if the list cannot be read.
+export async function recoverAtStartup() {
+  const apiKey = env("FACTA_API_KEY");
+  const baseUrl = env("FACTA_API_BASE_URL");
+  if (!apiKey?.startsWith("facta_test_") || !baseUrl) throw new Error("Configure a test key and an explicit API URL.");
+  const facta = new Facta({ apiKey, signKey: env("FACTA_SIGN_KEY"), baseUrl });
+  try {
+    const report = await facta.recoverServerPending({ limit: 50 });
+    console.log(report.sealed, "sealed,", report.pending, "still pending,", report.errors, "errors");
+    for (const r of report.results) if (r.outcome === "rejected") console.error("Hacienda refused:", r.codigoGeneracion, r.message);
+  } catch (error) {
+    console.error("could not read the pending list; will try again on the next run:", error);
+  }
+}

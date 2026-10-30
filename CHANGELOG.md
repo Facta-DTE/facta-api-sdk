@@ -19,6 +19,11 @@ Additive. Every call, type and default of 0.6.0-next.3 keeps working. Server beh
 - **`FactaError.retryAfterSeconds`** reads `details.retryAfterSeconds`; the retry loop waits at least that long (at most 15 s) instead of only its own backoff.
 - Guide `pending-documents` (English and Spanish), runnable example `examples/pending-documents.ts`, and a mandatory "after every emission" step in the agent skill.
 
+### Start-up recovery of server-side pending documents
+
+- **`recoverServerPending({ limit?, tipoDte?, signal? })`** (opt-in): lists `GET /v1/dte/pendientes` and calls `retryDocument()` for every retryable document with the client's own keys (the signing key is required), oldest first, one at a time. Returns a report `{ examined, sealed, rejected, pending, notRetryable, errors, results[], truncated }` and **never throws for a single document**; it throws only if the list cannot be read or `signal` aborts. It never signs, numbers or issues. Call it when your process starts and on a schedule (every 10 to 15 minutes). `limit` defaults to 50 (at most 500).
+- New types `RecoverServerPendingOptions`, `RecoverServerPendingReport`, `ServerPendingOutcome`. Documented in the `pending-documents` guide, the method reference, the agent skill and `examples/pending-documents.ts`.
+
 ### Signed documents are recorded before they are sent (server)
 
 - If Facta cannot record the signed document, **nothing is sent to Hacienda**: the answer is `503 service_unavailable` with `Retry-After`, and the control number is handed back. Replay the same request with the same `Idempotency-Key`; it is safe.

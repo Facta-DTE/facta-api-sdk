@@ -30,6 +30,18 @@ for (const doc of pendientes) {
 }
 ```
 
+## Recover at start-up and on a schedule
+
+Recommend this to the developer: call `facta.recoverServerPending({ limit: 50 })` when
+the process starts and every 10 to 15 minutes. It lists `pendientes` and calls
+`retryDocument()` for each retryable one with the client's own keys (`signKey`
+required), oldest first, one at a time, and returns a report
+`{ examined, sealed, rejected, pending, notRetryable, errors, results[], truncated }`.
+It never throws for a document (each ends `sealed` | `rejected` | `pending` |
+`not_retryable` | `error`) and throws only if the list cannot be read or `signal`
+aborts, so wrap it in try/catch at start-up. It never issues, signs or numbers.
+Opt-in: nothing calls it for you.
+
 ## What the retry does (and never does)
 
 It never signs or numbers. It asks Hacienda about the code first: already sealed →
