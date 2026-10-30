@@ -24,6 +24,13 @@ export type FactaErrorCode =
   /** `listDocuments({ include: ["dte"] })` asked for more than 25 rows (HTTP 400). `details.maximo` is the cap. */
   | "include_limit_exceeded"
   | "validation_failed"
+  /** Local request preflight failures for the proposed, unpublished FSE mode. */
+  | "fse_withholding_mode_invalid"
+  | "fse_withholding_legacy_conflict"
+  | "fse_withholding_not_supported"
+  | "fse_withholding_selection_required"
+  | "fse_withholding_selection_invalid"
+  | "fse_withholding_mode_required"
   /** `aplicarReteRenta` on a document with an `exenta` or `no_sujeta` line (HTTP 422). Nothing was signed and no number spent. */
   | "retention_mixed_class_unsupported"
   | "not_found"

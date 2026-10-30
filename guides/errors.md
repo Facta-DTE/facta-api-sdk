@@ -158,6 +158,12 @@ These never come from the server; `status` is `0`.
 | Code | Retried | Meaning | What to do |
 | --- | --- | --- | --- |
 | `network_error` | **yes** | No usable answer: connection failure or the SDK's own `timeoutMs`. | After retries, replay the same request and key. |
+| `fse_withholding_mode_invalid` | no | Local preflight rejected an unsupported `incomeWithholding.mode` or extra control property. This proposed mode is unpublished and the current API does not support it. | Use only `{ mode: "per_line" }`; wait for verified API support before using this mode. |
+| `fse_withholding_legacy_conflict` | no | `aplicarReteRenta` is an own property together with per-line mode, including when `false` or `undefined`. | Choose one request mode. |
+| `fse_withholding_not_supported` | no | A withholding control is present on a non-FSE document. | Use withholding controls only with type 14. |
+| `fse_withholding_selection_required` | no | Per-line mode has no items or an item is missing `applyIncomeWithholding`. | Provide a boolean selection for every item. |
+| `fse_withholding_selection_invalid` | no | An item selection is not a boolean. | Pass `true` or `false`; values are never coerced. |
+| `fse_withholding_mode_required` | no | An item has `applyIncomeWithholding` without the opt-in mode. | Add `incomeWithholding: { mode: "per_line" }` to an FSE request. |
 | `operation_outcome_unknown` | no | An invalidation may have completed, but its signed event cannot be recovered (safe window expired, or the API only confirms it was already invalidated). | Reconcile manually; do not invalidate again. |
 | `archive_integrity_error` | no | Local archive data failed an identity or digest check, or the API identity (endpoint, key, issuer, environment) differs from the one an operation was journaled with. | Keep the encrypted files; inspect before repairing. Use the original client and credentials. |
 

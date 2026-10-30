@@ -54,11 +54,121 @@ const VENTA = {
   items: [{ descripcion: "x", cantidad: 1, precioUni: 25 }],
 };
 
+const PER_LINE_FSE = {
+  tipoDte: "14" as const,
+  receptor: { numDocumento: "0614-010101-101-0", nombre: "Cliente", direccion: { departamento: "06", municipio: "14", complemento: "Centro" } },
+  incomeWithholding: { mode: "per_line" as const },
+  items: [{ descripcion: "Servicio", cantidad: 1, precioUni: 50, tipoItem: 2 as const, applyIncomeWithholding: true }],
+};
+
+// These fixtures are intentionally compile-time failures; request checks must
+// also reject their JavaScript/JSON equivalents at runtime.
+// @ts-expect-error legacy and per-line controls are mutually exclusive
+const INVALID_MIXED_WITHHOLDING: import("../src/types.ts").DteRequest = { ...PER_LINE_FSE, aplicarReteRenta: false };
+// @ts-expect-error every per-line item needs an explicit boolean selection
+const INVALID_MISSING_SELECTION: import("../src/types.ts").DteRequest = { ...PER_LINE_FSE, items: [{ descripcion: "Servicio", cantidad: 1, precioUni: 50 }] };
+// @ts-expect-error non-FSE request branches prohibit the new withholding mode
+const INVALID_NON_FSE_MODE: import("../src/types.ts").DteRequest = { tipoDte: "03", incomeWithholding: { mode: "per_line" }, items: [] };
+void INVALID_MIXED_WITHHOLDING;
+void INVALID_MISSING_SELECTION;
+void INVALID_NON_FSE_MODE;
+
 Deno.test("la llave viaja en X-Facta-Key y nunca en Authorization", async () => {
   const { fetch, calls } = fakeFetch([{ status: 200, body: SEALED }]);
   await new Facta({ region: false, apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch }).issue(VENTA);
   assertEquals(calls[0].headers["X-Facta-Key"], "facta_test_a.bbbbbbbbbbbbbbbb");
   assertEquals(calls[0].headers["Authorization"], undefined);
+});
+
+Deno.test("FSE withholding errors stop issue, prepare, and archive before fetch or writes", async () => {
+  const invalidRequests: Array<{ request: unknown; code: string; field: string }> = [
+    { request: { ...PER_LINE_FSE, aplicarReteRenta: false }, code: "fse_withholding_legacy_conflict", field: "aplicarReteRenta" },
+    { request: { ...PER_LINE_FSE, aplicarReteRenta: undefined }, code: "fse_withholding_legacy_conflict", field: "aplicarReteRenta" },
+    { request: { tipoDte: "14", aplicarReteRenta: false, items: [{ applyIncomeWithholding: true }] }, code: "fse_withholding_legacy_conflict", field: "aplicarReteRenta" },
+    { request: { ...PER_LINE_FSE, items: [{ ...PER_LINE_FSE.items[0], applyIncomeWithholding: "true" }] }, code: "fse_withholding_selection_invalid", field: "items[0].applyIncomeWithholding" },
+    { request: { ...PER_LINE_FSE, items: [{ descripcion: "Servicio", cantidad: 1, precioUni: 50 }] }, code: "fse_withholding_selection_required", field: "items[0].applyIncomeWithholding" },
+    { request: { ...PER_LINE_FSE, incomeWithholding: { mode: "all" } }, code: "fse_withholding_mode_invalid", field: "incomeWithholding.mode" },
+    { request: { ...PER_LINE_FSE, incomeWithholding: { mode: "per_line", rate: 5 } }, code: "fse_withholding_mode_invalid", field: "incomeWithholding.rate" },
+    { request: { ...PER_LINE_FSE, items: [] }, code: "fse_withholding_selection_required", field: "items" },
+    { request: { tipoDte: "03", items: [{ descripcion: "x", cantidad: 1, precioUni: 1, applyIncomeWithholding: true }] }, code: "fse_withholding_not_supported", field: "items[0].applyIncomeWithholding" },
+    { request: { tipoDte: "03", items: [{ descripcion: "x", cantidad: 1, precioUni: 1 }, { descripcion: "y", cantidad: 1, precioUni: 2, applyIncomeWithholding: false }] }, code: "fse_withholding_not_supported", field: "items[1].applyIncomeWithholding" },
+    { request: { tipoDte: "03", aplicarReteRenta: true, items: [] }, code: "invalid_request", field: "aplicarReteRenta" },
+    { request: { tipoDte: "14", items: [{ descripcion: "x", cantidad: 1, precioUni: 1, productId: "catalog-ref", applyIncomeWithholding: true }] }, code: "fse_withholding_mode_required", field: "items[0].applyIncomeWithholding" },
+    { request: { tipoDte: "14", aplicarReteRenta: null, items: [] }, code: "invalid_request", field: "aplicarReteRenta" },
+    { request: { tipoDte: "14", aplicarReteRenta: "true", items: [] }, code: "invalid_request", field: "aplicarReteRenta" },
+    { request: { tipoDte: "14", aplicarReteRenta: 1, items: [] }, code: "invalid_request", field: "aplicarReteRenta" },
+  ];
+  for (const { request, code, field } of invalidRequests) {
+    for (const entrypoint of ["issue", "prepare", "issueAndArchive"] as const) {
+      let calls = 0;
+      let writes = 0;
+      const fetch = (() => { calls++; throw new Error("fetch must not be called"); }) as typeof globalThis.fetch;
+      const client = new Facta({ region: false, apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch });
+      const archive = {
+        assertReady: async () => { writes++; },
+        begin: async () => { writes++; return true; },
+      } as never;
+      const operation = entrypoint === "issue"
+        ? () => client.issue(request as never)
+        : entrypoint === "prepare"
+        ? () => client.prepare(request as never)
+        : () => client.issueAndArchive(request as never, { archive, operationId: "op-1", idempotencyKey: "key-1" });
+      const error = await assertRejects(operation, FactaError);
+      assertEquals(error.code, code, `${entrypoint}: ${field}`);
+      assertEquals(error.status, 0);
+      assertEquals((error.details as { field?: unknown })?.field, field, `${entrypoint}: ${code}`);
+      assertEquals(calls, 0, `${entrypoint}: ${code}`);
+      assertEquals(writes, 0, `${entrypoint}: ${code}`);
+    }
+  }
+});
+
+Deno.test("FSE withholding preflight precedes prepare and archive writes", async () => {
+  let calls = 0;
+  let writes = 0;
+  const archive = {
+    assertReady: async () => { writes++; },
+    begin: async () => { writes++; return true; },
+  } as never;
+  const client = new Facta({ region: false, apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch: (() => { calls++; throw new Error("fetch must not be called"); }) as typeof globalThis.fetch });
+  const bad = { ...PER_LINE_FSE, items: [{ ...PER_LINE_FSE.items[0], applyIncomeWithholding: null }] };
+  await assertRejects(() => client.prepare(bad as never), FactaError);
+  await assertRejects(() => client.issueAndArchive(bad as never, { archive, operationId: "op-1", idempotencyKey: "key-1" }), FactaError);
+  assertEquals(calls, 0);
+  assertEquals(writes, 0);
+});
+
+Deno.test("legacy FSE and per-line FSE payloads pass through unchanged", async () => {
+  for (const request of [
+    { tipoDte: "14", receptor: PER_LINE_FSE.receptor, items: [{ descripcion: "x", cantidad: 1, precioUni: 10 }] },
+    { tipoDte: "14", receptor: PER_LINE_FSE.receptor, items: [{ descripcion: "x", cantidad: 1, precioUni: 10 }], aplicarReteRenta: false },
+    { tipoDte: "14", receptor: PER_LINE_FSE.receptor, items: [{ descripcion: "x", cantidad: 1, precioUni: 10 }], aplicarReteRenta: true },
+    { tipoDte: "14", receptor: PER_LINE_FSE.receptor, items: [{ descripcion: "x", cantidad: 1, precioUni: 10 }], aplicarReteRenta: undefined },
+    { tipoDte: "03", items: [{ descripcion: "x", cantidad: 1, precioUni: 10 }], aplicarReteRenta: undefined },
+    PER_LINE_FSE,
+  ]) {
+    const original = JSON.stringify(request);
+    const { fetch, calls } = fakeFetch([{ status: 200, body: SEALED }]);
+    await new Facta({ region: false, apiKey: "facta_test_a.bbbbbbbbbbbbbbbb", fetch }).issue(request as never);
+    const body = JSON.parse(calls[0].body!);
+    assertEquals(body, JSON.parse(JSON.stringify(request)));
+    assertEquals(JSON.stringify(request), original);
+  }
+});
+
+Deno.test("per-line selections survive readable catalog resolution unchanged", async () => {
+  const calls: Recorded[] = [];
+  const fetch = ((url: string | URL | Request, init?: RequestInit) => {
+    calls.push({ url: String(url), method: init?.method ?? "GET", headers: {}, body: typeof init?.body === "string" ? init.body : null });
+    const body = String(url).endsWith("/v1/status")
+      ? { ok: true, llave: { keyId: "key-1", catalogMode: "readable" } }
+      : SEALED;
+    return Promise.resolve(new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } }));
+  }) as typeof globalThis.fetch;
+  const request = { ...PER_LINE_FSE, items: [{ ...PER_LINE_FSE.items[0], productId: "catalog-product" }] };
+  await new Facta({ region: false, apiKey: "key-1.secret", fetch }).issue(request);
+  const post = calls.find((call) => call.method === "POST");
+  assertEquals(JSON.parse(post!.body!), request);
 });
 
 Deno.test("server error text redacts configured secrets and credential fields", async () => {

@@ -37,6 +37,7 @@
 import { FactaError, type FactaErrorCode } from "./errors.ts";
 import { validateFactaConfig } from "./config-validation.ts";
 import { resolveCatalogRefs } from "./catalog.ts";
+import { validateFseWithholdingRequest } from "./fse-withholding.ts";
 import { envelopeDigest, fingerprintV1 } from "./jcs.ts";
 import {
   CATALOG_WRITE_MESSAGES,
@@ -1326,6 +1327,7 @@ export class Facta {
 
   /** Emit in one call: correlative, signature, transmission and index. */
   async issue(request: DteRequest, options: IssueOptions = {}): Promise<IssueResult> {
+    validateFseWithholdingRequest(request);
     throwIfAborted(options.signal);
     const { deliver, ...call } = options;
     // Taken before catalog resolution, so a catalog change between an attempt and its retry
@@ -1388,6 +1390,7 @@ export class Facta {
    * even if archival later fails; callers must inspect `archive.state`.
    */
   async issueAndArchive(request: DteRequest, options: FactaArchiveEmissionOptions): Promise<ArchiveEmissionResult> {
+    validateFseWithholdingRequest(request);
     const archive = options.archive ?? this.#runtime.archive;
     if (!archive) throw new TypeError("issueAndArchive requires archive or runtime.archive.");
     const { operationId, idempotencyKey, signal } = options;
@@ -2186,6 +2189,7 @@ export class Facta {
 
   /** Reserve the correlative and get the canonical document, unsigned. */
   async prepare(request: DteRequest, options: CallOptions = {}): Promise<PreparedDte> {
+    validateFseWithholdingRequest(request);
     throwIfAborted(options.signal);
     const fingerprint = await fingerprintV1(request);
     const resolved = await this.#resolveCatalogRefs(request);

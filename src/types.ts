@@ -70,6 +70,12 @@ export interface LineItem {
   codigo?: string | null;
   tipoItem?: 1 | 2 | 3 | 4;
   uniMedida?: number;
+  /** Explicit FSE per-line withholding selection; available only in per-line mode. */
+  applyIncomeWithholding?: never;
+}
+
+export interface PerLineWithholdingItem extends Omit<LineItem, "applyIncomeWithholding"> {
+  applyIncomeWithholding: boolean;
 }
 
 export type DteType = "01" | "03" | "05" | "06" | "11" | "14";
@@ -99,14 +105,27 @@ interface DteRequestBase {
   observaciones?: string | null;
 }
 
+/** Explicit opt-in to per-line income withholding for FSE requests. */
+export interface IncomeWithholdingPerLine {
+  mode: "per_line";
+}
+
+type PerLineFseRequestBase = Omit<DteRequestBase, "items"> & {
+  tipoDte: "14";
+  items: PerLineWithholdingItem[];
+  incomeWithholding: IncomeWithholdingPerLine;
+  aplicarReteRenta?: never;
+};
+
 /** DTE request union. DTE-specific fields are available only on their type. */
 export type DteRequest =
-  | (DteRequestBase & { tipoDte: "01"; receptor?: Recipient | null; documentosRelacionados?: never; exportacion?: never; aplicarReteRenta?: never; numPagoElectronico?: never })
-  | (DteRequestBase & { tipoDte: "03"; receptor?: Recipient | null; documentosRelacionados?: never; exportacion?: never; aplicarReteRenta?: never; numPagoElectronico?: never })
-  | (DteRequestBase & { tipoDte: "05"; receptor?: Recipient | null; documentosRelacionados: RelatedDocument[]; exportacion?: never; aplicarReteRenta?: never; numPagoElectronico?: never })
-  | (DteRequestBase & { tipoDte: "06"; receptor?: Recipient | null; documentosRelacionados: RelatedDocument[]; numPagoElectronico?: string | null; exportacion?: never; aplicarReteRenta?: never })
-  | (DteRequestBase & { tipoDte: "11"; receptor: ExportRecipient; exportacion: ExportDetails; documentosRelacionados?: never; aplicarReteRenta?: never; numPagoElectronico?: never })
-  | (DteRequestBase & { tipoDte: "14"; receptor: ExcludedSubjectRecipient; aplicarReteRenta?: boolean; documentosRelacionados?: never; exportacion?: never; numPagoElectronico?: never });
+  | (DteRequestBase & { tipoDte: "01"; receptor?: Recipient | null; documentosRelacionados?: never; exportacion?: never; aplicarReteRenta?: never; incomeWithholding?: never; numPagoElectronico?: never })
+  | (DteRequestBase & { tipoDte: "03"; receptor?: Recipient | null; documentosRelacionados?: never; exportacion?: never; aplicarReteRenta?: never; incomeWithholding?: never; numPagoElectronico?: never })
+  | (DteRequestBase & { tipoDte: "05"; receptor?: Recipient | null; documentosRelacionados: RelatedDocument[]; exportacion?: never; aplicarReteRenta?: never; incomeWithholding?: never; numPagoElectronico?: never })
+  | (DteRequestBase & { tipoDte: "06"; receptor?: Recipient | null; documentosRelacionados: RelatedDocument[]; numPagoElectronico?: string | null; exportacion?: never; aplicarReteRenta?: never; incomeWithholding?: never })
+  | (DteRequestBase & { tipoDte: "11"; receptor: ExportRecipient; exportacion: ExportDetails; documentosRelacionados?: never; aplicarReteRenta?: never; incomeWithholding?: never; numPagoElectronico?: never })
+  | (DteRequestBase & { tipoDte: "14"; receptor: ExcludedSubjectRecipient; aplicarReteRenta?: boolean; incomeWithholding?: never; documentosRelacionados?: never; exportacion?: never; numPagoElectronico?: never })
+  | (PerLineFseRequestBase & { receptor: ExcludedSubjectRecipient; documentosRelacionados?: never; exportacion?: never; numPagoElectronico?: never });
 
 export interface CatalogSnapshot {
   version: 1;

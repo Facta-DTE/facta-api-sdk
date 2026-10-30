@@ -159,6 +159,12 @@ Nunca vienen del servidor; `status` es `0`.
 | Código | Reintento | Significado | Qué hacer |
 | --- | --- | --- | --- |
 | `network_error` | **sí** | Sin respuesta útil: falla de conexión o el propio `timeoutMs` del SDK. | Después de los reintentos, repita la misma petición y la misma llave. |
+| `fse_withholding_mode_invalid` | no | La validación local rechazó un `incomeWithholding.mode` no admitido o una propiedad de control adicional. El modo propuesto aún no se publica y la API actual no lo admite. | Use solo `{ mode: "per_line" }`; espere a que la API esté implementada y verificada antes de usar el modo. |
+| `fse_withholding_legacy_conflict` | no | `aplicarReteRenta` es una propiedad propia junto con el modo por línea, incluso con valor `false` o `undefined`. | Elija un solo modo para la petición. |
+| `fse_withholding_not_supported` | no | Hay un control de retención en un documento que no es FSE. | Use los controles de retención solo con tipo 14. |
+| `fse_withholding_selection_required` | no | El modo por línea no tiene elementos o falta `applyIncomeWithholding` en un elemento. | Indique una selección booleana para cada elemento. |
+| `fse_withholding_selection_invalid` | no | La selección de un elemento no es booleana. | Use `true` o `false`; los valores no se convierten automáticamente. |
+| `fse_withholding_mode_required` | no | Un elemento tiene `applyIncomeWithholding` sin el modo optativo. | Agregue `incomeWithholding: { mode: "per_line" }` a una petición FSE. |
 | `operation_outcome_unknown` | no | Puede que una anulación se haya completado, pero su evento firmado no se puede recuperar (venció la ventana segura, o la API solo confirma que ya estaba anulada). | Concilie a mano; no vuelva a anular. |
 | `archive_integrity_error` | no | Los datos del archivo local no pasaron una revisión de identidad o de huella, o la identidad de la API (dirección, llave, emisor, ambiente) no es la misma con la que se registró la operación. | Conserve los archivos cifrados; revíselos antes de repararlos. Use el cliente y las credenciales originales. |
 
