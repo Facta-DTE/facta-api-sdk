@@ -74,6 +74,35 @@ Llamarla otra vez sobre un documento sellado no hace nada (`ya_asentado`). Dos
 reintentos a la vez no transmiten dos veces: el segundo recibe
 `409 retry_in_progress`, que el SDK reintenta por usted tras `retryAfterSeconds`.
 
+## Recupere todo al arrancar (opcional)
+
+`recoverServerPending()` es el paso 1 y el paso 2 en un ciclo, para los documentos
+que Facta firmó en el servidor. Es **opcional**: nada la ejecuta por usted. Llámela
+cuando arranque su proceso y en un horario (por ejemplo cada 10 a 15 minutos), para
+que una emisión que terminó con duda se termine aunque nadie haya mirado la respuesta.
+
+```ts
+const informe = await facta.recoverServerPending({ limit: 50 });
+// informe: { examined, sealed, rejected, pending, notRetryable, errors, results[], truncated }
+
+for (const r of informe.results) {
+  if (r.outcome === "rejected") avisar(r.codigoGeneracion, r.message); // Hacienda lo negó
+  if (r.outcome === "error") log.warn(r.codigoGeneracion, r.errorCode); // no se emitió nada; la próxima vez se intenta de nuevo
+}
+```
+
+- Necesita `signKey` (cada reintento la manda) y una llave con los alcances `query` e `issue`.
+- Va del más antiguo al más nuevo, de a un documento, y nunca lanza error por un
+  documento. Cada uno termina como `sealed` (`via` dice cómo), `rejected` (Hacienda lo negó),
+  `pending` (sin respuesta, o hay otro reintento en curso: nada cambió), `not_retryable`
+  (`motivo`; los documentos emitidos desde la aplicación se reintentan en la aplicación) o `error`.
+- `limit` es 50 por defecto (máximo 500); `truncated: true` indica que quedaron más para la próxima vez.
+- Solo lanza error cuando no puede leer la lista (llave revocada, sin conexión) o cuando
+  su `signal` cancela. Atrápelo al arrancar para que una caída de Facta nunca detenga su servicio.
+- Nunca firma, numera ni emite. Solo hace lo que hace `retryDocument()`: le pregunta a
+  Hacienda primero y reenvía los mismos bytes solo si nunca los recibió. Ejecutarla dos veces,
+  o desde dos instancias, es seguro.
+
 ## Qué hacer en cada situación
 
 | Lo que ve | Qué significa | Qué hacer |

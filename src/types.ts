@@ -1055,6 +1055,48 @@ export interface PendingDocumentsPage {
   siguiente: string | null;
 }
 
+/** Options of `recoverServerPending()`. */
+export interface RecoverServerPendingOptions {
+  /** The most documents to examine in this run (default 50, at most 500). */
+  limit?: number;
+  /** Narrow to one DTE type. */
+  tipoDte?: DteType;
+  signal?: AbortSignal;
+}
+
+/** What `recoverServerPending()` did with one pending document. It never carries the document or the receiver. */
+export interface ServerPendingOutcome {
+  codigoGeneracion: string;
+  numeroControl: string;
+  tipoDte: DteType;
+  /**
+   * `sealed`: Hacienda has it (`via` says how). `rejected`: Hacienda refused it. `pending`: Hacienda
+   * did not answer, or another retry is running; nothing changed, run again later. `not_retryable`:
+   * the API cannot finish it (`motivo`; documents the app issued are retried from the app).
+   * `error`: the call failed (`errorCode` / `message`); nothing was issued.
+   */
+  outcome: "sealed" | "rejected" | "pending" | "not_retryable" | "error";
+  via?: "consulta" | "retransmision" | "ya_asentado";
+  selloRecibido?: string;
+  motivo?: PendingNotRetryableReason | null;
+  errorCode?: string;
+  message?: string;
+}
+
+export interface RecoverServerPendingReport {
+  /** Pending documents examined in this run. */
+  examined: number;
+  sealed: number;
+  rejected: number;
+  pending: number;
+  notRetryable: number;
+  errors: number;
+  /** One entry per document, oldest first. */
+  results: ServerPendingOutcome[];
+  /** True when more pending documents were left because `limit` was reached. */
+  truncated: boolean;
+}
+
 /** `retryDocument()` found the document sealed. `via` says how. */
 export interface RetrySealed {
   estado: "sellado";

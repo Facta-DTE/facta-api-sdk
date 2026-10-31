@@ -75,6 +75,35 @@ Calling it again on a sealed document does nothing (`ya_asentado`). Two retries 
 once do not transmit twice: the second gets `409 retry_in_progress`, which the SDK
 retries for you after `retryAfterSeconds`.
 
+## Recover everything at start-up (opt-in)
+
+`recoverServerPending()` is steps 1 and 2 in a loop, for the documents Facta signed
+on the server. It is **opt-in**: nothing runs it for you. Call it when your process
+starts and on a schedule (for example every 10 to 15 minutes), so an emission that
+ended uncertain is finished even if nobody looked at the response.
+
+```ts
+const report = await facta.recoverServerPending({ limit: 50 });
+// report: { examined, sealed, rejected, pending, notRetryable, errors, results[], truncated }
+
+for (const r of report.results) {
+  if (r.outcome === "rejected") alertSomeone(r.codigoGeneracion, r.message); // Hacienda refused it
+  if (r.outcome === "error") log.warn(r.codigoGeneracion, r.errorCode);      // nothing was issued; next run tries again
+}
+```
+
+- It needs `signKey` (each retry carries it) and a key with the `query` and `issue` scopes.
+- It goes oldest first, one document at a time, and never throws for a document. Every
+  document ends as `sealed` (`via` says how), `rejected` (Hacienda refused it),
+  `pending` (no answer, or another retry is running: nothing changed), `not_retryable`
+  (`motivo`; documents issued from the app are retried in the app) or `error`.
+- `limit` defaults to 50 (at most 500); `truncated: true` means more were left for the next run.
+- It throws only when the list itself cannot be read (a revoked key, no connection) or
+  when your `signal` aborts. Catch that at start-up so a Facta outage never stops your service.
+- It never signs, numbers or issues. It only does what `retryDocument()` does: ask
+  Hacienda first, resend the same bytes only if it never received them. Running it twice,
+  or from two instances, is safe.
+
 ## What to do in each situation
 
 | You see | It means | Do |
