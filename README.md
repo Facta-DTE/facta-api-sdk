@@ -214,6 +214,7 @@ Every guide in `guides/`, in English and Spanish. The two React guides are Engli
 | Prepare, review, then sign | [prepare-sign.md](guides/prepare-sign.md) | [prepare-sign.es.md](guides/prepare-sign.es.md) |
 | The Archivo DTE (what the receiver gets) | [archivo-dte.md](guides/archivo-dte.md) | [archivo-dte.es.md](guides/archivo-dte.es.md) |
 | Delivery by e-mail and WhatsApp | [delivery.md](guides/delivery.md) | [delivery.es.md](guides/delivery.es.md) |
+| Payment, exports, income-tax withholding | [payments-export-renta.md](guides/payments-export-renta.md) | [payments-export-renta.es.md](guides/payments-export-renta.es.md) |
 | Returns (Evento de Retorno) | [return-event.md](guides/return-event.md) | [return-event.es.md](guides/return-event.es.md) |
 | Diagnostics, `diagnoseDestinations` | [diagnose.md](guides/diagnose.md) | [diagnose.es.md](guides/diagnose.es.md) |
 | Regional pinning | [region.md](guides/region.md) | [region.es.md](guides/region.es.md) |

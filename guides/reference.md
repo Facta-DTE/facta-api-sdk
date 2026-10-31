@@ -225,6 +225,7 @@ const facta = new Facta({
 | `LineItem.montoDescu` | Discount of one line in money, between 0 and `cantidad × precioUni`, in the same VAT basis as `precioUni`. No global or percentage discount yet. |
 | `LineItem.tipoVenta` | VAT treatment of the line: `gravada` (default), `exenta` or `no_sujeta`. Chosen by you, never deduced. 01, 03, 05, 06 only; `422` on 11 and 14. |
 | `DteRequest.aplicarRetencionIva` / `aplicarPercepcionIva` | 1 % VAT withholding (01, 03) and perception (03 only, goods lines). Never automatic; `400` on other types, refused by the types. |
+| `DteRequest.formaPago` / `plazo` / `periodo` | How payment is reported: cash with one method, `pagos[]` for several, credit with `formaPago` + `plazo` + `periodo` (never `pagos`), nothing on 05/06. See [payments-export-renta.md](payments-export-renta.md). |
 | `DteRequest.pagos` / `Pago` | 1 to 10 `{ codigo, montoPago, referencia? }` rows (01, 03, 11, 14) that add up to the total to pay to the cent. Not with `formaPago`, not on 05/06 (the types refuse it), not with `condicionOperacion` 2 (`422`). |
 | `result.unknownFields`, `unknownFieldWarnings(source)` | `campo_desconocido` warnings of `advertencias`: a request field Facta DTE does not know is ignored and is not in the document. Each has `campo` and, when obvious, `sugerencia`. |
 | `prepared.unknownFields`, `error.unknownFields` | The same warnings on `prepare()` results and on a `FactaError` (from `details.advertencias`). Unknown fields are always warnings, never errors. |

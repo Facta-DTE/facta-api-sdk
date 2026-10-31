@@ -3840,7 +3840,7 @@ components:
             tarjeta de débito, 03 tarjeta de crédito, 04 cheque, 05
             transferencia o depósito bancario, 08 dinero electrónico, 09
             monedero electrónico, 11 bitcoin, 12 otras criptomonedas, 13
-            cuentas por pagar del receptor, 14 bonos o certificados de regalo,
+            cuentas por pagar del receptor, 14 giro bancario,
             99 otros. Sin él (u omitido o `null`) el servidor usa 01 (05 en la
             exportación). **Un código que no es del catálogo es
             `422 validation_failed` con `details.field` y `details.supported`,
