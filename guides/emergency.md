@@ -8,6 +8,8 @@ replication the SDK attempted fails, that holding copy is the only one left. The
 emergency safeguard is the last resort so the API keeps signing and the files
 are still saved. The SDK ships no storage for it: you may provide one function. It is optional.
 
+The one-hour holding copy is not the same thing as the 30-day temporary copy: the emergency store protects against the first, and it does **not** mark the document as stored. Reporting does ([the temporary copy](temporary-copy.md)).
+
 There is a second, server-side mechanism: if nothing could be stored anywhere, Facta e-mails the company owner a backup copy (JSON plus PDF, to import later). `emergencyStore` is an extra safeguard on top of that.
 
 ## When it runs
@@ -82,9 +84,16 @@ it is your function that remembers what is waiting.
 1. An alert fires (`onEmergency`, or `emergency_saved` in your logs). Check that
    the files exist where your function put them.
 2. Once the storage problem is fixed, call `replicate` with those files; a
-   verified copy at a destination is the proof.
-3. Only then delete your emergency copy.
-4. If `saved` was `false`, go to the result you still hold, or download from
+   stored copy at a destination is the proof. A copy that reaches a synced
+   destination is reported to Facta by the SDK.
+3. **Report it.** The emergency store alone does not tell Facta the document is
+   stored, and Facta deletes its temporary copy 30 days after sealing. If
+   `replicate` left `stored` empty, or you kept the files yourself, call
+   `confirmDocumentStorage(code, { where, bytes })`. Until then the document
+   stays on `listUnconfirmedDocuments()` and in the owner's mail. See
+   [the temporary copy](temporary-copy.md).
+4. Only then delete your emergency copy.
+5. If `saved` was `false`, go to the result you still hold, or download from
    holding within the hour: `downloadDocument(code, "json")`, `"pdf"`.
 
 An example (not shipped code): write to a folder you own.

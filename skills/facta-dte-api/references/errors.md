@@ -47,7 +47,7 @@ Everything else is final for that request.
 | Code | HTTP | Meaning → action |
 | --- | --- | --- |
 | `invalid_request` | 400 / 422 | Missing/non-JSON/over-1 MB body, wrong field shape, non-UUID code (`details.field`); locally: invalid catalog product type/unit or VAT-basis mismatch → fix the request. |
-| `validation_failed` | 422 | Fails Hacienda's official schema (`details.issues`); also thrown locally by catalog writes → fix the listed fields. |
+| `validation_failed` | 422 | Fails Hacienda's official schema (`details.issues`); a catalogue code is wrong; `pagos` does not add up or was sent on a credit sale (use `formaPago` + `plazo` + `periodo`, see issuing-dte-types.md → Payment); also thrown locally by catalog writes → fix the listed fields. |
 | `retention_mixed_class_unsupported` | 422 | `aplicarReteRenta` with an `exenta`/`no_sujeta` line → issue those lines separately or drop the withholding. |
 | `not_found` | 404 | No such document/customer/product/route for this key's company; also for an id the server cannot resolve (`details.reason: "catalog_unknown_id"`) → check id and company. |
 | `method_not_allowed` | 405 | Route exists, wrong method (only outside the SDK). |
@@ -133,6 +133,9 @@ Everything else is final for that request.
 | --- | --- | --- | --- |
 | `no_storage_destination` | 422 | no | No verified destination (older issuance behaviour); locally from `syncDestinations` (snapshot not published) → connect/re-sync in the app. Per the current contract issuance proceeds with the warning `sin_almacenamiento_duradero` instead. |
 | `storage_unsupported` | 501 | no | Server lacks the managed-storage route, or `source: "managed"` got no proof → update the server before depending on it. |
+| `temporary_copy_expired` | 410 | no | The temporary encrypted copy was deleted (2 days after reported stored, or 30 days after sealing) and Facta Storage has no copy → look in your own storage; prevent it with `confirmDocumentStorage` and a daily `storeAndConfirmUnconfirmed`. |
+| `nothing_to_repair_from` | 409 | no | `retryDocumentStorage` after the temporary copy was deleted → recover the JSON from your own storage. |
+| `storage_hash_mismatch` | 422 | no | The `sha256` sent to `confirmDocumentStorage` is not that document's JSON; nothing recorded → download again and hash the bytes you stored. |
 | `storage_unavailable` | 503 | yes | Managed copy cannot be read/repaired right now → retry only the storage operation; never re-issue. |
 | `storage_contract_invalid` | 502 (SDK) | no | Malformed storage response/receipt; on a successful issue it appears as `result.storageErrorCode` with the sealed result intact → repair later (`recoverOperation` / `retryDocumentStorage`). |
 

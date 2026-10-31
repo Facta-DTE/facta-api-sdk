@@ -374,6 +374,12 @@ export interface Totals {
   montoTotalOperacion: number;
   totalPagar: number;
   totalLetras: string;
+  /** Type 14 only: the income-tax withholding at the current rate (10 % today) on the whole subtotal, already subtracted from `totalPagar`; 0 when not requested. Absent against a server that does not report it yet. */
+  reteRenta?: number;
+  /** 01 and 03: the 1 % VAT withheld by the receiver, already subtracted from `totalPagar`; 0 when not requested. */
+  ivaRete?: number;
+  /** 03 only: the 1 % VAT perception, already added to `totalPagar`; 0 when not requested. */
+  ivaPerci?: number;
 }
 
 // --- Debug timings (a debugging aid, off by default) ----------------------------
@@ -521,7 +527,13 @@ export interface ManagedStorageStatus {
   supportedKinds: Array<"json" | "pdf" | "invalidation" | (string & {})>;
   unsupportedKinds: Array<"ticket" | "invalidation" | (string & {})>;
   /** Absent on servers that predate the capability. `byosCopyReport: 1` accepts BYOS copy reports. */
-  capabilities?: { byosCopyReport?: number };
+  capabilities?: { byosCopyReport?: number; invalidationFile?: number; storageConfirmation?: number };
+  /**
+   * Sealed documents that still depend on Facta's temporary encrypted copy, and the earliest deletion
+   * date. `null` when the server could not count them now; absent on servers that predate the rule.
+   * The list is `listUnconfirmedDocuments()`.
+   */
+  sinConfirmar?: { total: number; primeroSeBorraEl: string | null } | null;
 }
 
 export interface ManagedDocumentCopy {
@@ -534,6 +546,8 @@ export interface ManagedDocumentCopy {
   sha256: string;
   issuedDate: string;
   storedAt: string | null;
+  /** The document's stored mark (not this file's): who and when. `null` while unmarked; absent on older servers. */
+  confirmado?: { en: string; por: "facta_managed" | "facta_byos" | "sdk_report" | "api_report" | "app_report" | "admin" } | null;
 }
 
 export interface ManagedDocumentCopies {

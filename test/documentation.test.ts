@@ -45,6 +45,9 @@ Deno.test("method reference covers every public Facta client method", () => {
     "getStorageStatus",
     "getDocumentCopies",
     "retryDocumentStorage",
+    "listUnconfirmedDocuments",
+    "confirmDocumentStorage",
+    "storeAndConfirmUnconfirmed",
     "deliverEmail",
     "deliverWhatsApp",
     "getDelivery",
@@ -76,7 +79,7 @@ Deno.test("method reference covers every public Facta client method", () => {
       `Expected the method reference to document ${method}`,
     );
   }
-  assert(publicMethods.length === 59, "Update the method coverage list with the public API");
+  assert(publicMethods.length === 62, "Update the method coverage list with the public API");
 });
 
 Deno.test("package Markdown links resolve to files or in-page anchors", async () => {
@@ -122,6 +125,8 @@ Deno.test("runtime and catalog guides have equivalent Spanish and English struct
     "idempotency",
     "prepare-sign",
     "return-event",
+    "temporary-copy",
+    "payments-export-renta",
     "reference-clock",
     "diagnose",
     "errors",

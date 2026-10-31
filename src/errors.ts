@@ -115,6 +115,12 @@ export type FactaErrorCode =
   | "service_unavailable"
   | "no_storage_destination"
   | "storage_unsupported"
+  /** The temporary encrypted copy was deleted (HTTP 410): 2 days after the document was marked stored, or 30 days after sealing. Look in your own storage. */
+  | "temporary_copy_expired"
+  /** `retryDocumentStorage` after the temporary copy was deleted (HTTP 409): Facta has nothing left to rewrite from. */
+  | "nothing_to_repair_from"
+  /** The `sha256` of a storage confirmation is not the one of that document's JSON (HTTP 422); nothing was recorded. */
+  | "storage_hash_mismatch"
   | "storage_unavailable"
   | "storage_contract_invalid"
   // Delivery by e-mail / WhatsApp (docs/api-delivery-tokens.md §3.3).
