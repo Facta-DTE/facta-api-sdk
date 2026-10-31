@@ -148,6 +148,12 @@ A channel that cannot deliver (`fallido`, `sin_credito`…) is a **state**, not 
 
 | Code | Retried | Meaning → action |
 | --- | --- | --- |
+| `fse_withholding_mode_invalid` | no | Local preflight found a mode other than `incomeWithholding: { mode: "per_line" }` or an extra field such as a caller-selected rate/amount (`details.field`) → send only the supported mode object; this SDK mode remains unpublished until API deployment is verified. |
+| `fse_withholding_legacy_conflict` | no | `aplicarReteRenta` is present together with per-line mode or line flags, including `false`/`undefined` (`details.field`) → choose one withholding mode and omit the legacy property in per-line mode. |
+| `fse_withholding_not_supported` | no | A new withholding control is used outside FSE, or `/v1/status` does not explicitly advertise `capabilities.fseIncomeWithholdingPerLine: true` (`details.field`) → use withholding controls only on type 14 and only after the API deployment confirms support; when the capability is absent/false, the SDK does not send the issue/prepare POST. |
+| `fse_withholding_selection_required` | no | Per-line mode has no items, or an item is missing `applyIncomeWithholding` (`details.field`, such as `items[1].applyIncomeWithholding`) → provide a strict boolean for every item. |
+| `fse_withholding_selection_invalid` | no | An item selection is not a boolean (`details.field`) → use `true` or `false`; the SDK does not coerce strings or numbers. |
+| `fse_withholding_mode_required` | no | An item contains `applyIncomeWithholding` without the opt-in mode (`details.field`) → set `incomeWithholding: { mode: "per_line" }` on an FSE request. |
 | `network_error` | yes | No usable answer (connection or the SDK's own `timeoutMs`) → after retries, replay the same request and key. |
 | `operation_outcome_unknown` | no | An invalidation may have completed but its event cannot be recovered → reconcile manually; do not invalidate again. |
 | `archive_integrity_error` | no | Local archive failed an identity/digest check, or the API identity differs from the one journaled → keep the encrypted files; use the original client and credentials. |
