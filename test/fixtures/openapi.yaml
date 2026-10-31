@@ -36,8 +36,9 @@ openapi: 3.1.0
 #      puede reescribirse. Un cliente que haga `switch` sobre `message` está mal
 #      escrito.
 #   4. `Idempotency-Key` es OBLIGATORIA en las tres rutas que gastan
-#      correlativo. Alcance `(llave, Idempotency-Key)`, TTL 24 h, y reusar la
-#      misma llave con otro cuerpo es 422 y no una repetición silenciosa.
+#      correlativo. Alcance `(llave, Idempotency-Key)`. La respuesta guardada
+#      dura 7 días, pero la llave queda atada a su venta PARA SIEMPRE: la misma
+#      llave con otro cuerpo es 422 y no una repetición silenciosa.
 #   5. Un rechazo del MH es **422**, no 502: Hacienda LEYÓ el documento y lo
 #      negó, así que es un problema de los datos de quien llama. Y la respuesta
 #      nombra el correlativo que se gastó, porque el §167 permite corregir con
@@ -665,6 +666,8 @@ paths:
         mismas advertencias vienen en `error.details.advertencias`. Revise la
         primera respuesta de su integración: un campo ignorado es un descuento,
         un pago o un régimen que el documento no lleva.
+        Esto es permanente: un campo desconocido es solo una advertencia y
+        Facta DTE no lo convertirá en un rechazo.
 
         Devuelve el JWS firmado además del documento: es lo que el cliente
         archiva, porque volver a serializar el JSON después no reproduce los
@@ -1593,6 +1596,156 @@ paths:
         "401": { $ref: "#/components/responses/NoAutorizado" }
         "403": { $ref: "#/components/responses/Prohibido" }
         "429": { $ref: "#/components/responses/Techo" }
+
+  /v1/dte/pendientes:
+    get:
+      tags: [Consulta]
+      operationId: listarDocumentosPendientes
+      summary: Documentos firmados que Hacienda todavía no ha contestado
+      description: |
+        **Alcance: `query`.**
+
+        Un documento está **pendiente** cuando Facta ya lo firmó y gastó su
+        correlativo, pero Hacienda no ha dicho ni sí ni no. Le pasa cuando una
+        emisión terminó en `202 contingencia`, en `503 service_unavailable`, en
+        un corte de conexión, o con la advertencia `indice_pendiente` /
+        `reserva_sin_asentar`. **Antes de emitir otra vez, mire esta lista:**
+        emitir de nuevo crea OTRA venta, con otro código y otro correlativo.
+
+        Devuelve solo datos del documento (código, correlativo, tipo, fecha,
+        total, antigüedad, última respuesta de Hacienda y plazo): nunca el
+        documento ni el receptor. Orden: el más antiguo primero. Solo ve las de
+        la empresa y el ambiente de la llave.
+
+        Cada fila dice si **`reintentable`** desde la API. Los documentos que
+        emitió la aplicación aparecen, pero solo la aplicación puede abrirlos:
+        se reintentan desde Documentos → Pendientes con Hacienda.
+
+        `plazo.requiereContingencia` es `true` cuando pasaron más de 24 horas
+        desde la firma: ya no es el camino normal de transmisión y conviene
+        declarar el Evento de Contingencia desde la aplicación. Hacienda decide;
+        Facta pregunta antes de enviar.
+      security:
+        - FactaApiKey: []
+      parameters:
+        - name: estado
+          in: query
+          required: false
+          schema: { type: string, enum: [firmado, rechazado], default: firmado }
+          description: "`firmado` (el valor por defecto): pendientes. `rechazado`: los que Hacienda negó y esperan corrección."
+        - name: tipoDte
+          in: query
+          required: false
+          schema: { type: string, pattern: "^[0-9]{2}$" }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: cursor
+          in: query
+          required: false
+          schema: { type: string }
+          description: El `siguiente` de la página anterior. Opaco.
+      responses:
+        "200":
+          description: Una página, la más antigua primero. `siguiente` es `null` cuando no hay más.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [pendientes, siguiente]
+                properties:
+                  pendientes:
+                    type: array
+                    items: { $ref: "#/components/schemas/DocumentoPendiente" }
+                  siguiente: { type: string, nullable: true }
+              example:
+                pendientes:
+                  - codigoGeneracion: 7875BC7A-9580-441D-94E4-FA455E9D8BD0
+                    numeroControl: DTE-01-M001P001-000000000000417
+                    tipoDte: "01"
+                    estado: firmado
+                    modo: transitorio
+                    fecEmi: "2026-10-30"
+                    totalPagar: 11.3
+                    firmadoEn: "2026-10-30T17:41:02Z"
+                    antiguedadSegundos: 840
+                    intentos: 0
+                    ultimaRespuestaMh: null
+                    plazo: { venceEn: "2026-10-31T17:41:02Z", vencido: false, requiereContingencia: false }
+                    reintentable: true
+                    motivoNoReintentable: null
+                siguiente: null
+        "400": { description: "`limit`, `estado`, `tipoDte` o `cursor` inválidos.", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "401": { $ref: "#/components/responses/NoAutorizado" }
+        "403": { $ref: "#/components/responses/Prohibido" }
+        "429": { $ref: "#/components/responses/Techo" }
+        "503": { $ref: "#/components/responses/NoDisponible" }
+
+  /v1/dte/{codigoGeneracion}/reintentar:
+    post:
+      tags: [Emisión]
+      operationId: reintentarDocumentoPendiente
+      summary: Terminar un documento pendiente sin crear uno nuevo
+      description: |
+        **Alcance: `issue`.** Necesita la misma contraseña del vault de firma
+        (`X-Facta-Sign-Key`) que una emisión: de ahí salen las credenciales de
+        Hacienda. **No necesita `Idempotency-Key`**: la ruta es segura de repetir.
+
+        **Esta ruta nunca firma ni numera.** Reenvía los mismos bytes firmados
+        (mismo `codigoGeneracion`, mismo `numeroControl`) y, antes de enviar nada,
+        le pregunta a Hacienda qué sabe de ese código:
+
+        · Hacienda ya lo **selló** → no se reenvía nada. Se completa el registro
+          en Facta DTE y se cierra el correlativo. `via: consulta`.
+        · Hacienda **no lo recibió** (su respuesta `999`) → se reenvían los
+          mismos bytes. Si lo sella, `via: retransmision`.
+        · Hacienda lo **rechazó** → `422 mh_rejected` con sus palabras; el
+          correlativo queda registrado como rechazado. Corregir es una petición
+          nueva que reutiliza ese número (§167): no es esta ruta.
+        · Hacienda **no contestó** → `202 pendiente`; no cambió nada; repita más
+          tarde.
+
+        **No se duplica**: un documento tiene un único código; Hacienda rechaza
+        un segundo envío del mismo código («YA EXISTE»); y dos reintentos a la vez
+        no transmiten dos veces (el segundo recibe `409 retry_in_progress`).
+        Repetir sobre un documento ya sellado no hace nada.
+
+        Solo documentos que firmó la API. Uno que emitió la aplicación responde
+        `409 document_not_retryable` (`details.motivo: documento_de_la_aplicacion`).
+      security:
+        - FactaApiKey: []
+      parameters:
+        - name: codigoGeneracion
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+          example: 7875BC7A-9580-441D-94E4-FA455E9D8BD0
+      responses:
+        "200":
+          description: |
+            Sellado. `via` dice cómo: `consulta` (Hacienda ya lo tenía),
+            `retransmision` (se reenviaron los mismos bytes) o `ya_asentado`
+            (ya estaba terminado; no se hizo nada). Con `advertencias`
+            (`indice_pendiente` / `reserva_sin_asentar`) la respuesta trae el
+            `documento` y el `jws`: guárdelos y repita esta llamada.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReintentoSellado" }
+        "202":
+          description: Hacienda no contestó (o contestó sin decidir). No cambió nada. Repita más tarde con esta misma ruta; **no emita uno nuevo**.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReintentoPendiente" }
+        "400": { description: El código no tiene forma de UUID., content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "401": { $ref: "#/components/responses/NoAutorizado" }
+        "403": { $ref: "#/components/responses/Prohibido" }
+        "404": { description: No existe en la empresa y el ambiente de la llave., content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "409": { description: "`retry_in_progress` (otro reintento de este documento está en curso; `Retry-After`), `document_not_retryable` (`details.motivo`: `documento_de_la_aplicacion`, `sin_copia_firmada` o `sin_documento_firmado`) o `sign_vault_missing`.", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "422": { description: "`mh_rejected`: Hacienda rechazó el documento; `details` trae sus palabras y el correlativo.", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "424": { description: "`mh_auth_failed`: Hacienda no aceptó las credenciales de transmisión de la empresa.", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "429": { $ref: "#/components/responses/Techo" }
+        "503": { $ref: "#/components/responses/NoDisponible" }
 
   /v1/customers:
     get:
@@ -2666,7 +2819,7 @@ components:
         (`#/components/parameters/IdempotencyKey`): misma cadena y mismo cuerpo
         devuelve la respuesta guardada con `Idempotency-Replayed: true`; otro
         cuerpo es `422 idempotency_key_reuse` (salvo en las altas de cliente y
-        producto, donde actualiza el registro que la llave creó); TTL de 24 h.
+        producto, donde actualiza el registro que la llave creó). La respuesta guardada dura 7 días.
     BuzonId:
       name: id
       in: path
@@ -2821,8 +2974,22 @@ components:
           `actualizado: true`; solo si esa llave no guarda un registro vuelve el 422.
         · **Mientras la primera está en vuelo**, la segunda es 409
           `idempotency_in_flight` — no se encola. El cliente reintenta.
-        · **TTL 24 h.** Pasado eso la cadena queda libre: un reintento un día
-          después es una venta nueva, no un reintento.
+        · **La llave queda atada a su venta para siempre.** Desde el 30-oct-2026
+          esta regla es más estricta que antes: una llave que ya dio origen a un
+          documento NO se libera nunca. La **respuesta guardada** se conserva
+          7 días; después se borra, pero Facta recuerda qué solicitud y qué
+          documento eran.
+        · **Repetir con el mismo cuerpo pasados los 7 días** devuelve el
+          documento que ya existe, reconstruido desde sus copias (estado, sello,
+          totales; el archivo se baja con `GET /v1/dte/{codigoGeneracion}/file`),
+          con `Idempotency-Replayed: true` y `Idempotency-Replay-Source: rebuilt`.
+          **Nunca emite uno nuevo.**
+        · **Repetir con otro cuerpo es 422 `idempotency_key_reuse` siempre**,
+          también pasados los 7 días.
+        · **Una llave por venta, para siempre.** No reutilice una llave para otra
+          venta aunque haya pasado mucho tiempo. Si perdió la respuesta, repita
+          con la misma llave y el mismo cuerpo, o consulte el documento: nunca
+          invente una llave nueva para «volver a intentar» la misma venta.
 
   headers:
     RateLimitLimit:
@@ -3223,6 +3390,8 @@ components:
                 - catalog_cursor_expired
                 - webhook_limit_reached
                 - webhook_duplicate
+                - document_not_retryable
+                - retry_in_progress
                 - service_unavailable
                 - internal_error
             message:
@@ -4496,6 +4665,19 @@ components:
             puede volver a descargar (se rearma desde el archivo), y el barrido
             de reparación reintenta la copia administrada.
 
+            · `indice_pendiente`: el documento está sellado, pero su fila del
+            índice de Facta DTE no se pudo escribir. La reserva del correlativo
+            se deja **firmada** a propósito (no «sellada»). La respuesta trae el
+            documento y su `jws`: guárdelos y **no vuelva a emitirlo**. Para
+            completarlo llame a `POST /v1/dte/{codigoGeneracion}/reintentar`:
+            pregunta a Hacienda, no reenvía nada si ya lo selló y termina el
+            registro. La copia administrada queda `pending` con el código
+            `document_index_unavailable` hasta que el índice exista.
+
+            · `reserva_sin_asentar`: el documento está sellado e indexado, pero
+            la reserva no se pudo cerrar todavía. No emita otra vez; llame a
+            `POST /v1/dte/{codigoGeneracion}/reintentar` para cerrarla.
+
             · `plantilla_no_aplicada`: `representacion.plantilla` pidió una
             plantilla que no se pudo usar. El documento se emitió con la
             plantilla de la empresa. Trae además `campo`
@@ -4506,7 +4688,7 @@ components:
             type: object
             required: [codigo, mensaje]
             properties:
-              codigo: { type: string, enum: [copia_solo_temporal, sin_almacenamiento_duradero, sin_copia_en_servidor, plantilla_no_aplicada, campo_desconocido] }
+              codigo: { type: string, enum: [copia_solo_temporal, sin_almacenamiento_duradero, sin_copia_en_servidor, indice_pendiente, reserva_sin_asentar, plantilla_no_aplicada, campo_desconocido] }
               mensaje: { type: string }
               campo: { type: string, description: "`plantilla_no_aplicada`: el campo de la petición no atendido. `campo_desconocido`: el camino del campo que no existe.", example: representacion.plantilla.ticket }
               sugerencia: { type: string, description: "Solo `campo_desconocido`: el campo que probablemente quiso decir.", example: "items[0].montoDescu" }
@@ -4683,6 +4865,77 @@ components:
                   id: { type: string, format: uuid }
                   rutaJson: { type: string }
                   verificada: { type: boolean }
+
+    DocumentoPendiente:
+      type: object
+      description: Un documento firmado que Hacienda no ha contestado (o rechazó). Solo metadatos.
+      required: [codigoGeneracion, numeroControl, tipoDte, estado, reintentable]
+      properties:
+        codigoGeneracion: { type: string, format: uuid }
+        numeroControl: { type: string }
+        tipoDte: { type: string }
+        estado: { type: string, enum: [firmado, rechazado] }
+        modo: { type: string, enum: [transitorio, contingencia] }
+        fecEmi: { type: string, format: date, nullable: true }
+        totalPagar: { type: number, nullable: true }
+        firmadoEn: { type: string, format: date-time, nullable: true }
+        antiguedadSegundos: { type: integer, nullable: true }
+        intentos: { type: integer, description: Cuántas veces se reintentó con POST …/reintentar. }
+        ultimaRespuestaMh:
+          type: object
+          nullable: true
+          description: Lo último que Hacienda dijo sin decidir (o su motivo de rechazo).
+          properties:
+            descripcionMsg: { type: string, nullable: true }
+            observaciones: { type: array, items: { type: string } }
+            consultadoEn: { type: string, format: date-time, nullable: true }
+        plazo:
+          type: object
+          nullable: true
+          properties:
+            venceEn: { type: string, format: date-time, nullable: true, description: 24 horas después de la firma. }
+            vencido: { type: boolean }
+            requiereContingencia: { type: boolean }
+        reintentable: { type: boolean, description: "`true`: `POST …/reintentar` puede terminarlo." }
+        motivoNoReintentable:
+          type: string
+          nullable: true
+          enum: [rechazado, documento_de_la_aplicacion, sin_copia_firmada, sin_documento_firmado]
+
+    ReintentoSellado:
+      type: object
+      required: [estado, via, codigoGeneracion, numeroControl, tipoDte, ambiente]
+      properties:
+        estado: { type: string, enum: [sellado] }
+        via: { type: string, enum: [consulta, retransmision, ya_asentado] }
+        codigoGeneracion: { type: string, format: uuid }
+        numeroControl: { type: string }
+        tipoDte: { type: string }
+        ambiente: { type: string, enum: ["00", "01"] }
+        fecEmi: { type: string, format: date }
+        selloRecibido: { type: string }
+        fhProcesamiento: { type: string, nullable: true }
+        observaciones: { type: array, items: { type: string } }
+        advertencias:
+          type: array
+          items: { type: object, properties: { codigo: { type: string, enum: [indice_pendiente, reserva_sin_asentar] }, mensaje: { type: string } } }
+        documento: { type: object, description: "Solo con `advertencias`: el documento firmado." }
+        jws: { type: string, description: "Solo con `advertencias`." }
+
+    ReintentoPendiente:
+      type: object
+      required: [estado, via, codigoGeneracion, numeroControl, mhRespondio]
+      properties:
+        estado: { type: string, enum: [pendiente] }
+        via: { type: string, enum: [retransmision] }
+        codigoGeneracion: { type: string, format: uuid }
+        numeroControl: { type: string }
+        tipoDte: { type: string }
+        ambiente: { type: string }
+        mhRespondio: { type: boolean, description: "`false`: no se llegó a Hacienda. `true`: contestó sin decidir." }
+        detalle: { type: string, nullable: true }
+        observaciones: { type: array, items: { type: string } }
+        siguientePaso: { type: string }
 
     DocumentoRetenido:
       type: object
@@ -5224,6 +5477,14 @@ x-facta-errores:
     status: 409
     cuando: La primera petición con esa llave todavía se está procesando.
     hacer: 'Reintente en unos segundos. No se encola a propósito: la primera puede estar gastando un correlativo ahora mismo.'
+  document_not_retryable:
+    status: 409
+    cuando: "`POST /v1/dte/{codigoGeneracion}/reintentar` sobre un documento que la API no puede terminar. `details.motivo`: `documento_de_la_aplicacion` (lo emitió la aplicación), `sin_copia_firmada` (no hay copia firmada que reenviar) o `sin_documento_firmado` (ese número nunca llegó a firmarse)."
+    hacer: "`documento_de_la_aplicacion`: reintente desde Documentos → Pendientes con Hacienda, en la aplicación. `sin_copia_firmada`: escriba a soporte con el código. `sin_documento_firmado`: no hay nada pendiente; consulte `GET /v1/dte/{codigoGeneracion}`."
+  retry_in_progress:
+    status: 409
+    cuando: Otro reintento del mismo documento está en curso.
+    hacer: Espere `Retry-After` (unos segundos) y vuelva a llamar o consulte `GET /v1/dte/{codigoGeneracion}`. No se envió nada.
   prepare_token_invalid:
     status: 422
     cuando: El `prepareToken` venció, es de otra llave, o el documento cambió aunque sea un centavo.
@@ -5406,8 +5667,8 @@ x-facta-errores:
     hacer: Cambie los eventos del webhook que ya existe con `PATCH /v1/webhooks/{id}`.
   service_unavailable:
     status: 503
-    cuando: Algo nuestro no contestó — la base, el registro de peticiones, el de idempotencia.
-    hacer: Reintente con la misma `Idempotency-Key`.
+    cuando: "Algo nuestro no contestó (la base, el registro de peticiones, el de idempotencia) o no se pudo dejar constancia del documento firmado antes de enviarlo."
+    hacer: "Espere `Retry-After` y reintente con la MISMA `Idempotency-Key` y el mismo cuerpo. Si no se pudo dejar constancia, **no se envió nada a Hacienda** y el correlativo se devolvió: el reintento es seguro. Si la emisión ya había firmado y no sabe qué pasó, mire `GET /v1/dte/pendientes` antes de emitir: **nunca** use una llave nueva para la misma venta."
   internal_error:
     status: 500
     cuando: Un fallo que no estaba previsto.

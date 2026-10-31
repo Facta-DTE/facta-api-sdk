@@ -130,6 +130,9 @@ import type {
   DownloadedDocument,
   HoldingPage,
   ListDocumentsFilters,
+  ListPendingDocumentsFilters,
+  PendingDocumentsPage,
+  RetryResult,
   IssueResult,
   ManagedDocumentCopy,
   ManagedStorageReceipt,
@@ -331,6 +334,8 @@ const DEFAULT_BASE_URL = "https://hcnvknpsbadplnfcflxx.supabase.co/functions/v1/
 export const FACTA_STAGING_BASE_URL = "https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1";
 const RETRYABLE: ReadonlySet<FactaErrorCode> = new Set([
   "idempotency_in_flight",
+  // Another retry of the same pending document holds the claim; nothing was sent.
+  "retry_in_progress",
   "mh_unreachable",
   "service_unavailable",
   "correlative_unavailable",
@@ -489,6 +494,8 @@ const SIGNING_PATHS: ReadonlySet<string> = new Set(["/v1/dte", "/v1/dte/sign"]);
 const SIGNING_EVENT_PATH = /^\/v1\/dte\/[^/?]+\/(?:invalidate|return)$/;
 /** Issuing a draft opens the signing vault like `POST /v1/dte`, so it carries the second password too. */
 const SIGNING_DRAFT_PATH = /^\/v1\/drafts\/[^/?]+\/issue$/;
+/** Retrying a pending document needs the vault too: the Hacienda credentials live there. */
+const SIGNING_RETRY_PATH = /^\/v1\/dte\/[^/?]+\/reintentar$/;
 const SENSITIVE_ERROR_FIELD = /(?:authorization|api[-_]?key|sign[-_]?key|unlock[-_]?key|password|passphrase|secret|token|credential|private[-_]?key|ciphertext|refresh[-_]?token|service[-_]?key)/i;
 
 function redactErrorValue(value: unknown, secrets: readonly string[], depth = 0): unknown {
@@ -2107,6 +2114,29 @@ export class Facta {
     );
   }
 
+  /**
+   * Documents Facta signed whose number is spent but that Hacienda has not answered
+   * (`GET /v1/dte/pendientes`, scope `query`). Look here after any uncertain emission, BEFORE
+   * issuing again: a new emission is another sale. Oldest first; metadata only.
+   */
+  listPendingDocuments(filters: ListPendingDocumentsFilters = {}, options: { signal?: AbortSignal } = {}): Promise<PendingDocumentsPage> {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(filters)) if (value !== undefined) query.set(key, String(value));
+    return this.#request<PendingDocumentsPage>("GET", `/v1/dte/pendientes${query.size ? `?${query}` : ""}`, undefined, options);
+  }
+
+  /**
+   * Finish a pending document WITHOUT creating a new one (`POST /v1/dte/{cg}/reintentar`, scope
+   * `issue`, carries the signing key). Facta asks Hacienda first and resends the SAME signed bytes
+   * only if Hacienda never received them; it never signs or numbers anything. A 202
+   * (`estado: "pendiente"`) means Hacienda did not answer: call again later. Safe to repeat.
+   * Throws `mh_rejected` when Hacienda refuses, `document_not_retryable` for documents the app
+   * issued, and retries `retry_in_progress` / `service_unavailable` itself, honouring `retryAfterSeconds`.
+   */
+  retryDocument(generationCode: string, options: { signal?: AbortSignal; debug?: DebugOptions } = {}): Promise<RetryResult> {
+    return this.#request<RetryResult>("POST", `/v1/dte/${encodeURIComponent(generationCode)}/reintentar`, undefined, options);
+  }
+
   /** List sealed/reconciliable documents using the server cursor. */
   async listDocuments(filters: ListDocumentsFilters = {}): Promise<DtePage> {
     const { include, ...rest } = filters;
@@ -2507,7 +2537,7 @@ export class Facta {
     const headers: Record<string, string> = { "X-Facta-Key": this.#apiKey };
     // Sent ONLY where it is needed. A password that rides along on every
     // request is a password in every proxy log the request passes through.
-    if (this.#signKey !== null && method === "POST" && (SIGNING_PATHS.has(path) || SIGNING_EVENT_PATH.test(path) || SIGNING_DRAFT_PATH.test(path))) {
+    if (this.#signKey !== null && method === "POST" && (SIGNING_PATHS.has(path) || SIGNING_EVENT_PATH.test(path) || SIGNING_DRAFT_PATH.test(path) || SIGNING_RETRY_PATH.test(path))) {
       headers["X-Facta-Sign-Key"] = this.#signKey;
     }
     if (body !== undefined) headers["Content-Type"] = "application/json";
@@ -2528,7 +2558,12 @@ export class Facta {
     let lastError: FactaError | null = null;
     for (let attempt = 0; attempt <= this.#maxRetries; attempt++) {
       throwIfAborted(options.signal);
-      if (attempt > 0) await sleep(Math.min(250 * 2 ** (attempt - 1), 4_000), options.signal);
+      if (attempt > 0) {
+        // The server's own `retryAfterSeconds` (503 and retry_in_progress carry it) wins over our backoff, capped.
+        const asked = lastError?.retryAfterSeconds ?? null;
+        const backoff = Math.min(250 * 2 ** (attempt - 1), 4_000);
+        await sleep(asked === null ? backoff : Math.max(backoff, Math.min(asked, 15) * 1000), options.signal);
+      }
       throwIfAborted(options.signal);
       try {
         return await this.#attempt<T>(method, path, headers, body, binary, options.signal, timings, this.#timeoutMs, options.onHeaders);

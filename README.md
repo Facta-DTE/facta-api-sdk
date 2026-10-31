@@ -211,6 +211,7 @@ Every guide in `guides/`, in English and Spanish. The two React guides are Engli
 | Deno integration | [deno.md](guides/deno.md) | [deno.es.md](guides/deno.es.md) |
 | Error catalogue: every code, HTTP status, retries | [errors.md](guides/errors.md) | [errors.es.md](guides/errors.es.md) |
 | Idempotency patterns and recovering uncertain results | [idempotency.md](guides/idempotency.md) | [idempotency.es.md](guides/idempotency.es.md) |
+| Pending documents: list and retry without issuing twice | [pending-documents.md](guides/pending-documents.md) | [pending-documents.es.md](guides/pending-documents.es.md) |
 | Prepare, review, then sign | [prepare-sign.md](guides/prepare-sign.md) | [prepare-sign.es.md](guides/prepare-sign.es.md) |
 | The Archivo DTE (what the receiver gets) | [archivo-dte.md](guides/archivo-dte.md) | [archivo-dte.es.md](guides/archivo-dte.es.md) |
 | Delivery by e-mail and WhatsApp | [delivery.md](guides/delivery.md) | [delivery.es.md](guides/delivery.es.md) |

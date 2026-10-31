@@ -26,8 +26,14 @@ These come from the published API contract:
 - **Same key, different body**: `422 idempotency_key_reuse`.
 - **While the first request is still running**: `409 idempotency_in_flight`; it
   is not queued.
-- **TTL 24 hours.** After that the key is free again: the same request a day
-  later is a **new sale**, not a retry.
+- **A key is bound to its sale forever** (stricter since 30-Oct-2026). The stored
+  answer is kept 7 days; after that only the answer is dropped, and Facta still
+  remembers which request and which document the key belongs to. The same key
+  and the same body after 7 days returns the document that already exists, rebuilt
+  from its copies (state, seal, totals; `Idempotency-Replay-Source: rebuilt`),
+  never a new one. The same key with a different body is `422 idempotency_key_reuse`
+  forever. Use **one key per sale, for ever**: never reuse a key for another sale,
+  and never invent a new key to retry the same sale.
 
 ## What the SDK does for you
 
@@ -90,7 +96,8 @@ printable strings; keep them well under a few hundred characters.
 When `issue` finally throws `network_error` (or another retryable code after the
 SDK's retries), you do not know whether the server issued the document, and you
 do not have its `codigoGeneracion` either. Replay **the same request with the
-same key** within 24 hours: you get the stored answer, including the code. Then
+same key**: within 7 days you get the stored answer, after that the existing
+document rebuilt; either way you get the code and never a second document. Then
 use `getDocumentStatus` for anything that happens afterwards (a contingency
 being sealed, for example).
 
@@ -173,8 +180,9 @@ records, so keep `error.spent` with your order for reconciliation.
   `deliver`). Find the bug; do not switch to a new key to hide it.
 - **`idempotency_in_flight` (409)** after all retries: the first request is still
   working (Hacienda can take ~40 s). Wait and replay the same key.
-- **Replaying after 24 hours**: issues a second document. Reconcile with
-  `getDocumentStatus` / `listDocuments` first.
+- **Replaying after 7 days**: returns the existing document (rebuilt: state, seal,
+  totals), not a second one. The danger is the opposite: a **new** key for the same
+  sale issues a second document. See [pending documents](pending-documents.md).
 - **`AbortSignal`**: aborting stops waiting and retries locally; it does not
   prove the server did not accept the request. Replay the key to find out.
 - **Random keys in a stateless worker**: a crash loses the key. Derive keys from

@@ -590,6 +590,26 @@ for (const fila of pagina.documentos) {
 }
 ```
 
+### `listPendingDocuments(filtros?)`
+
+**No manda la llave de firma.** Devuelve `PendingDocumentsPage`.
+
+Documentos que Facta firmó, cuyo número ya se gastó y que Hacienda todavía no ha contestado (o negó). Solo metadatos, del más antiguo al más nuevo. Mírelo después de cualquier emisión dudosa, **antes** de emitir otra vez. Vea [documentos pendientes](pending-documents.es.md).
+
+```typescript
+const { pendientes } = await facta.listPendingDocuments({ estado: "firmado" });
+```
+
+### `retryDocument(codigoGeneracion)`
+
+**Manda la llave de firma** (las credenciales de Hacienda viven en ese vault). Devuelve `RetryResult`.
+
+Termina un documento pendiente **sin crear uno nuevo**: le pregunta a Hacienda primero y reenvía los MISMOS bytes firmados solo si nunca los recibió; no firma ni numera nada. `estado: "pendiente"` (HTTP 202) significa que Hacienda no contestó: llame de nuevo más tarde.
+
+```typescript
+const resultado = await facta.retryDocument(codigoGeneracion);
+```
+
 ### `getContract()`
 
 **No manda la llave de firma.** Devuelve el contrato OpenAPI.

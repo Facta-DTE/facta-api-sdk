@@ -2,11 +2,34 @@
 
 ## Unreleased
 
-Documentation and types only; no behaviour change.
+Additive. Every call, type and default of 0.6.0-next.3 keeps working. Server behaviour that integrators will notice is listed first.
+
+### Idempotency is stricter (server, 30-Oct-2026)
+
+- **A key is bound to its sale for ever.** Once an `Idempotency-Key` has produced a document it is never released. The stored answer is kept **7 days** (it used to be 24 hours); after that only the answer is dropped.
+- **The same key and the same body after 7 days returns the document that already exists**, rebuilt from its copies (state, seal and totals; download the file with `downloadDocument`). The response carries `Idempotency-Replayed: true` and `Idempotency-Replay-Source: rebuilt`. It never issues a new document.
+- **The same key with a different body is `422 idempotency_key_reuse` for ever** (before, it could be accepted again after 24 hours).
+- Practical rule: one key per sale, for ever. A lost response means replay the same key and body, or look the document up; never invent a new key for the same sale.
+
+### Uncertain emissions: pending documents and manual retry
+
+- **`listPendingDocuments({ estado?, tipoDte?, limit?, cursor? })`** (`GET /v1/dte/pendientes`, scope `query`): documents Facta signed whose number is spent but that Hacienda has not answered (or refused), oldest first, metadata only. Each row says whether it is `reintentable` and, if not, why. `plazo.requiereContingencia` turns `true` 24 hours after signing.
+- **`retryDocument(codigoGeneracion)`** (`POST /v1/dte/{codigoGeneracion}/reintentar`, scope `issue`, sends the signing key): finishes a pending document **without creating a new one**. Facta asks Hacienda first and resends the same signed bytes only if Hacienda never received them; it never signs or numbers. Results: `sellado` (`via: "consulta" | "retransmision" | "ya_asentado"`), `pendiente` (HTTP 202, no answer: try again), or `mh_rejected`. Safe to repeat; two at once transmit once.
+- New types `PendingDocument`, `PendingDocumentsPage`, `ListPendingDocumentsFilters`, `RetryResult`, `RetrySealed`, `RetryPending`. New error codes `document_not_retryable` (409, `details.motivo`) and `retry_in_progress` (409, retried by the SDK). Documents emitted by the app are listed but must be retried from the app.
+- **`FactaError.retryAfterSeconds`** reads `details.retryAfterSeconds`; the retry loop waits at least that long (at most 15 s) instead of only its own backoff.
+- Guide `pending-documents` (English and Spanish), runnable example `examples/pending-documents.ts`, and a mandatory "after every emission" step in the agent skill.
+
+### Signed documents are recorded before they are sent (server)
+
+- If Facta cannot record the signed document, **nothing is sent to Hacienda**: the answer is `503 service_unavailable` with `Retry-After`, and the control number is handed back. Replay the same request with the same `Idempotency-Key`; it is safe.
+- A sealed document is closed as `sellado` only once Facta DTE's own record of it exists. If that record could not be written the answer is still `200` and carries the warning `indice_pendiente` (with `documento` and `jws`: keep them); if only closing the number failed, `reserva_sin_asentar`. Neither is a reason to issue again: call `retryDocument()` to complete the record.
+
+### Documentation and types (payments, goods exports, income-tax withholding)
 
 - **New guide `payments-export-renta`** (English and Spanish): how payment is reported (`formaPago`, `pagos[]`, credit with `plazo` + `periodo`, nothing on 05/06) with the resulting `resumen.pagos`; what Hacienda requires of a goods export (`tipoRegimen`, `regimen`, `recintoFiscal`, which Facta does not enforce yet); and what `aplicarReteRenta` does today (current rate on the whole subtotal after line discounts; no partial base).
 - **`Totals.reteRenta`, `ivaRete`, `ivaPerci`** (optional): the API now returns them in `totales` when the document has the field.
 - Fixed the CAT-017 code `14` wording («giro bancario», not gift vouchers) in the contract snapshot and the skill; the `dte-types` export example used `incoterms: "FOB"` (not a CAT-031 code) and left out the goods-export fields; the skill's `issuing-dte-types` reference was out of date on `formaPago`, `pagos` and `tipoVenta`.
+- The SDK's own `recoverOperation` window (23 hours) is unchanged; widening it to match the permanent keys is planned.
 
 ## 0.6.0-next.3 (2026-10-29)
 

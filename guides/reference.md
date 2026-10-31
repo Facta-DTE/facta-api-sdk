@@ -172,6 +172,8 @@ Spanish field names and enum values from the wire contract.
 | `recoverInvalidation(operationId, archive?, signal?)` | Journal ID and optional archive → `InvalidationArchiveResult` | `issue`; `signKey` required only when retrying the same unresolved command | Replays with the saved idempotency key only within the 23-hour safety window. Expired operations or sparse “already invalidated” responses stop with `operation_outcome_unknown`; manual reconciliation is required. |
 | `listPendingInvalidations(archive?)` | Optional archive → allow-listed pending event summaries | No Facta scope; requires the local archive | Lists incomplete invalidation journals without returning representative fields, full response, or JWS. |
 | `listHolding(limit=50)` | Optional integer limit → `HoldingPage` | `download` | `GET /v1/dte/holding`; API caps the result at 100. Returns retention/sync evidence, not document bytes and not a paginated history. |
+| `listPendingDocuments(filters?)` | `{ estado?, tipoDte?, limit?, cursor? }` → `PendingDocumentsPage` | `query` | `GET /v1/dte/pendientes`; documents Facta signed whose number is spent but that Hacienda has not answered (or refused). Metadata only, oldest first. Look here after any uncertain emission, before issuing again. See [pending documents](pending-documents.md). |
+| `retryDocument(generationCode)` | Generation code → `RetryResult` | `issue` | `POST /v1/dte/{codigoGeneracion}/reintentar`; sends the signing key. Asks Hacienda first and resends the SAME signed bytes only if it never received them; never signs or numbers. `estado: "pendiente"` (HTTP 202) means no answer: call again later. |
 
 ## Download, archive, recovery, replication, and printing
 

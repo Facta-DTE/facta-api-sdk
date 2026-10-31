@@ -170,7 +170,8 @@ TypeScript and JavaScript; other SDKs are pending). The authoritative contract i
   contract.
 - `Idempotency-Key` is **mandatory** on `POST /v1/dte`, `/v1/dte/prepare`,
   `/v1/dte/sign`, `/v1/dte/{codigoGeneracion}/invalidate` and
-  `/v1/dte/{codigoGeneracion}/return`; scope `(API key, key)`, TTL 24 h.
+  `/v1/dte/{codigoGeneracion}/return`; scope `(API key, key)`. The stored answer lasts
+  7 days; the key stays bound to its sale for ever.
 - Rate-limit headers on every response: `RateLimit-Limit`, `RateLimit-Remaining`,
   `RateLimit-Reset`, `RateLimit-Policy`; `Retry-After` when you must wait.
 - Routes: `GET /v1/status`, `POST /v1/dte`, `GET /v1/dte` (list, cursor
