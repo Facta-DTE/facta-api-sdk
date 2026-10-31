@@ -92,6 +92,7 @@ Todas las guías de `guides/`, en español y en inglés. Las dos guías de React
 | Preparar, revisar y luego firmar | [prepare-sign.es.md](guides/prepare-sign.es.md) | [prepare-sign.md](guides/prepare-sign.md) |
 | El Archivo DTE (lo que recibe el receptor) | [archivo-dte.es.md](guides/archivo-dte.es.md) | [archivo-dte.md](guides/archivo-dte.md) |
 | Entrega por correo y WhatsApp | [delivery.es.md](guides/delivery.es.md) | [delivery.md](guides/delivery.md) |
+| Pago, exportaciones y retención de renta | [payments-export-renta.es.md](guides/payments-export-renta.es.md) | [payments-export-renta.md](guides/payments-export-renta.md) |
 | Devoluciones (Evento de Retorno) | [return-event.es.md](guides/return-event.es.md) | [return-event.md](guides/return-event.md) |
 | Diagnóstico, `diagnoseDestinations` | [diagnose.es.md](guides/diagnose.es.md) | [diagnose.md](guides/diagnose.md) |
 | Fijación de región | [region.es.md](guides/region.es.md) | [region.md](guides/region.md) |

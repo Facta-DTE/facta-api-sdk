@@ -702,6 +702,7 @@ const facta = new Facta({
 | `LineItem.tipoVenta` | Tratamiento de IVA de la línea: `gravada` (por omisión), `exenta` o `no_sujeta`. Lo elige usted; Facta no lo deduce. Solo 01, 03, 05 y 06; en 11 y 14 es `422`. |
 | `DteRequest.aplicarRetencionIva` / `aplicarPercepcionIva` | Retención (01, 03) y percepción (solo 03, líneas de bienes) de IVA del 1 %. Nunca automáticas; `400` en otros tipos y el compilador las rechaza. |
 | `LineItem.montoDescu` | Descuento de una línea en dinero, entre 0 y `cantidad × precioUni`, en la misma base de IVA que `precioUni`. Todavía no hay descuento global ni por porcentaje. |
+| `DteRequest.formaPago` / `plazo` / `periodo` | Cómo se informa el pago: contado con un medio, `pagos[]` para varios, crédito con `formaPago` + `plazo` + `periodo` (nunca `pagos`), nada en 05/06. Vea [payments-export-renta.es.md](payments-export-renta.es.md). |
 | `DteRequest.pagos` / `Pago` | De 1 a 10 filas `{ codigo, montoPago, referencia? }` (01, 03, 11, 14) que suman el total a pagar al centavo. No junto a `formaPago`, no en 05/06 (los tipos lo rechazan), no con `condicionOperacion` 2 (`422`). |
 | `result.unknownFields`, `unknownFieldWarnings(source)` | Las advertencias `campo_desconocido` de `advertencias`: un campo que Facta DTE no conoce se ignora y no está en el documento. Cada una trae `campo` y, si es obvio, `sugerencia`. |
 | `result.factaWarning`, `parseFactaWarning(header)` | La cabecera `Facta-Warning: campo_desconocido; campos=N`, convertida a `{ code, count }`. |

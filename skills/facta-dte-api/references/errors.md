@@ -47,7 +47,7 @@ Everything else is final for that request.
 | Code | HTTP | Meaning → action |
 | --- | --- | --- |
 | `invalid_request` | 400 / 422 | Missing/non-JSON/over-1 MB body, wrong field shape, non-UUID code (`details.field`); locally: invalid catalog product type/unit or VAT-basis mismatch → fix the request. |
-| `validation_failed` | 422 | Fails Hacienda's official schema (`details.issues`); also thrown locally by catalog writes → fix the listed fields. |
+| `validation_failed` | 422 | Fails Hacienda's official schema (`details.issues`); a catalogue code is wrong; `pagos` does not add up or was sent on a credit sale (use `formaPago` + `plazo` + `periodo`, see issuing-dte-types.md → Payment); also thrown locally by catalog writes → fix the listed fields. |
 | `retention_mixed_class_unsupported` | 422 | `aplicarReteRenta` with an `exenta`/`no_sujeta` line → issue those lines separately or drop the withholding. |
 | `not_found` | 404 | No such document/customer/product/route for this key's company; also for an id the server cannot resolve (`details.reason: "catalog_unknown_id"`) → check id and company. |
 | `method_not_allowed` | 405 | Route exists, wrong method (only outside the SDK). |

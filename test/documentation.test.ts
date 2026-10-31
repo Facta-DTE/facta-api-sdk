@@ -121,6 +121,7 @@ Deno.test("runtime and catalog guides have equivalent Spanish and English struct
     "idempotency",
     "prepare-sign",
     "return-event",
+    "payments-export-renta",
     "reference-clock",
     "diagnose",
     "errors",

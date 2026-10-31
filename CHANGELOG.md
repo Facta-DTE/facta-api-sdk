@@ -26,7 +26,9 @@ Additive. Every call, type and default of 0.6.0-next.3 keeps working. Server beh
 
 ### Documentation and types (payments, goods exports, income-tax withholding)
 
-- Guide `payments-export-renta`, optional `Totals.reteRenta`, `ivaRete` and `ivaPerci` in `totales`, and the corrected CAT-017 wording for code `14` («giro bancario»). (Also in the docs pull request #71; whichever merges second keeps one copy.)
+- **New guide `payments-export-renta`** (English and Spanish): how payment is reported (`formaPago`, `pagos[]`, credit with `plazo` + `periodo`, nothing on 05/06) with the resulting `resumen.pagos`; what Hacienda requires of a goods export (`tipoRegimen`, `regimen`, `recintoFiscal`, which Facta does not enforce yet); and what `aplicarReteRenta` does today (current rate on the whole subtotal after line discounts; no partial base).
+- **`Totals.reteRenta`, `ivaRete`, `ivaPerci`** (optional): the API now returns them in `totales` when the document has the field.
+- Fixed the CAT-017 code `14` wording («giro bancario», not gift vouchers) in the contract snapshot and the skill; the `dte-types` export example used `incoterms: "FOB"` (not a CAT-031 code) and left out the goods-export fields; the skill's `issuing-dte-types` reference was out of date on `formaPago`, `pagos` and `tipoVenta`.
 - The SDK's own `recoverOperation` window (23 hours) is unchanged; widening it to match the permanent keys is planned.
 
 ## 0.6.0-next.3 (2026-10-29)
