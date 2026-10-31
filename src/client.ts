@@ -59,6 +59,20 @@ import {
 } from "./drafts.ts";
 import { validateFactaConfig } from "./config-validation.ts";
 import { validateFseWithholdingRequest } from "./fse-withholding.ts";
+import {
+  confirmationBody,
+  isStorageConfirmation,
+  isUnconfirmedPage,
+  type ListUnconfirmedOptions,
+  sha256OfBytes,
+  type StorageConfirmation,
+  type StorageConfirmationInput,
+  type StoreAndConfirmDocumentResult,
+  type StoreAndConfirmOptions,
+  type StoreAndConfirmReport,
+  type UnconfirmedDocument,
+  type UnconfirmedPage,
+} from "./confirm-storage.ts";
 import { envelopeDigest, fingerprintV1 } from "./jcs.ts";
 import {
   CATALOG_WRITE_MESSAGES,
@@ -131,6 +145,9 @@ import type {
   DownloadedDocument,
   HoldingPage,
   ListDocumentsFilters,
+  ListPendingDocumentsFilters,
+  PendingDocumentsPage,
+  RetryResult,
   IssueResult,
   ManagedDocumentCopy,
   ManagedStorageReceipt,
@@ -235,6 +252,13 @@ export interface FactaRuntimeConfigV1 {
   emergencyStore?: EmergencyStoreFn;
   /** Optional alert hook for the same emergencies; errors are swallowed. */
   onEmergency?: (event: EmergencyEvent) => void | Promise<void>;
+  /**
+   * Default `false`. When `true`, `issueAndArchive` / `recoverOperation` tell Facta the document is
+   * stored as soon as the local archive holds it (`POST …/storage-confirmation`, `where:
+   * "local-archive"`). Turn it on only when the archive is durable storage you are responsible
+   * for: a `FileInvoiceArchive` on a disk that is backed up, not a temporary folder.
+   */
+  confirmArchive?: boolean;
 }
 
 /** `facta.emergency`. */
@@ -250,6 +274,8 @@ export type FactaArchiveEmissionOptions = Omit<ArchiveEmissionOptions, "archive"
   archive?: InvoiceArchive;
   /** Mark delivery channels. Part of the journaled request, so a recovery replays it. */
   deliver?: DeliverOptions;
+  /** Per call override of `runtime.confirmArchive`: report the local archive as the stored copy. */
+  confirmArchive?: boolean;
 };
 
 export interface FactaInvalidationArchiveOptions {
@@ -319,6 +345,7 @@ export interface DestinationSnapshot {
 interface RemoteOptions {
   destinations?: readonly RemoteArtifactDestination[] | undefined;
   replicate?: boolean | undefined;
+  confirmArchive?: boolean | undefined;
 }
 
 /** The API's largest catalog page (`limite`). */
@@ -332,6 +359,8 @@ const DEFAULT_BASE_URL = "https://hcnvknpsbadplnfcflxx.supabase.co/functions/v1/
 export const FACTA_STAGING_BASE_URL = "https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1";
 const RETRYABLE: ReadonlySet<FactaErrorCode> = new Set([
   "idempotency_in_flight",
+  // Another retry of the same pending document holds the claim; nothing was sent.
+  "retry_in_progress",
   "mh_unreachable",
   "service_unavailable",
   "correlative_unavailable",
@@ -490,6 +519,8 @@ const SIGNING_PATHS: ReadonlySet<string> = new Set(["/v1/dte", "/v1/dte/sign"]);
 const SIGNING_EVENT_PATH = /^\/v1\/dte\/[^/?]+\/(?:invalidate|return)$/;
 /** Issuing a draft opens the signing vault like `POST /v1/dte`, so it carries the second password too. */
 const SIGNING_DRAFT_PATH = /^\/v1\/drafts\/[^/?]+\/issue$/;
+/** Retrying a pending document needs the vault too: the Hacienda credentials live there. */
+const SIGNING_RETRY_PATH = /^\/v1\/dte\/[^/?]+\/reintentar$/;
 const SENSITIVE_ERROR_FIELD = /(?:authorization|api[-_]?key|sign[-_]?key|unlock[-_]?key|password|passphrase|secret|token|credential|private[-_]?key|ciphertext|refresh[-_]?token|service[-_]?key)/i;
 
 function redactErrorValue(value: unknown, secrets: readonly string[], depth = 0): unknown {
@@ -865,6 +896,202 @@ export class Facta {
     return receipt;
   }
 
+  /**
+   * The sealed documents that still depend on Facta's temporary encrypted copy, the ones deleted
+   * first at the top. Each row carries `borradoEl`, the date its copy is deleted if nobody confirms
+   * it. No document content, paths or receiver data. `download` scope.
+   *
+   * Poll it daily, or let `storeAndConfirmUnconfirmed` drain it. The company owner is mailed the
+   * same table from day one (production only).
+   *
+   * @throws FactaError `storage_unsupported` on a server that predates the route.
+   */
+  async listUnconfirmedDocuments(options: ListUnconfirmedOptions = {}): Promise<UnconfirmedPage> {
+    if (options.limit !== undefined && (!Number.isInteger(options.limit) || options.limit < 1 || options.limit > 100)) {
+      throw new TypeError("limit must be an integer from 1 through 100.");
+    }
+    const query = new URLSearchParams();
+    if (options.limit !== undefined) query.set("limit", String(options.limit));
+    if (options.cursor !== undefined && options.cursor !== "") query.set("cursor", options.cursor);
+    const text = query.toString();
+    let value: unknown;
+    try {
+      value = await this.#request<unknown>("GET", `/v1/storage/unconfirmed${text ? `?${text}` : ""}`, undefined, options.signal ? { signal: options.signal } : {});
+    } catch (cause) {
+      if (cause instanceof FactaError && (cause.status === 404 || cause.status === 501)) {
+        throw new FactaError("storage_unsupported", "This API server does not list unconfirmed documents.", cause.status);
+      }
+      throw cause;
+    }
+    if (!isUnconfirmedPage(value)) {
+      throw new FactaError("storage_contract_invalid", "API returned an invalid unconfirmed-documents response.", 502);
+    }
+    return value;
+  }
+
+  /**
+   * Tell Facta you stored the JSON of a sealed document, so its temporary encrypted copy is deleted
+   * 2 days later instead of at 30 days. `issue` scope. Safe to repeat: a second call answers
+   * `yaConfirmado: true` and keeps the first source.
+   *
+   * Give `sha256` (of the JSON bytes you stored, as `downloadDocument(code, "json")` returned them)
+   * or `bytes` and the SDK hashes them. A document issued by the API is checked against the file
+   * Facta can rebuild (`verificado: true`; a wrong hash is `FactaError` `storage_hash_mismatch` and
+   * nothing is recorded). A document issued from the app cannot be checked: it is accepted as
+   * `informado: true`.
+   *
+   * `emergencyStore` alone does not confirm: call this after your store (or after
+   * `facta.emergency.replicate` left nothing in a synced destination).
+   *
+   * @throws FactaError `storage_unsupported` on a server that does not advertise
+   * `capabilities.storageConfirmation`; `not_found`; `storage_hash_mismatch`.
+   */
+  async confirmDocumentStorage(generationCode: string, input: StorageConfirmationInput, options: CallOptions = {}): Promise<StorageConfirmation> {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(generationCode)) {
+      throw new TypeError("generationCode must be a UUID.");
+    }
+    const body = await confirmationBody(input);
+    const version = (await this.#capabilities())["storageConfirmation"];
+    if (typeof version !== "number" || version < 1) {
+      throw new FactaError("storage_unsupported", "This API server does not advertise capabilities.storageConfirmation.", 501);
+    }
+    const value = await this.#request<unknown>("POST", `/v1/dte/${encodeURIComponent(generationCode)}/storage-confirmation`, body, options);
+    if (!isStorageConfirmation(value)) {
+      throw new FactaError("storage_contract_invalid", "API returned an invalid storage-confirmation response.", 502);
+    }
+    return value;
+  }
+
+  /**
+   * Drain the unconfirmed list: for each document, download the JSON (and the PDF), hand them to
+   * YOUR `store`, and confirm with the SHA-256 of the exact bytes you were given. Bounded
+   * (`limit`, default 200), safe to run daily, and it never throws for a per-document problem:
+   * read the report. A failed document is skipped (it stays on the list and in the owner's mail);
+   * the run stops early after `maxFailures`, on your signal, or on an error that affects every
+   * document (a revoked key, a server without the capability).
+   *
+   * Your `store` must resolve only when the files are durably stored.
+   */
+  async storeAndConfirmUnconfirmed(options: StoreAndConfirmOptions): Promise<StoreAndConfirmReport> {
+    if (typeof options?.store !== "function") throw new TypeError("storeAndConfirmUnconfirmed requires a store function.");
+    const limit = options.limit ?? 200;
+    const pageSize = options.pageSize ?? 50;
+    const maxFailures = options.maxFailures ?? 5;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 1000) throw new TypeError("limit must be an integer from 1 through 1000.");
+    if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 100) throw new TypeError("pageSize must be an integer from 1 through 100.");
+    if (!Number.isInteger(maxFailures) || maxFailures < 1) throw new TypeError("maxFailures must be a positive integer.");
+    const where = options.where?.trim() || "store";
+    const signal = options.signal;
+    const call = signal ? { signal } : {};
+    const results: StoreAndConfirmDocumentResult[] = [];
+    const left = new Map<string, string>(); // code -> borradoEl of documents NOT confirmed
+    let confirmed = 0;
+    let failed = 0;
+    let listed = 0;
+    let total: number | null = null;
+    let cursor: string | undefined;
+    let stopped: StoreAndConfirmReport["stopped"] = "complete";
+    let error: StoreAndConfirmReport["error"];
+    const FATAL = new Set<string>(["storage_unsupported", "unauthorized", "invalid_api_key", "key_revoked", "key_expired", "key_inactive", "forbidden_scope", "ip_not_allowed", "environment_not_allowed", "storage_contract_invalid"]);
+    const describe = (cause: unknown) => cause instanceof FactaError
+      ? { code: cause.code as string, message: cause.message }
+      : { code: "store_failed", message: cause instanceof Error ? cause.message : String(cause) };
+
+    run: while (true) {
+      if (signal?.aborted) { stopped = "aborted"; break; }
+      let page: UnconfirmedPage;
+      try {
+        page = await this.listUnconfirmedDocuments({ limit: Math.min(pageSize, limit - listed), ...(cursor === undefined ? {} : { cursor }), ...call });
+      } catch (cause) {
+        if (signal?.aborted) { stopped = "aborted"; break; }
+        stopped = "list_failed";
+        error = describe(cause);
+        break;
+      }
+      total = page.total;
+      for (const doc of page.documentos) {
+        if (signal?.aborted) { stopped = "aborted"; break run; }
+        listed++;
+        const row = await this.#storeOne(doc, options, where, call, FATAL, describe);
+        results.push(row.result);
+        if (row.result.state === "confirmed") confirmed++;
+        else {
+          failed++;
+          left.set(doc.codigoGeneracion, doc.borradoEl);
+        }
+        if (row.fatal) { stopped = "fatal"; error = { code: row.result.code ?? "unknown", message: row.result.message ?? "" }; break run; }
+        if (failed >= maxFailures) { stopped = "too_many_failures"; break run; }
+        if (listed >= limit) { stopped = page.siguiente === null && doc === page.documentos[page.documentos.length - 1] ? "complete" : "limit"; break run; }
+      }
+      if (page.siguiente === null) break;
+      cursor = page.siguiente;
+    }
+    if (signal?.aborted && stopped === "complete") stopped = "aborted";
+    const waiting = [...left.values()].sort();
+    return {
+      listed,
+      confirmed,
+      failed,
+      results,
+      remaining: total === null ? null : Math.max(0, total - confirmed),
+      firstDeletionAt: waiting[0] ?? null,
+      stopped,
+      ...(error === undefined ? {} : { error }),
+    };
+  }
+
+  async #storeOne(
+    doc: UnconfirmedDocument,
+    options: StoreAndConfirmOptions,
+    defaultWhere: string,
+    call: { signal?: AbortSignal },
+    fatalCodes: ReadonlySet<string>,
+    describe: (cause: unknown) => { code: string; message: string },
+  ): Promise<{ result: StoreAndConfirmDocumentResult; fatal: boolean }> {
+    const code = doc.codigoGeneracion;
+    const fail = (step: "download" | "store" | "confirm", cause: unknown) => {
+      const info = describe(cause);
+      return { result: { codigoGeneracion: code, state: "failed" as const, step, ...info }, fatal: step !== "store" && fatalCodes.has(info.code) };
+    };
+    let json: Uint8Array;
+    try {
+      json = (await this.downloadDocument(code, "json", call)).bytes;
+    } catch (cause) {
+      return fail("download", cause);
+    }
+    let pdf: Uint8Array | null = null;
+    if (options.includePdf !== false) {
+      try { pdf = (await this.downloadDocument(code, "pdf", call)).bytes; } catch { pdf = null; }
+    }
+    const sha256 = await sha256OfBytes(json);
+    let place: string | void;
+    try {
+      place = await options.store({ codigoGeneracion: code, json, pdf, sha256 }, doc);
+    } catch (cause) {
+      return fail("store", cause);
+    }
+    const stored = typeof place === "string" && place.trim() !== "" ? place.trim().slice(0, 200) : defaultWhere;
+    try {
+      const answer = await this.confirmDocumentStorage(code, { where: stored, sha256 }, call);
+      return {
+        fatal: false,
+        result: {
+          codigoGeneracion: code,
+          state: "confirmed",
+          by: answer.por,
+          alreadyConfirmed: answer.yaConfirmado,
+          verificado: answer.verificado,
+          informado: answer.informado,
+          where: stored,
+          ...(pdf === null && options.includePdf !== false ? { pdfMissing: true } : {}),
+          borradoEl: answer.borradoEl,
+        },
+      };
+    } catch (cause) {
+      return fail("confirm", cause);
+    }
+  }
+
   /** Download and open the destination snapshot in this process only. */
   async syncDestinations(): Promise<DestinationSnapshot> {
     if (this.#unlockKey === null) {
@@ -1207,6 +1434,7 @@ export class Facta {
     const remote: RemoteOptions = {
       destinations: options.remoteDestinations ?? this.#runtime.remoteDestinations,
       replicate: options.replicate ?? this.#runtime.replicate,
+      confirmArchive: options.confirmArchive ?? this.#runtime.confirmArchive,
     };
     if (options.includeTicket === false && options.ticketPaperWidthMm !== undefined) {
       throw new TypeError("ticketPaperWidthMm cannot be supplied when includeTicket is false.");
@@ -1245,6 +1473,7 @@ export class Facta {
         ...(signal ? { signal } : {}),
         ...(remote.destinations ? { remoteDestinations: remote.destinations } : {}),
         ...(remote.replicate === undefined ? {} : { replicate: remote.replicate }),
+        ...(remote.confirmArchive === undefined ? {} : { confirmArchive: remote.confirmArchive }),
       });
     }
 
@@ -1273,6 +1502,8 @@ export class Facta {
       remoteDestinations?: readonly RemoteArtifactDestination[];
       /** `false` opts out of the default replication to the synced destinations. */
       replicate?: boolean;
+      /** Per call override of `runtime.confirmArchive`. */
+      confirmArchive?: boolean;
     } = {},
   ): Promise<ArchiveEmissionResult> {
     const request = options.request;
@@ -1282,6 +1513,7 @@ export class Facta {
     const remote: RemoteOptions = {
       destinations: options.remoteDestinations ?? this.#runtime.remoteDestinations,
       replicate: options.replicate ?? this.#runtime.replicate,
+      confirmArchive: options.confirmArchive ?? this.#runtime.confirmArchive,
     };
     if (!archive) throw new TypeError("recoverOperation requires archive or runtime.archive.");
     await archive.assertReady();
@@ -1335,7 +1567,7 @@ export class Facta {
       }
       const step = await this.#remoteStep(operationId, archive, remote, storedArtifacts, signal);
       const remoteCopies = step.remoteCopies ?? operation.remoteCopies;
-      return {
+      return await this.#confirmArchived({
         ...(managedStorage === undefined ? {} : { managedStorage }),
         ...(storageErrorCode === undefined ? {} : { storageErrorCode }),
         ...(step.warnings.length ? { warnings: step.warnings } : {}),
@@ -1345,7 +1577,7 @@ export class Facta {
           artifacts: storedArtifacts,
           ...(remoteCopies ? { remoteCopies } : {}),
         },
-      };
+      }, archive, remote, signal);
     }
 
     const recoveryRequest = request ?? operation.request;
@@ -1362,7 +1594,7 @@ export class Facta {
       const codigoGeneracion = operation.codigoGeneracion!;
       await this.getDocumentStatus(codigoGeneracion);
       const archived = await this.#archiveArtifacts(operation.id, codigoGeneracion, archive, signal, operation.ticketPaperWidthMm, remote);
-      return { ...(managedStorage === undefined ? {} : { managedStorage }), ...(storageErrorCode === undefined ? {} : { storageErrorCode }), ...(archived.warnings.length ? { warnings: archived.warnings } : {}), archive: archived.archive };
+      return await this.#confirmArchived({ ...(managedStorage === undefined ? {} : { managedStorage }), ...(storageErrorCode === undefined ? {} : { storageErrorCode }), ...(archived.warnings.length ? { warnings: archived.warnings } : {}), archive: archived.archive }, archive, remote, signal);
     }
 
     {
@@ -1695,7 +1927,59 @@ export class Facta {
       try { await archive.markNeedsAttention(operation.id, detail.slice(0, 500)); } catch { /* Preserve the successful fiscal result. */ }
       result = { emission, ...(emission.entrega === undefined ? {} : { entrega: emission.entrega }), ...base, archive: { state: "needs_attention", operationId: operation.id, artifacts, detail } };
     }
-    return await this.#guardArchived(result, signal);
+    return await this.#confirmArchived(await this.#guardArchived(result, signal), archive, remote, signal);
+  }
+
+  /**
+   * Say whether Facta was told the document is stored. Never throws: the document is already sealed.
+   * Free of HTTP calls unless `confirmArchive` is on and nothing else already marked the document.
+   */
+  async #confirmArchived(
+    result: ArchiveEmissionResult,
+    archive: InvoiceArchive,
+    remote: RemoteOptions,
+    signal?: AbortSignal,
+  ): Promise<ArchiveEmissionResult> {
+    const code = result.emission?.codigoGeneracion ?? (await archive.find(result.archive.operationId))?.codigoGeneracion;
+    if (!code) return result;
+    const copies = result.archive.remoteCopies ?? [];
+    const reported = copies.some((copy) => copy.kind === "json" && copy.state === "stored" && copy.report === "reported");
+    if (reported) return { ...result, confirmation: { state: "confirmed", by: "sdk_report" } };
+    if ((result.managedStorage ?? result.emission?.storage)?.json.state === "stored") {
+      return { ...result, confirmation: { state: "confirmed", by: "facta_managed" } };
+    }
+    if (remote.confirmArchive === true && result.archive.state === "complete") {
+      try {
+        const json = await archive.getArtifact(code, "json");
+        if (json) {
+          const answer = await this.confirmDocumentStorage(code, { where: "local-archive", bytes: json.bytes }, signal ? { signal } : {});
+          return { ...result, confirmation: { state: "confirmed", by: answer.por, borradoEl: answer.borradoEl } };
+        }
+      } catch (cause) {
+        // A server that predates the rule deletes nothing: nothing to confirm, nothing to warn about.
+        if (cause instanceof FactaError && cause.code === "storage_unsupported") {
+          return { ...result, confirmation: { state: "unsupported", detail: "This API server does not advertise capabilities.storageConfirmation; it deletes no temporary copy." } };
+        }
+        const reason = cause instanceof FactaError ? cause.code : "network_error";
+        return {
+          ...result,
+          confirmation: { state: "failed" },
+          warnings: [...(result.warnings ?? []), {
+            code: "confirmation_failed",
+            detail: `The local archive holds the document but Facta was not told (${reason}). Call confirmDocumentStorage, or run storeAndConfirmUnconfirmed, before its temporary copy is deleted.`,
+          }],
+        };
+      }
+    }
+    // Not a warning: a document archived without a synced destination is normal for many integrations
+    // and the warnings list of existing callers stays as it was. The field is the signal.
+    return {
+      ...result,
+      confirmation: {
+        state: "pending",
+        detail: "No copy was reported to Facta. Its temporary encrypted copy is deleted 30 days after sealing (2 days after you confirm it): call confirmDocumentStorage, or run storeAndConfirmUnconfirmed daily. runtime.emergencyStore alone does not confirm.",
+      },
+    };
   }
 
   /** Emergency triggers of an archived emission: server warnings, no durable destination, or every destination failed. */
@@ -1929,25 +2213,33 @@ export class Facta {
     }
   }
 
-  /** `true` only when the server advertises `capabilities.byosCopyReport`; cached per client. */
-  #byosReportCapability: Promise<boolean> | undefined = undefined;
-  async #serverAcceptsByosReports(): Promise<boolean> {
-    this.#byosReportCapability ??= (async () => {
+  /**
+   * The capability numbers `GET /v1/storage/status` advertises; cached per client. A server that
+   * predates the route (404/501) has none. A transient failure is not cached.
+   */
+  #storageCapabilities: Promise<Record<string, unknown>> | undefined = undefined;
+  async #capabilities(): Promise<Record<string, unknown>> {
+    this.#storageCapabilities ??= (async () => {
       try {
         const status = await this.#request<unknown>("GET", "/v1/storage/status");
-        const caps = isRecord(status) && isRecord(status.capabilities) ? status.capabilities : undefined;
-        return caps?.byosCopyReport === 1;
+        return isRecord(status) && isRecord(status.capabilities) ? status.capabilities : {};
       } catch (cause) {
-        if (cause instanceof FactaError && (cause.status === 404 || cause.status === 501)) return false;
+        if (cause instanceof FactaError && (cause.status === 404 || cause.status === 501)) return {};
         throw cause;
       }
     })();
     try {
-      return await this.#byosReportCapability;
+      return await this.#storageCapabilities;
     } catch (cause) {
-      this.#byosReportCapability = undefined; // a transient failure is not cached
+      this.#storageCapabilities = undefined; // a transient failure is not cached
       throw cause;
     }
+  }
+
+  /** `true` when the server advertises `capabilities.byosCopyReport` (1 or higher). */
+  async #serverAcceptsByosReports(): Promise<boolean> {
+    const version = (await this.#capabilities())["byosCopyReport"];
+    return typeof version === "number" && version >= 1;
   }
 
   async #reportCopies(
@@ -2129,6 +2421,29 @@ export class Facta {
       undefined,
       options,
     );
+  }
+
+  /**
+   * Documents Facta signed whose number is spent but that Hacienda has not answered
+   * (`GET /v1/dte/pendientes`, scope `query`). Look here after any uncertain emission, BEFORE
+   * issuing again: a new emission is another sale. Oldest first; metadata only.
+   */
+  listPendingDocuments(filters: ListPendingDocumentsFilters = {}, options: { signal?: AbortSignal } = {}): Promise<PendingDocumentsPage> {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(filters)) if (value !== undefined) query.set(key, String(value));
+    return this.#request<PendingDocumentsPage>("GET", `/v1/dte/pendientes${query.size ? `?${query}` : ""}`, undefined, options);
+  }
+
+  /**
+   * Finish a pending document WITHOUT creating a new one (`POST /v1/dte/{cg}/reintentar`, scope
+   * `issue`, carries the signing key). Facta asks Hacienda first and resends the SAME signed bytes
+   * only if Hacienda never received them; it never signs or numbers anything. A 202
+   * (`estado: "pendiente"`) means Hacienda did not answer: call again later. Safe to repeat.
+   * Throws `mh_rejected` when Hacienda refuses, `document_not_retryable` for documents the app
+   * issued, and retries `retry_in_progress` / `service_unavailable` itself, honouring `retryAfterSeconds`.
+   */
+  retryDocument(generationCode: string, options: { signal?: AbortSignal; debug?: DebugOptions } = {}): Promise<RetryResult> {
+    return this.#request<RetryResult>("POST", `/v1/dte/${encodeURIComponent(generationCode)}/reintentar`, undefined, options);
   }
 
   /** List sealed/reconciliable documents using the server cursor. */
@@ -2531,7 +2846,7 @@ export class Facta {
     const headers: Record<string, string> = { "X-Facta-Key": this.#apiKey };
     // Sent ONLY where it is needed. A password that rides along on every
     // request is a password in every proxy log the request passes through.
-    if (this.#signKey !== null && method === "POST" && (SIGNING_PATHS.has(path) || SIGNING_EVENT_PATH.test(path) || SIGNING_DRAFT_PATH.test(path))) {
+    if (this.#signKey !== null && method === "POST" && (SIGNING_PATHS.has(path) || SIGNING_EVENT_PATH.test(path) || SIGNING_DRAFT_PATH.test(path) || SIGNING_RETRY_PATH.test(path))) {
       headers["X-Facta-Sign-Key"] = this.#signKey;
     }
     if (body !== undefined) headers["Content-Type"] = "application/json";
@@ -2552,7 +2867,12 @@ export class Facta {
     let lastError: FactaError | null = null;
     for (let attempt = 0; attempt <= this.#maxRetries; attempt++) {
       throwIfAborted(options.signal);
-      if (attempt > 0) await sleep(Math.min(250 * 2 ** (attempt - 1), 4_000), options.signal);
+      if (attempt > 0) {
+        // The server's own `retryAfterSeconds` (503 and retry_in_progress carry it) wins over our backoff, capped.
+        const asked = lastError?.retryAfterSeconds ?? null;
+        const backoff = Math.min(250 * 2 ** (attempt - 1), 4_000);
+        await sleep(asked === null ? backoff : Math.max(backoff, Math.min(asked, 15) * 1000), options.signal);
+      }
       throwIfAborted(options.signal);
       try {
         return await this.#attempt<T>(method, path, headers, body, binary, options.signal, timings, this.#timeoutMs, options.onHeaders);

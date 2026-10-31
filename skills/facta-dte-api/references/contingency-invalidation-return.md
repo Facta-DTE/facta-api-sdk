@@ -9,7 +9,8 @@ Sources: `guides/return-event.md`, `guides/archivo-dte.md`, `guides/delivery.md`
 When Hacienda does not answer, `issue` / `sign` return HTTP 202 and
 `estado: "contingencia"` (`DteInContingency`): the document **is signed**, the
 control number is reserved, the bytes exist and are owed to Hacienda. Facta keeps
-the reservation in contingency and retransmits later (the 24 h / 72 h deadlines
+the reservation in contingency; you finish it with `retryDocument()` (see
+[pending-documents.md](pending-documents.md)) (the 24 h / 72 h deadlines
 are the law's, not Facta's). The SDK does not retry a 202.
 
 What you must do:

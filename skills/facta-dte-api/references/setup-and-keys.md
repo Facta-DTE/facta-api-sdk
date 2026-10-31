@@ -124,7 +124,7 @@ const facta = new Facta({
 | `clock`, `clockFetch` | Reference clock for archive timestamps and S3 signing. Default on; `false` uses the device clock. Archive methods wait for its first calibration (≈6 s worst case when the clock service is unreachable). |
 | `debug` | `{ timings: true }`; see debugging.md. |
 | `config` | `FactaConfigV1` (`version: 1`), scalar, no secrets: `expectedEnvironment`, `requiredScopes`, `region`, `baseUrl`, ticket width… Flat options win. |
-| `runtime` | `FactaRuntimeConfigV1` (`version: 1`): `archive`, `invalidationArchive`, `remoteDestinations`, `printTransport`, `emergencyStore`, `onEmergency`. See storage-and-emergency.md. |
+| `runtime` | `FactaRuntimeConfigV1` (`version: 1`): `archive`, `invalidationArchive`, `remoteDestinations`, `printTransport`, `emergencyStore`, `onEmergency`, `confirmArchive`. See storage-and-emergency.md. |
 | `fetch` | Custom fetch, for tests or an owning runtime. |
 
 Node can load the scalar config from an explicit file:
@@ -170,7 +170,8 @@ TypeScript and JavaScript; other SDKs are pending). The authoritative contract i
   contract.
 - `Idempotency-Key` is **mandatory** on `POST /v1/dte`, `/v1/dte/prepare`,
   `/v1/dte/sign`, `/v1/dte/{codigoGeneracion}/invalidate` and
-  `/v1/dte/{codigoGeneracion}/return`; scope `(API key, key)`, TTL 24 h.
+  `/v1/dte/{codigoGeneracion}/return`; scope `(API key, key)`. The stored answer lasts
+  7 days; the key stays bound to its sale for ever.
 - Rate-limit headers on every response: `RateLimit-Limit`, `RateLimit-Remaining`,
   `RateLimit-Reset`, `RateLimit-Policy`; `Retry-After` when you must wait.
 - Routes: `GET /v1/status`, `POST /v1/dte`, `GET /v1/dte` (list, cursor
@@ -178,7 +179,9 @@ TypeScript and JavaScript; other SDKs are pending). The authoritative contract i
   `POST /v1/dte/sign`, `GET /v1/dte/{codigoGeneracion}`,
   `POST …/invalidate`, `POST …/return`, `GET …/file?kind=json|pdf|ticket`,
   `POST …/entrega/correo`, `POST …/entrega/whatsapp`, `GET …/entrega`,
-  `GET /v1/dte/holding`, and the `storage` and `vault` routes.
+  `GET /v1/dte/holding`, `GET /v1/storage/unconfirmed` (documents whose temporary copy is
+  not yet reported stored, with their deletion date), `POST …/storage-confirmation` (body
+  `{ donde, sha256 }`: report a document stored), and the other `storage` and `vault` routes.
 - The issuer, environment, establishment and point of sale come from the key;
   the client cannot name them.
 - With a direct call, send complete receiver and item data: only the TypeScript

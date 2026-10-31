@@ -123,3 +123,13 @@ Deno.test("all API DTE request variants are represented by the public SDK types"
     supported,
   );
 });
+
+Deno.test("Totals declares the optional withholding and perception keys the API returns", () => {
+  const totals: import("../src/types.ts").Totals = {
+    totalNoSuj: 0, totalExenta: 0, totalGravada: 100, totalDescu: 0, totalIva: 0,
+    montoTotalOperacion: 100, totalPagar: 90, totalLetras: "NOVENTA 00/100 DOLARES",
+    reteRenta: 10,
+  };
+  assertEquals(totals.reteRenta, 10);
+  assertEquals(totals.ivaRete, undefined);
+});

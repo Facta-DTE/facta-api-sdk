@@ -576,6 +576,10 @@ if (result.state === "unknown") {
 }
 ```
 
+### `listUnconfirmedDocuments`, `confirmDocumentStorage` y `storeAndConfirmUnconfirmed`
+
+**No mandan la llave de firma.** Facta guarda una copia temporal cifrada de cada documento sellado y la borra **2 días después de que usted informa que lo guardó**, o **30 días después de sellado** si nadie lo informa; el dueño de la empresa recibe un correo con la tabla completa desde el primer día (solo en producción). `listUnconfirmedDocuments({ limit?, cursor? })` (`download`) lista lo que falta con su fecha de borrado; `confirmDocumentStorage(codigoGeneracion, { where, sha256 | bytes })` (`issue`) informa un documento (hash equivocado: `storage_hash_mismatch`; servidor sin `capabilities.storageConfirmation`: `storage_unsupported`); `storeAndConfirmUnconfirmed({ store })` hace la ronda completa con tope. `runtime.emergencyStore` por sí solo no informa. Todo el recorrido, con ejemplos: [la copia temporal](temporary-copy.es.md).
+
 ### `listHolding(limit?)`
 
 **No manda la llave de firma.** Devuelve `HoldingPage`.
@@ -588,6 +592,26 @@ const pagina = await facta.listHolding(50);
 for (const fila of pagina.documentos) {
   console.log(fila.codigoGeneracion, fila.whereLanded, fila.expiresAt);
 }
+```
+
+### `listPendingDocuments(filtros?)`
+
+**No manda la llave de firma.** Devuelve `PendingDocumentsPage`.
+
+Documentos que Facta firmó, cuyo número ya se gastó y que Hacienda todavía no ha contestado (o negó). Solo metadatos, del más antiguo al más nuevo. Mírelo después de cualquier emisión dudosa, **antes** de emitir otra vez. Vea [documentos pendientes](pending-documents.es.md).
+
+```typescript
+const { pendientes } = await facta.listPendingDocuments({ estado: "firmado" });
+```
+
+### `retryDocument(codigoGeneracion)`
+
+**Manda la llave de firma** (las credenciales de Hacienda viven en ese vault). Devuelve `RetryResult`.
+
+Termina un documento pendiente **sin crear uno nuevo**: le pregunta a Hacienda primero y reenvía los MISMOS bytes firmados solo si nunca los recibió; no firma ni numera nada. `estado: "pendiente"` (HTTP 202) significa que Hacienda no contestó: llame de nuevo más tarde.
+
+```typescript
+const resultado = await facta.retryDocument(codigoGeneracion);
 ```
 
 ### `getContract()`
@@ -682,6 +706,7 @@ const facta = new Facta({
 | `LineItem.tipoVenta` | Tratamiento de IVA de la línea: `gravada` (por omisión), `exenta` o `no_sujeta`. Lo elige usted; Facta no lo deduce. Solo 01, 03, 05 y 06; en 11 y 14 es `422`. |
 | `DteRequest.aplicarRetencionIva` / `aplicarPercepcionIva` | Retención (01, 03) y percepción (solo 03, líneas de bienes) de IVA del 1 %. Nunca automáticas; `400` en otros tipos y el compilador las rechaza. |
 | `LineItem.montoDescu` | Descuento de una línea en dinero, entre 0 y `cantidad × precioUni`, en la misma base de IVA que `precioUni`. Todavía no hay descuento global ni por porcentaje. |
+| `DteRequest.formaPago` / `plazo` / `periodo` | Cómo se informa el pago: contado con un medio, `pagos[]` para varios, crédito con `formaPago` + `plazo` + `periodo` (nunca `pagos`), nada en 05/06. Vea [payments-export-renta.es.md](payments-export-renta.es.md). |
 | `DteRequest.pagos` / `Pago` | De 1 a 10 filas `{ codigo, montoPago, referencia? }` (01, 03, 11, 14) que suman el total a pagar al centavo. No junto a `formaPago`, no en 05/06 (los tipos lo rechazan), no con `condicionOperacion` 2 (`422`). |
 | `result.unknownFields`, `unknownFieldWarnings(source)` | Las advertencias `campo_desconocido` de `advertencias`: un campo que Facta DTE no conoce se ignora y no está en el documento. Cada una trae `campo` y, si es obvio, `sugerencia`. |
 | `result.factaWarning`, `parseFactaWarning(header)` | La cabecera `Facta-Warning: campo_desconocido; campos=N`, convertida a `{ code, count }`. |

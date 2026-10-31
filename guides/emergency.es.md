@@ -9,6 +9,8 @@ temporal es la única que queda. La salvaguarda de emergencia es el último
 recurso para que la API siga firmando y los archivos se guarden de todos modos.
 El SDK no trae almacenamiento para esto: usted puede aportar una función. Es opcional.
 
+La copia de retención de una hora no es la copia temporal de 30 días: el almacenamiento de emergencia protege contra la primera y **no** marca el documento como guardado. Eso lo hace el informe ([la copia temporal](temporary-copy.es.md)).
+
 Hay un segundo mecanismo, en el servidor: si nada se pudo guardar, Facta envía una copia de respaldo al correo del dueño (JSON más PDF, para importarlos después). `emergencyStore` es una salvaguarda adicional encima de esa.
 
 ## Cuándo se ejecuta
@@ -85,9 +87,16 @@ espera.
 1. Suena una alerta (`onEmergency`, o `emergency_saved` en sus registros).
    Compruebe que los archivos existen donde los dejó su función.
 2. Cuando se arregle el problema de almacenamiento, llame a `replicate` con esos
-   archivos; una copia verificada en un destino es la prueba.
-3. Solo entonces borre su copia de emergencia.
-4. Si `saved` fue `false`, vaya al resultado que aún tiene, o descargue de la
+   archivos; una copia guardada en un destino es la prueba. Una copia que llega a
+   un destino sincronizado la informa el SDK a Facta.
+3. **Infórmelo.** El almacenamiento de emergencia por sí solo no avisa a Facta que
+   el documento quedó guardado, y Facta borra su copia temporal 30 días después de
+   sellado. Si `replicate` dejó `stored` vacío, o conservó los archivos usted
+   mismo, llame a `confirmDocumentStorage(code, { where, bytes })`. Mientras tanto
+   el documento sigue en `listUnconfirmedDocuments()` y en el correo del dueño.
+   Vea [la copia temporal](temporary-copy.es.md).
+4. Solo entonces borre su copia de emergencia.
+5. Si `saved` fue `false`, vaya al resultado que aún tiene, o descargue de la
    copia temporal dentro de la hora: `downloadDocument(code, "json")`, `"pdf"`.
 
 Un ejemplo (no es código incluido): escribir en una carpeta suya.

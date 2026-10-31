@@ -102,6 +102,10 @@ export type FactaErrorCode =
   | "idempotency_key_required"
   | "idempotency_key_reuse"
   | "idempotency_in_flight"
+  /** `retryDocument()` on a document the API cannot finish (HTTP 409); `details.motivo` says why. */
+  | "document_not_retryable"
+  /** Another retry of the same document is running (HTTP 409); wait `retryAfterSeconds`. */
+  | "retry_in_progress"
   | "prepare_token_invalid"
   // Returns (Evento de Retorno). `details.lineas` names each offending line, from 1.
   | "return_exceeds_available"
@@ -118,6 +122,12 @@ export type FactaErrorCode =
   | "service_unavailable"
   | "no_storage_destination"
   | "storage_unsupported"
+  /** The temporary encrypted copy was deleted (HTTP 410): 2 days after the document was marked stored, or 30 days after sealing. Look in your own storage. */
+  | "temporary_copy_expired"
+  /** `retryDocumentStorage` after the temporary copy was deleted (HTTP 409): Facta has nothing left to rewrite from. */
+  | "nothing_to_repair_from"
+  /** The `sha256` of a storage confirmation is not the one of that document's JSON (HTTP 422); nothing was recorded. */
+  | "storage_hash_mismatch"
   | "storage_unavailable"
   | "storage_contract_invalid"
   // Delivery by e-mail / WhatsApp (docs/api-delivery-tokens.md §3.3).
@@ -182,6 +192,13 @@ export class FactaError extends Error {
    */
   get unknownFields(): UnknownFieldWarning[] {
     return unknownFieldWarnings(this.details);
+  }
+
+  /** Seconds the server asks you to wait (`details.retryAfterSeconds`, the `Retry-After` header's twin), or null. */
+  get retryAfterSeconds(): number | null {
+    const details = this.details as Record<string, unknown> | null | undefined;
+    const raw = details?.["retryAfterSeconds"];
+    return typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? raw : null;
   }
 
   /** What Hacienda said, word for word, when it refused. */

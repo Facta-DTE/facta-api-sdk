@@ -12,8 +12,24 @@ export {
   type FactaRuntimeConfigV1,
   type IssueOptions,
 } from "./src/client.ts";
+export { sha256OfBytes } from "./src/confirm-storage.ts";
+export type {
+  ConfirmedBy,
+  ListUnconfirmedOptions,
+  StorageConfirmation,
+  StorageConfirmationInput,
+  StoreAndConfirmDocumentResult,
+  StoreAndConfirmOptions,
+  StoreAndConfirmReport,
+  StoreAndConfirmStep,
+  StoreUnconfirmedFn,
+  UnconfirmedDocument,
+  UnconfirmedFiles,
+  UnconfirmedPage,
+} from "./src/confirm-storage.ts";
 export type {
   ArchiveArtifact,
+  ArchiveConfirmation,
   ArchiveEmissionOptions,
   ArchiveEmissionResult,
   ArchiveOperation,

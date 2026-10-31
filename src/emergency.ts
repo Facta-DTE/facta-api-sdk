@@ -10,6 +10,10 @@
 //   * It runs only in an emergency: never on a normal issue, never on a timer.
 //   * It runs AFTER the fiscal result exists and never throws into it.
 //   * The SDK ships no storage of its own and sends bytes nowhere else.
+//   * It protects against the ONE-HOUR holding copy. It does not confirm the
+//     document: Facta learns that a copy exists only from a report (the BYOS
+//     report of a synced destination, or `confirmDocumentStorage`). Until then
+//     the temporary encrypted copy is deleted on the 30th day after sealing.
 
 import type { ArchiveArtifact, RemoteArtifactDestination } from "./archive.ts";
 import { archivoDteOf } from "./archivo-dte.ts";
@@ -107,7 +111,7 @@ export function emergencyWarningCodes(result: unknown): string[] {
 }
 
 export const EMERGENCY_STORE_INFO =
-  "runtime.emergencyStore is optional: it saves the JSON and PDF yourself if Facta cannot store them. Without it, when nothing could be stored Facta e-mails the company owner a backup copy.";
+  "runtime.emergencyStore is optional: it saves the JSON and PDF yourself if Facta cannot store them. Without it, when nothing could be stored Facta e-mails the company owner a backup copy. It does NOT tell Facta the document is stored: after it (or after facta.emergency.replicate leaves nothing in a synced destination) call confirmDocumentStorage, or Facta deletes its temporary copy 30 days after sealing.";
 
 function base64Bytes(value: string): Uint8Array {
   return Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
