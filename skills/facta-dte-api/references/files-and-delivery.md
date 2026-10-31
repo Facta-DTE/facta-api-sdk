@@ -55,7 +55,10 @@ console.log(file.jsonFormat, original.jsonFormat);                      // "arch
   `ticketPaperWidthMm` (and `includeTicket: false` to skip the ticket).
 - `downloadDocument(code, "pdf", { source: "managed" })` demands the managed copy
   (no fallback); an old server answers `storage_unsupported`. `file.storageSource`
-  reports `managed`, `holding` or `archive`.
+  reports `managed`, `holding` or `archive`. After the temporary copy is deleted (2 days after
+  the document was reported stored, 30 days after sealing otherwise) the file route answers
+  `410 temporary_copy_expired` unless Facta Storage holds it, so keep and report your own copy
+  (storage-and-emergency.md).
 - `facta.print(downloadedPdfOrTicket, transport)` submits to **your**
   `PrintTransport`; the result is `submitted` or `unknown`, never "printed", and an
   `unknown` job is not retried automatically.

@@ -576,6 +576,10 @@ if (result.state === "unknown") {
 }
 ```
 
+### `listUnconfirmedDocuments`, `confirmDocumentStorage` y `storeAndConfirmUnconfirmed`
+
+**No mandan la llave de firma.** Facta guarda una copia temporal cifrada de cada documento sellado y la borra **2 días después de que usted informa que lo guardó**, o **30 días después de sellado** si nadie lo informa; el dueño de la empresa recibe un correo con la tabla completa desde el primer día (solo en producción). `listUnconfirmedDocuments({ limit?, cursor? })` (`download`) lista lo que falta con su fecha de borrado; `confirmDocumentStorage(codigoGeneracion, { where, sha256 | bytes })` (`issue`) informa un documento (hash equivocado: `storage_hash_mismatch`; servidor sin `capabilities.storageConfirmation`: `storage_unsupported`); `storeAndConfirmUnconfirmed({ store })` hace la ronda completa con tope. `runtime.emergencyStore` por sí solo no informa. Todo el recorrido, con ejemplos: [la copia temporal](temporary-copy.es.md).
+
 ### `listHolding(limit?)`
 
 **No manda la llave de firma.** Devuelve `HoldingPage`.

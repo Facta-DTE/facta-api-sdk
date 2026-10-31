@@ -174,6 +174,9 @@ emitiendo de nuevo.
 | --- | --- | --- | --- | --- |
 | `no_storage_destination` | 422 | no | La empresa no tiene ningún destino de almacenamiento conectado y verificado en los últimos 30 días. Se revisa antes de reservar. También lo lanzan localmente (422) `syncDestinations`, cuando la foto de destinos no está publicada. | Conecte o vuelva a sincronizar un destino en la aplicación. |
 | `storage_unsupported` | 501 | no | El servidor no expone la ruta de almacenamiento administrado (el SDK también le asigna los 404), o una descarga con `source: "managed"` no trajo la prueba de origen. | Actualice el servidor antes de depender de ello. |
+| `temporary_copy_expired` | 410 | no | La copia temporal cifrada se borró (2 días después de marcar el documento como guardado, o 30 días después de sellado) y Almacenamiento Facta no tiene copia. | Búsquelo en su propio almacenamiento. Para evitarlo, informe cada documento con `confirmDocumentStorage` y corra `storeAndConfirmUnconfirmed` a diario ([guía](temporary-copy.es.md)). |
+| `nothing_to_repair_from` | 409 | no | `retryDocumentStorage` sobre un documento cuya copia temporal ya no existe: no queda de dónde reescribir. | Recupere el JSON de su propio almacenamiento. |
+| `storage_hash_mismatch` | 422 | no | El `sha256` de `confirmDocumentStorage` no es el del JSON de ese documento (archivo cortado, otro documento). No se registró nada. | Descargue de nuevo con `downloadDocument` y calcule el hash sobre los bytes que guardó. |
 | `storage_unavailable` | 503 | **sí** | La copia administrada no se pudo leer o reparar en este momento. | Reintente solo la operación de almacenamiento; nunca vuelva a emitir. |
 | `storage_contract_invalid` | 502 (SDK) | no | Una respuesta o un recibo de almacenamiento viene mal formado. En una emisión exitosa aparece en cambio como `result.storageErrorCode`, con el resultado sellado intacto. | Repare la copia después (`recoverOperation` / `retryDocumentStorage`). |
 

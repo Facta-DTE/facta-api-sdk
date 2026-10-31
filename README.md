@@ -84,6 +84,7 @@ The `Facta` client exposes the following English methods:
 - **Catalogue changes and webhooks (scope `catalog:read`):** `listCatalogChanges`, `createWebhook`, `listWebhooks`, `getWebhook`, `updateWebhook`, `deleteWebhook`, `rotateWebhookSecret`, `testWebhook`, and the receiver-side `verifyWebhook` / `constructWebhookEvent` / `signWebhook`. Records read one at a time carry `revision`; pass it as `ifMatch` to `updateCustomer` / `updateProduct`. See the [webhooks guide](guides/webhooks.md).
 - **Drafts (scope `draft`):** `createDraft`, `listDrafts`, `getDraft`, `getDraftByKey`, `updateDraft` (`version` sent as `If-Match`), `cancelDraft` and `issueDraft`: leave an invoice for a person of the company to review and issue. See the [drafts guide](guides/drafts.md).
 - **DTE lifecycle:** `issue`, `prepare`, `sign`, `getDocumentStatus`, `listDocuments`, `invalidate`, `registerReturn`, `listHolding`, `downloadDocument`, `getDocumentCopies`, `retryDocumentStorage`.
+- **Temporary copy and confirmation (new):** `listUnconfirmedDocuments`, `confirmDocumentStorage`, `storeAndConfirmUnconfirmed`. Facta deletes its temporary encrypted copy 2 days after you report a document stored, or 30 days after sealing if nobody does; the company owner is mailed from day one. See [the temporary copy](guides/temporary-copy.md).
 - **Durable archival:** `issueAndArchive`, `recoverOperation`, `listPendingOperations`, `invalidateAndArchive`, `recoverInvalidation`, `listPendingInvalidations`, `replicateArchive`, `diagnoseDestinations`.
 - **Delivery by e-mail and WhatsApp:** `issue(request, { deliver })`, `deliverEmail`, `deliverWhatsApp`, `getDelivery`, `waitForDelivery`. Issuing never waits for delivery; each channel is a separate request with a five-minute token and failures are reported as states.
 - **Local printing:** `print`.
@@ -151,12 +152,13 @@ The type system helps construct payloads but does not replace server-side tax va
 
 `syncDestinations()` decrypts the published destinations snapshot in memory using `unlockKey`. It does not create or update server records and does not write artifacts to storage destinations. Since 0.6 there is no catalog snapshot: `customerId` / `productId` are resolved by the server, and the catalog reads call the API.
 
-`issue()` never writes to storage. With `unlockKey` and a published snapshot, `issueAndArchive()` and `recoverOperation()` also replicate the legal JSON and PDF to your synced destinations under Facta's canonical `DTE/…/YYYY/MM/<numeroControl>` paths (opt out with `replicate: false`), report verified copies to Facta, and surface problems as non-throwing `warnings`. See [what each mode does](guides/storage-adapters.md#where-documents-go-each-mode).
+`issue()` never writes to storage. With `unlockKey` and a published snapshot, `issueAndArchive()` and `recoverOperation()` also replicate the legal JSON and PDF to your synced destinations under Facta's canonical `DTE/…/YYYY/MM/<numeroControl>` paths (opt out with `replicate: false`), report each copy they wrote to Facta (a report, not a verification), and surface problems as non-throwing `warnings`. See [what each mode does](guides/storage-adapters.md#where-documents-go-each-mode).
 
 - [Catalog reads and id resolution](guides/catalog.md)
 - [Create, edit and deactivate customers and products](guides/catalog-write.md)
 - [Storage adapters](guides/storage-adapters.md)
-- [Emergency safeguard](guides/emergency.md): `runtime.emergencyStore` saves the JSON and PDF when Facta could not store them durably
+- [The temporary copy, the confirmation and the emergency store](guides/temporary-copy.md): the one-hour holding, the 2-day / 30-day temporary copy, the owner mails, and how to report a document stored
+- [Emergency safeguard](guides/emergency.md): `runtime.emergencyStore` saves the JSON and PDF when Facta could not store them durably (it does not confirm; reporting does)
 - [Node integration](guides/node.md)
 - [Deno integration](guides/deno.md)
 
@@ -226,6 +228,7 @@ Every guide in `guides/`, in English and Spanish. The two React guides are Engli
 | Catalogue changes and webhooks | [webhooks.md](guides/webhooks.md) | [webhooks.es.md](guides/webhooks.es.md) |
 | Drafts | [drafts.md](guides/drafts.md) | [drafts.es.md](guides/drafts.es.md) |
 | Storage adapters | [storage-adapters.md](guides/storage-adapters.md) | [storage-adapters.es.md](guides/storage-adapters.es.md) |
+| The temporary copy and the confirmation | [temporary-copy.md](guides/temporary-copy.md) | [temporary-copy.es.md](guides/temporary-copy.es.md) |
 | Emergency safeguard | [emergency.md](guides/emergency.md) | [emergency.es.md](guides/emergency.es.md) |
 | Headless browser client (`@facta-dte/api/browser`) | [browser.md](guides/browser.md) | [browser.es.md](guides/browser.es.md) |
 | Signing window for React | [react.md](guides/react.md) | — |
