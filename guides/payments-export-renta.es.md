@@ -98,7 +98,8 @@ await facta.issue({
 - **No** selecciona líneas según `tipoItem`. Si un servicio incluye bienes como insumos, esos materiales forman parte de la operación y quedan dentro del subtotal. Ejemplo: materiales de $100 más mano de obra de $50 dan un subtotal de $150; al 10 % la retención es $15 y el total a pagar es $135.
 - Se resta del total a pagar: `totalPagar = subTotal − reteRenta`.
 - Una compra solo de bienes no queda sujeta automáticamente por no llevar IVA; no presente el art. 156 como regla automática para toda compra a una persona natural.
-- Una **base parcial** (retener solo el servicio cuando un mismo documento reúne una compra de bienes independiente y un servicio) **no está soportada** y sigue pendiente de confirmación.
+- Este es el **modo heredado**: `aplicarReteRenta` siempre se aplica a todo el subtotal. Hay un modo explícito por línea separado, disponible solo cuando `/v1/status` del SDK anuncia `capabilities.fseIncomeWithholdingPerLine: true`. Usa `incomeWithholding: { mode: "per_line" }` y exige un booleano `applyIncomeWithholding` en cada elemento; omita por completo `aplicarReteRenta`. El servidor calcula la retención sobre los importes netos seleccionados después de los descuentos por línea, con su tasa vigente; el cliente no puede escoger tasa ni monto. No se selecciona ninguna línea por `tipoItem`.
+- La selección por línea expresa la base de cálculo que solicita el integrador; no determina que la compra califique legalmente para retención. Tampoco elude las restricciones existentes para clases de venta FSE no admitidas.
 - `tipoVenta: "exenta"` o `"no_sujeta"` junto con `aplicarReteRenta: true` es `422 retention_mixed_class_unsupported`, antes de gastar correlativo.
 - El monto se lee en `result.documento.resumen.reteRenta` y en `result.totales.reteRenta`.
 

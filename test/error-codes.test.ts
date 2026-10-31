@@ -36,7 +36,18 @@ Deno.test("every error code in the API contract is a FactaErrorCode", async () =
 });
 
 // Codes the SDK raises itself; the server never sends them.
-const LOCAL_ONLY = ["archive_integrity_error", "network_error", "operation_outcome_unknown", "storage_contract_invalid"];
+const LOCAL_ONLY = [
+  "archive_integrity_error",
+  "fse_withholding_legacy_conflict",
+  "fse_withholding_mode_invalid",
+  "fse_withholding_mode_required",
+  "fse_withholding_not_supported",
+  "fse_withholding_selection_invalid",
+  "fse_withholding_selection_required",
+  "network_error",
+  "operation_outcome_unknown",
+  "storage_contract_invalid",
+];
 
 Deno.test("every FactaErrorCode is in the API contract or is a local-only code", async () => {
   const contract = new Set(contractCodes(await Deno.readTextFile("test/fixtures/openapi.yaml")));

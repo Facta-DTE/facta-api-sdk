@@ -58,6 +58,7 @@ import {
   draftVersion,
 } from "./drafts.ts";
 import { validateFactaConfig } from "./config-validation.ts";
+import { validateFseWithholdingRequest } from "./fse-withholding.ts";
 import {
   confirmationBody,
   isStorageConfirmation,
@@ -1360,7 +1361,9 @@ export class Facta {
 
   /** Emit in one call: correlative, signature, transmission and index. */
   async issue(request: DteRequest, options: IssueOptions = {}): Promise<IssueResult> {
+    validateFseWithholdingRequest(request);
     throwIfAborted(options.signal);
+    await this.#assertFseWithholdingSupported(request, options.signal);
     const { deliver, ...call } = options;
     // `customerId` / `productId` travel as given: the server resolves them, so the body is the
     // request and the server's idempotency claim hashes the body (no fingerprint header, AP-07).
@@ -1425,6 +1428,8 @@ export class Facta {
    * even if archival later fails; callers must inspect `archive.state`.
    */
   async issueAndArchive(request: DteRequest, options: FactaArchiveEmissionOptions): Promise<ArchiveEmissionResult> {
+    validateFseWithholdingRequest(request);
+    await this.#assertFseWithholdingSupported(request, options.signal);
     const archive = options.archive ?? this.#runtime.archive;
     if (!archive) throw new TypeError("issueAndArchive requires archive or runtime.archive.");
     const { operationId, idempotencyKey, signal } = options;
@@ -1505,6 +1510,7 @@ export class Facta {
     } = {},
   ): Promise<ArchiveEmissionResult> {
     const request = options.request;
+    if (request !== undefined) validateFseWithholdingRequest(request);
     const archive = options.archive ?? this.#runtime.archive;
     const signal = options.signal;
     const remote: RemoteOptions = {
@@ -1518,6 +1524,8 @@ export class Facta {
     throwIfAborted(signal);
     const operation = await archive.find(operationId);
     if (operation === null) throw new Error("Archive operation not found: " + operationId + ".");
+    const savedRequest = request ?? operation.request;
+    if (savedRequest !== undefined) validateFseWithholdingRequest(savedRequest);
     const identity = await this.#archiveIdentity(signal);
     this.#assertArchiveIdentity(operation.identity, identity, operationId);
     throwIfAborted(signal);
@@ -1601,6 +1609,7 @@ export class Facta {
         await archive.markNeedsAttention(operationId, detail);
         throw new Error(detail);
       }
+      await this.#assertFseWithholdingSupported(recoveryRequest, signal);
       // `idempotencyHash` says how the server claim was hashed. "fingerprint-v1" sends the stored
       // fingerprint; "body" sends no header. A record without it (written by an older SDK, or the
       // field was dropped by a custom archive) is ambiguous: try without the header first, and if
@@ -2286,12 +2295,27 @@ export class Facta {
 
   /** Reserve the correlative and get the canonical document, unsigned. */
   async prepare(request: DteRequest, options: CallOptions = {}): Promise<PreparedDte> {
+    validateFseWithholdingRequest(request);
     throwIfAborted(options.signal);
+    await this.#assertFseWithholdingSupported(request, options.signal);
     let warningHeader: string | null = null;
     const prepared = await this.#request<PreparedDte>("POST", "/v1/dte/prepare", request, {
       ...options, onHeaders: (headers) => { warningHeader = headers.get("facta-warning"); },
     });
     return withWarnings(prepared, warningHeader);
+  }
+
+  /** Recheck every per-line operation so a stale positive result cannot hide a rollback. */
+  async #assertFseWithholdingSupported(request: DteRequest, signal?: AbortSignal): Promise<void> {
+    if (request.incomeWithholding?.mode !== "per_line") return;
+    throwIfAborted(signal);
+    const status = await this.status(signal ? { signal } : {});
+    throwIfAborted(signal);
+    if (status.capabilities?.fseIncomeWithholdingPerLine !== true) {
+      throw new FactaError("fse_withholding_not_supported",
+        "Esta versión de la API no confirma soporte para retención de renta por línea. No se emitió el documento.",
+        0, { field: "incomeWithholding" });
+    }
   }
 
   /**

@@ -94,8 +94,18 @@ do not declare the first three, so use a direct HTTP call for them. Sending a ty
 14). It does not select lines by `tipoItem`: goods used as inputs of a service
 stay in the base (materials $100 + labour $50 → subtotal $150 → withholding $15,
 total $135). A goods-only purchase is not automatically subject just because it
-has no VAT. A partial base (goods purchase independent of a service in the same
-document) is **not supported** and pending confirmation. Read it in
+has no VAT. This legacy mode cannot express a partial base.
+
+A separate explicit per-line mode uses `incomeWithholding: { mode: "per_line" }`
+and requires a boolean `applyIncomeWithholding` on every item; omit
+`aplicarReteRenta` entirely. Use it only when `/v1/status` advertises
+`capabilities.fseIncomeWithholdingPerLine: true`; otherwise the SDK rejects
+before sending an issue or prepare request. Selection is explicit and never
+inferred from `tipoItem`. The server calculates the retention from selected net
+line amounts after line discounts at its current rate; callers cannot choose a
+rate or amount. This selection expresses the requested calculation base, not a
+legal eligibility determination, and does not bypass unsupported FSE sale-class
+restrictions. Read it in
 `documento.resumen.reteRenta` and `totales.reteRenta` (also `ivaRete` on 01/03 and
 `ivaPerci` on 03 when present). With an `exenta` or `no_sujeta` line it is
 `422 retention_mixed_class_unsupported`.
