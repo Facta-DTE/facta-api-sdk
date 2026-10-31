@@ -374,6 +374,12 @@ export interface Totals {
   montoTotalOperacion: number;
   totalPagar: number;
   totalLetras: string;
+  /** Type 14 only: the income-tax withholding at the current rate (10 % today) on the whole subtotal, already subtracted from `totalPagar`; 0 when not requested. Absent against a server that does not report it yet. */
+  reteRenta?: number;
+  /** 01 and 03: the 1 % VAT withheld by the receiver, already subtracted from `totalPagar`; 0 when not requested. */
+  ivaRete?: number;
+  /** 03 only: the 1 % VAT perception, already added to `totalPagar`; 0 when not requested. */
+  ivaPerci?: number;
 }
 
 // --- Debug timings (a debugging aid, off by default) ----------------------------
@@ -1000,3 +1006,87 @@ export interface WaitForDeliveryOptions {
 export interface WaitedDelivery extends DeliveryStatus {
   settled: boolean;
 }
+
+// ── Pending documents (GET /v1/dte/pendientes, POST /v1/dte/{cg}/reintentar) ──
+
+/** Why the API cannot finish a pending document (`reintentable: false`). */
+export type PendingNotRetryableReason =
+  | "rechazado"
+  | "documento_de_la_aplicacion"
+  | "sin_copia_firmada"
+  | "sin_documento_firmado";
+
+/**
+ * A document Facta signed whose number is spent but that Hacienda has not answered (or refused).
+ * Metadata only: never the document or the receiver.
+ */
+export interface PendingDocument {
+  codigoGeneracion: string;
+  numeroControl: string;
+  tipoDte: DteType;
+  estado: "firmado" | "rechazado";
+  modo?: "transitorio" | "contingencia";
+  fecEmi?: string | null;
+  totalPagar?: number | null;
+  firmadoEn?: string | null;
+  antiguedadSegundos?: number | null;
+  /** How many times `retryDocument()` was called for it. */
+  intentos?: number;
+  /** The last thing Hacienda said without deciding (or its reason for refusing). */
+  ultimaRespuestaMh?: { descripcionMsg: string | null; observaciones: string[]; consultadoEn?: string | null } | null;
+  /** `requiereContingencia` is true after 24 hours: declare the contingency event from the app. */
+  plazo?: { venceEn: string | null; vencido: boolean; requiereContingencia: boolean } | null;
+  /** True when `retryDocument()` can finish it. */
+  reintentable: boolean;
+  motivoNoReintentable?: PendingNotRetryableReason | null;
+}
+
+export interface ListPendingDocumentsFilters {
+  /** `firmado` (default): pending. `rechazado`: refused by Hacienda, awaiting correction. */
+  estado?: "firmado" | "rechazado";
+  tipoDte?: DteType;
+  limit?: number;
+  cursor?: string;
+}
+
+export interface PendingDocumentsPage {
+  pendientes: PendingDocument[];
+  /** Opaque cursor for the next page; `null` when there is none. */
+  siguiente: string | null;
+}
+
+/** `retryDocument()` found the document sealed. `via` says how. */
+export interface RetrySealed {
+  estado: "sellado";
+  /** `consulta`: Hacienda already had it. `retransmision`: the same bytes were resent. `ya_asentado`: it was already finished. */
+  via: "consulta" | "retransmision" | "ya_asentado";
+  codigoGeneracion: string;
+  numeroControl: string;
+  tipoDte: DteType;
+  ambiente: string;
+  fecEmi?: string;
+  selloRecibido?: string;
+  fhProcesamiento?: string | null;
+  observaciones?: string[];
+  /** `indice_pendiente` / `reserva_sin_asentar`: keep `documento` and `jws`, then call `retryDocument()` again. */
+  advertencias?: Array<string | ServerWarning>;
+  documento?: Record<string, unknown>;
+  jws?: string;
+}
+
+/** Hacienda did not answer (or did not decide). Nothing changed: try again later; never issue a new document. */
+export interface RetryPending {
+  estado: "pendiente";
+  via: "retransmision";
+  codigoGeneracion: string;
+  numeroControl: string;
+  tipoDte: DteType;
+  ambiente: string;
+  /** False: Hacienda was not reached. True: it answered without deciding. */
+  mhRespondio: boolean;
+  detalle: string | null;
+  observaciones: string[];
+  siguientePaso?: string;
+}
+
+export type RetryResult = RetrySealed | RetryPending;

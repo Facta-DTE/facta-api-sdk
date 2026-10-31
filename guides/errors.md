@@ -50,9 +50,9 @@ tokens from `message` and `details`, and drops credential-named fields from
 The SDK retries automatically, with the same `Idempotency-Key`, only these
 codes: `idempotency_in_flight`, `network_error`, `service_unavailable`,
 `correlative_unavailable`, `mh_unreachable`, `storage_unavailable`,
-`data_grant_unavailable` and `data_epoch_stale`. It makes
+`data_grant_unavailable`, `data_epoch_stale` and `retry_in_progress`. It makes
 up to `maxRetries` extra attempts (default 3), waiting 250 ms, 500 ms, 1 s…
-(capped at 4 s). When they are exhausted you receive the last error; the outcome
+(capped at 4 s), or what the server asks in `details.retryAfterSeconds` (the `Retry-After` twin; at most 15 s) when that is longer. When they are exhausted you receive the last error; the outcome
 of a POST is then **uncertain**: replay the same request with the same key (see
 [idempotency.md](idempotency.md)). Every other code is final for that request.
 
@@ -82,7 +82,7 @@ In the tables, "Retried" means retried automatically by the SDK.
 | --- | --- | --- | --- | --- |
 | `invalid_request` | 400 (422 locally) | no | Missing or non-JSON body, over 1 MB, a field with the wrong shape, or a non-UUID generation code (`details.field`). Locally (422): a catalog product with an invalid item type, unit of measure, or a VAT basis that does not match the DTE. | Fix the request. No number was spent. |
 | `include_limit_exceeded` | 400 | no | `listDocuments` with `include: ["dte"]` asked for more than 25 rows (`details.maximo`). | Ask for 25 or fewer and follow `siguiente`. |
-| `validation_failed` | 422 | no | The document fails Hacienda's official schema (`details.issues`). Also thrown locally (422, before any request) by catalog writes. | Fix the listed fields. No number was spent. |
+| `validation_failed` | 422 | no | The document fails Hacienda's official schema (`details.issues`), a code is not in its catalogue, `pagos` does not add up to the total, or `pagos` was sent on a credit sale. Also thrown locally (422, before any request) by catalog writes. | Fix the listed fields. No number was spent. For `pagos` on a credit sale use `formaPago` + `plazo` + `periodo`; see [payments-export-renta.md](payments-export-renta.md). |
 | `retention_mixed_class_unsupported` | 422 | no | `aplicarReteRenta` was requested on a document with an `exenta` or `no_sujeta` line (`items[].tipoVenta`). | Nothing was signed and no number was spent. Issue the exempt or non-subject lines in another document, or do not apply the withholding. |
 | `not_found` | 404 | no | No such document, customer, product or route for this key's company. Also returned when a `customerId`/`productId` does not exist for this key (`details.reason: "catalog_unknown_id"`). | Check the identifier and the key's company; sync the catalog. |
 | `method_not_allowed` | 405 | no | The route exists, but not with that method. | Only seen when calling the API outside the SDK's methods. |
@@ -154,13 +154,17 @@ See [return-event.md](return-event.md).
 | `mh_rejected` | 422 | no | Hacienda read the document and refused it. The control number **was spent** (`error.spent`). | Read `error.mhObservations`, fix the data. A replay of the same key returns the same rejection. |
 | `mh_unreachable` | 502 | **yes** | Reserved: the current API never returns it on issuance, where a transport failure becomes a 202 contingency. On invalidation it means nothing was invalidated. | Replay the same key. |
 | `correlative_unavailable` | 503 | **yes** | The control number could not be reserved. No number spent. | Replay the same key. |
-| `service_unavailable` | 503 | **yes** | A Facta dependency did not answer. Also thrown locally (503) when a vault or catalog envelope fails its digest or format check. | Replay the same key; for a local envelope error, re-sync from the app. |
+| `service_unavailable` | 503 | **yes** | A Facta dependency did not answer, or Facta could not record the signed document before sending it (then **nothing was sent to Hacienda** and the number was handed back). Also thrown locally (503) when a vault or catalog envelope fails its digest or format check. `retryAfterSeconds` says how long to wait. | Wait, then replay the **same** request with the **same** key; never a new key. If the emission had already signed and you do not know what happened, call `listPendingDocuments()` before anything else. For a local envelope error, re-sync from the app. |
+| `document_not_retryable` | 409 | no | `retryDocument()` on a document the API cannot finish. `details.motivo`: `documento_de_la_aplicacion` (the app issued it), `sin_copia_firmada`, `sin_documento_firmado`. | For an app document, retry it from Documentos → Pendientes con Hacienda in the app. Never issue a new one. |
+| `retry_in_progress` | 409 | **yes** | Another `retryDocument()` of the same document is running; nothing was sent. | The SDK waits `retryAfterSeconds` and replays; or read `getDocumentStatus`. |
 | `mh_auth_failed` | 424 | no | Hacienda answered the login and refused the company's own transmission credentials (not your Facta key). | The owner updates the credentials in the app; retrying cannot fix it. |
 | `paid_plan_required` | 402 | no | An extra company of a multi-company owner on a free or trial plan, issuing in production. | The owner chooses a paid plan. |
 | `internal_error` | 500 | no | An unexpected failure. Also thrown locally when a response is not valid JSON, an invalidation response names another document, or a catalog response lacks its record. | If it repeats, contact support with the time and your `keyId`. |
 
 A contingency (`estado: "contingencia"`, HTTP 202) is **not** an error: the
-document is signed and Facta will retransmit it.
+document is signed and owed to Hacienda. Finish it with
+`retryDocument()` (see [pending documents](pending-documents.md)); never by
+issuing again.
 
 ## Storage
 

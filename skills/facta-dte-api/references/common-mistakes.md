@@ -9,7 +9,9 @@ Each one is documented in the SDK guides or contract; use this as a review list.
 | New key to "retry" after `network_error` | A second document for one sale | Replay the same key; then `getDocumentStatus` |
 | Reusing the `prepare` key on `sign` | `422 idempotency_key_reuse`, nothing signed | `po:prepare` and `po:sign` |
 | A changing field in the body (timestamp, price) with the same key | `idempotency_key_reuse` | Build the request deterministically from the stored order |
-| Treating `contingencia` (202) as an error and re-issuing | Duplicate document | It is signed and owed to Hacienda; poll `getDocumentStatus` |
+| Treating `contingencia` (202) as an error and re-issuing | Duplicate document | It is signed and owed to Hacienda; `listPendingDocuments()` and `retryDocument()` |
+| A new key after a `503`, a timeout or `indice_pendiente` | A second fiscal document for one sale | Replay the same key; then `listPendingDocuments()` / `retryDocument()` |
+| Reusing an idempotency key for another sale because "it expired" | `422 idempotency_key_reuse` or the old document back | Keys never expire for their sale: one key per sale, for ever |
 | Treating `mh_rejected` as retryable | Same rejection, or a duplicate if re-keyed blindly | Read `mhObservations`, fix data, new key; keep `error.spent` |
 | Branching on `error.message` | Breaks on a wording change | Branch on `error.code` |
 | Recomputing VAT/totals | Mismatch with the signed document | Display `totales` from the result |

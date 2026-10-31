@@ -88,9 +88,11 @@ Todas las guías de `guides/`, en español y en inglés. Las dos guías de React
 | Integración con Deno | [deno.es.md](guides/deno.es.md) | [deno.md](guides/deno.md) |
 | Catálogo de errores: cada código, estado HTTP y reintentos | [errors.es.md](guides/errors.es.md) | [errors.md](guides/errors.md) |
 | Patrones de idempotencia y recuperación de resultados inciertos | [idempotency.es.md](guides/idempotency.es.md) | [idempotency.md](guides/idempotency.md) |
+| Documentos pendientes: listar y reintentar sin emitir dos veces | [pending-documents.es.md](guides/pending-documents.es.md) | [pending-documents.md](guides/pending-documents.md) |
 | Preparar, revisar y luego firmar | [prepare-sign.es.md](guides/prepare-sign.es.md) | [prepare-sign.md](guides/prepare-sign.md) |
 | El Archivo DTE (lo que recibe el receptor) | [archivo-dte.es.md](guides/archivo-dte.es.md) | [archivo-dte.md](guides/archivo-dte.md) |
 | Entrega por correo y WhatsApp | [delivery.es.md](guides/delivery.es.md) | [delivery.md](guides/delivery.md) |
+| Pago, exportaciones y retención de renta | [payments-export-renta.es.md](guides/payments-export-renta.es.md) | [payments-export-renta.md](guides/payments-export-renta.md) |
 | Devoluciones (Evento de Retorno) | [return-event.es.md](guides/return-event.es.md) | [return-event.md](guides/return-event.md) |
 | Diagnóstico, `diagnoseDestinations` | [diagnose.es.md](guides/diagnose.es.md) | [diagnose.md](guides/diagnose.md) |
 | Fijación de región | [region.es.md](guides/region.es.md) | [region.md](guides/region.md) |
@@ -482,7 +484,7 @@ un filesystem local compatible; filesystem de red no está soportado.
 Node descubrir y reanudar trabajo tras reiniciar sin reconstruir la solicitud.
 `recoverOperation()` también acepta explícitamente la solicitud para journals
 anteriores que no la guardaban. Si el journal solo alcanzó `started`, usa la misma clave hasta un máximo conservador
-de 23 horas (la API libera la clave a las 24 h). Después se detiene para
+de 23 horas (el límite histórico del SDK; la API ya conserva la llave para siempre y esa ventana se ampliará). Después se detiene para
 conciliación manual. Si ya existe el código de generación en el journal,
 consulta ese DTE y recupera sus archivos sin enviar una segunda emisión.
 `archive.pending()` lista operaciones incompletas localmente o con copias remotas
@@ -952,7 +954,7 @@ by the server.
   fiscal (03).** Así lo definen los esquemas oficiales; el servidor no adivina.
 - **`202` es un resultado, no un fallo.** Significa que el documento quedó
   FIRMADO y el MH no respondió: los bytes existen y se le deben a Hacienda. Se
-  retransmite solo, en contingencia. Reintentar ahí signía un segundo
+  se termina con `retryDocument()` (vea [documentos pendientes](guides/pending-documents.es.md)). Emitir de nuevo ahí firmaría un segundo
   documento.
 - **Archiva `jws`, no `documento`.** Volver a serializar el JSON no reproduce
   los bytes cuya firma Hacienda validó.

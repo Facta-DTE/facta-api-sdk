@@ -172,6 +172,8 @@ Spanish field names and enum values from the wire contract.
 | `recoverInvalidation(operationId, archive?, signal?)` | Journal ID and optional archive → `InvalidationArchiveResult` | `issue`; `signKey` required only when retrying the same unresolved command | Replays with the saved idempotency key only within the 23-hour safety window. Expired operations or sparse “already invalidated” responses stop with `operation_outcome_unknown`; manual reconciliation is required. |
 | `listPendingInvalidations(archive?)` | Optional archive → allow-listed pending event summaries | No Facta scope; requires the local archive | Lists incomplete invalidation journals without returning representative fields, full response, or JWS. |
 | `listHolding(limit=50)` | Optional integer limit → `HoldingPage` | `download` | `GET /v1/dte/holding`; API caps the result at 100. Returns retention/sync evidence, not document bytes and not a paginated history. |
+| `listPendingDocuments(filters?)` | `{ estado?, tipoDte?, limit?, cursor? }` → `PendingDocumentsPage` | `query` | `GET /v1/dte/pendientes`; documents Facta signed whose number is spent but that Hacienda has not answered (or refused). Metadata only, oldest first. Look here after any uncertain emission, before issuing again. See [pending documents](pending-documents.md). |
+| `retryDocument(generationCode)` | Generation code → `RetryResult` | `issue` | `POST /v1/dte/{codigoGeneracion}/reintentar`; sends the signing key. Asks Hacienda first and resends the SAME signed bytes only if it never received them; never signs or numbers. `estado: "pendiente"` (HTTP 202) means no answer: call again later. |
 
 ## Download, archive, recovery, replication, and printing
 
@@ -228,6 +230,7 @@ const facta = new Facta({
 | `LineItem.montoDescu` | Discount of one line in money, between 0 and `cantidad × precioUni`, in the same VAT basis as `precioUni`. No global or percentage discount yet. |
 | `LineItem.tipoVenta` | VAT treatment of the line: `gravada` (default), `exenta` or `no_sujeta`. Chosen by you, never deduced. 01, 03, 05, 06 only; `422` on 11 and 14. |
 | `DteRequest.aplicarRetencionIva` / `aplicarPercepcionIva` | 1 % VAT withholding (01, 03) and perception (03 only, goods lines). Never automatic; `400` on other types, refused by the types. |
+| `DteRequest.formaPago` / `plazo` / `periodo` | How payment is reported: cash with one method, `pagos[]` for several, credit with `formaPago` + `plazo` + `periodo` (never `pagos`), nothing on 05/06. See [payments-export-renta.md](payments-export-renta.md). |
 | `DteRequest.pagos` / `Pago` | 1 to 10 `{ codigo, montoPago, referencia? }` rows (01, 03, 11, 14) that add up to the total to pay to the cent. Not with `formaPago`, not on 05/06 (the types refuse it), not with `condicionOperacion` 2 (`422`). |
 | `result.unknownFields`, `unknownFieldWarnings(source)` | `campo_desconocido` warnings of `advertencias`: a request field Facta DTE does not know is ignored and is not in the document. Each has `campo` and, when obvious, `sugerencia`. |
 | `prepared.unknownFields`, `error.unknownFields` | The same warnings on `prepare()` results and on a `FactaError` (from `details.advertencias`). Unknown fields are always warnings, never errors. |
