@@ -106,33 +106,42 @@ may throw `SyntaxError`; the unlock key is not transmitted in either case.
 | Method | Inputs / return | Scope | Behavior and important outcomes |
 |---|---|---|---|
 | `syncDestinations()` | None → `Promise<DestinationSnapshot>` | No additional API scope; local `unlockKey` required | Opens the per-key storage destination snapshot in memory. Accepts `ready` and legacy synchronization state; pending/missing state fails with `no_storage_destination`. Does not write artifacts to those destinations. |
-| `syncCatalog()` | None → `Promise<CatalogSnapshot>` | No additional API scope; local `unlockKey` required | Opens the latest authorized customer/product snapshot and replaces this instance's in-memory cache. Requires a ready published catalog and verifies the encrypted envelope digest. |
-| `catalogState()` | None → `Promise<CatalogState>` | No additional API scope | Compares the local catalog revision with public status. Returns `catalogMode` (`encrypted`, `readable`, `plain` or `null`), `missing`/`fresh`/`stale` plus revisions, fetch time, and a safe status error code; never returns catalog contents. A `plain` catalog is read live and reports `fresh`. |
-| `listCustomers(options?)` | `{ allowStale?: boolean, includeInactive?: boolean }` → customer array | Local snapshot (`encrypted`) or the API (`readable`, `plain`) | Returns a copy of authorized customers. Stale cache is used only when explicitly opted in and current status is unavailable. |
-| `getCustomer(id, options?)` | Stable Facta customer ID and optional `{ allowStale?: boolean, includeInactive?: boolean }` → customer or `null` | Local snapshot or the API | Returns the matching authorized customer, or `null` when absent. |
-| `searchCustomers(query, options?)` | Query and optional `{ limit=50, allowStale?: boolean, includeInactive?: boolean }` → customer array | Local snapshot or the API | Case/diacritic-insensitive search over name, document number, NRC, and email. `limit` must be an integer from 1 through 500. |
-| `listProducts(options?)` | `{ includeInactive?: false, allowStale?: boolean }` → product array | Local snapshot or the API | Returns active products by default; `includeInactive: true` includes inactive records. |
-| `getProduct(id, options?)` | Stable Facta product ID and optional `{ allowStale?: boolean, includeInactive?: boolean }` → product or `null` | Local snapshot or the API | Returns `null` for missing or inactive products. |
-| `searchProducts(query, options?)` | Query and optional `{ limit=50, allowStale?: boolean, includeInactive?: boolean }` → product array | Local snapshot or the API |
+| `listCustomers(options?)` | `{ includeInactive?: boolean }` → customer array | The API | Returns a copy of authorized customers. |
+| `getCustomer(id, options?)` | Stable Facta customer ID and optional `{ includeInactive?: boolean }` → customer or `null` | The API | Returns the matching authorized customer, or `null` when absent. In a company that shares its data key the record carries `revision` (pass it as `ifMatch`). |
+| `searchCustomers(query, options?)` | Query and optional `{ limit=50, includeInactive?: boolean }` → customer array | The API | Case/diacritic-insensitive search over name, document number, NRC, and email. `limit` must be an integer from 1 through 500. |
+| `listProducts(options?)` | `{ includeInactive?: false }` → product array | The API | Returns active products by default; `includeInactive: true` includes inactive records. |
+| `getProduct(id, options?)` | Stable Facta product ID and optional `{ includeInactive?: boolean }` → product or `null` | The API | Returns `null` for missing or inactive products. |
+| `searchProducts(query, options?)` | Query and optional `{ limit=50, includeInactive?: boolean }` → product array | The API |
 | `createCustomer(input, options?)` | `CustomerInput` and optional `{ idempotencyKey?, signal? }` → `CatalogCustomer` | `catalog:write`; plain catalog | Creates a customer. `name` is required. DUI is 9 digits, NIT 14, NRC 1–8; dashes are accepted and removed. A retried create with the same `idempotencyKey` does not duplicate it. See the [catalog write guide](catalog-write.md). |
-| `updateCustomer(id, changes, options?)` | Customer ID and a partial `CustomerInput` → `CatalogCustomer` | `catalog:write`; plain catalog | `PATCH`: only the fields passed change; `null` clears an optional field. |
+| `updateCustomer(id, changes, options?)` | Customer ID, a partial `CustomerInput` and optional `{ ifMatch?, signal? }` → `CatalogCustomer` | `catalog:write` | `PATCH`: only the fields passed change; `null` clears an optional field. `ifMatch` (the `revision` you read) makes a company that shares its data key refuse a stale edit with `catalog_revision_conflict`; a plain catalogue ignores it. |
 | `deactivateCustomer(id, options?)` | Customer ID → `CatalogCustomer` (`active: false`) | `catalog:write`; plain catalog | `DELETE` deactivates; there is no hard delete. Listed again with `includeInactive: true`; `updateCustomer(id, { activo: true })` reactivates. |
 | `createProduct(input, options?)` | `ProductInput` and optional `{ idempotencyKey?, signal? }` → `CatalogProduct` | `catalog:write`; plain catalog | `description`, `item_type` (1 good, 2 service, 3 both; never defaulted) and `unit_price` are required. |
-| `updateProduct(id, changes, options?)` | Product ID and a partial `ProductInput` → `CatalogProduct` | `catalog:write`; plain catalog | `PATCH`: only the fields passed change. |
+| `updateProduct(id, changes, options?)` | Product ID, a partial `ProductInput` and optional `{ ifMatch?, signal? }` → `CatalogProduct` | `catalog:write` | `PATCH`: only the fields passed change; `ifMatch` as in `updateCustomer`. |
+| `listCatalogChanges(options?)` | `{ since=0, generation?, limit?, signal? }` → `CatalogChangesPage` (`generation`, `head`, `changes[]`, `next`, `hasMore`) | `catalog:read` | `GET /v1/catalog/changes`: ids, revisions, operation and actor of what changed, never the content. Follow `next` while `hasMore`. `catalog_cursor_expired` (410) keeps `reason`, `cabeza` and `generacion` in `error.details`: read everything again, then continue from `cabeza`. |
+| `createWebhook(input, options?)` | `{ url, events?, description? }` → `WebhookWithSecret` | `catalog:read` | `POST /v1/webhooks`. The `secret` is returned once. `https://`, port 443, public host; at most 5 per key (`webhook_limit_reached`, `webhook_duplicate`). See the [webhooks guide](webhooks.md). |
+| `listWebhooks(options?)` | → `Webhook[]` | `catalog:read` | The key's webhooks, never with secrets. |
+| `getWebhook(id, options?)` | Webhook ID → `Webhook` | `catalog:read` | Another key's webhook is `not_found`. |
+| `updateWebhook(id, changes, options?)` | `{ url?, events?, description?, active? }` → `Webhook` | `catalog:read` | `active: true` switches it back on and clears the failure count. |
+| `deleteWebhook(id, options?)` | Webhook ID → `void` | `catalog:read` | Deletes it, its secret and what it had queued. |
+| `rotateWebhookSecret(id, options?)` | Webhook ID → `WebhookWithSecret` | `catalog:read` | The old secret stops verifying at once; the new one is shown once. |
+| `testWebhook(id, options?)` | Webhook ID → `{ deliveryId, event: "webhook.test" }` | `catalog:read` | Queues a signed test delivery; it leaves within the next minute. |
+| `createDraft(input, options?)` | The `issue` request plus `{ id?, reference? }`, and optional `{ idempotencyKey?, signal? }` → `Draft` (`id`, `state`, `version`, `totals`) | `draft` | `POST /v1/drafts`: leaves an invoice for a person of the company to review and issue; spends no number. `drafts_not_ready` (409) until the owner opens Facta once. See [drafts.md](drafts.md). |
+| `listDrafts(options?)` | `{ state?, reference?, limit?, cursor?, include?, signal? }` → `DraftPage` (`drafts[]`, `next`) | `draft` | This key's drafts. |
+| `getDraft(id, options?)` | Draft ID → `Draft` | `draft` | An issued draft carries its document (`generationCode`, `controlNumber`, `sealed`). |
+| `getDraftByKey(idempotencyKey, options?)` | The key the draft was created with → `Draft` | `draft` | Follows draft → invoice without the generation code. |
+| `updateDraft(id, version, input, options?)` | Draft ID, the `version` you read (sent as `If-Match`) and the request → `Draft` | `draft` | `PUT /v1/drafts/{id}`; `version_mismatch` (409) when stale. |
+| `cancelDraft(id, options?)` | Draft ID → `Draft` | `draft` | Only while pending and closed. |
+| `issueDraft(id, version, request, options?)` | Draft ID, version, the `issue` request and `IssueOptions` → `IssueResult & { borradorId }` | `draft` + `issue` | Spends a control number through the same road as `issue` (needs the signing key). `draft_issuing` / `draft_claimed` (409) spent nothing. |
 | `deactivateProduct(id, options?)` | Product ID → `CatalogProduct` (`active: false`) | `catalog:write`; plain catalog | `DELETE` deactivates; the product can no longer be issued and past documents are untouched. |
 
-The catalog read methods pick their path from `catalogMode` (learned once from `/v1/status`, together with the region): `encrypted` decrypts the key's snapshot with `unlockKey`; `readable` and `plain` read through `GET /v1/customers` and `GET /v1/products`, with no `unlockKey`. Write methods fail locally with `validation_failed` (HTTP 422, before any request) when a field breaks a rule the server also enforces, and with `catalog_write_disabled` (403) or `catalog_encrypted` (409) when the company has not enabled catalog administration from the API. Case/diacritic-insensitive search over description, code, and barcode; inactive products are omitted. `limit` must be an integer from 1 through 500. |
+The catalog read methods call `GET /v1/customers` and `GET /v1/products` in every catalog mode; the server reads an encrypted catalog itself, so no `unlockKey` is needed. Write methods fail locally with `validation_failed` (HTTP 422, before any request) when a field breaks a rule the server also enforces, and with `catalog_write_disabled` (403) when the company has not enabled catalog administration from the API.
 
 Invalid limits and missing runtime configuration fail locally with `TypeError`
-or `RangeError`. Snapshot/API failures use `FactaError`; the specific method
+or `RangeError`. API failures use `FactaError`; the specific method
 descriptions above identify the relevant state and fallback. Read methods do
 not reserve fiscal numbers or mutate the remote catalog.
 
-Every customer/product reference used for fiscal resolution requires a fresh
-catalog. Explicit inline fields win over snapshot values. Missing customers,
-missing products, or inactive products fail with `not_found` and identify the
-record ID/revision in error details. Stale catalog opt-in applies only to
-non-fiscal lookup; it never permits stale issuance resolution. Inline request
+`customerId` / `productId` in a fiscal request are resolved by the server (0.6), never by the SDK. Explicit inline fields win over stored values. Missing or inactive records fail with `not_found`. Inline request
 data does not create or update catalog records.
 
 ## DTE operations
@@ -197,6 +206,32 @@ the SDK: mark channels with `issue(…, { deliver })` and start them with
 ## The sealed result and the Archivo DTE
 
 `SealedDte.archivoDte?: string` is the exact UTF-8 Archivo DTE: the signed document plus `firmaElectronica` and `selloRecibido`. It is absent in contingency and on API servers that predate it. `archivoDteOf(result)` returns it, or builds the same bytes from `documento`, `jws` and `selloRecibido` (two-space pretty print, document keys first), or `null` when there is no seal. `archivoJson` and `jws` are unchanged. `FactaErrorCode` gains `not_sealed` (HTTP 409): the JSON download of an unsealed document.
+
+## Testing on staging (`0.6.0-next.3`)
+
+Install the staging SDK with `npm i @facta-dte/api@next` and point the client at the staging API with a `facta_test_` key created in https://staging.factadte.com. The default `baseUrl` is the PRODUCTION host, so staging needs it explicitly; a staging key sent to the default host fails with `401`, and production keys never go to staging.
+
+```ts
+import { Facta, FACTA_STAGING_BASE_URL } from "@facta-dte/api";
+const facta = new Facta({
+  apiKey: process.env.FACTA_API_KEY!, signKey: process.env.FACTA_SIGN_KEY,
+  baseUrl: FACTA_STAGING_BASE_URL, // https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1
+  config: { version: 1, expectedEnvironment: "00" },
+});
+```
+
+| Field / helper | What it does |
+|---|---|
+| `LineItem.montoDescu` | Discount of one line in money, between 0 and `cantidad × precioUni`, in the same VAT basis as `precioUni`. No global or percentage discount yet. |
+| `LineItem.tipoVenta` | VAT treatment of the line: `gravada` (default), `exenta` or `no_sujeta`. Chosen by you, never deduced. 01, 03, 05, 06 only; `422` on 11 and 14. |
+| `DteRequest.aplicarRetencionIva` / `aplicarPercepcionIva` | 1 % VAT withholding (01, 03) and perception (03 only, goods lines). Never automatic; `400` on other types, refused by the types. |
+| `DteRequest.pagos` / `Pago` | 1 to 10 `{ codigo, montoPago, referencia? }` rows (01, 03, 11, 14) that add up to the total to pay to the cent. Not with `formaPago`, not on 05/06 (the types refuse it), not with `condicionOperacion` 2 (`422`). |
+| `result.unknownFields`, `unknownFieldWarnings(source)` | `campo_desconocido` warnings of `advertencias`: a request field Facta DTE does not know is ignored and is not in the document. Each has `campo` and, when obvious, `sugerencia`. |
+| `prepared.unknownFields`, `error.unknownFields` | The same warnings on `prepare()` results and on a `FactaError` (from `details.advertencias`). Unknown fields are always warnings, never errors. |
+| `result.factaWarning`, `parseFactaWarning(header)` | The `Facta-Warning: campo_desconocido; campos=N` response header, parsed to `{ code, count }`. |
+| `FACTA_STAGING_BASE_URL` | The staging API base. |
+
+Catalogue codes that are not in the Ministry's catalogue (`formaPago`, `exportacion.recintoFiscal`, `.regimen`, `.tipoRegimen`) answer `422 validation_failed` with `details.field`, `details.catalog` and `details.supported`, before any control number is spent.
 
 ## Types and deeper references
 

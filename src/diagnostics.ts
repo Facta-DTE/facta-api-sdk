@@ -12,7 +12,6 @@ export interface DiagnosticCheck {
 export interface DiagnosticRevisions {
   sign: SyncRevision | null;
   destinations: SyncRevision | null;
-  catalog: SyncRevision | null;
 }
 
 export interface DiagnosticsReport {
@@ -402,40 +401,6 @@ export async function diagnoseStatus(
     sync?.destinations,
     "Storage destinations",
   );
-  const catalog: SyncRevision | undefined = sync?.catalog;
-  if (
-    catalog?.status === "ready" && Number.isInteger(catalog.desiredRevision) &&
-    catalog.publishedRevision === catalog.desiredRevision
-  ) {
-    add(
-      checks,
-      "catalog-sync",
-      "ok",
-      "Catalog is synchronized for customerId/productId references.",
-    );
-  } else if (catalog?.status === "pending" || catalog?.status === "error") {
-    add(
-      checks,
-      "catalog-sync",
-      "warning",
-      "Catalog is out of date; use inline data until synchronization completes.",
-    );
-  } else if (catalog?.status === "legacy" || !catalog) {
-    add(
-      checks,
-      "catalog-sync",
-      "warning",
-      "A current catalog snapshot was not confirmed; inline data is still available.",
-    );
-  } else {
-    add(
-      checks,
-      "catalog-sync",
-      "warning",
-      "Could not confirm the published catalog revision.",
-    );
-  }
-
   let archiveOk = false;
   let pendingArchiveOperations: number | null = null;
   if (options.archive) {
@@ -530,7 +495,6 @@ export async function diagnoseStatus(
       ? {
         sign: sync.sign ?? null,
         destinations: sync.destinations ?? null,
-        catalog: sync.catalog ?? null,
       }
       : null,
     checks,

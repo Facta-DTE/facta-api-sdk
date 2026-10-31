@@ -1221,6 +1221,25 @@ Deno.test("invalidation archive refuses a response for a different target docume
   assertEquals((await archive.findInvalidation("mismatched-invalidation"))?.state, "needs_attention");
 });
 
+Deno.test("invalidation archive accepts the server's lower-case spelling of the target code", async () => {
+  const archive = new MemoryInvalidationArchive();
+  const facta = new Facta({ region: false,
+    apiKey: "facta_test_a.bbbbbbbbbbbbbbbb",
+    signKey: "factask_signing-secret",
+    maxRetries: 0,
+    fetch: (async (input) => String(input).endsWith("/v1/status")
+      ? Response.json({ ok: true, ambiente: "00", emisor: { nit: IDENTITY_A.issuerNit, nombre: "Issuer", ambiente: "00" }, llave: { keyId: IDENTITY_A.keyId, label: null, modo: "byok", alcances: [], tiposDte: [], venceEl: null } })
+      : Response.json({ ...INVALIDATION_RESULT, codigoGeneracion: issuance.codigoGeneracion.toLowerCase() })) as typeof globalThis.fetch,
+  });
+  const done = await facta.invalidateAndArchive(issuance.codigoGeneracion.toUpperCase(), INVALIDATION_REQUEST, {
+    archive,
+    operationId: "lower-case-echo",
+    idempotencyKey: "lower-case-echo",
+  });
+  assertEquals((await archive.findInvalidation("lower-case-echo"))?.state, "complete");
+  assertEquals(done.invalidation?.estado, "invalidado");
+});
+
 Deno.test("inline archival can explicitly omit the unsupported optional ticket and recover that choice", async () => {
   const archive = new MemoryArchive();
   const { fetch, calls } = transport();
@@ -1352,33 +1371,49 @@ Deno.test("a record marked body-hashed recovers without the header even if it na
   assertEquals(issues[0].fingerprint, null);
 });
 
-Deno.test("issueAndArchive records fingerprint-v1 and sends it; recovery resends the same value", async () => {
+Deno.test("issueAndArchive records a body-hashed claim and sends no fingerprint (0.6); recovery resends the same body", async () => {
   const archive = new MemoryArchive();
   const { fetch, issues } = recordingTransport();
   const facta = new Facta({ region: false, apiKey: "facta_test_x.secret", fetch, runtime: { version: 1, archive } });
   await facta.issueAndArchive(request, { operationId: "new-1", idempotencyKey: "new-key", includeTicket: false });
-  const expected = await fingerprintV1(request);
-  assertEquals(issues[0].fingerprint, expected);
-  assertEquals(archive.operation?.idempotencyHash, "fingerprint-v1");
-  assertEquals(archive.operation?.requestFingerprint, expected);
+  assertEquals(issues[0].fingerprint, null);
+  assertEquals(archive.operation?.idempotencyHash, "body");
+  assertEquals(archive.operation?.requestFingerprint, undefined);
 
-  // An interrupted new-format operation: recovery sends the stored fingerprint, same body bytes.
   const interrupted = new MemoryArchive();
   interrupted.operation = { ...archive.operation!, state: "started", codigoGeneracion: undefined };
   delete interrupted.operation.codigoGeneracion;
   await new Facta({ region: false, apiKey: "facta_test_x.secret", fetch }).recoverOperation("new-1", { archive: interrupted });
-  assertEquals(issues[1].fingerprint, expected);
+  assertEquals(issues[1].fingerprint, null);
   assertEquals(issues[1].body, issues[0].body);
 });
 
-Deno.test("the fingerprint covers delivery options, which the journal also snapshots", async () => {
+Deno.test("a journal written by 0.5 (fingerprint-v1) still recovers with its stored fingerprint", async () => {
+  const stored = await fingerprintV1(request);
+  const archive = new MemoryArchive();
+  archive.operation = {
+    id: "old-1",
+    identity: IDENTITY_X,
+    idempotencyKey: "old-key",
+    requestSha256: await bodyHash(request),
+    idempotencyHash: "fingerprint-v1",
+    requestFingerprint: stored,
+    createdAt: new Date().toISOString(),
+    state: "started",
+  };
+  const { fetch, issues } = recordingTransport();
+  await new Facta({ region: false, apiKey: "facta_test_x.secret", fetch }).recoverOperation("old-1", { request, archive });
+  assertEquals(issues[0].fingerprint, stored);
+});
+
+Deno.test("delivery options travel in the body that the journal snapshots", async () => {
   const archive = new MemoryArchive();
   const { fetch, issues } = recordingTransport();
   const facta = new Facta({ region: false, apiKey: "facta_test_x.secret", fetch, runtime: { version: 1, archive } });
   await facta.issueAndArchive(request, { operationId: "new-2", idempotencyKey: "new-key-2", includeTicket: false, deliver: { email: "cliente@ejemplo.com" } });
   const body = JSON.parse(issues[0].body!);
   assertEquals(typeof body.entrega, "object");
-  assertEquals(issues[0].fingerprint, await fingerprintV1(body));
+  assertEquals(issues[0].fingerprint, null);
 });
 
 function strictServerTransport(storedBy: "body" | "fingerprint") {

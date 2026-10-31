@@ -27,7 +27,7 @@ Trusted publishing requires GitHub-hosted runners, Node.js 22.14 or newer, npm 1
 3. GitHub Actions verifies that the tag matches `package.json`, that its commit is reachable from `main`, runs tests and the packed-consumer check, then publishes the package directly on npm.
 4. Verify the release workflow, registry version/dist-tags, provenance, and installation in a fresh consumer. Never move an existing tag or republish a version.
 
-Prerelease versions are published with a dist-tag derived from the prerelease identifier (`beta`, `rc`, and so on). Stable versions use `latest`.
+Prerelease versions are published with a dist-tag derived from the prerelease identifier (`0.6.0-next.1` publishes to `next`, `-rc.1` to `rc`, `-beta.1` to `beta`). Stable versions use `latest`. A prerelease tag may point at a commit on `dev` or `main`; a stable tag must point at `main`. A prerelease never moves `latest`.
 
 npm generates provenance attestations for trusted publishing. Repository/workflow identity remains scoped to the configured trusted publisher; no saved npm publishing token is introduced. Changes to that publisher permission require owner confirmation and may require npm 2FA.
 

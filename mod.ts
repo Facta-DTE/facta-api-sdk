@@ -7,6 +7,7 @@ export {
   type FactaConfigV1,
   type FactaEmergencyApi,
   type FactaInvalidationArchiveOptions,
+  FACTA_STAGING_BASE_URL,
   type FactaOptions,
   type FactaRuntimeConfigV1,
   type IssueOptions,
@@ -45,6 +46,38 @@ export {
   type SpentCorrelative,
 } from "./src/errors.ts";
 export type * from "./src/types.ts";
+export { parseFactaWarning, unknownFieldWarnings } from "./src/warnings.ts";
+export {
+  constructWebhookEvent,
+  MemoryWebhookReplayStore,
+  signWebhook,
+  verifyWebhook,
+  WEBHOOK_EVENTS,
+  WEBHOOK_SIGNATURE_HEADER,
+  WEBHOOK_TOLERANCE_SECONDS,
+  WebhookVerificationError,
+  type CatalogChange,
+  type CatalogChangesOptions,
+  type CatalogChangesPage,
+  type VerifyWebhookOptions,
+  type Webhook,
+  type WebhookChanges,
+  type WebhookDelivery,
+  type WebhookEventName,
+  type WebhookInput,
+  type WebhookReplayStore,
+  type WebhookVerifyFailure,
+  type WebhookVerifyResult,
+  type WebhookWithSecret,
+} from "./src/webhooks.ts";
+export {
+  DRAFT_STATES,
+  type Draft,
+  type DraftInput,
+  type DraftPage,
+  type DraftState,
+  type ListDraftsOptions,
+} from "./src/drafts.ts";
 export { type ArchivoDteSource, archivoDteOf } from "./src/archivo-dte.ts";
 export { type DteResumen, type DteResumenReceptor, summarizeArchivoDte } from "./src/archivo-dte-summary.ts";
 export {

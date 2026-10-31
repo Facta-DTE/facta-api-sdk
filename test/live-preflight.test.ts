@@ -1,51 +1,40 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@1";
-import { requireLiveSnapshots, validateLiveCatalogReads, validateLiveCatalogWriteGate } from "../scripts/live-preflight.mjs";
+import { requireLiveSnapshots, validateLiveCatalogChanges, validateLiveCatalogReads, validateLiveCatalogWriteGate } from "../scripts/live-preflight.mjs";
 import { createValidationResults } from "../scripts/live-report.mjs";
 
-Deno.test("full live gate opens both snapshots before fiscal work", async () => {
+Deno.test("full live gate opens the destinations snapshot before fiscal work", async () => {
   const calls: string[] = [];
   const checks = createValidationResults();
   await requireLiveSnapshots({
-    syncCatalog: () => { calls.push("catalog"); return Promise.resolve({ customers: ["private"] }); },
     syncDestinations: () => { calls.push("destinations"); return Promise.resolve({ credentials: "private" }); },
   }, checks, (check: string) => { calls.push(`check:${check}`); });
   calls.push("issue");
-  assertEquals(calls, ["check:catalog", "catalog", "check:destinations", "destinations", "issue"]);
-  assertEquals(checks.catalog, "Passed");
+  assertEquals(calls, ["check:destinations", "destinations", "issue"]);
   assertEquals(checks.destinations, "Passed");
 });
 
-for (const failingCheck of ["catalog", "destinations"]) {
-  Deno.test(`unavailable ${failingCheck} blocks fiscal work and discards raw error details`, async () => {
-    const checks = createValidationResults();
-    const calls: string[] = [];
-    let currentCheck = "preflight";
-    const open = (check: string) => {
-      calls.push(check);
-      if (check === failingCheck) throw Object.assign(new Error("PRIVATE-RESPONSE-NIT"), { code: "no_storage_destination" });
-      return Promise.resolve({ private: "PRIVATE-RESPONSE-NIT" });
-    };
-    const error = await assertRejects(async () => {
-      await requireLiveSnapshots({
-        syncCatalog: () => open("catalog"),
-        syncDestinations: () => open("destinations"),
-      }, checks, (check: string) => { currentCheck = check; });
-      calls.push("issue");
-    }, Error);
-    assertEquals(currentCheck, failingCheck);
-    assertEquals(checks[failingCheck], "Failed");
-    assertEquals(calls.includes("issue"), false);
-    assertEquals(error.message.includes("PRIVATE"), false);
-    assertEquals((error as Error & { code: string }).code, "no_storage_destination");
-  });
-}
+Deno.test("unavailable destinations block fiscal work and discard raw error details", async () => {
+  const checks = createValidationResults();
+  const calls: string[] = [];
+  let currentCheck = "preflight";
+  const error = await assertRejects(async () => {
+    await requireLiveSnapshots({
+      syncDestinations: () => { throw Object.assign(new Error("PRIVATE-RESPONSE-NIT"), { code: "no_storage_destination" }); },
+    }, checks, (check: string) => { currentCheck = check; });
+    calls.push("issue");
+  }, Error);
+  assertEquals(currentCheck, "destinations");
+  assertEquals(checks.destinations, "Failed");
+  assertEquals(calls.includes("issue"), false);
+  assertEquals(error.message.includes("PRIVATE"), false);
+  assertEquals((error as Error & { code: string }).code, "no_storage_destination");
+});
 
-Deno.test("positive managed-only capability makes BYOS snapshot optional while retaining catalog verification", async () => {
+Deno.test("positive managed-only capability makes the BYOS snapshot optional", async () => {
   const checks = createValidationResults();
   let destinations = 0;
-  await requireLiveSnapshots({ syncCatalog: () => Promise.resolve({}), syncDestinations: () => { destinations++; throw new Error("not configured"); } }, checks, () => {}, true);
+  await requireLiveSnapshots({ syncDestinations: () => { destinations++; throw new Error("not configured"); } }, checks, () => {}, true);
   assertEquals(destinations, 0);
-  assertEquals(checks.catalog, "Passed");
   assertEquals(checks.destinations, "Not applicable (managed only)");
 });
 
@@ -65,7 +54,7 @@ Deno.test("catalog live checks exercise list, get, and search without returning 
     getProduct: (id: string) => { calls.push("products:get"); return Promise.resolve(snapshot.products.find((row) => row.id === id)); },
     searchProducts: (query: string) => { calls.push("products:search"); return Promise.resolve(snapshot.products.filter((row) => row.description.includes(query))); },
   };
-  await validateLiveCatalogReads(facta, snapshot, checks);
+  await validateLiveCatalogReads(facta, checks);
   assertEquals(calls, ["customers:list", "products:list", "customers:get", "customers:search", "products:get", "products:search"]);
   assertEquals(checks["customer-catalog"], "Passed");
   assertEquals(checks["product-catalog"], "Passed");
@@ -95,4 +84,34 @@ Deno.test("catalog write gate only warns before the routes are deployed or witho
 Deno.test("catalog write gate fails on a success or an unexpected error", async () => {
   assertEquals(await gate("accepted"), { state: "Failed", code: "catalog_write_gate_failed" });
   assertEquals((await gate({ code: "internal_error", status: 500 })).code, "catalog_write_gate_failed");
+});
+
+Deno.test("catalog write gate passes where writes are enabled and an unknown id answers not_found", async () => {
+  const checks = createValidationResults();
+  const facta = {
+    status: () => Promise.resolve({ llave: { catalogoEscritura: true } }),
+    deactivateCustomer: () => Promise.reject(Object.assign(new Error("x"), { code: "not_found", status: 404 })),
+  };
+  await validateLiveCatalogWriteGate(facta, checks);
+  assertEquals(checks["catalog-write-gate"], "Passed (writes enabled; an unknown id answers not_found)");
+});
+
+Deno.test("change feed check needs the feed shape, an expired-cursor refusal with the head, and secret-free webhooks", async () => {
+  const feed = (overrides: Record<string, unknown> = {}) => ({
+    listCatalogChanges: ({ since }: { since: number }) => since === 0
+      ? Promise.resolve({ changes: [], head: 5, next: 0, hasMore: false })
+      : Promise.reject(Object.assign(new Error("x"), { code: "catalog_cursor_expired", details: { cabeza: 5 } })),
+    listWebhooks: () => Promise.resolve([{ id: "w" }]),
+    ...overrides,
+  });
+  const ok = createValidationResults();
+  await validateLiveCatalogChanges(feed(), ok);
+  assertEquals(ok["catalog-changes"], "Passed (change feed and webhook list)");
+  const leaked = createValidationResults();
+  const error = await validateLiveCatalogChanges(feed({ listWebhooks: () => Promise.resolve([{ id: "w", secret: "whsec_x" }]) }), leaked).then(() => null, (cause) => cause);
+  assertEquals((error as { code: string }).code, "catalog_changes_failed");
+  assertEquals(leaked["catalog-changes"], "Failed");
+  const scoped = createValidationResults();
+  await validateLiveCatalogChanges(feed({ listCatalogChanges: () => Promise.reject(Object.assign(new Error("x"), { code: "forbidden_scope" })) }), scoped);
+  assertEquals(scoped["catalog-changes"], "Not applicable (empty authorized catalog)");
 });

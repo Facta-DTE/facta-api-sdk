@@ -35,8 +35,29 @@
 //     error-handling story.
 
 import { FactaError, type FactaErrorCode } from "./errors.ts";
+import {
+  catalogChangesOf,
+  type CatalogChangesOptions,
+  type CatalogChangesPage,
+  type Webhook,
+  type WebhookChanges,
+  type WebhookInput,
+  type WebhookWithSecret,
+  webhookBody,
+  webhookOf,
+} from "./webhooks.ts";
+import {
+  type Draft,
+  type DraftInput,
+  type DraftPage,
+  type ListDraftsOptions,
+  draftBody,
+  draftOf,
+  draftPageOf,
+  draftKey,
+  draftVersion,
+} from "./drafts.ts";
 import { validateFactaConfig } from "./config-validation.ts";
-import { resolveCatalogRefs } from "./catalog.ts";
 import { validateFseWithholdingRequest } from "./fse-withholding.ts";
 import { envelopeDigest, fingerprintV1 } from "./jcs.ts";
 import {
@@ -86,6 +107,7 @@ import type {
   RemoteDestinationProbeReport,
   RemoteReplicationReport,
 } from "./archive.ts";
+import { withWarnings } from "./warnings.ts";
 import { DEBUG_HEADER, DEBUG_TIMINGS, debugFromBody, debugFromServerTiming } from "./debug.ts";
 import { deliveryRequestFor, GENERATION_CODE, isFinalDeliveryState } from "./delivery.ts";
 import type {
@@ -97,8 +119,6 @@ import type {
   ProductInput,
   CatalogReadOptions,
   CatalogSearchOptions,
-  CatalogSnapshot,
-  CatalogState,
   DeliverOptions,
   DeliveryChannel,
   DeliveryChannelResult,
@@ -183,7 +203,7 @@ export interface FactaConfigV1 {
   expectedEnvironment?: "00" | "01";
   /** Scopes the application expects this API key to have; checked by diagnose(). */
   requiredScopes?: readonly string[];
-  /** Permit stale catalog reads by default for non-fiscal lookups only. */
+  /** @deprecated No effect since 0.6 (there is no local catalogue snapshot); accepted so saved configs keep loading. */
   allowStaleCatalogReads?: boolean;
   /** Default ticket width in millimeters; 40–120, defaults to 80. */
   ticketPaperWidthMm?: number;
@@ -266,7 +286,7 @@ const FINGERPRINT_HEADER = "X-Facta-Request-Fingerprint";
 const FINGERPRINT_PATHS: ReadonlySet<string> = new Set(["/v1/dte", "/v1/dte/prepare"]);
 
 /** Internal: `CallOptions` plus the fingerprint some routes send. Never public. */
-type RequestOptions = CallOptions & { fingerprint?: string };
+type RequestOptions = CallOptions & { fingerprint?: string; headers?: Record<string, string>; onHeaders?: (headers: Headers) => void };
 
 /** `CallOptions` of the calls that can mark delivery channels. */
 export interface IssueOptions extends CallOptions {
@@ -305,12 +325,22 @@ interface RemoteOptions {
 const SERVER_CATALOG_PAGE = 200;
 
 const DEFAULT_BASE_URL = "https://hcnvknpsbadplnfcflxx.supabase.co/functions/v1/api-v1";
+/**
+ * The staging API (test key `facta_test_…`, MH test environment 00; nothing reaches production). The
+ * client defaults to the production URL, so a staging integration passes `baseUrl: FACTA_STAGING_BASE_URL`.
+ */
+export const FACTA_STAGING_BASE_URL = "https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1";
 const RETRYABLE: ReadonlySet<FactaErrorCode> = new Set([
   "idempotency_in_flight",
   "mh_unreachable",
   "service_unavailable",
   "correlative_unavailable",
   "storage_unavailable",
+  // The shared data key could not be opened for this request, or is mid-rotation: both are the
+  // server's 503 and clear on their own. `data_grant_revoked` (403) is the owner's decision and
+  // is never retried.
+  "data_grant_unavailable",
+  "data_epoch_stale",
   "network_error",
 ]);
 
@@ -458,6 +488,8 @@ function throwIfAborted(signal?: AbortSignal): void {
 const SIGNING_PATHS: ReadonlySet<string> = new Set(["/v1/dte", "/v1/dte/sign"]);
 /** The two events signed on a document's own path: `/invalidate` and `/return`. */
 const SIGNING_EVENT_PATH = /^\/v1\/dte\/[^/?]+\/(?:invalidate|return)$/;
+/** Issuing a draft opens the signing vault like `POST /v1/dte`, so it carries the second password too. */
+const SIGNING_DRAFT_PATH = /^\/v1\/drafts\/[^/?]+\/issue$/;
 const SENSITIVE_ERROR_FIELD = /(?:authorization|api[-_]?key|sign[-_]?key|unlock[-_]?key|password|passphrase|secret|token|credential|private[-_]?key|ciphertext|refresh[-_]?token|service[-_]?key)/i;
 
 function redactErrorValue(value: unknown, secrets: readonly string[], depth = 0): unknown {
@@ -498,9 +530,6 @@ function catalogSearchLimit(value: number | undefined): number {
   return limit;
 }
 
-/** How long the key's advertised catalog mode is trusted before status is asked again. */
-const CATALOG_MODE_TTL_MS = 60_000;
-
 /**
  * Supabase Edge Functions run near the caller, but the Facta database lives in one region, so every
  * extra hop across the country costs seconds. Used only when `/v1/status` does not advertise a
@@ -536,7 +565,6 @@ export class Facta {
   readonly #clock: ReferenceClock | null;
   readonly emergency: FactaEmergencyApi;
   readonly #desk: EmergencyDesk;
-  #catalogCache: { revision: number; snapshot: CatalogSnapshot; fetchedAt: string } | null = null;
   #catalogModeCache: { mode: CatalogMode | null; at: number } | null = null;
   readonly #regionSetting: string | false | undefined;
   #region: { value: string | null; at: number; failed: boolean } | null = null;
@@ -904,162 +932,19 @@ export class Facta {
     }
   }
 
-  /** Download and locally decrypt the latest customer/product snapshot. */
-  async syncCatalog(): Promise<CatalogSnapshot> {
-    if (this.#unlockKey === null) {
-      throw new FactaError(
-        'unauthorized',
-        'El catálogo de esta empresa está cifrado y falta la clave de desbloqueo: pase unlockKey al crear el cliente (o defina FACTA_UNLOCK_KEY). Con ella el SDK lo descifra aquí y devuelve los mismos datos que en un catálogo legible o en texto plano. / This catalog is encrypted and no unlockKey was configured: set unlockKey (or FACTA_UNLOCK_KEY).',
-        0,
-        { reason: 'unlock_key_missing', missing: 'unlockKey' },
-      );
-    }
-    const bundle = await this.#request<Record<string, unknown>>('GET', '/v1/vault/destinations');
-    const vault = bundle['vault'] as Record<string, unknown> | null;
-    const catalog = vault?.['catalog'] as Record<string, unknown> | null;
-    if (catalog === null || catalog === undefined || catalog['syncStatus'] !== 'ready') {
-      // The code stays `no_storage_destination` for compatibility with callers
-      // that already branch on it; `detail.reason` is the stable machine name.
-      throw new FactaError('no_storage_destination', 'The catalog of this key is out of date; open Facta to synchronize it.', 422, {
-        reason: 'catalog_out_of_sync',
-        syncStatus: catalog?.['syncStatus'] ?? 'missing',
-        desiredRevision: catalog?.['desiredRevision'],
-        publishedRevision: catalog?.['publishedRevision'],
-      });
-    }
-    const catalogEnvelope = {
-      id: catalog['id'],
-      kind: 'catalog_snapshot',
-      iv: catalog['iv'],
-      ciphertext: catalog['ciphertext'],
-      formatVersion: catalog['formatVersion'],
-      revision: catalog['revision'],
-    };
-    if (await digestEnvelope(catalogEnvelope) !== catalog['envelopeDigest']) {
-      throw new FactaError('service_unavailable', 'Catalog digest does not match; snapshot was not opened.', 503);
-    }
-    const wrapped = vault?.['wrapPass'] as { iv?: string; ciphertext?: string } | undefined;
-    const vaultId = vault?.['id'];
-    const salt = vault?.['passSalt'];
-    const companyId = bundle['companyId'];
-    if (typeof vaultId !== 'string' || typeof salt !== 'string' || typeof companyId !== 'string' || !wrapped?.iv || !wrapped.ciphertext) {
-      throw new FactaError('service_unavailable', 'Response does not contain the envelopes needed to open the catalog.', 503);
-    }
-    const fromBase64 = (value: string) => Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
-    const unlockMaterial = await crypto.subtle.importKey('raw', new TextEncoder().encode(this.#unlockKey), 'HKDF', false, ['deriveKey']);
-    const kek = await crypto.subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt: fromBase64(salt), info: new TextEncoder().encode('facta-api-vault-destinations') }, unlockMaterial,
-      { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
-    const dekBytes = new Uint8Array(await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: fromBase64(wrapped.iv), additionalData: new TextEncoder().encode(`api-vault:${vaultId}:pass`) },
-      kek,
-      fromBase64(wrapped.ciphertext),
-    ));
-    try {
-      const master = await crypto.subtle.importKey('raw', dekBytes, 'HKDF', false, ['deriveKey']);
-      const catalogDek = await crypto.subtle.deriveKey({
-        name: 'HKDF',
-        hash: 'SHA-256',
-        salt: new Uint8Array(32),
-        info: new TextEncoder().encode('facta-api-vault-catalog'),
-      }, master, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
-      const rowId = String(catalog['id']);
-      const revisionText = String(catalog['revision']);
-      const aad = `api-secret:v2:${companyId}:${this.#keyId()}:catalog:catalog_snapshot:${rowId}:${revisionText}`;
-      const clear = await crypto.subtle.decrypt({
-        name: 'AES-GCM',
-        iv: fromBase64(String(catalog['iv'])),
-        additionalData: new TextEncoder().encode(aad),
-      }, catalogDek, fromBase64(String(catalog['ciphertext'])));
-      const snapshot = JSON.parse(new TextDecoder().decode(clear)) as CatalogSnapshot & { excludedCustomerIds?: unknown };
-      if (snapshot?.version !== 1 || !Array.isArray(snapshot.customers) || !Array.isArray(snapshot.products)) {
-        throw new FactaError('service_unavailable', 'Encrypted catalog uses a version this SDK does not recognize.', 503);
-      }
-      // The app's encrypted sync policy contains IDs for excluded customers.
-      // Keep those control records private to the app; they are not part of
-      // the API consumer's authorized customer snapshot.
-      const publicSnapshot = {
-        version: 1 as const,
-        customers: snapshot.customers.map((row) => normalizeCustomer(row)),
-        products: snapshot.products.map((row) => normalizeProduct(row)),
-      };
-      const revision = Number(catalog['revision']);
-      if (!Number.isSafeInteger(revision) || revision < 0) {
-        throw new FactaError('service_unavailable', 'Catalog revision is invalid.', 503);
-      }
-      this.#catalogCache = { revision, snapshot: publicSnapshot, fetchedAt: this.#stamp() };
-      return publicSnapshot;
-    } finally {
-      dekBytes.fill(0);
-    }
-  }
-
-  /** Public revision/freshness without returning any catalog content. */
-  async catalogState(): Promise<CatalogState> {
-    const local = this.#catalogCache;
-    try {
-      const status = await this.status();
-      const catalogMode = this.#rememberCatalogMode(status);
-      if (catalogMode === 'plain') {
-        // The company catalog is read live through the API: there is no snapshot to lag behind.
-        return {
-          catalogMode, freshness: 'fresh', localRevision: null, fetchedAt: null,
-          desiredRevision: null, publishedRevision: null, syncStatus: null, statusError: null,
-        };
-      }
-      const sync = status.sincronizacion as Record<string, unknown> | null | undefined;
-      const catalog = sync?.['catalog'] as Record<string, unknown> | undefined;
-      const desired = Number(catalog?.['desiredRevision']);
-      const published = Number(catalog?.['publishedRevision']);
-      const desiredRevision = Number.isSafeInteger(desired) ? desired : null;
-      const publishedRevision = Number.isSafeInteger(published) ? published : null;
-      const ready = catalog?.['status'] === 'ready'
-        && desiredRevision !== null && desiredRevision === publishedRevision;
-      return {
-        catalogMode,
-        freshness: local === null ? 'missing' : ready && publishedRevision === local.revision ? 'fresh' : 'stale',
-        localRevision: local?.revision ?? null,
-        fetchedAt: local?.fetchedAt ?? null,
-        desiredRevision,
-        publishedRevision,
-        syncStatus: typeof catalog?.['status'] === 'string' ? catalog['status'] : null,
-        statusError: null,
-      };
-    } catch (cause) {
-      const code = cause instanceof FactaError ? cause.code : 'network_error';
-      return {
-        catalogMode: this.#catalogModeCache?.mode ?? null,
-        freshness: local === null ? 'missing' : 'stale',
-        localRevision: local?.revision ?? null,
-        fetchedAt: local?.fetchedAt ?? null,
-        desiredRevision: null,
-        publishedRevision: null,
-        syncStatus: null,
-        statusError: code,
-      };
-    }
-  }
-
   /**
-   * List customers. Reads follow the catalog mode the key reports: the key's decrypted snapshot
-   * (`encrypted`, needs `unlockKey`), or the API itself (`readable`, `plain`; no `unlockKey`).
-   * Deactivated customers are left out unless `includeInactive` is set.
+   * List customers through the API. The server reads the catalogue (also when the company keeps it
+   * encrypted at rest), so no `unlockKey` is needed. Deactivated customers are left out unless
+   * `includeInactive` is set.
    */
   async listCustomers(options: CatalogReadOptions = {}): Promise<CatalogCustomer[]> {
-    return await this.#catalogRead(
-      async () => (await this.#listAll<CatalogCustomer>('/v1/customers', ['clientes'], options, options.includeInactive === true ? { incluirInactivos: 'true' } : {})).filter((row) => options.includeInactive === true || row.active !== false),
-      async () => [...(await this.#freshCatalog(options.allowStale ?? this.#config.allowStaleCatalogReads)).customers],
-    );
+    return (await this.#listAll<CatalogCustomer>('/v1/customers', ['clientes'], options, options.includeInactive === true ? { incluirInactivos: 'true' } : {})).filter((row) => options.includeInactive === true || row.active !== false);
   }
 
   /** Find one authorized customer by its stable Facta ID. */
   async getCustomer(customerId: string, options: CatalogReadOptions = {}): Promise<CatalogCustomer | null> {
-    return await this.#catalogRead(
-      async () => {
-        const row = await this.#getOne<CatalogCustomer>(`/v1/customers/${encodeURIComponent(customerId)}`, ['cliente'], options);
-        return row === null || (row.active === false && options.includeInactive !== true) ? null : row;
-      },
-      async () => (await this.#freshCatalog(options.allowStale ?? this.#config.allowStaleCatalogReads)).customers.find((customer) => customer.id === customerId) ?? null,
-    );
+    const row = await this.#getOne<CatalogCustomer>(`/v1/customers/${encodeURIComponent(customerId)}`, ['cliente'], options);
+    return row === null || (row.active === false && options.includeInactive !== true) ? null : row;
   }
 
   /** Search customer name, document number, NRC, and email. */
@@ -1067,39 +952,21 @@ export class Facta {
     const needle = normalizeCatalogQuery(query);
     if (!needle) return [];
     const limit = catalogSearchLimit(options.limit);
-    return await this.#catalogRead(
-      async () => (await this.#searchServer<CatalogCustomer>('/v1/customers', ['clientes'], query, limit, options))
-        .filter((row) => options.includeInactive === true || row.active !== false)
-        .slice(0, limit),
-      async () => (await this.#freshCatalog(options.allowStale ?? this.#config.allowStaleCatalogReads)).customers
-        .filter((customer) => [customer.name, customer.doc_number, customer.nrc, customer.email]
-          .some((value) => typeof value === 'string' && normalizeCatalogQuery(value).includes(needle)))
-        .slice(0, limit),
-    );
+    return (await this.#searchServer<CatalogCustomer>('/v1/customers', ['clientes'], query, limit, options))
+      .filter((row) => options.includeInactive === true || row.active !== false)
+      .slice(0, limit);
   }
 
   /** List active products (all of them with `includeInactive`). Same modes as `listCustomers`. */
   async listProducts(options: CatalogReadOptions = {}): Promise<CatalogProduct[]> {
-    return await this.#catalogRead(
-      async () => (await this.#listAll<CatalogProduct>('/v1/products', ['productos'], options, options.includeInactive === true ? { incluirInactivos: 'true' } : {}))
-        .filter((product) => options.includeInactive === true || product.active !== false),
-      async () => (await this.#freshCatalog(options.allowStale ?? this.#config.allowStaleCatalogReads)).products
-        .filter((product) => options.includeInactive === true || product.active !== false),
-    );
+    return (await this.#listAll<CatalogProduct>('/v1/products', ['productos'], options, options.includeInactive === true ? { incluirInactivos: 'true' } : {}))
+      .filter((product) => options.includeInactive === true || product.active !== false);
   }
 
   /** Find one authorized product by its stable Facta ID. Inactive products are `null` unless `includeInactive`. */
   async getProduct(productId: string, options: CatalogReadOptions = {}): Promise<CatalogProduct | null> {
-    return await this.#catalogRead(
-      async () => {
-        const row = await this.#getOne<CatalogProduct>(`/v1/products/${encodeURIComponent(productId)}`, ['producto'], options);
-        return row === null || (row.active === false && options.includeInactive !== true) ? null : row;
-      },
-      async () => {
-        const product = (await this.#freshCatalog(options.allowStale ?? this.#config.allowStaleCatalogReads)).products.find((row) => row.id === productId);
-        return product === undefined || (product.active === false && options.includeInactive !== true) ? null : product;
-      },
-    );
+    const row = await this.#getOne<CatalogProduct>(`/v1/products/${encodeURIComponent(productId)}`, ['producto'], options);
+    return row === null || (row.active === false && options.includeInactive !== true) ? null : row;
   }
 
   /** Search active product descriptions, codes, and barcodes. */
@@ -1107,16 +974,9 @@ export class Facta {
     const needle = normalizeCatalogQuery(query);
     if (!needle) return [];
     const limit = catalogSearchLimit(options.limit);
-    return await this.#catalogRead(
-      async () => (await this.#searchServer<CatalogProduct>('/v1/products', ['productos'], query, limit, options))
-        .filter((product) => options.includeInactive === true || product.active !== false)
-        .slice(0, limit),
-      async () => (await this.#freshCatalog(options.allowStale ?? this.#config.allowStaleCatalogReads)).products
-        .filter((product) => (options.includeInactive === true || product.active !== false)
-          && [product.description, product.code, product.barcode]
-            .some((value) => typeof value === 'string' && normalizeCatalogQuery(value).includes(needle)))
-        .slice(0, limit),
-    );
+    return (await this.#searchServer<CatalogProduct>('/v1/products', ['productos'], query, limit, options))
+      .filter((product) => options.includeInactive === true || product.active !== false)
+      .slice(0, limit);
   }
 
   // --- Catalog writes (plain-text catalog, scope `catalog:write`) ---------------------------------
@@ -1169,35 +1029,17 @@ export class Facta {
     options: CatalogWriteOptions,
     id?: string,
   ): Promise<T> {
+    let revision: number | null = null;
     const payload = await this.#request<unknown>(method, path, body, {
       ...(options.idempotencyKey === undefined ? {} : { idempotencyKey: options.idempotencyKey }),
       ...(options.signal === undefined ? {} : { signal: options.signal }),
+      ...(method === 'PATCH' && options.ifMatch !== undefined ? { headers: { 'If-Match': ifMatchHeader(options.ifMatch) } } : {}),
+      onHeaders: (headers) => { revision = catalogRevisionOf(headers); },
     });
     const record = recordOf<T>(payload, keys);
-    if (record !== null) return normalizeRecord(path, record);
+    if (record !== null) return withRevision(normalizeRecord(path, record), revision);
     if (method === 'DELETE' && id !== undefined) return normalizeRecord(path, { id, activo: false } as unknown as T);
     throw new FactaError('internal_error', 'La respuesta del catálogo no trae el registro.', 502);
-  }
-
-  /**
-   * How the key reaches the catalog. Learned from `/v1/status` (shared with region discovery, so
-   * normally no extra request) and trusted for a minute. `null` when the server does not say or
-   * status failed, which keeps the encrypted-snapshot path.
-   */
-  async #catalogMode(): Promise<CatalogMode | null> {
-    const cached = this.#catalogModeCache;
-    if (cached !== null && Date.now() - cached.at < CATALOG_MODE_TTL_MS) return cached.mode;
-    // Region discovery reads the same status document: let it run first so one request serves both.
-    if (this.#regionSetting === undefined) {
-      await this.region();
-      const learned = this.#catalogModeCache as { mode: CatalogMode | null; at: number } | null;
-      if (learned !== null && Date.now() - learned.at < CATALOG_MODE_TTL_MS) return learned.mode;
-    }
-    try {
-      return this.#rememberCatalogMode(await this.status());
-    } catch {
-      return null;
-    }
   }
 
   #rememberCatalogMode(status: Status): CatalogMode | null {
@@ -1207,23 +1049,6 @@ export class Facta {
     const mode = advertised === 'plain' || advertised === 'readable' || advertised === 'encrypted' ? advertised : null;
     this.#catalogModeCache = { mode, at: Date.now() };
     return mode;
-  }
-
-  /** Pick the read path for the key's catalog mode. `readable` tries the API and falls back to the snapshot. */
-  async #catalogRead<T>(viaApi: () => Promise<T>, viaSnapshot: () => Promise<T>): Promise<T> {
-    const mode = await this.#catalogMode();
-    if (mode === 'plain') return await viaApi();
-    if (mode === 'readable') {
-      try {
-        return await viaApi();
-      } catch (cause) {
-        const routeMissing = cause instanceof FactaError &&
-          (cause.status === 404 || cause.status === 501 || cause.code === 'catalog_encrypted');
-        if (!routeMissing || this.#unlockKey === null) throw cause;
-        return await viaSnapshot();
-      }
-    }
-    return await viaSnapshot();
   }
 
   async #listPage<T extends { id: string }>(path: string, keys: readonly string[], query: Record<string, string>, options: { signal?: AbortSignal }): Promise<T[]> {
@@ -1260,38 +1085,17 @@ export class Facta {
 
   async #getOne<T extends { id: string }>(path: string, keys: readonly string[], options: { signal?: AbortSignal }): Promise<T | null> {
     try {
-      const payload = await this.#request<unknown>('GET', path, undefined, options.signal ? { signal: options.signal } : {});
+      let revision: number | null = null;
+      const payload = await this.#request<unknown>('GET', path, undefined, {
+        ...(options.signal ? { signal: options.signal } : {}),
+        onHeaders: (headers) => { revision = catalogRevisionOf(headers); },
+      });
       const record = recordOf<T>(payload, keys);
-      return record === null ? null : normalizeRecord(path, record);
+      return record === null ? null : withRevision(normalizeRecord(path, record), revision);
     } catch (cause) {
       if (cause instanceof FactaError && cause.status === 404 && cause.code === 'not_found') return null;
       throw cause;
     }
-  }
-
-  async #freshCatalog(allowStale = false): Promise<CatalogSnapshot> {
-    if (this.#catalogCache === null) return this.syncCatalog();
-    let status: Status;
-    try {
-      status = await this.status();
-    } catch (cause) {
-      const code = cause instanceof FactaError ? cause.code : 'network_error';
-      if (allowStale && (code === 'network_error' || code === 'service_unavailable')) {
-        return this.#catalogCache.snapshot;
-      }
-      throw cause;
-    }
-    const sync = status.sincronizacion as Record<string, unknown> | null | undefined;
-    const remoteCatalog = sync?.['catalog'] as Record<string, unknown> | undefined;
-    const desiredRevision = Number(remoteCatalog?.['desiredRevision']);
-    const publishedRevision = Number(remoteCatalog?.['publishedRevision']);
-    if (remoteCatalog?.['status'] === 'ready'
-      && desiredRevision === publishedRevision
-      && publishedRevision === this.#catalogCache.revision) {
-      return this.#catalogCache.snapshot;
-    }
-    if (allowStale && remoteCatalog?.['status'] !== 'ready') return this.#catalogCache.snapshot;
-    return this.syncCatalog();
   }
 
   #keyId(): string { return this.#apiKey.slice(0, this.#apiKey.indexOf('.')); }
@@ -1331,12 +1135,15 @@ export class Facta {
     throwIfAborted(options.signal);
     await this.#assertFseWithholdingSupported(request, options.signal);
     const { deliver, ...call } = options;
-    // Taken before catalog resolution, so a catalog change between an attempt and its retry
-    // cannot change what the server's idempotency claim compares.
-    const fingerprint = await fingerprintV1(withDelivery(request, deliver));
-    const resolved = withDelivery(await this.#resolveCatalogRefs(request), deliver);
+    // `customerId` / `productId` travel as given: the server resolves them, so the body is the
+    // request and the server's idempotency claim hashes the body (no fingerprint header, AP-07).
+    const resolved = withDelivery(request, deliver);
     throwIfAborted(options.signal);
-    return await this.#guard(await this.#request<IssueResult>("POST", "/v1/dte", resolved, { ...call, fingerprint }), []);
+    let warningHeader: string | null = null;
+    const result = await this.#guard(await this.#request<IssueResult>("POST", "/v1/dte", resolved, {
+      ...call, onHeaders: (headers) => { warningHeader = headers.get("facta-warning"); },
+    }), []);
+    return withWarnings(result, warningHeader);
   }
 
   /**
@@ -1392,6 +1199,7 @@ export class Facta {
    */
   async issueAndArchive(request: DteRequest, options: FactaArchiveEmissionOptions): Promise<ArchiveEmissionResult> {
     validateFseWithholdingRequest(request);
+    await this.#assertFseWithholdingSupported(request, options.signal);
     const archive = options.archive ?? this.#runtime.archive;
     if (!archive) throw new TypeError("issueAndArchive requires archive or runtime.archive.");
     const { operationId, idempotencyKey, signal } = options;
@@ -1411,13 +1219,11 @@ export class Facta {
     if (ticketPaperWidthMm !== undefined && (!Number.isInteger(ticketPaperWidthMm) || ticketPaperWidthMm < 40 || ticketPaperWidthMm > 120)) {
       throw new TypeError("ticketPaperWidthMm must be an integer from 40 through 120 millimeters.");
     }
-    await this.#assertFseWithholdingSupported(request, signal);
     await archive.assertReady();
     throwIfAborted(signal);
     await this.#clock?.ensure();
     const identity = await this.#archiveIdentity(signal);
-    const requestFingerprint = await fingerprintV1(withDelivery(request, options.deliver));
-    const resolved = withDelivery(await this.#resolveCatalogRefs(request), options.deliver);
+    const resolved = withDelivery(request, options.deliver);
     throwIfAborted(signal);
     const requestBytes = new TextEncoder().encode(JSON.stringify(resolved));
     const requestSha256 = await sha256Hex(requestBytes);
@@ -1426,8 +1232,7 @@ export class Facta {
       identity,
       idempotencyKey,
       requestSha256,
-      idempotencyHash: "fingerprint-v1",
-      requestFingerprint,
+      idempotencyHash: "body",
       request: resolved,
       createdAt: this.#stamp(),
       state: "started",
@@ -1443,7 +1248,7 @@ export class Facta {
       });
     }
 
-    const emission = await this.#request<IssueResult>("POST", "/v1/dte", resolved, { idempotencyKey, fingerprint: requestFingerprint, ...(signal ? { signal } : {}) });
+    const emission = await this.#request<IssueResult>("POST", "/v1/dte", resolved, { idempotencyKey, ...(signal ? { signal } : {}) });
     return await this.#archiveEmission({ id: operationId, idempotencyKey, requestSha256, createdAt: this.#stamp(), state: "started", ...(ticketPaperWidthMm === undefined ? {} : { ticketPaperWidthMm }) }, emission, archive, signal, remote);
   }
 
@@ -1484,6 +1289,8 @@ export class Facta {
     throwIfAborted(signal);
     const operation = await archive.find(operationId);
     if (operation === null) throw new Error("Archive operation not found: " + operationId + ".");
+    const savedRequest = request ?? operation.request;
+    if (savedRequest !== undefined) validateFseWithholdingRequest(savedRequest);
     const identity = await this.#archiveIdentity(signal);
     this.#assertArchiveIdentity(operation.identity, identity, operationId);
     throwIfAborted(signal);
@@ -1545,8 +1352,7 @@ export class Facta {
     if (!recoveryRequest) {
       throw new Error("Legacy journal does not contain the original request; provide it to recover the operation.");
     }
-    validateFseWithholdingRequest(recoveryRequest);
-    const resolved = await this.#resolveCatalogRefs(recoveryRequest);
+    const resolved = recoveryRequest;
     const requestSha256 = await sha256Hex(new TextEncoder().encode(JSON.stringify(resolved)));
     if (requestSha256 !== operation.requestSha256) {
       throw new Error("Request does not match the saved fingerprint; it was not retried to avoid issuing a different document.");
@@ -1568,12 +1374,12 @@ export class Facta {
         await archive.markNeedsAttention(operationId, detail);
         throw new Error(detail);
       }
+      await this.#assertFseWithholdingSupported(recoveryRequest, signal);
       // `idempotencyHash` says how the server claim was hashed. "fingerprint-v1" sends the stored
       // fingerprint; "body" sends no header. A record without it (written by an older SDK, or the
       // field was dropped by a custom archive) is ambiguous: try without the header first, and if
       // the server says `idempotency_key_reuse` (it did not act on that attempt) resend the SAME
       // body once with the fingerprint. Never a third attempt.
-      await this.#assertFseWithholdingSupported(recoveryRequest, signal);
       const send = (fingerprint: string | undefined) => this.#request<IssueResult>("POST", "/v1/dte", resolved, {
         idempotencyKey: operation.idempotencyKey,
         ...(fingerprint === undefined ? {} : { fingerprint }),
@@ -2197,57 +2003,24 @@ export class Facta {
     validateFseWithholdingRequest(request);
     throwIfAborted(options.signal);
     await this.#assertFseWithholdingSupported(request, options.signal);
-    const fingerprint = await fingerprintV1(request);
-    const resolved = await this.#resolveCatalogRefs(request);
-    throwIfAborted(options.signal);
-    return this.#request<PreparedDte>("POST", "/v1/dte/prepare", resolved, { ...options, fingerprint });
+    let warningHeader: string | null = null;
+    const prepared = await this.#request<PreparedDte>("POST", "/v1/dte/prepare", request, {
+      ...options, onHeaders: (headers) => { warningHeader = headers.get("facta-warning"); },
+    });
+    return withWarnings(prepared, warningHeader);
   }
 
-  /** Recheck every new operation so an earlier positive result cannot hide a rollback. */
+  /** Recheck every per-line operation so a stale positive result cannot hide a rollback. */
   async #assertFseWithholdingSupported(request: DteRequest, signal?: AbortSignal): Promise<void> {
     if (request.incomeWithholding?.mode !== "per_line") return;
     throwIfAborted(signal);
     const status = await this.status(signal ? { signal } : {});
     throwIfAborted(signal);
-    this.#rememberCatalogMode(status);
     if (status.capabilities?.fseIncomeWithholdingPerLine !== true) {
       throw new FactaError("fse_withholding_not_supported",
         "Esta versión de la API no confirma soporte para retención de renta por línea. No se emitió el documento.",
         0, { field: "incomeWithholding" });
     }
-  }
-
-  /**
-   * True when `/v1/status` advertises `llave.catalogMode: "readable"`. Cached
-   * for a minute (the owner switches it rarely). Any failure answers false,
-   * which keeps the previous behaviour — local resolution from the encrypted
-   * snapshot — so this check can never be the reason an emission fails.
-   */
-  async #serverResolvesCatalog(): Promise<boolean> {
-    const cached = this.#catalogModeCache;
-    if (cached !== null && Date.now() - cached.at < CATALOG_MODE_TTL_MS) {
-      return cached.mode === "readable" || cached.mode === "plain";
-    }
-    try {
-      const mode = this.#rememberCatalogMode(await this.status());
-      return mode === "readable" || mode === "plain";
-    } catch {
-      return false;
-    }
-  }
-
-  async #resolveCatalogRefs(request: DteRequest): Promise<DteRequest> {
-    const hasCustomer = request.receptor !== undefined && request.receptor !== null &&
-      "customerId" in request.receptor && typeof request.receptor.customerId === "string";
-    const hasProduct = request.items.some((item) => typeof item.productId === "string");
-    if (!hasCustomer && !hasProduct) return request;
-    // A key whose owner enabled «Catálogo legible por la API»: the server
-    // resolves the ids itself, so no unlock key and no local snapshot are
-    // needed, and a catalog change can never leave the SDK with a stale copy.
-    if (await this.#serverResolvesCatalog()) return request;
-    await this.#freshCatalog();
-    const catalog = this.#catalogCache!;
-    return resolveCatalogRefs(request, catalog.snapshot, catalog.revision);
   }
 
   /**
@@ -2536,7 +2309,8 @@ export class Facta {
     result: InvalidationResult,
     archive: InvalidationArchive,
   ): Promise<InvalidationArchiveResult> {
-    if (result.codigoGeneracion !== targetCodigoGeneracion) {
+    // The server answers a document's code in lower case once it is indexed; the caller may hold either spelling.
+    if (typeof result.codigoGeneracion !== "string" || result.codigoGeneracion.toUpperCase() !== targetCodigoGeneracion.toUpperCase()) {
       const detail = "Invalidation response identifies a different document than the requested one.";
       await archive.markInvalidationNeedsAttention(operationId, detail, result).catch(() => undefined);
       throw new FactaError(
@@ -2622,6 +2396,127 @@ export class Facta {
     return this.#request<HoldingPage>("GET", `/v1/dte/holding?limit=${encodeURIComponent(String(limit))}`);
   }
 
+  // --- Catalogue changes and webhooks (scope `catalog:read`) --------------------------------------
+
+  /**
+   * What changed in the company catalogue since revision `since` (0 to start): ids, revisions and
+   * who did it, never the content (read the record with `getCustomer` / `getProduct`). Follow `next`
+   * while `hasMore`, and send back the `generation` you got. When Facta can no longer continue from
+   * your cursor it throws `FactaError` `catalog_cursor_expired` (HTTP 410) and `error.details` carries
+   * `reason` (`generation_changed`, `history_pruned`, `cursor_ahead` or `too_many`), `cabeza` and
+   * `generacion`: read everything again, then continue from there.
+   */
+  async listCatalogChanges(options: CatalogChangesOptions = {}): Promise<CatalogChangesPage> {
+    const query = new URLSearchParams({ since: String(options.since ?? 0) });
+    if (options.generation !== undefined && options.generation !== null) query.set('generacion', options.generation);
+    if (options.limit !== undefined) query.set('limite', String(options.limit));
+    const payload = await this.#request<unknown>('GET', `/v1/catalog/changes?${query}`, undefined, options.signal ? { signal: options.signal } : {});
+    return catalogChangesOf(payload);
+  }
+
+  /** Register a webhook. The returned `secret` is shown ONCE: store it to verify deliveries. */
+  async createWebhook(input: WebhookInput, options: CallOptions = {}): Promise<WebhookWithSecret> {
+    const payload = await this.#request<unknown>('POST', '/v1/webhooks', webhookBody(input, true), options);
+    return webhookOf(payload, true);
+  }
+
+  /** The key's webhooks (never with their secrets). */
+  async listWebhooks(options: CallOptions = {}): Promise<Webhook[]> {
+    const payload = await this.#request<unknown>('GET', '/v1/webhooks', undefined, options);
+    const rows = isRecord(payload) && Array.isArray(payload['webhooks']) ? payload['webhooks'] : [];
+    return rows.map((row) => webhookOf(row, false));
+  }
+
+  /** One webhook of this key. */
+  async getWebhook(webhookId: string, options: CallOptions = {}): Promise<Webhook> {
+    return webhookOf(await this.#request<unknown>('GET', `/v1/webhooks/${encodeURIComponent(requireId(webhookId, 'webhook'))}`, undefined, options), false);
+  }
+
+  /** Change a webhook's URL, events, description, or switch it on and off (`active: true` clears a failure shutdown). */
+  async updateWebhook(webhookId: string, changes: WebhookChanges, options: CallOptions = {}): Promise<Webhook> {
+    return webhookOf(await this.#request<unknown>('PATCH', `/v1/webhooks/${encodeURIComponent(requireId(webhookId, 'webhook'))}`, webhookBody(changes, false), options), false);
+  }
+
+  /** Delete a webhook, its secret and whatever it had queued. */
+  async deleteWebhook(webhookId: string, options: CallOptions = {}): Promise<void> {
+    await this.#request<unknown>('DELETE', `/v1/webhooks/${encodeURIComponent(requireId(webhookId, 'webhook'))}`, undefined, options);
+  }
+
+  /** Replace the signing secret. The old one stops verifying at once; the new one is shown ONCE. */
+  async rotateWebhookSecret(webhookId: string, options: CallOptions = {}): Promise<WebhookWithSecret> {
+    return webhookOf(await this.#request<unknown>('POST', `/v1/webhooks/${encodeURIComponent(requireId(webhookId, 'webhook'))}/rotate-secret`, {}, options), true);
+  }
+
+  /** Queue a signed `webhook.test` delivery (it leaves within the next minute). */
+  async testWebhook(webhookId: string, options: CallOptions = {}): Promise<{ deliveryId: string; event: 'webhook.test' }> {
+    const payload = await this.#request<unknown>('POST', `/v1/webhooks/${encodeURIComponent(requireId(webhookId, 'webhook'))}/test`, {}, options);
+    const row = isRecord(payload) ? payload : {};
+    return { deliveryId: String(row['entregaId'] ?? ''), event: 'webhook.test' };
+  }
+
+  // --- Drafts (scope `draft`; issuing also needs `issue` and the signing password) ---------------
+
+  /**
+   * Leave an invoice as a draft for a person of the company to review and issue. Pass the same
+   * request as `issue` (plus your own `id` and `reference` if you like). No control number is spent.
+   * Repeating the call with the same `idempotencyKey` returns the same draft; a different body under
+   * that key is `idempotency_key_reuse`. `drafts_not_ready` (409) means the owner has not opened Facta
+   * with their vault since the company began sharing its data key: ask them to open it once.
+   */
+  async createDraft(input: DraftInput, options: CallOptions = {}): Promise<Draft> {
+    return draftOf(await this.#request<unknown>("POST", "/v1/drafts", draftBody(input), options));
+  }
+
+  /** The drafts this key left, newest first, with filters. Follow `next` for more. */
+  async listDrafts(options: ListDraftsOptions = {}): Promise<DraftPage> {
+    const query = new URLSearchParams();
+    if (options.state !== undefined) query.set("estado", options.state);
+    if (options.reference !== undefined) query.set("referencia", options.reference);
+    if (options.limit !== undefined) query.set("limite", String(options.limit));
+    if (options.cursor !== undefined) query.set("cursor", options.cursor);
+    if (options.include !== undefined) query.set("include", options.include);
+    const suffix = query.size === 0 ? "" : `?${query}`;
+    return draftPageOf(await this.#request<unknown>("GET", `/v1/drafts${suffix}`, undefined, options.signal ? { signal: options.signal } : {}));
+  }
+
+  /** One draft and, when it was issued, the document it became. */
+  async getDraft(draftId: string, options: CallOptions = {}): Promise<Draft> {
+    return draftOf(await this.#request<unknown>("GET", `/v1/drafts/${encodeURIComponent(requireId(draftId, "draft"))}`, undefined, options));
+  }
+
+  /** Follow draft → invoice without knowing the generation code: read a draft by the `idempotencyKey` it was created with. */
+  async getDraftByKey(idempotencyKey: string, options: CallOptions = {}): Promise<Draft> {
+    return draftOf(await this.#request<unknown>("GET", `/v1/drafts/by-key/${encodeURIComponent(draftKey(idempotencyKey))}`, undefined, options));
+  }
+
+  /** Save a new version of a draft that is still pending. `version` is the one you read (`If-Match`). */
+  async updateDraft(draftId: string, version: number, input: DraftInput, options: CallOptions = {}): Promise<Draft> {
+    return draftOf(await this.#request<unknown>("PUT", `/v1/drafts/${encodeURIComponent(requireId(draftId, "draft"))}`, draftBody(input), {
+      ...options,
+      headers: { "If-Match": String(draftVersion(version)) },
+    }));
+  }
+
+  /** Cancel a draft that is still pending and closed. */
+  async cancelDraft(draftId: string, options: CallOptions = {}): Promise<Draft> {
+    return draftOf(await this.#request<unknown>("DELETE", `/v1/drafts/${encodeURIComponent(requireId(draftId, "draft"))}`, undefined, options));
+  }
+
+  /**
+   * Issue a draft through the same road as `issue` (needs the `issue` scope and the signing password;
+   * spends a control number). `version` is the draft's current version. One door prevents double
+   * issuing: `draft_issuing` or `draft_claimed` (409) spent nothing. A Hacienda rejection counts as
+   * issued and the draft is not reopened. The result is the one of `issue` plus `borradorId`.
+   */
+  async issueDraft(draftId: string, version: number, request: DteRequest, options: IssueOptions = {}): Promise<IssueResult & { borradorId: string }> {
+    throwIfAborted(options.signal);
+    const { deliver, ...call } = options;
+    const resolved = withDelivery(request, deliver);
+    const body = { ...resolved, version: draftVersion(version) };
+    const result = await this.#request<IssueResult & { borradorId: string }>("POST", `/v1/drafts/${encodeURIComponent(requireId(draftId, "draft"))}/issue`, body, call);
+    return await this.#guard(result, []);
+  }
+
   /** Fetch the server's published OpenAPI JSON contract. */
   getContract(): Promise<unknown> { return this.#request("GET", "/v1/openapi.json"); }
 
@@ -2636,10 +2531,11 @@ export class Facta {
     const headers: Record<string, string> = { "X-Facta-Key": this.#apiKey };
     // Sent ONLY where it is needed. A password that rides along on every
     // request is a password in every proxy log the request passes through.
-    if (this.#signKey !== null && method === "POST" && (SIGNING_PATHS.has(path) || SIGNING_EVENT_PATH.test(path))) {
+    if (this.#signKey !== null && method === "POST" && (SIGNING_PATHS.has(path) || SIGNING_EVENT_PATH.test(path) || SIGNING_DRAFT_PATH.test(path))) {
       headers["X-Facta-Sign-Key"] = this.#signKey;
     }
     if (body !== undefined) headers["Content-Type"] = "application/json";
+    if (options.headers !== undefined) Object.assign(headers, options.headers);
     // A debugging aid: asked for per client or per call, never by default.
     const timings = options.debug?.timings ?? this.#debug.timings ?? false;
     if (timings) headers[DEBUG_HEADER] = DEBUG_TIMINGS;
@@ -2659,7 +2555,7 @@ export class Facta {
       if (attempt > 0) await sleep(Math.min(250 * 2 ** (attempt - 1), 4_000), options.signal);
       throwIfAborted(options.signal);
       try {
-        return await this.#attempt<T>(method, path, headers, body, binary, options.signal, timings);
+        return await this.#attempt<T>(method, path, headers, body, binary, options.signal, timings, this.#timeoutMs, options.onHeaders);
       } catch (cause) {
         if (!(cause instanceof FactaError) || !RETRYABLE.has(cause.code)) throw cause;
         lastError = cause;
@@ -2677,6 +2573,7 @@ export class Facta {
     signal?: AbortSignal,
     timings = false,
     timeoutMs = this.#timeoutMs,
+    onHeaders?: (headers: Headers) => void,
   ): Promise<T> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -2705,6 +2602,7 @@ export class Facta {
         0,
       );
     }
+    onHeaders?.(response.headers);
     const served = response.headers.get("x-sb-edge-region");
     if (served !== null && REGION_PATTERN.test(served)) this.#servedRegion = served;
 
@@ -2785,6 +2683,26 @@ export class Facta {
       redactErrorValue(error?.details, this.#secrets),
     );
   }
+}
+
+/** The `If-Match` value for a revision: the API's ETag is the quoted revision (`"7"`). */
+function ifMatchHeader(value: string | number): string {
+  const text = String(value).trim();
+  if (text === '*') return text;
+  const bare = text.replace(/^W\//, '').replace(/^"(.*)"$/, '$1');
+  if (!/^\d+$/.test(bare)) throw new TypeError('ifMatch must be the revision number read from the record (for example 7).');
+  return `"${bare}"`;
+}
+
+/** The catalogue revision of a record, from `Facta-Catalog-Revision` or the ETag (shared catalogue only). */
+function catalogRevisionOf(headers: Headers): number | null {
+  const raw = headers.get('facta-catalog-revision') ?? headers.get('etag');
+  const match = raw === null ? null : /(\d+)/.exec(raw);
+  return match === null ? null : Number(match[1]);
+}
+
+function withRevision<T extends { id: string }>(record: T, revision: number | null): T {
+  return revision === null ? record : { ...record, revision };
 }
 
 /** Both spellings on a record read through the API; the path says what kind it is. */

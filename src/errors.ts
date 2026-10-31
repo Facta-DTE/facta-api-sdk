@@ -5,6 +5,9 @@
 // reading a log and may be rewritten at any time. A client that branches on
 // the message is a client that breaks on a typo fix.
 
+import { unknownFieldWarnings } from "./warnings.ts";
+import type { UnknownFieldWarning } from "./types.ts";
+
 export type FactaErrorCode =
   | "unauthorized"
   | "invalid_api_key"
@@ -43,6 +46,59 @@ export type FactaErrorCode =
   | "catalog_encrypted"
   /** A customer with that document, or a product with that code, already exists (HTTP 409). */
   | "catalog_duplicate"
+  /** The record changed since `If-Match` (HTTP 409); `details.revisionActual` carries the current revision. */
+  | "catalog_revision_conflict"
+  /** An edit of an inactive record without `activo: true` (HTTP 409). */
+  | "catalog_record_inactive"
+  /** A `buscar` over more rows than the server searches in memory (HTTP 422); use the document filter. */
+  | "catalog_search_too_broad"
+  /** A catalogue cursor that expired (HTTP 410); read from the start. */
+  | "catalog_cursor_expired"
+  /** The shared data grant could not be opened by the server (HTTP 503); retry later. */
+  | "data_grant_unavailable"
+  /** The key's data grant was revoked (HTTP 403). */
+  | "data_grant_revoked"
+  /** The company's data key is rotating (HTTP 503); retry shortly. */
+  | "data_epoch_stale"
+  /** The key already holds the most webhooks it may (5) (HTTP 409). */
+  | "webhook_limit_reached"
+  /** A webhook with that URL already exists on this key (HTTP 409). */
+  | "webhook_duplicate"
+  /** The sealed catalogue inbox routes were retired (HTTP 410). Write the catalogue with `createCustomer` and friends. */
+  | "inbox_retired"
+  /** A test key tried to write the catalogue after the company went live (HTTP 403). */
+  | "catalog_write_test_key"
+  /** An extra company of a Multiempresa owner on a free or trial plan, issuing in production (HTTP 402). */
+  | "paid_plan_required"
+  /** Hacienda answered the login and refused the company's API credentials (HTTP 424); the owner fixes them, retrying cannot. */
+  | "mh_auth_failed"
+  // Google Drive token broker (`GET`/`POST /v1/destinations/{id}/drive-token`).
+  | "drive_not_configured"
+  | "drive_reauthorization_required"
+  | "drive_token_failed"
+  /** Drive does not count as API storage (HTTP 403); use Facta Storage or another destination. */
+  | "drive_not_available_for_api"
+  // Drafts (scope `draft`).
+  /** The company has no draft-box key yet (HTTP 409): its owner opens Facta with their vault once, then it works. */
+  | "drafts_not_ready"
+  /** The plaintext of a legacy sealed draft did not hash to `contentHash` (HTTP 422). */
+  | "content_hash_mismatch"
+  /** That draft id is already taken by another item (HTTP 409). */
+  | "id_conflict"
+  /** The draft is already resolved (HTTP 409). */
+  | "item_final"
+  /** A person of the company has the draft open (HTTP 409); nothing was spent. */
+  | "draft_claimed"
+  /** The draft is being issued right now (HTTP 409); nothing was spent. */
+  | "draft_issuing"
+  /** The draft was already issued (HTTP 409). */
+  | "draft_issued"
+  /** The draft cannot be issued in its state (HTTP 409). */
+  | "draft_not_issuable"
+  /** The `version` sent is not the draft's current one (HTTP 409); read it again. */
+  | "version_mismatch"
+  /** A per-key or per-company cap of drafts (HTTP 429). */
+  | "inbox_cap_reached"
   | "idempotency_key_required"
   | "idempotency_key_reuse"
   | "idempotency_in_flight"
@@ -118,6 +174,14 @@ export class FactaError extends Error {
     const nc = details?.["numeroControl"];
     if (typeof cg !== "string" || typeof nc !== "string") return null;
     return { codigoGeneracion: cg, numeroControl: nc };
+  }
+
+  /**
+   * The `campo_desconocido` warnings the server attached to this failure (`details.advertencias`): request
+   * fields Facta DTE ignored. Empty when there are none. Unknown fields are warnings, never errors.
+   */
+  get unknownFields(): UnknownFieldWarning[] {
+    return unknownFieldWarnings(this.details);
   }
 
   /** What Hacienda said, word for word, when it refused. */

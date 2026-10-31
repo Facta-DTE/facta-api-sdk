@@ -1,4 +1,3 @@
-# Snapshot of openapi.yaml from Facta-DTE/FacturaFacilSv origin/staging (6e67004b), used by test/error-codes.test.ts. Refresh by copying the file.
 openapi: 3.1.0
 
 # El contrato de cable de la API pública de Facta.
@@ -16,6 +15,13 @@ openapi: 3.1.0
 # `/v1/destinations`, `/v1/dte/{cg}/copies`, `/v1/dte/pending-copies`,
 # `/v1/dte/{cg}/render`, `/v1/webhooks` y el listado paginado `GET /v1/dte`.
 # Cuando existan, se añaden aquí y el número de versión sube.
+#
+# FUERA DEL CONTRATO A PROPÓSITO — `/v1/operator/*`: son las rutas internas de
+# las pantallas de Facta para una persona delegada de una empresa (contador,
+# vendedor…). Se autentican con la sesión de esa persona más el id de su
+# credencial, no con `X-Facta-Key`, y no son una superficie para integradores:
+# pueden cambiar con la aplicación. No se documentan aquí ni en `/api/`
+# (`supabase/functions/api-v1/operator/routes.ts` lo dice de su lado).
 #
 # LAS SEIS DECISIONES DE CABLE, dichas una vez:
 #
@@ -81,7 +87,10 @@ info:
 
     **Cada ruta exige un alcance de la llave**, y la llave los lleva escritos:
     `issue` para las tres que emiten, `query` para la consulta, `download` para
-    el área de retención. Entregar por correo o WhatsApp lo que se emitió viene
+    el área de retención, y `catalog:read` / `catalog:write` para listar y
+    administrar clientes y productos (nunca vienen de fábrica: el dueño los
+    concede por llave, y `catalog:write` además exige que la empresa haya
+    permitido el catálogo sin cifrar). Entregar por correo o WhatsApp lo que se emitió viene
     incluido con `issue` (`entrega:correo` y `entrega:whatsapp` siguen valiendo
     para una llave que solo tenga ese alcance). `/v1/status` no exige ninguno. Un alcance
     que falta es `403 forbidden_scope`, y `details` dice cuál hacía falta y
@@ -157,6 +166,55 @@ tags:
       idempotente; un canal que falla es un estado con motivo, no un error.
   - name: Salud
     description: Estado de la llave y techos restantes.
+  - name: Catálogo
+    description: |
+      Leer y administrar los clientes y productos de la empresa. **Solo existe
+      para una empresa cuyo dueño guardó el catálogo sin cifrar** (Cuenta → API →
+      «Permitir administrar clientes y productos desde el API»): el servidor
+      tiene que poder leer las filas para escribirlas. Las lecturas piden
+      `catalog:read`; crear, editar y desactivar piden `catalog:write` y que el
+      dueño haya abierto ese permiso. Borrar es **desactivar**: la ficha
+      queda, deja de salir en las listas y de resolverse por `customerId` /
+      `productId`, y se reactiva con `{"activo": true}`.
+  - name: Buzón sellado
+    description: |
+      Cambios del catálogo y facturas en borrador que la llave deja **selladas**
+      (`inbox-v1`) para que el dueño las abra con su vault. El servidor valida
+      al recibir, comprueba el hash y guarda solo el sobre. Piden `catalog:write`
+      (cambios) o `draft` (borradores).
+  - name: Cambios y webhooks
+    description: |
+      Enterarse de que el catálogo cambió sin leerlo todo cada vez. Dos formas,
+      las dos con **solo ids y revisiones**, nunca el contenido del cliente o
+      del producto (el integrador lee la ficha con su propia llave):
+      `GET /v1/catalog/changes?since=` para consultar cada tanto, y los
+      **webhooks** de `/v1/webhooks` para que Facta avise. Piden `catalog:read`.
+
+      **El aviso es una pista para leer, no el dato.** Cada entrega es un `POST`
+      a su dirección con este cuerpo y nada más:
+
+      ```json
+      {"deliveryId":"…","event":"catalog.customer.updated","company":"…",
+       "recordId":"…","revision":42,"generation":"…","at":"2026-10-26T12:00:00.000Z"}
+      ```
+
+      `revision` es la revisión del catálogo de la empresa (la misma que usa
+      `since`), `generation` cambia cuando una restauración reemplaza el
+      historial. Eventos: `catalog.customer.created|updated|deactivated|deleted`,
+      `catalog.product.created|updated|deactivated|deleted` y
+      `catalog.restored` (el historial fue reemplazado: lea todo de nuevo).
+
+      **Firma.** La cabecera `Facta-Signature` vale
+      `t=<segundos unix>,v1=<HMAC-SHA256 en hexadecimal>` y el HMAC se calcula
+      con su secreto sobre el texto `t + "." + cuerpo`. Rechace la entrega si
+      `|ahora − t| > 300 s` o si ya aceptó ese `deliveryId`. El verificador de
+      referencia, sin dependencias, es `supabase/functions/_shared/webhooks.ts`
+      (`verifyWebhook`). La respuesta es `2xx` en cuanto lo recibió; cualquier
+      otra cosa se reintenta (1 min, 5 min, 30 min, 2 h, 6 h; hasta 24 h) y los
+      reintentos pueden llegar desordenados: ordene por `revision`. Conteste
+      `2xx` también a un `deliveryId` repetido. Facta no sigue redirecciones y
+      solo envía a `https://` en el puerto 443 de una dirección pública. Diez
+      entregas agotadas seguidas apagan el webhook (`desactivadoPor`).
   - name: Almacenamiento
     description: |
       Estado, recibos y recuperación de copias JSON/PDF administradas por
@@ -220,6 +278,49 @@ paths:
         "429": { $ref: "#/components/responses/Techo" }
         "503": { $ref: "#/components/responses/NoDisponible" }
 
+  /v1/representacion/plantillas:
+    get:
+      tags: [Consulta]
+      operationId: plantillasDeRepresentacion
+      summary: Plantillas que esta llave puede pedir en `representacion.plantilla`
+      description: |
+        **Alcance: `query`.** La empresa sale de la llave.
+
+        Lista las plantillas de carta (PDF) y de ticket que se pueden nombrar en
+        `representacion.plantilla`: las del catálogo y las plantillas propias
+        **publicadas** de la empresa (`custom:<uuid>`). Cada una trae si esta
+        empresa puede usarla **ahora** (`permitida`, con el mismo criterio que
+        aplica la emisión: el plan vigente, nunca lo que diga la petición) y,
+        si no, el `motivo`: `plan` (su plan no la incluye) o `incompatible`
+        (con `tipoDte`, un ticket de un tipo de documento que no tiene ticket;
+        o una plantilla propia que ya no se puede dibujar).
+
+        `clavesDatos` son las claves de `representacion.datos` que esa plantilla
+        imprime (`filas` si imprime filas libres). Las plantillas del catálogo
+        no imprimen datos por venta; los imprimen las plantillas propias que
+        los declaran. `predeterminada` es la elección actual de la empresa, la
+        que se usa cuando la petición no pide ninguna.
+
+        No devuelve datos de clientes ni de documentos.
+      security: [{ FactaApiKey: [] }]
+      parameters:
+        - name: tipoDte
+          in: query
+          required: false
+          description: Código del tipo de documento (`01`, `03`, `05`, `06`, `11`, `14`). Ajusta `permitida` a ese tipo. Otro valor es `400`.
+          schema: { type: string, enum: ["01", "03", "05", "06", "11", "14"] }
+      responses:
+        "200":
+          description: Las plantillas y la elección actual de la empresa.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlantillasDisponibles" }
+        "400": { description: "`tipoDte` desconocido.", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "401": { $ref: "#/components/responses/NoAutorizado" }
+        "403": { $ref: "#/components/responses/Prohibido" }
+        "429": { $ref: "#/components/responses/Techo" }
+        "503": { $ref: "#/components/responses/NoDisponible" }
+
   /v1/storage/status:
     get:
       tags: [Almacenamiento]
@@ -247,9 +348,14 @@ paths:
     get:
       tags: [Almacenamiento]
       operationId: listarCopiasAdministradas
-      summary: Consultar recibos de copias JSON/PDF
+      summary: Consultar recibos de copias JSON/PDF/evento de invalidación
       description: |
         **Alcance: `download`.** Solo enumera la empresa y el ambiente de la llave.
+        Por defecto devuelve solo copias `json` y `pdf`, que es lo que validan los
+        SDK ya publicados. Una anulación guarda además el evento bajo el código del
+        documento anulado (`kind: invalidation`); se incluye solo con
+        `include=invalidation`. `include` acepta una lista separada por comas y
+        ignora los valores desconocidos, para que valores futuros sean aditivos.
         Incluye reservas pendientes para poder recuperarlas. No devuelve rutas,
         enlaces temporales, documentos ni credenciales. Se limita a 500 filas;
         `generationCode` acota una consulta a un DTE.
@@ -259,6 +365,11 @@ paths:
           in: query
           required: false
           schema: { type: string, format: uuid }
+        - name: include
+          in: query
+          required: false
+          description: "Tipos adicionales a `json` y `pdf`, separados por comas. Hoy: `invalidation`. Los valores desconocidos se ignoran."
+          schema: { type: string, example: invalidation }
       responses:
         "200":
           description: Recibos administrados del ambiente de la llave.
@@ -326,6 +437,19 @@ paths:
         de la respuesta es siempre `false` y el campo `verified` de la petición
         se ignora.
 
+        **También acepta el EVENTO DE INVALIDACIÓN del documento** (`kind:
+        "invalidation"`): el archivo que `POST /v1/dte/{codigoGeneracion}/invalidate`
+        devuelve en `archivoEvento`. `codigoGeneracion` es el del documento
+        ANULADO (no el del evento); `jsonPath` es la ruta del archivo del evento,
+        `DTE/pruebas/YYYY/MM/<CODIGO-EN-MAYUSCULAS>.invalidacion.json` en pruebas
+        y `DTE/YYYY/MM/<CODIGO-EN-MAYUSCULAS>.invalidacion.json` en producción
+        (la `ruta` de `archivoEvento`), y `pdfPath` no se envía. El documento tiene
+        que estar anulado y el evento se anota junto a la copia del original en
+        ese destino, así que informe primero la copia del documento
+        (`kind` omitido) y después la del evento; si no, `400` con
+        `field: secretId`. Se anota como «informada», nunca «verificada».
+        Requiere `capabilities.byosCopyReport >= 2`.
+
         **También acepta el código de un EVENTO de retorno sellado**: las rutas
         son las del documento al que se aplicó, con el código del evento (en
         mayúsculas) como nombre: `DTE/pruebas/YYYY/MM/<CODIGO-DEL-EVENTO>.json|pdf`
@@ -346,8 +470,9 @@ paths:
               required: [secretId, jsonPath]
               properties:
                 secretId: { type: string, format: uuid, description: "El `id` del destino en los destinos sincronizados." }
-                jsonPath: { type: string }
-                pdfPath: { type: string, nullable: true }
+                kind: { type: string, enum: [document, invalidation], default: document, description: "`invalidation`: `jsonPath` es el archivo del evento de anulación del documento `codigoGeneracion`." }
+                jsonPath: { type: string, description: "Con `kind: invalidation`, la ruta del evento (`.../<CODIGO>.invalidacion.json`)." }
+                pdfPath: { type: string, nullable: true, description: "No se envía con `kind: invalidation`." }
                 verified: { type: boolean, deprecated: true, description: "Se ignora: una copia informada nunca queda verificada." }
                 pdfRegenerated: { type: boolean }
       responses:
@@ -364,6 +489,7 @@ paths:
                     type: object
                     required: [secretId, recorded, verified, writtenBy]
                     properties:
+                      kind: { type: string, enum: [invalidation], description: "Solo cuando la petición fue `kind: invalidation`." }
                       secretId: { type: string, format: uuid }
                       recorded: { type: boolean }
                       verified: { type: boolean }
@@ -374,6 +500,90 @@ paths:
         "404": { $ref: "#/components/responses/NoEnElArea" }
         "422": { description: El destino no está en los destinos sincronizados de la llave., content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "429": { $ref: "#/components/responses/Techo" }
+        "503": { $ref: "#/components/responses/NoDisponible" }
+
+  /v1/destinations/{destinationId}/drive-token:
+    post:
+      tags: [Almacenamiento]
+      operationId: renovarAccesoGoogleDrive
+      summary: Canjear la llave larga de un Google Drive por un acceso de una hora
+      description: |
+        **No disponible.** Google Drive está desactivado para la API por decisión
+        de seguridad (17-oct-2026): esta ruta contesta `403 drive_not_available_for_api`
+        y Drive no cuenta como almacenamiento de la API. Use Almacenamiento Facta u
+        otro destino compatible (S3 y compatibles, Supabase Storage, FTP/SFTP). La
+        descripción de abajo es la del comportamiento que se conserva en el código
+        y que solo se enciende con un interruptor del servidor.
+
+        **Alcance: ninguno**
+
+        Requiere `X-Facta-Key`; no pide `X-Facta-Sign-Key`. Es el intermediario
+        de tokens de Google Drive para integraciones: el SDK abre localmente el
+        vault de destinos (`GET /v1/vault/destinations`), toma la llave larga
+        (`refreshToken`) del destino Drive y la manda aquí; el servidor la canjea
+        con el secreto OAuth de Facta, que nunca sale de los secretos del
+        servidor, y devuelve un acceso de una hora para escribir en Drive.
+
+        `destinationId` tiene que ser un destino `gdrive` **activo de la empresa
+        de la llave**; cualquier otro caso (otra empresa, otro tipo, desactivado,
+        revocado, sin forma de UUID) contesta lo mismo: `404 not_found`.
+
+        **La llave larga pasa por el servidor solo en memoria**, durante esta
+        petición: no se guarda, no se registra y no se devuelve. La respuesta
+        lleva `Cache-Control: private, no-store`. Si Google rotó la llave larga,
+        la respuesta trae también `refreshToken`: el cliente puede usarla el resto
+        de su proceso (no puede escribirla en el vault).
+
+        Tope: 30 canjes por minuto por llave; pasado eso, `429` con `Retry-After`.
+
+        `409 drive_reauthorization_required` significa que Google retiró el
+        permiso: una persona tiene que abrir Facta y pulsar «Confirmar en Google»
+        en ese destino de Google Drive.
+      parameters:
+        - name: destinationId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+          description: El id del destino Drive, tal como lo trae el vault de destinos.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              additionalProperties: false
+              properties:
+                refreshToken:
+                  type: string
+                  minLength: 1
+                  maxLength: 2048
+                  description: La llave larga de Google guardada en el secreto del destino.
+      responses:
+        "200":
+          description: Acceso de una hora para Google Drive.
+          headers:
+            Cache-Control:
+              schema: { type: string, example: "private, no-store" }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [accessToken, expiresIn, expiresAt]
+                properties:
+                  accessToken: { type: string }
+                  expiresIn: { type: integer, description: Segundos de vigencia, como los dice Google (unos 3600). }
+                  expiresAt: { type: string, format: date-time }
+                  refreshToken:
+                    type: string
+                    description: Solo si Google rotó la llave larga.
+        "400": { description: "`invalid_request` — falta `refreshToken` o no es un texto de 1 a 2048 caracteres.", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "401": { $ref: "#/components/responses/NoAutorizado" }
+        "403": { description: "`drive_not_available_for_api` — Google Drive está desactivado para la API. Use Almacenamiento Facta u otro destino compatible.", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: "`not_found` — no es un destino Drive activo de esta empresa.", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "409": { description: "`drive_reauthorization_required` — Google retiró el permiso; hay que confirmarlo de nuevo en la app.", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "429": { $ref: "#/components/responses/Techo" }
+        "502": { description: "`drive_token_failed` — Google falló o rechazó por otra razón. No se reenvía su respuesta.", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "503": { $ref: "#/components/responses/NoDisponible" }
 
   /v1/vault/destinations:
@@ -400,9 +610,23 @@ paths:
         el SDK debe quitarlos de la lista descifrada y nunca escribir en ellos.
         La app republica sola al desbloquear el vault y tras cada cambio de
         almacenamiento; mientras tanto no se rechaza ninguna emisión por esto.
+
+        **La copia cifrada del catálogo está retirada.** Si la llave tenía una,
+        `vault.catalog` sigue trayendo su último texto cifrado un lanzamiento
+        más, con `syncStatus: "retired"` (y `desiredRevision`, obsoleto y
+        congelado, como antes), y la respuesta lleva las cabeceras
+        `Deprecation` (RFC 9745) y `Sunset` (RFC 8594). No lo use: el servidor
+        resuelve `customerId` y `productId` por usted (SDK 0.6 ya no lo lee).
       responses:
         "200":
           description: Vault cifrado y cursor de sincronización.
+          headers:
+            Deprecation:
+              description: Solo si trae la copia retirada del catálogo (`@` y segundos Unix, RFC 9745).
+              schema: { type: string }
+            Sunset:
+              description: Solo si trae la copia retirada del catálogo; después de esta fecha deja de servirse (fecha HTTP).
+              schema: { type: string }
           content:
             application/json:
               schema: { type: object }
@@ -432,6 +656,16 @@ paths:
         también). Solo un vault de **firma** atrasado se rechaza
         (`sign_vault_missing`): sus credenciales cambiaron.
 
+        **Campos que no existen.** Un campo que Facta DTE no reconoce (por
+        ejemplo `descuento` en lugar de `items[].montoDescu`) **no rechaza** la
+        petición: se ignora, no forma parte del documento, y la respuesta lo
+        dice en `advertencias` con el código `campo_desconocido`, el camino
+        exacto (`campo`) y, cuando es obvio, `sugerencia`. También llega en la
+        cabecera `Facta-Warning`. Si la petición falla por otra razón, las
+        mismas advertencias vienen en `error.details.advertencias`. Revise la
+        primera respuesta de su integración: un campo ignorado es un descuento,
+        un pago o un régimen que el documento no lleva.
+
         Devuelve el JWS firmado además del documento: es lo que el cliente
         archiva, porque volver a serializar el JSON después no reproduce los
         mismos bytes que Hacienda validó.
@@ -446,6 +680,7 @@ paths:
         `esperando_sello` y no trae token.
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/RequestFingerprint"
         - $ref: "#/components/parameters/SignKey"
         - $ref: "#/components/parameters/DeferCopies"
         - $ref: "#/components/parameters/DebugTimings"
@@ -527,6 +762,7 @@ paths:
             estaba guardada de un intento anterior con la misma llave.
           headers:
             Idempotency-Replayed: { $ref: "#/components/headers/IdempotencyReplayed" }
+            Facta-Warning: { $ref: "#/components/headers/FactaWarning" }
           content:
             application/json:
               schema: { $ref: "#/components/schemas/DteSellado" }
@@ -562,21 +798,21 @@ paths:
           description: |
             El documento no pasó — y hay dos razones muy distintas:
 
-            · `validation_failed`: no cumple el esquema oficial. **No se gastó
-              correlativo**; `details.issues` dice qué campo.
+            · `validation_failed`: no cumple el esquema oficial, o un código no
+              es del catálogo del Ministerio (`formaPago`, `pagos[].codigo`,
+              `exportacion.recintoFiscal`, `.tipoRegimen`, `.regimen`), o los
+              `pagos` no suman el total. **No se gastó correlativo**;
+              `details.issues` dice qué campo, o `details.field` y
+              `details.supported` los códigos válidos.
             · `retention_mixed_class_unsupported`: `aplicarReteRenta` sobre líneas
               exentas o no sujetas. **No se gastó correlativo**.
             · `mh_rejected`: Hacienda lo leyó y lo negó. **Sí se gastó**, y
               `details` nombra `codigoGeneracion` y `numeroControl` para que la
               corrección los reuse (§167).
             · `idempotency_key_reuse`: la misma llave con otro cuerpo.
-            · `no_storage_destination`: la empresa no tiene ningún destino de
-              almacenamiento conectado y verificado en los últimos 30 días.
-              **No se gastó correlativo** — es la puerta de
-              `api-almacenamiento-y-contingencia.md` §2.1, y corre antes que
-              nada más: firmar sin un sitio donde el documento pueda aterrizar
-              deja al cliente sin ninguna copia salvo la de esta misma
-              respuesta.
+            · `no_storage_destination`: **ya no lo devuelve la emisión** (desde el
+              6-oct-2026). Sin almacenamiento disponible el documento se emite
+              igual y la respuesta trae la advertencia `sin_almacenamiento_duradero`.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -594,6 +830,7 @@ paths:
                         numeroControl: DTE-03-M001P001-000000000000177
         "429": { $ref: "#/components/responses/Techo" }
         "500": { $ref: "#/components/responses/ErrorInterno" }
+        "424": { $ref: "#/components/responses/MhCredenciales" }
         "502": { $ref: "#/components/responses/MhCaido" }
         "503": { $ref: "#/components/responses/NoDisponible" }
 
@@ -653,6 +890,11 @@ paths:
           in: query
           schema: { type: string }
           description: El `siguiente` de la página anterior, tal cual.
+        - name: include
+          in: query
+          schema: { type: string, enum: [dte] }
+          description: "`dte` agrega `archivoDte` a cada fila (alcance `download`; página de 20 por defecto, 25 como máximo)."
+        - $ref: "#/components/parameters/DebugTimings"
       responses:
         "200":
           description: La página, de la más nueva a la más vieja.
@@ -660,7 +902,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/PaginaDeDocumentos" }
         "400":
-          description: Una fecha mal escrita, un estado que no existe, un cursor inventado.
+          description: Una fecha mal escrita, un estado que no existe, un cursor inventado, un `include` desconocido o `include_limit_exceeded` (más de 25 filas con `include=dte`).
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
         "401": { $ref: "#/components/responses/NoAutorizado" }
         "403": { $ref: "#/components/responses/Prohibido" }
@@ -690,6 +932,7 @@ paths:
         al deserializarlo (PHP, Go, Python viejo) sigue verificando.
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/RequestFingerprint"
         - $ref: "#/components/parameters/DebugTimings"
       requestBody:
         required: true
@@ -701,6 +944,7 @@ paths:
           description: Correlativo reservado; el documento todavía no está firmado.
           headers:
             Idempotency-Replayed: { $ref: "#/components/headers/IdempotencyReplayed" }
+            Facta-Warning: { $ref: "#/components/headers/FactaWarning" }
           content:
             application/json:
               schema: { $ref: "#/components/schemas/DtePreparado" }
@@ -708,7 +952,7 @@ paths:
         "401": { $ref: "#/components/responses/NoAutorizado" }
         "403": { $ref: "#/components/responses/Prohibido" }
         "409": { $ref: "#/components/responses/EnVuelo" }
-        "422": { description: "`validation_failed` o `no_storage_destination` — ninguno gasta correlativo.", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "422": { description: "`validation_failed` — no gasta correlativo.", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "429": { $ref: "#/components/responses/Techo" }
         "503": { $ref: "#/components/responses/NoDisponible" }
 
@@ -755,6 +999,7 @@ paths:
           description: "`prepare_token_invalid` (vencido, de otra llave, o el documento cambió) o `mh_rejected`."
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
         "429": { $ref: "#/components/responses/Techo" }
+        "424": { $ref: "#/components/responses/MhCredenciales" }
         "502": { $ref: "#/components/responses/MhCaido" }
         "503": { $ref: "#/components/responses/NoDisponible" }
 
@@ -878,6 +1123,7 @@ paths:
             cumple el esquema) o `mh_rejected` (Hacienda leyó la anulación y la
             negó — el plazo vencido es la razón más común).
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "424": { $ref: "#/components/responses/MhCredenciales" }
         "429": { $ref: "#/components/responses/Techo" }
         "502":
           description: |
@@ -952,6 +1198,15 @@ paths:
         contarlo en sus destinos propios, escríbalo con el código del evento y
         avíselo en `POST /v1/storage/copies/{codigoGeneracion}/byos`.
 
+        **En Almacenamiento Facta** (si la empresa lo tiene), el evento sellado
+        queda archivado completo —JSON firmado con `firmaElectronica` y
+        `selloRecibido`, y su hoja— bajo su propio código, en la carpeta del
+        documento al que se aplica: `DTE/AAAA/MM/eventos/<CODIGO-EVENTO>.json` y
+        `.pdf` (`DTE/pruebas/...` en pruebas). El recibo viene en `storage`, igual
+        que en una emisión; solo se archiva un evento ya sellado por Hacienda, y
+        un fallo de almacenamiento nunca deshace el evento. `GET /v1/storage/copies`
+        lo lista con su código de evento.
+
         **Si Hacienda dice que ya tiene el evento**, o en el reintento de un
         202, Facta le pregunta qué guarda (`consultadte`) y asienta el sello o
         el rechazo en vez de dejarlo pendiente. Solo reenvía el evento cuando
@@ -1014,6 +1269,7 @@ paths:
             · `mh_rejected` — Hacienda leyó el evento de retorno y la negó. Sus
               unidades vuelven al saldo.
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "424": { $ref: "#/components/responses/MhCredenciales" }
         "429": { $ref: "#/components/responses/Techo" }
         "503": { $ref: "#/components/responses/NoDisponible" }
 
@@ -1132,7 +1388,8 @@ paths:
         - name: kind
           in: query
           required: false
-          schema: { type: string, enum: [json, pdf, ticket], default: json }
+          description: "`invalidation` entrega el evento de anulación sellado de ese documento desde Almacenamiento Facta y exige `source=managed`."
+          schema: { type: string, enum: [json, pdf, ticket, invalidation], default: json }
         - name: paperWidthMm
           in: query
           required: false
@@ -1155,6 +1412,7 @@ paths:
             X-Facta-Json-Format: { schema: { type: string, enum: [archivo-dte, raw] }, description: Solo con kind=json. `archivo-dte` es el documento con firmaElectronica y selloRecibido; `raw` son los bytes guardados. }
             Content-Disposition: { schema: { type: string }, description: 'attachment; filename="<codigoGeneracion>.json|pdf" o "<codigoGeneracion>-ticket.pdf"' }
             X-Facta-Storage-Source: { schema: { type: string, enum: [managed, holding, archive] }, description: Origen seleccionado por la API; ausente en servidores anteriores. }
+            X-Facta-Plantilla: { schema: { type: string }, description: "Solo con kind=pdf y kind=ticket. La plantilla con la que se dibuja esa hoja: un id del catálogo (`letter-clasica`) o `custom:<uuid>@<versión>` de una plantilla propia. Es la elección sellada con el documento (`representacion.plantilla`) si sigue vigente y, si no, la de la empresa. Ausente en servidores anteriores." }
           content:
             application/json:
               schema:
@@ -1336,6 +1594,951 @@ paths:
         "403": { $ref: "#/components/responses/Prohibido" }
         "429": { $ref: "#/components/responses/Techo" }
 
+  /v1/customers:
+    get:
+      tags: [Catálogo]
+      operationId: listarClientes
+      summary: Listar o buscar los clientes de la empresa
+      description: |
+        **Alcance: `catalog:read`** (o `catalog:write`, que lo incluye).
+
+        Funciona si la empresa guarda su catálogo sin cifrar, o si publicó una
+        copia legible para esta llave («Catálogo legible por la API»); la
+        respuesta tiene los mismos campos en los dos casos. Con el catálogo
+        cifrado y sin copia ni acceso a la clave de datos, `409 catalog_encrypted`. Los clientes que esta llave fue acuñada para
+        excluir no aparecen. Orden estable por `id`; `siguiente` es opaco y es
+        `null` cuando no hay más.
+
+        Devuelve datos personales: la llave que lo pide tiene que cuidarse como
+        una contraseña.
+      parameters:
+        - $ref: "#/components/parameters/CatalogoBuscar"
+        - $ref: "#/components/parameters/CatalogoDocumento"
+        - $ref: "#/components/parameters/CatalogoLimite"
+        - $ref: "#/components/parameters/CatalogoCursor"
+        - $ref: "#/components/parameters/CatalogoInactivos"
+      responses:
+        "200":
+          description: Una página de clientes activos (o todos con `incluirInactivos=true`).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [clientes, siguiente]
+                properties:
+                  clientes:
+                    type: array
+                    items: { $ref: "#/components/schemas/Cliente" }
+                  siguiente: { type: string, nullable: true }
+        "400": { $ref: "#/components/responses/CatalogoPeticionInvalida" }
+        "401": { $ref: "#/components/responses/NoAutorizado" }
+        "403": { $ref: "#/components/responses/Prohibido" }
+        "409": { $ref: "#/components/responses/CatalogoCifrado" }
+        "429": { $ref: "#/components/responses/Techo" }
+        "503": { $ref: "#/components/responses/NoDisponible" }
+    post:
+      tags: [Catálogo]
+      operationId: crearCliente
+      summary: Crear un cliente
+      description: |
+        **Alcance: `catalog:write`.** Y la empresa tiene que haber permitido
+        administrar el catálogo desde el API; si no, `403 catalog_write_disabled`.
+
+        Solo el nombre es obligatorio. Lo que se manda se valida con las mismas
+        reglas que el formulario de clientes de la app y se rechaza (422) en vez
+        de avisarse: el DUI son 9 dígitos sin guion con su dígito verificador, el
+        NIT 14 (o 9 si es el del DUI), el NRC de 2 a 8 dígitos sin guion ni
+        ceros a la izquierda, la actividad sale de CAT-019 y la dirección lleva
+        departamento, municipio, distrito y complemento coherentes entre sí
+        (CAT-012/013/008). Si ya existe un cliente con ese documento, `409
+        catalog_duplicate` y `details.id` dice cuál.
+
+        `Idempotency-Key` es opcional aquí: crear es reversible (se desactiva).
+        Con ella, repetir la misma petición devuelve el mismo cliente. Repetir la
+        misma llave con OTRO cuerpo actualiza ese mismo cliente (la llave solo
+        alcanza al registro que ella creó): los campos enviados lo sobrescriben,
+        los omitidos se conservan, `activo` no cambia, y la respuesta es `200`
+        con `actualizado: true`. Pasan las mismas validaciones y compuertas que
+        `PATCH`; si el documento nuevo choca con OTRO cliente es `409
+        catalog_duplicate` y la llave sigue apuntando a su registro.
+
+        La llave identifica a ese cliente **para siempre**, no solo las 24 h que
+        se recuerdan las respuestas: pasado ese plazo, repetir la llave sigue
+        actualizando el cliente que creó (`200`, `actualizado: true`) en vez de
+        crear uno nuevo, también si el cliente no tiene número de documento. Si
+        el cliente ya no existe, la petición crea uno nuevo y la llave pasa a
+        apuntarle. Dos llaves de API distintas pueden usar el mismo texto sin
+        cruzarse.
+
+        Cada escritura sube la revisión del catálogo igual que una de la app,
+        así que las llaves con catálogo legible y la propia app quedan
+        coherentes.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKeyOpcional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ClienteEntrada" }
+      responses:
+        "201":
+          description: El cliente creado.
+          headers:
+            Idempotency-Replayed: { $ref: "#/components/headers/IdempotencyReplayed" }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [cliente]
+                properties:
+                  cliente: { $ref: "#/components/schemas/Cliente" }
+        "200":
+          description: >-
+            La misma `Idempotency-Key` llegó con otro cuerpo: se aplicó al cliente
+            que esa llave creó (semántica de `PATCH`). También es el status de la
+            repetición de esa respuesta, con `Idempotency-Replayed: true`.
+          headers:
+            Idempotency-Replayed: { $ref: "#/components/headers/IdempotencyReplayed" }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [cliente, actualizado]
+                properties:
+                  cliente: { $ref: "#/components/schemas/Cliente" }
+                  actualizado: { type: boolean, enum: [true] }
+        "400": { $ref: "#/components/responses/CatalogoPeticionInvalida" }
+        "401": { $ref: "#/components/responses/NoAutorizado" }
+        "403": { $ref: "#/components/responses/CatalogoProhibido" }
+        "409": { $ref: "#/components/responses/CatalogoConflicto" }
+        "422": { $ref: "#/components/responses/CatalogoInvalido" }
+        "429": { $ref: "#/components/responses/Techo" }
+        "503": { $ref: "#/components/responses/NoDisponible" }
+
+  /v1/customers/{id}:
+    get:
+      tags: [Catálogo]
+      operationId: consultarCliente
+      summary: Un cliente por su id
+      description: |
+        **Alcance: `catalog:read`** (o `catalog:write`).
+
+        Un cliente de otra empresa, uno que esta llave excluye o uno que no
+        existe contestan lo mismo: `404 not_found`. Un cliente desactivado sí se
+        devuelve, con `activo: false`.
+      parameters:
+        - $ref: "#/components/parameters/CatalogoId"
+      responses:
+        "200":
+          description: El cliente.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [cliente]
+                properties:
+                  cliente: { $ref: "#/components/schemas/Cliente" }
+        "400": { $ref: "#/components/responses/CatalogoPeticionInvalida" }
+        "401": { $ref: "#/components/responses/NoAutorizado" }
+        "403": { $ref: "#/components/responses/Prohibido" }
+        "404": { $ref: "#/components/responses/CatalogoNoExiste" }
+        "409": { $ref: "#/components/responses/CatalogoCifrado" }
+        "429": { $ref: "#/components/responses/Techo" }
+        "503": { $ref: "#/components/responses/NoDisponible" }
+    patch:
+      tags: [Catálogo]
+      operationId: editarCliente
+      summary: Editar un cliente (o reactivarlo)
+      description: |
+        **Alcance: `catalog:write`.** Y la empresa tiene que haber permitido
+        administrar el catálogo desde el API.
+
+        Solo cambia lo que se manda; `null` borra un campo opcional. El cliente
+        resultante se valida entero con las mismas reglas que al crearlo: si la
+        ficha guardada trae un valor que hoy no pasaría (un NRC con guion de
+        antes, por ejemplo), corríjalo en la misma petición. `{"activo": true}`
+        reactiva un cliente desactivado.
+
+        **Catálogo compartido** (la empresa comparte su clave de datos y esta
+        llave tiene acceso): la respuesta trae `ETag: "<revisión>"` y
+        `Facta-Catalog-Revision`; con `If-Match` la edición solo se aplica si
+        esa es la revisión vigente (`409 catalog_revision_conflict`,
+        `details.revisionActual`). Sin `If-Match`, gana la última escritura **por
+        campo enviado**: lo que usted no manda nunca se pisa con una lectura
+        vieja. Editar los datos de un cliente desactivado es `409
+        catalog_record_inactive` salvo que la misma petición mande `"activo": true`.
+      parameters:
+        - $ref: "#/components/parameters/CatalogoId"
+        - $ref: "#/components/parameters/CatalogoIfMatch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ClienteCambio" }
+      responses:
+        "200":
+          description: El cliente ya cambiado.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [cliente]
+                properties:
+                  cliente: { $ref: "#/components/schemas/Cliente" }
+        "400": { $ref: "#/components/responses/CatalogoPeticionInvalida" }
+        "401": { $ref: "#/components/responses/NoAutorizado" }
+        "403": { $ref: "#/components/responses/CatalogoProhibido" }
+        "404": { $ref: "#/components/responses/CatalogoNoExiste" }
+        "409": { $ref: "#/components/responses/CatalogoConflicto" }
+        "422": { $ref: "#/components/responses/CatalogoInvalido" }
+        "429": { $ref: "#/components/responses/Techo" }
+        "503": { $ref: "#/components/responses/NoDisponible" }
+    delete:
+      tags: [Catálogo]
+      operationId: desactivarCliente
+      summary: Desactivar un cliente
+      description: |
+        **Alcance: `catalog:write`.** Y la empresa tiene que haber permitido
+        administrar el catálogo desde el API.
+
+        **No borra: desactiva.** La ficha se queda en la base, deja de salir en
+        `GET /v1/customers` (salvo `incluirInactivos=true`) y deja de
+        resolverse por `customerId`. Los documentos ya emitidos no cambian: cada
+        uno conserva su propio receptor. Repetir la llamada es inocuo. No existe
+        un borrado definitivo por el API; se reactiva con `PATCH`
+        `{"activo": true}`.
+      parameters:
+        - $ref: "#/components/parameters/CatalogoId"
+      responses:
+        "200":
+          description: "El cliente, ya con `activo: false`."
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [cliente, desactivado]
+                properties:
+                  cliente: { $ref: "#/components/schemas/Cliente" }
+                  desactivado: { type: boolean, enum: [true] }
+        "400": { $ref: "#/components/responses/CatalogoPeticionInvalida" }
+        "401": { $ref: "#/components/responses/NoAutorizado" }
+        "403": { $ref: "#/components/responses/CatalogoProhibido" }
+        "404": { $ref: "#/components/responses/CatalogoNoExiste" }
+        "429": { $ref: "#/components/responses/Techo" }
+        "503": { $ref: "#/components/responses/NoDisponible" }
+
+  /v1/products:
+    get:
+      tags: [Catálogo]
+      operationId: listarProductos
+      summary: Listar o buscar los productos de la empresa
+      description: |
+        **Alcance: `catalog:read`** (o `catalog:write`, que lo incluye).
+
+        Funciona si la empresa guarda su catálogo sin cifrar, o si publicó una
+        copia legible para esta llave; la respuesta tiene los mismos campos en
+        los dos casos. Con el catálogo cifrado y sin copia, `409
+        catalog_encrypted` si la llave tampoco tiene acceso a la clave de datos compartida. `buscar` mira descripción, código (por prefijo)
+        y código de barras (exacto). Orden estable por `id`.
+      parameters:
+        - $ref: "#/components/parameters/CatalogoBuscar"
+        - $ref: "#/components/parameters/CatalogoLimite"
+        - $ref: "#/components/parameters/CatalogoCursor"
+        - $ref: "#/components/parameters/CatalogoInactivos"
+      responses:
+        "200":
+          description: Una página de productos activos (o todos con `incluirInactivos=true`).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [productos, siguiente]
+                properties:
+                  productos:
+                    type: array
+                    items: { $ref: "#/components/schemas/Producto" }
+                  siguiente: { type: string, nullable: true }
+        "400": { $ref: "#/components/responses/CatalogoPeticionInvalida" }
+        "401": { $ref: "#/components/responses/NoAutorizado" }
+        "403": { $ref: "#/components/responses/Prohibido" }
+        "409": { $ref: "#/components/responses/CatalogoCifrado" }
+        "429": { $ref: "#/components/responses/Techo" }
+        "503": { $ref: "#/components/responses/NoDisponible" }
+    post:
+      tags: [Catálogo]
+      operationId: crearProducto
+      summary: Crear un producto o servicio
+      description: |
+        **Alcance: `catalog:write`.** Y la empresa tiene que haber permitido
+        administrar el catálogo desde el API; si no, `403 catalog_write_disabled`.
+
+        Obligatorios: `descripcion` (hasta 1500 caracteres), `tipoItem` (1 bien,
+        2 servicio, 3 ambos, 4 otro — **nunca se asume**) y `precioUni` (un
+        número o una cadena decimal, mayor que cero, hasta 6 decimales y menor
+        que 1,000,000). `uniMedida` es opcional y vale 59 (unidad) si falta;
+        `ivaIncluido` vale `true`. Si ya existe un producto con ese `codigo`,
+        `409 catalog_duplicate`.
+
+        `tipoVenta` es el tratamiento de IVA del producto: `gravada`, `exenta` o
+        `no_sujeta`, con los mismos valores que `items[].tipoVenta` al emitir. Se
+        elige, no se deduce: si falta, el producto se lee como `gravada`. Al
+        emitir con `productId`, la línea hereda el tratamiento del producto salvo
+        que usted mande otro (aplica a los tipos 01, 03, 05 y 06; la exportación
+        es siempre de tasa cero y el sujeto excluido documenta una compra).
+
+        `Idempotency-Key` es opcional aquí: crear es reversible (se desactiva).
+        Repetir la misma petición devuelve el mismo producto. Repetir la misma
+        llave con OTRO cuerpo actualiza ese mismo producto (la llave solo alcanza
+        al registro que ella creó): los campos enviados lo sobrescriben, los
+        omitidos se conservan, `activo` no cambia, y la respuesta es `200` con
+        `actualizado: true`. Pasan las mismas validaciones y compuertas que
+        `PATCH`; si el `codigo` nuevo choca con OTRO producto es `409
+        catalog_duplicate` y la llave sigue apuntando a su registro.
+
+        La llave identifica a ese producto **para siempre**, no solo las 24 h que
+        se recuerdan las respuestas: pasado ese plazo, repetir la llave sigue
+        actualizando el producto que creó (`200`, `actualizado: true`) en vez de
+        crear uno nuevo. Si el producto ya no existe, la petición crea uno nuevo
+        y la llave pasa a apuntarle.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKeyOpcional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProductoEntrada" }
+      responses:
+        "201":
+          description: El producto creado.
+          headers:
+            Idempotency-Replayed: { $ref: "#/components/headers/IdempotencyReplayed" }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [producto]
+                properties:
+                  producto: { $ref: "#/components/schemas/Producto" }
+        "200":
+          description: >-
+            La misma `Idempotency-Key` llegó con otro cuerpo: se aplicó al producto
+            que esa llave creó (semántica de `PATCH`). También es el status de la
+            repetición de esa respuesta, con `Idempotency-Replayed: true`.
+          headers:
+            Idempotency-Replayed: { $ref: "#/components/headers/IdempotencyReplayed" }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [producto, actualizado]
+                properties:
+                  producto: { $ref: "#/components/schemas/Producto" }
+                  actualizado: { type: boolean, enum: [true] }
+        "400": { $ref: "#/components/responses/CatalogoPeticionInvalida" }
+        "401": { $ref: "#/components/responses/NoAutorizado" }
+        "403": { $ref: "#/components/responses/CatalogoProhibido" }
+        "409": { $ref: "#/components/responses/CatalogoConflicto" }
+        "422": { $ref: "#/components/responses/CatalogoInvalido" }
+        "429": { $ref: "#/components/responses/Techo" }
+        "503": { $ref: "#/components/responses/NoDisponible" }
+
+  /v1/products/{id}:
+    get:
+      tags: [Catálogo]
+      operationId: consultarProducto
+      summary: Un producto por su id
+      description: |
+        **Alcance: `catalog:read`** (o `catalog:write`).
+
+        Un producto de otra empresa o inexistente contesta `404 not_found`. Uno
+        desactivado sí se devuelve, con `activo: false`.
+      parameters:
+        - $ref: "#/components/parameters/CatalogoId"
+      responses:
+        "200":
+          description: El producto.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [producto]
+                properties:
+                  producto: { $ref: "#/components/schemas/Producto" }
+        "400": { $ref: "#/components/responses/CatalogoPeticionInvalida" }
+        "401": { $ref: "#/components/responses/NoAutorizado" }
+        "403": { $ref: "#/components/responses/Prohibido" }
+        "404": { $ref: "#/components/responses/CatalogoNoExiste" }
+        "409": { $ref: "#/components/responses/CatalogoCifrado" }
+        "429": { $ref: "#/components/responses/Techo" }
+        "503": { $ref: "#/components/responses/NoDisponible" }
+    patch:
+      tags: [Catálogo]
+      operationId: editarProducto
+      summary: Editar un producto (o reactivarlo)
+      description: |
+        **Alcance: `catalog:write`.** Y la empresa tiene que haber permitido
+        administrar el catálogo desde el API.
+
+        Solo cambia lo que se manda; `null` borra un campo opcional (`codigo`,
+        `codigoBarras`). El producto resultante se valida entero, como al
+        crearlo. `{"activo": true}` reactiva un producto desactivado. Cambiar
+        el precio no toca los documentos ya emitidos.
+
+        En un **catálogo compartido** vale lo mismo que al editar un cliente:
+        `ETag` / `Facta-Catalog-Revision` en la respuesta, `If-Match` opcional,
+        escritura por campo enviado y `409 catalog_record_inactive` sobre un
+        producto desactivado.
+      parameters:
+        - $ref: "#/components/parameters/CatalogoId"
+        - $ref: "#/components/parameters/CatalogoIfMatch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProductoCambio" }
+      responses:
+        "200":
+          description: El producto ya cambiado.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [producto]
+                properties:
+                  producto: { $ref: "#/components/schemas/Producto" }
+        "400": { $ref: "#/components/responses/CatalogoPeticionInvalida" }
+        "401": { $ref: "#/components/responses/NoAutorizado" }
+        "403": { $ref: "#/components/responses/CatalogoProhibido" }
+        "404": { $ref: "#/components/responses/CatalogoNoExiste" }
+        "409": { $ref: "#/components/responses/CatalogoConflicto" }
+        "422": { $ref: "#/components/responses/CatalogoInvalido" }
+        "429": { $ref: "#/components/responses/Techo" }
+        "503": { $ref: "#/components/responses/NoDisponible" }
+    delete:
+      tags: [Catálogo]
+      operationId: desactivarProducto
+      summary: Desactivar un producto
+      description: |
+        **Alcance: `catalog:write`.** Y la empresa tiene que haber permitido
+        administrar el catálogo desde el API.
+
+        **No borra: desactiva** (`activo: false`). El producto deja de salir en
+        las listas y de resolverse por `productId`; los documentos ya emitidos
+        no cambian. Repetir la llamada es inocuo y se reactiva con `PATCH`
+        `{"activo": true}`. No existe un borrado definitivo por el API.
+      parameters:
+        - $ref: "#/components/parameters/CatalogoId"
+      responses:
+        "200":
+          description: "El producto, ya con `activo: false`."
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [producto, desactivado]
+                properties:
+                  producto: { $ref: "#/components/schemas/Producto" }
+                  desactivado: { type: boolean, enum: [true] }
+        "400": { $ref: "#/components/responses/CatalogoPeticionInvalida" }
+        "401": { $ref: "#/components/responses/NoAutorizado" }
+        "403": { $ref: "#/components/responses/CatalogoProhibido" }
+        "404": { $ref: "#/components/responses/CatalogoNoExiste" }
+        "429": { $ref: "#/components/responses/Techo" }
+        "503": { $ref: "#/components/responses/NoDisponible" }
+
+  /v1/catalog/changes:
+    post:
+      tags: [Buzón sellado]
+      operationId: crearCambioDeCatalogo
+      deprecated: true
+      summary: RETIRADO — dejar sellado un cambio del catálogo
+      description: |
+        **Alcance: ninguno**
+
+        **Retirado el 26-oct-2026: contesta siempre `410 inbox_retired`**, sin
+        leer el cuerpo y con cualquier alcance. El buzón sellado de cambios de
+        catálogo existió solo en el ambiente de pruebas de la plataforma; la
+        clave de datos compartida lo reemplaza: ahora la llave escribe el
+        catálogo directamente con `POST`/`PATCH` en `/v1/customers` y
+        `/v1/products` (alcance `catalog:write`), aunque el catálogo esté
+        cifrado. Los borradores (`/v1/drafts`) no cambian.
+      responses:
+        "410": { $ref: "#/components/responses/BuzonRetirado" }
+        "401": { $ref: "#/components/responses/NoAutorizado" }
+    get:
+      tags: [Buzón sellado, Cambios y webhooks]
+      operationId: listarCambiosDeCatalogo
+      summary: Leer qué cambió en el catálogo (el buzón sellado está retirado)
+      description: |
+        **Alcance: `catalog:read`** (o `catalog:write`). **Esta ruta tiene dos
+        comportamientos, y `since` o `generacion` decide cuál.**
+
+        **Con `since` (o `generacion`): lo que cambió en el catálogo.** Devuelve,
+        en orden de revisión, los cambios de clientes y productos hechos por
+        cualquiera (el dueño, un operador, otra llave): **ids, revisión,
+        operación y quién**, nunca el contenido. Para ver la ficha lea
+        `GET /v1/customers/{id}` o `/v1/products/{id}` con su llave.
+
+        **Sin `since` ni `generacion`: el buzón sellado, retirado el
+        26-oct-2026.** Contesta siempre `410 inbox_retired`, sin leer más y con
+        cualquier alcance; escriba el catálogo directamente con `/v1/customers`
+        y `/v1/products`. Lo mismo vale para cualquier otro método o subruta de
+        `/v1/catalog/changes`.
+
+        El catálogo tiene una revisión que sube 1 por cada cambio. Empiece con
+        `since=0`, aplique lo que llegue y siga con `siguiente` (`hayMas: true`
+        quiere decir que hay otra página). Mande la `generacion` que recibió, así
+        una restauración no se confunde con un historial largo. Si Facta ya no
+        puede continuar desde su cursor contesta **`410 catalog_cursor_expired`**
+        con el motivo (`generation_changed`, `history_pruned`, `cursor_ahead`,
+        `too_many` si hay más de 1 000 pendientes) y la `cabeza` y `generacion`
+        actuales: lea todo de nuevo y siga desde ahí. El historial se conserva 90
+        días.
+
+        Cuenta contra el techo de la llave como cualquier otra petición y
+        contesta `RateLimit-*`. Para enterarse en segundos, use `/v1/webhooks`.
+      parameters:
+        - $ref: "#/components/parameters/CambiosDesde"
+        - $ref: "#/components/parameters/CambiosGeneracion"
+        - $ref: "#/components/parameters/CambiosLimite"
+      responses:
+        "200":
+          description: Una página de cambios del catálogo (solo con `since` o `generacion`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CambiosDeCatalogo"
+        "400": { $ref: "#/components/responses/CatalogoPeticionInvalida" }
+        "401": { $ref: "#/components/responses/NoAutorizado" }
+        "403": { $ref: "#/components/responses/Prohibido" }
+        "410":
+          description: |
+            `catalog_cursor_expired` (con `since`/`generacion`: lea todo de nuevo)
+            o `inbox_retired` (sin cursor: el buzón se retiró).
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "429": { $ref: "#/components/responses/Techo" }
+        "503": { $ref: "#/components/responses/NoDisponible" }
+  /v1/webhooks:
+    post:
+      tags: [Cambios y webhooks]
+      operationId: crearWebhook
+      summary: Registrar un webhook de cambios del catálogo
+      description: |
+        **Alcance: `catalog:read`** (o `catalog:write`). Facta avisará a `url`
+        cada vez que cambie un cliente o un producto de la empresa (solo ids; el
+        cuerpo y la firma están en la etiqueta «Cambios y webhooks»). Sin
+        `eventos`, recibe todos. Una llave puede tener hasta **5** webhooks.
+
+        **`secreto` se muestra una sola vez**, en esta respuesta: guárdelo. Si se
+        pierde, rótelo con `POST /v1/webhooks/{id}/rotate-secret`.
+
+        La dirección debe ser `https://`, sin usuario ni contraseña, en el puerto
+        443 y de una red pública: Facta no envía a `localhost` ni a redes
+        privadas, y lo vuelve a comprobar en cada entrega.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WebhookNuevo" }
+      responses:
+        "201":
+          description: Registrado. Trae el `secreto` (única vez).
+          content: { application/json: { schema: { $ref: "#/components/schemas/WebhookConSecreto" } } }
+        "400": { $ref: "#/components/responses/CatalogoPeticionInvalida" }
+        "401": { $ref: "#/components/responses/NoAutorizado" }
+        "403": { $ref: "#/components/responses/Prohibido" }
+        "409": { $ref: "#/components/responses/WebhookConflicto" }
+        "429": { $ref: "#/components/responses/Techo" }
+        "503": { $ref: "#/components/responses/NoDisponible" }
+    get:
+      tags: [Cambios y webhooks]
+      operationId: listarWebhooks
+      summary: Listar los webhooks de esta llave
+      description: |
+        **Alcance: `catalog:read`** (o `catalog:write`). Solo los de esta llave.
+        Nunca trae el secreto.
+      responses:
+        "200":
+          description: Los webhooks.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [webhooks]
+                properties:
+                  webhooks: { type: array, items: { $ref: "#/components/schemas/Webhook" } }
+        "401": { $ref: "#/components/responses/NoAutorizado" }
+        "403": { $ref: "#/components/responses/Prohibido" }
+        "429": { $ref: "#/components/responses/Techo" }
+        "503": { $ref: "#/components/responses/NoDisponible" }
+  /v1/webhooks/{id}:
+    get:
+      tags: [Cambios y webhooks]
+      operationId: leerWebhook
+      summary: Leer un webhook
+      description: "**Alcance: `catalog:read`** (o `catalog:write`). Solo los webhooks de esta llave; nunca trae el secreto."
+      parameters:
+        - $ref: "#/components/parameters/WebhookId"
+      responses:
+        "200":
+          description: El webhook (sin secreto).
+          content: { application/json: { schema: { $ref: "#/components/schemas/Webhook" } } }
+        "401": { $ref: "#/components/responses/NoAutorizado" }
+        "403": { $ref: "#/components/responses/Prohibido" }
+        "404": { $ref: "#/components/responses/CatalogoNoExiste" }
+        "429": { $ref: "#/components/responses/Techo" }
+        "503": { $ref: "#/components/responses/NoDisponible" }
+    patch:
+      tags: [Cambios y webhooks]
+      operationId: cambiarWebhook
+      summary: Cambiar la dirección, los eventos o encender y apagar un webhook
+      description: |
+        **Alcance: `catalog:read`** (o `catalog:write`). Solo cambia lo que usted
+        manda. `{"activo": true}` lo enciende de nuevo
+        (también cuando Facta lo apagó tras diez entregas agotadas) y borra la
+        cuenta de fallos.
+      parameters:
+        - $ref: "#/components/parameters/WebhookId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WebhookCambio" }
+      responses:
+        "200":
+          description: El webhook ya cambiado.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Webhook" } } }
+        "400": { $ref: "#/components/responses/CatalogoPeticionInvalida" }
+        "401": { $ref: "#/components/responses/NoAutorizado" }
+        "403": { $ref: "#/components/responses/Prohibido" }
+        "404": { $ref: "#/components/responses/CatalogoNoExiste" }
+        "409": { $ref: "#/components/responses/WebhookConflicto" }
+        "429": { $ref: "#/components/responses/Techo" }
+        "503": { $ref: "#/components/responses/NoDisponible" }
+    delete:
+      tags: [Cambios y webhooks]
+      operationId: borrarWebhook
+      summary: Borrar un webhook
+      description: "**Alcance: `catalog:read`** (o `catalog:write`). Borra el webhook, su secreto y lo que tenga en cola."
+      parameters:
+        - $ref: "#/components/parameters/WebhookId"
+      responses:
+        "200":
+          description: Borrado.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, eliminado]
+                properties:
+                  id: { type: string, format: uuid }
+                  eliminado: { type: boolean, enum: [true] }
+        "401": { $ref: "#/components/responses/NoAutorizado" }
+        "403": { $ref: "#/components/responses/Prohibido" }
+        "404": { $ref: "#/components/responses/CatalogoNoExiste" }
+        "429": { $ref: "#/components/responses/Techo" }
+        "503": { $ref: "#/components/responses/NoDisponible" }
+  /v1/webhooks/{id}/rotate-secret:
+    post:
+      tags: [Cambios y webhooks]
+      operationId: rotarSecretoDeWebhook
+      summary: Cambiar el secreto de firma de un webhook
+      description: |
+        **Alcance: `catalog:read`** (o `catalog:write`). El secreto anterior deja de servir de inmediato. El nuevo **se muestra
+        una sola vez**. Lo que ya estaba en cola se firma con el secreto nuevo en
+        cada intento.
+      parameters:
+        - $ref: "#/components/parameters/WebhookId"
+      responses:
+        "200":
+          description: El webhook con su secreto nuevo (única vez).
+          content: { application/json: { schema: { $ref: "#/components/schemas/WebhookConSecreto" } } }
+        "401": { $ref: "#/components/responses/NoAutorizado" }
+        "403": { $ref: "#/components/responses/Prohibido" }
+        "404": { $ref: "#/components/responses/CatalogoNoExiste" }
+        "429": { $ref: "#/components/responses/Techo" }
+        "503": { $ref: "#/components/responses/NoDisponible" }
+  /v1/webhooks/{id}/test:
+    post:
+      tags: [Cambios y webhooks]
+      operationId: probarWebhook
+      summary: Enviar una entrega de prueba
+      description: |
+        **Alcance: `catalog:read`** (o `catalog:write`). Pone en cola una entrega `webhook.test` (mismo cuerpo, misma firma) para
+        que compruebe su receptor sin tocar el catálogo. Sale en el siguiente
+        minuto.
+      parameters:
+        - $ref: "#/components/parameters/WebhookId"
+      responses:
+        "202":
+          description: En cola.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entregaId, evento]
+                properties:
+                  entregaId: { type: string, format: uuid }
+                  evento: { type: string, enum: [webhook.test] }
+        "401": { $ref: "#/components/responses/NoAutorizado" }
+        "403": { $ref: "#/components/responses/Prohibido" }
+        "404": { $ref: "#/components/responses/CatalogoNoExiste" }
+        "429": { $ref: "#/components/responses/Techo" }
+        "503": { $ref: "#/components/responses/NoDisponible" }
+  /v1/catalog/changes/{id}:
+    get:
+      tags: [Buzón sellado]
+      operationId: leerCambioDeCatalogo
+      deprecated: true
+      summary: RETIRADO — leer un cambio de catálogo
+      description: |
+        **Alcance: ninguno**
+
+        Retirado: contesta `410 inbox_retired`. Vea `POST /v1/catalog/changes`.
+      parameters:
+        - $ref: "#/components/parameters/BuzonId"
+      responses:
+        "410": { $ref: "#/components/responses/BuzonRetirado" }
+        "401": { $ref: "#/components/responses/NoAutorizado" }
+    delete:
+      tags: [Buzón sellado]
+      operationId: cancelarCambioDeCatalogo
+      deprecated: true
+      summary: RETIRADO — cancelar un cambio de catálogo
+      description: |
+        **Alcance: ninguno**
+
+        Retirado: contesta `410 inbox_retired`. Vea `POST /v1/catalog/changes`.
+      parameters:
+        - $ref: "#/components/parameters/BuzonId"
+      responses:
+        "410": { $ref: "#/components/responses/BuzonRetirado" }
+        "401": { $ref: "#/components/responses/NoAutorizado" }
+  /v1/catalog/changes/by-key/{key}:
+    get:
+      tags: [Buzón sellado]
+      operationId: leerCambioDeCatalogoPorLlave
+      deprecated: true
+      summary: RETIRADO — leer un cambio por su Idempotency-Key
+      description: |
+        **Alcance: ninguno**
+
+        Retirado: contesta `410 inbox_retired`. Vea `POST /v1/catalog/changes`.
+      parameters:
+        - $ref: "#/components/parameters/BuzonLlave"
+      responses:
+        "410": { $ref: "#/components/responses/BuzonRetirado" }
+        "401": { $ref: "#/components/responses/NoAutorizado" }
+  /v1/drafts:
+    post:
+      tags: [Buzón sellado]
+      operationId: crearBorrador
+      summary: Dejar una factura en borrador para que una persona de la empresa la revise y la emita
+      description: |
+        **Alcance: `draft`.** Se manda **el mismo cuerpo que `POST /v1/dte`**
+        (más, si quiere, `id` —un UUID v4 suyo— y `referencia`, hasta 64
+        caracteres y sin datos personales). Se valida como la emisión hasta justo
+        antes de reservar el correlativo (no gasta ninguno), se resuelven
+        `customerId` y `productId` y devuelve los `totales`. Facta **sella el
+        borrador con la llave pública de la empresa** y descarta el texto: en
+        reposo solo hay cifrado, y lo abre en la app cualquier persona que pueda
+        emitir ese tipo de documento (no solo la titular). Vence a los 30 días;
+        tope de 500 por empresa.
+
+        Si la persona titular todavía no abrió Facta con su vault desde que la
+        empresa comparte su clave de datos, responde `409 drafts_not_ready`: basta
+        con que la abra una vez.
+
+        **Formato anterior (un lanzamiento más):** el cuerpo con `plaintext`,
+        `envelope` y `contentHash` que usted mismo sella (`inbox-v1`) se sigue
+        aceptando; esos borradores solo los abre la titular y la app los marca
+        «formato anterior».
+
+        `Idempotency-Key` opcional, para siempre: repetir (con otro sobre
+        también) devuelve el mismo borrador; la misma llave con otro contenido es
+        `422 idempotency_key_reuse` y nombra el borrador.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKeyOpcional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: "#/components/schemas/BorradorPlano"
+                - $ref: "#/components/schemas/PendienteSellado"
+      responses:
+        "201":
+          description: Borrador guardado.
+          content: { application/json: { schema: { $ref: "#/components/schemas/BorradorEstado" } } }
+        "200":
+          description: Repetición.
+          content: { application/json: { schema: { $ref: "#/components/schemas/BorradorEstado" } } }
+        "400": { $ref: "#/components/responses/CatalogoPeticionInvalida" }
+        "401": { $ref: "#/components/responses/NoAutorizado" }
+        "403": { $ref: "#/components/responses/Prohibido" }
+        "409": { $ref: "#/components/responses/BuzonConflicto" }
+        "422": { $ref: "#/components/responses/BuzonInvalido" }
+        "429": { $ref: "#/components/responses/Techo" }
+        "503": { $ref: "#/components/responses/NoDisponible" }
+    get:
+      tags: [Buzón sellado]
+      operationId: listarBorradores
+      summary: Listar los borradores de esta llave
+      description: |
+        **Alcance: `draft`.** Solo los de esta llave. Emitido, trae el documento
+        (`codigoGeneracion`, `numeroControl`, `estadoDocumento`, `selloRecibido`,
+        `emitidoPor`, `editado`). `referencia` filtra por la propia.
+      parameters:
+        - $ref: "#/components/parameters/BuzonEstado"
+        - $ref: "#/components/parameters/CatalogoLimite"
+        - $ref: "#/components/parameters/CatalogoCursor"
+        - $ref: "#/components/parameters/BuzonIncluir"
+        - name: referencia
+          in: query
+          required: false
+          schema: { type: string, maxLength: 64 }
+      responses:
+        "200":
+          description: Una página.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [borradores, siguiente]
+                properties:
+                  borradores: { type: array, items: { $ref: "#/components/schemas/BorradorEstado" } }
+                  siguiente: { type: string, nullable: true }
+        "400": { $ref: "#/components/responses/CatalogoPeticionInvalida" }
+        "401": { $ref: "#/components/responses/NoAutorizado" }
+        "403": { $ref: "#/components/responses/Prohibido" }
+        "503": { $ref: "#/components/responses/NoDisponible" }
+  /v1/drafts/{id}:
+    get:
+      tags: [Buzón sellado]
+      operationId: leerBorrador
+      summary: Leer un borrador y, si ya se emitió, el documento en que se convirtió
+      description: |
+        **Alcance: `draft`.** Un borrador sellado por Facta trae `contenido`
+        (la solicitud ya resuelta) solo si esta llave tiene acceso a la clave de
+        datos de la empresa; en un borrador del formato anterior, `sobre` para
+        descifrarlo usted.
+      parameters:
+        - $ref: "#/components/parameters/BuzonId"
+      responses:
+        "200":
+          description: El borrador.
+          content: { application/json: { schema: { $ref: "#/components/schemas/BorradorEstado" } } }
+        "401": { $ref: "#/components/responses/NoAutorizado" }
+        "403": { $ref: "#/components/responses/Prohibido" }
+        "404": { $ref: "#/components/responses/CatalogoNoExiste" }
+        "503": { $ref: "#/components/responses/NoDisponible" }
+    put:
+      tags: [Buzón sellado]
+      operationId: actualizarBorrador
+      summary: Guardar una versión nueva del borrador
+      description: |
+        **Alcance: `draft`.** Pide `If-Match: <versión>`. Se rechaza si una
+        persona de la empresa lo tiene abierto en la app, se está emitiendo o ya
+        se resolvió. Mismo cuerpo que al crearlo; la versión nueva reemplaza a la
+        anterior.
+      parameters:
+        - $ref: "#/components/parameters/BuzonId"
+        - name: If-Match
+          in: header
+          required: true
+          schema: { type: string }
+          description: La `version` del borrador que leyó, un entero.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: "#/components/schemas/BorradorPlano"
+                - $ref: "#/components/schemas/PendienteSellado"
+      responses:
+        "200":
+          description: Nueva versión.
+          content: { application/json: { schema: { $ref: "#/components/schemas/BorradorEstado" } } }
+        "400": { $ref: "#/components/responses/CatalogoPeticionInvalida" }
+        "401": { $ref: "#/components/responses/NoAutorizado" }
+        "403": { $ref: "#/components/responses/Prohibido" }
+        "404": { $ref: "#/components/responses/CatalogoNoExiste" }
+        "409": { $ref: "#/components/responses/BuzonConflicto" }
+        "422": { $ref: "#/components/responses/BuzonInvalido" }
+        "503": { $ref: "#/components/responses/NoDisponible" }
+    delete:
+      tags: [Buzón sellado]
+      operationId: cancelarBorrador
+      summary: Cancelar un borrador pendiente
+      description: |
+        **Alcance: `draft`.** Solo si está pendiente y cerrado.
+      parameters:
+        - $ref: "#/components/parameters/BuzonId"
+      responses:
+        "200":
+          description: Cancelado.
+          content: { application/json: { schema: { $ref: "#/components/schemas/BorradorEstado" } } }
+        "401": { $ref: "#/components/responses/NoAutorizado" }
+        "403": { $ref: "#/components/responses/Prohibido" }
+        "404": { $ref: "#/components/responses/CatalogoNoExiste" }
+        "409": { $ref: "#/components/responses/BuzonConflicto" }
+        "503": { $ref: "#/components/responses/NoDisponible" }
+  /v1/drafts/by-key/{key}:
+    get:
+      tags: [Buzón sellado]
+      operationId: leerBorradorPorLlave
+      summary: Leer un borrador por la Idempotency-Key con que se creó
+      description: |
+        **Alcance: `draft`.** Sigue borrador → factura sin conocer el
+        `codigoGeneracion`.
+      parameters:
+        - $ref: "#/components/parameters/BuzonLlave"
+      responses:
+        "200":
+          description: El borrador.
+          content: { application/json: { schema: { $ref: "#/components/schemas/BorradorEstado" } } }
+        "401": { $ref: "#/components/responses/NoAutorizado" }
+        "403": { $ref: "#/components/responses/Prohibido" }
+        "404": { $ref: "#/components/responses/CatalogoNoExiste" }
+        "503": { $ref: "#/components/responses/NoDisponible" }
+  /v1/drafts/{id}/issue:
+    post:
+      tags: [Buzón sellado]
+      operationId: emitirBorrador
+      summary: Emitir un borrador por el mismo camino que POST /v1/dte
+      description: |
+        **Alcance: `issue`** (y `draft`), más `X-Facta-Sign-Key`. El cuerpo es el
+        de `POST /v1/dte` más la `version` del borrador. Gasta un correlativo;
+        `Idempotency-Key` obligatoria, igual que allí. Responde como esa ruta
+        más `borradorId`. Una sola puerta evita la doble emisión (`409
+        draft_issuing` o `draft_claimed`, sin gastar nada); un rechazo de
+        Hacienda cuenta como emitido y el borrador no se reabre.
+      parameters:
+        - $ref: "#/components/parameters/BuzonId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/SignKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SolicitudBorrador" }
+      responses:
+        "200":
+          description: Emitido (sellado o en contingencia), como `POST /v1/dte`.
+          content: { application/json: { schema: { type: object } } }
+        "400": { $ref: "#/components/responses/CatalogoPeticionInvalida" }
+        "401": { $ref: "#/components/responses/NoAutorizado" }
+        "403": { $ref: "#/components/responses/Prohibido" }
+        "404": { $ref: "#/components/responses/CatalogoNoExiste" }
+        "409": { $ref: "#/components/responses/BuzonConflicto" }
+        "422": { $ref: "#/components/responses/BuzonInvalido" }
+        "429": { $ref: "#/components/responses/Techo" }
+        "424": { $ref: "#/components/responses/MhCredenciales" }
+        "502": { $ref: "#/components/responses/MhCaido" }
+        "503": { $ref: "#/components/responses/NoDisponible" }
+
 components:
   securitySchemes:
     FactaApiKey:
@@ -1425,36 +2628,169 @@ components:
       required: false
       schema: { type: string, enum: [timings] }
       description: |
-        **Función de depuración, no de uso normal.** Con `X-Facta-Debug: timings`
-        la respuesta (éxito o error) trae además un miembro `debug` con el
-        tiempo de cada paso de la petición, y una cabecera estándar
-        `Server-Timing`. Sin la cabecera la respuesta no cambia en un byte.
+        **Función de soporte, no de uso normal.** Con `X-Facta-Debug: timings`,
+        y solo si la llave está autorizada, la respuesta trae además un
+        miembro `debug` con códigos de diagnóstico para el equipo de soporte de
+        Facta, y la cabecera `Server-Timing` con el tiempo total.
 
         ```json
-        "debug": {
-          "timings": [
-            { "step": "auth", "ms": 41.2, "startedAtMs": 0.3 },
-            { "step": "mh_transmit", "ms": 812.5, "startedAtMs": 1480.1 }
-          ],
-          "totalMs": 2310.4
-        }
+        "debug": { "ref": "k3q9m0x7ptd2", "t": "A1:12,V1:40,H4:812" }
         ```
 
-        · `step` es un nombre fijo: una fase (`auth`, `rate_limit_admit`,
-          `idempotency_claim`, `vault_open`, `jws_sign`, `mh_transmit`,
-          `pdf_render`, `index_write`, `managed_upload`…) o una llamada a la base
-          (`rpc.<función>`, `db.<MÉTODO>.<tabla>`). Nunca lleva datos del
-          documento, identificadores, rutas ni secretos.
-        · `ms` es la duración y `startedAtMs` el instante de inicio medido desde
-          que la petición llegó a la función. Las fases pueden contener a otras
-          y los pasos paralelos se solapan: sume solo lo que no se solapa.
-        · `totalMs` va desde la llegada hasta que se armó el informe.
-        · Aplica a `POST /v1/dte`, `POST /v1/dte/prepare`, `POST /v1/dte/sign` y
-          a la descarga `GET /v1/dte/{codigoGeneracion}/file` (esta última solo
-          con `Server-Timing`, porque la respuesta son los bytes del archivo).
-          En otras rutas se ignora.
+        · Disponible para las llaves de pruebas (`facta_test_`) y para las
+          llaves de producción que Facta haya habilitado. Con cualquier otra
+          llave, o si la llave no es válida, la respuesta no cambia en un byte
+          y la cabecera se ignora.
+        · `ref` es una referencia aleatoria: dígasela a soporte junto con la
+          hora de la petición.
+        · `t` son pares `código:milisegundos`. El significado de cada código
+          no es público y puede cambiar sin aviso; no construya lógica sobre
+          él. Soporte lo interpreta con su propio catálogo.
+        · `Server-Timing` lleva solo `total;dur=<ms>`.
+        · Aplica a `POST /v1/dte`, `POST /v1/dte/prepare`, `POST /v1/dte/sign`,
+          `GET /v1/dte` y a la descarga `GET /v1/dte/{codigoGeneracion}/file`
+          (esta última solo con `Server-Timing`, porque la respuesta son los
+          bytes del archivo). En otras rutas se ignora.
         · Una repetición por `Idempotency-Key` también lo acepta; el informe
-          describe esa repetición, no la emisión original, y no se guarda.
+          describe esa repetición y no se guarda.
+
+    IdempotencyKeyOpcional:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema: { type: string, maxLength: 200 }
+      example: cliente-alta-00417
+      description: |
+        Opcional en las altas del catálogo (crear es reversible: se desactiva).
+        Con ella valen las mismas reglas que en las rutas irreversibles
+        (`#/components/parameters/IdempotencyKey`): misma cadena y mismo cuerpo
+        devuelve la respuesta guardada con `Idempotency-Replayed: true`; otro
+        cuerpo es `422 idempotency_key_reuse` (salvo en las altas de cliente y
+        producto, donde actualiza el registro que la llave creó); TTL de 24 h.
+    BuzonId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    BuzonLlave:
+      name: key
+      in: path
+      required: true
+      schema: { type: string, maxLength: 200 }
+      description: La `Idempotency-Key` con que se creó, codificada para URL.
+    BuzonEstado:
+      name: estado
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [pendiente, en_revision, emitiendo, emitido, descartado, cancelado, vencido, aplicado, aplicado_parcial, rechazado]
+      description: '`pendiente` trae todo lo no resuelto.'
+    BuzonIncluir:
+      name: include
+      in: query
+      required: false
+      schema: { type: string, enum: [envelope, contenido] }
+      description: |
+        Con `envelope`, cada fila trae `sobre` (borradores sellados por quien
+        llama, formato anterior). Con `contenido`, cada borrador sellado por
+        Facta trae `contenido` si esta llave tiene acceso a la clave de datos de
+        la empresa. Máximo 50 por página en los dos casos.
+    CatalogoId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+      example: 9f1c2b6e-3a47-4d0e-8b53-1f2a6c7d8e90
+    CatalogoBuscar:
+      name: buscar
+      in: query
+      required: false
+      schema: { type: string, maxLength: 100 }
+      description: Texto a buscar (nombre o documento en clientes; descripción, código o código de barras en productos).
+    CatalogoDocumento:
+      name: documento
+      in: query
+      required: false
+      schema: { type: string, maxLength: 40 }
+      description: |
+        Número de documento exacto de un cliente (con o sin guiones). En un
+        catálogo cifrado y compartido busca por índice ciego y no tiene el tope
+        de `buscar`, que ahí decifra en memoria hasta 5 000 registros y responde
+        `422 catalog_search_too_broad` por encima.
+    CatalogoIfMatch:
+      name: If-Match
+      in: header
+      required: false
+      schema: { type: string }
+      description: |
+        Solo en un catálogo compartido: la revisión que leyó (`ETag`), por
+        ejemplo `"7"`. Si ya no es la vigente, `409 catalog_revision_conflict`.
+        En los demás catálogos no se lee.
+    CambiosDesde:
+      name: since
+      in: query
+      required: false
+      description: |
+        Revisión del catálogo desde la que quiere los cambios (0 para empezar).
+        Su presencia convierte la ruta en la lectura de cambios del catálogo.
+      schema: { type: integer, minimum: 0 }
+    CambiosGeneracion:
+      name: generacion
+      in: query
+      required: false
+      description: La `generacion` que recibió con el cursor. Si ya no es la vigente, `410`.
+      schema: { type: string, format: uuid }
+    CambiosLimite:
+      name: limite
+      in: query
+      required: false
+      description: "Con `since`: hasta 1 000 cambios por página (200 por defecto)."
+      schema: { type: integer, minimum: 1, maximum: 1000, default: 200 }
+    WebhookId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    CatalogoLimite:
+      name: limite
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+    CatalogoCursor:
+      name: cursor
+      in: query
+      required: false
+      schema: { type: string }
+      description: El `siguiente` de la página anterior. Opaco.
+    CatalogoInactivos:
+      name: incluirInactivos
+      in: query
+      required: false
+      schema: { type: boolean, default: false }
+      description: Con `true` también salen los desactivados.
+    RequestFingerprint:
+      name: X-Facta-Request-Fingerprint
+      in: header
+      required: false
+      schema: { type: string, pattern: "^[0-9a-f]{64}$" }
+      description: |
+        **Opcional.** SHA-256 en hexadecimal minúscula de la petición TAL COMO
+        LA ESCRIBIÓ quien llama, antes de que ninguna biblioteca la complete.
+        Solo se lee en `POST /v1/dte` y `POST /v1/dte/prepare`; en cualquier
+        otra ruta se ignora. Con ella, la comparación de `Idempotency-Key` usa
+        esta huella en lugar del cuerpo: un cliente que resuelve `customerId` o
+        `productId` desde su copia del catálogo puede reintentar la misma venta
+        después de que el catálogo cambió y obtiene la respuesta guardada, no
+        un `422 idempotency_key_reuse`. Una huella distinta con la misma llave
+        sigue siendo 422, y una cabecera que no sea 64 caracteres
+        hexadecimales en minúscula es `400 invalid_request`. El alcance no
+        cambia: `(llave, Idempotency-Key)`. Si el primer intento no la mandó y
+        el reintento sí, y el cuerpo del reintento es idéntico byte a byte al
+        del primero, se trata como la misma petición (así una biblioteca que
+        se actualiza a mitad de un reintento no recibe 422); si el cuerpo
+        difiere, es 422. Si el primer intento la mandó y el reintento no, la
+        respuesta es 422.
 
     IdempotencyKey:
       name: Idempotency-Key
@@ -1477,7 +2813,12 @@ components:
           guardada, con `Idempotency-Replayed: true`. Eso incluye un rechazo del
           MH: el reintento devuelve el mismo 422, sin quemar otro número.
         · **Repetir con OTRO cuerpo** es 422 `idempotency_key_reuse`. Devolver
-          la factura de ayer para la venta de hoy es peor que fallar.
+          la factura de ayer para la venta de hoy es peor que fallar. Si la
+          primera petición ya terminó, `details` nombra su `codigoGeneracion`.
+          **Excepción: las altas de cliente y producto** (`POST /v1/customers`,
+          `POST /v1/products`). Ahí el otro cuerpo se aplica al registro que la
+          llave creó (semántica de `PATCH`) y la respuesta es `200` con
+          `actualizado: true`; solo si esa llave no guarda un registro vuelve el 422.
         · **Mientras la primera está en vuelo**, la segunda es 409
           `idempotency_in_flight` — no se encola. El cliente reintenta.
         · **TTL 24 h.** Pasado eso la cadena queda libre: un reintento un día
@@ -1505,6 +2846,13 @@ components:
     RetryAfter:
       schema: { type: integer }
       description: Segundos que conviene esperar. Solo en los errores donde esperar arregla algo.
+    FactaWarning:
+      schema: { type: string, example: "campo_desconocido; campos=2" }
+      description: |
+        Presente cuando la respuesta trae advertencias `campo_desconocido`:
+        `campo_desconocido; campos=N`, con N los campos que Facta DTE no
+        reconoció y no usó. El detalle (cuáles, y qué quiso decir) está en
+        `advertencias`. Un reintento con la misma `Idempotency-Key` lo repite.
     IdempotencyReplayed:
       schema: { type: boolean }
       description: |
@@ -1578,10 +2926,92 @@ components:
         taxonomía para el día en que exista un fallo ANTES de firmar que sí se
         pueda reintentar.
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    MhCredenciales:
+      description: |
+        `mh_auth_failed` — Hacienda **contestó el inicio de sesión y no aceptó**
+        el usuario y la contraseña de transmisión (API) de la empresa. No es un
+        problema de su llave de Facta (eso sería 401/403) ni una caída de
+        Hacienda (502): reintentar igual no lo arregla, la persona titular tiene
+        que actualizar la contraseña de la API del Ministerio en la app
+        (Cuenta → Conexión con Hacienda).
+
+        En una emisión, el documento **ya estaba firmado y su correlativo
+        gastado**: `details.codigoGeneracion` y `details.numeroControl` lo
+        nombran y `details.almacenamiento` dice dónde quedó la copia de
+        retención. No lo emita otra vez; con la MISMA `Idempotency-Key` la
+        respuesta se repite tal cual. En una anulación o un evento de retorno no
+        se gastó nada.
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    CatalogoPeticionInvalida:
+      description: |
+        `invalid_request` — cuerpo ausente o que no es JSON, un id o cursor que
+        no tienen la forma debida, `limite` fuera de 1–200, o una edición vacía.
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    CatalogoProhibido:
+      description: |
+        `catalog_write_disabled` — el dueño de la cuenta no ha permitido
+        administrar el catálogo desde el API (`details.hint` dice dónde:
+        Cuenta → API). Se comprueba antes que el alcance. Además, las del
+        resto de las rutas: `forbidden_scope` si a la llave le falta
+        `catalog:write`, y las demás de la llave.
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    CatalogoCifrado:
+      description: |
+        `catalog_encrypted` — el catálogo de la empresa está cifrado y el
+        servidor no puede leerlo. El dueño lo guarda sin cifrar en Cuenta → API.
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    CatalogoConflicto:
+      description: |
+        `catalog_duplicate` — ya hay un cliente con ese documento o un producto
+        con ese código (`details.id` y `details.activo`; si está desactivado,
+        reactívelo con `PATCH`). También `catalog_encrypted` si una fila quedó
+        cifrada a medias de una conversión.
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    CatalogoInvalido:
+      description: |
+        `validation_failed` — `details.problemas` lista cada campo con su
+        `code` y su `message` en español. No se guardó nada.
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    CatalogoNoExiste:
+      description: |
+        `not_found` — no existe, es de otra empresa o esta llave lo excluye:
+        las tres contestan igual.
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    BuzonRetirado:
+      description: |
+        `inbox_retired` — el buzón de cambios de catálogo se retiró; escriba
+        el catálogo con `/v1/customers` y `/v1/products`.
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    CursorVencido:
+      description: |
+        `catalog_cursor_expired` — Facta ya no puede continuar desde ese
+        `since`. `details.reason` dice por qué y `details.cabeza` /
+        `details.generacion` traen el cursor actual: lea todo de nuevo y siga
+        desde ahí.
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    WebhookConflicto:
+      description: |
+        `webhook_duplicate` (esa dirección ya está registrada en esta llave) o
+        `webhook_limit_reached` (ya tiene 5).
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    BuzonConflicto:
+      description: |
+        `id_conflict`, `item_final`, `draft_claimed`, `draft_issuing`,
+        `draft_issued`, `draft_not_issuable` o `version_mismatch`;
+        `details.reason` trae el motivo.
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    BuzonInvalido:
+      description: |
+        `validation_failed`, `content_hash_mismatch` o `idempotency_key_reuse`
+        (`details.borradorId`).
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
     NoDisponible:
       description: |
         `service_unavailable` o `correlative_unavailable` — algo nuestro no está
-        listo. Puede salir en CUALQUIER ruta, incluidas las de consulta: el
+        listo. `correlative_unavailable` trae `Retry-After`; si la base alcanzó a
+        reservar el número cuando la petición ya había fallado, Facta lo devuelve
+        antes de contestar, así que reintentar con la MISMA `Idempotency-Key` es
+        seguro. Puede salir en CUALQUIER ruta, incluidas las de consulta: el
         registro de peticiones se escribe antes de trabajar y falla cerrado, así
         que si esa tabla no contesta, nada contesta.
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
@@ -1619,6 +3049,98 @@ components:
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
 
   schemas:
+    CambiosDeCatalogo:
+      type: object
+      required: [generacion, cabeza, cambios, siguiente, hayMas]
+      properties:
+        generacion: { type: string, format: uuid, nullable: true, description: Cambia cuando una restauración reemplaza el historial. }
+        cabeza: { type: integer, description: La revisión actual del catálogo de la empresa. }
+        cambios:
+          type: array
+          items:
+            type: object
+            required: [revision, tipo, registroId, registroRevision, operacion, actor, en]
+            properties:
+              revision: { type: integer, description: Orden del cambio en el catálogo de la empresa. }
+              tipo: { type: string, enum: [customer, product, catalog] }
+              registroId: { type: string, format: uuid, nullable: true, description: "`null` en `catalog` (una restauración)." }
+              registroRevision: { type: integer, nullable: true, description: La revisión de esa ficha tras el cambio. }
+              operacion: { type: string, enum: [create, update, deactivate, delete, restore] }
+              actor:
+                type: object
+                required: [tipo]
+                properties:
+                  tipo: { type: string, enum: [owner, user, operator, api, system] }
+                  llave: { type: string, description: "El `key_id` cuando la hizo una llave de API." }
+              en: { type: string, format: date-time }
+        siguiente: { type: integer, description: Su próximo `since`. }
+        hayMas: { type: boolean, description: "`true` si quedan cambios por leer: pida otra página con `siguiente`." }
+    Webhook:
+      type: object
+      required: [id, url, eventos, activo, fallosSeguidos, creado, actualizado]
+      properties:
+        id: { type: string, format: uuid }
+        url: { type: string }
+        eventos:
+          type: array
+          description: Vacío = todos.
+          items: { $ref: "#/components/schemas/WebhookEvento" }
+        descripcion: { type: string, nullable: true }
+        activo: { type: boolean }
+        desactivadoPor: { type: string, nullable: true, enum: [too_many_failures, null], description: Solo si Facta lo apagó. }
+        fallosSeguidos: { type: integer }
+        creado: { type: string, format: date-time }
+        actualizado: { type: string, format: date-time }
+    WebhookConSecreto:
+      allOf:
+        - $ref: "#/components/schemas/Webhook"
+        - type: object
+          required: [secreto]
+          properties:
+            secreto: { type: string, description: "Empieza con `whsec_`. Se muestra una sola vez." }
+    WebhookEvento:
+      type: string
+      enum:
+        - catalog.customer.created
+        - catalog.customer.updated
+        - catalog.customer.deactivated
+        - catalog.customer.deleted
+        - catalog.product.created
+        - catalog.product.updated
+        - catalog.product.deactivated
+        - catalog.product.deleted
+        - catalog.restored
+    WebhookNuevo:
+      type: object
+      required: [url]
+      additionalProperties: false
+      properties:
+        url: { type: string, maxLength: 2048, description: "`https://`, puerto 443, red pública." }
+        eventos: { type: array, items: { $ref: "#/components/schemas/WebhookEvento" } }
+        descripcion: { type: string, maxLength: 200 }
+    WebhookCambio:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        url: { type: string, maxLength: 2048 }
+        eventos: { type: array, items: { $ref: "#/components/schemas/WebhookEvento" } }
+        descripcion: { type: string, maxLength: 200, nullable: true }
+        activo: { type: boolean }
+    WebhookEntrega:
+      type: object
+      description: |
+        El cuerpo que Facta le envía (`Content-Type: application/json`), junto
+        con `Facta-Signature`. **Solo ids**: ni nombres, ni documentos, ni importes.
+      required: [deliveryId, event, company, recordId, revision, generation, at]
+      properties:
+        deliveryId: { type: string, format: uuid, description: Único por entrega; igual en cada reintento. }
+        event: { type: string }
+        company: { type: string, format: uuid }
+        recordId: { type: string, format: uuid, nullable: true }
+        revision: { type: integer }
+        generation: { type: string, format: uuid, nullable: true }
+        at: { type: string, format: date-time }
     Error:
       type: object
       required: [error]
@@ -1645,9 +3167,14 @@ components:
                 - sign_vault_locked
                 - sign_vault_missing
                 - invalid_request
+                - include_limit_exceeded
                 - validation_failed
                 - retention_mixed_class_unsupported
                 - not_found
+                - drive_not_configured
+                - drive_reauthorization_required
+                - drive_token_failed
+                - drive_not_available_for_api
                 - method_not_allowed
                 - idempotency_key_required
                 - idempotency_key_reuse
@@ -1663,13 +3190,39 @@ components:
                 - amount_limit
                 - mh_rejected
                 - mh_unreachable
+                - mh_auth_failed
                 - correlative_unavailable
+                - paid_plan_required
                 - no_storage_destination
                 - storage_unsupported
                 - storage_unavailable
                 - entrega_token_invalido
                 - entrega_vencida
                 - canal_no_marcado
+                - catalog_write_disabled
+                - catalog_encrypted
+                - catalog_duplicate
+                - content_hash_mismatch
+                - id_conflict
+                - item_final
+                - draft_claimed
+                - draft_issuing
+                - draft_issued
+                - draft_not_issuable
+                - version_mismatch
+                - inbox_cap_reached
+                - drafts_not_ready
+                - catalog_write_test_key
+                - inbox_retired
+                - data_grant_unavailable
+                - data_grant_revoked
+                - data_epoch_stale
+                - catalog_revision_conflict
+                - catalog_record_inactive
+                - catalog_search_too_broad
+                - catalog_cursor_expired
+                - webhook_limit_reached
+                - webhook_duplicate
                 - service_unavailable
                 - internal_error
             message:
@@ -1682,6 +3235,76 @@ components:
                 correlativo gastado; `rate_limited` trae la ventana y
                 `retryAfterSeconds`.
 
+    BorradorPlano:
+      type: object
+      required: [tipoDte, items]
+      description: |
+        El cuerpo de `POST /v1/dte` (`SolicitudDte`) más dos campos propios del
+        borrador. Facta lo valida, lo sella a la llave pública de la empresa y no
+        guarda el texto.
+      properties:
+        id: { type: string, format: uuid, description: UUID v4 que elige quien llama; si falta, Facta pone uno. }
+        referencia: { type: string, maxLength: 64, description: Propia, sin datos personales. }
+        tipoDte: { type: string }
+        items: { type: array, items: { type: object } }
+      additionalProperties: true
+    PendienteSellado:
+      type: object
+      required: [id, plaintext, envelope, contentHash]
+      description: |
+        Lo que la llave deja sellado (formato anterior, `inbox-v1`). `plaintext` es lo que cifró
+        (borrador: el cuerpo de `POST /v1/dte`); solo se valida, no se guarda.
+        `contentHash` es el SHA-256 hex de su JSON canónico (RFC 8785).
+      properties:
+        id: { type: string, format: uuid, description: UUID v4 que elige quien llama. }
+        plaintext: { type: object }
+        envelope:
+          type: object
+          required: [payload, payloadIv, wrappedKey, wrapIv]
+          description: Base64url sin relleno; `payload` hasta 64 KB.
+          properties:
+            payload: { type: string }
+            payloadIv: { type: string, minLength: 16, maxLength: 16 }
+            wrappedKey: { type: string, minLength: 64, maxLength: 64 }
+            wrapIv: { type: string, minLength: 16, maxLength: 16 }
+        contentHash: { type: string, pattern: "^[0-9a-f]{64}$" }
+        referencia: { type: string, maxLength: 64, description: Propia, sin datos personales. }
+    PendienteEstado:
+      type: object
+      description: Un cambio de catálogo; `estado` en español (pendiente, aplicado, rechazado…).
+      required: [cambioId, estado]
+      properties:
+        cambioId: { type: string, format: uuid }
+        estado: { type: string }
+        operacion: { type: string, enum: [create, update, deactivate] }
+        registroId: { type: string, format: uuid, nullable: true }
+        sobre: { type: object, nullable: true }
+    BorradorEstado:
+      type: object
+      description: Un borrador; emitido, trae el documento en que se convirtió.
+      required: [borradorId, estado, version]
+      properties:
+        borradorId: { type: string, format: uuid }
+        estado: { type: string }
+        version: { type: integer }
+        totales: { type: object }
+        codigoGeneracion: { type: string }
+        numeroControl: { type: string }
+        estadoDocumento: { type: string, nullable: true }
+        selloRecibido: { type: boolean }
+        emitidoPor: { type: string, enum: [app, api] }
+        editado: { type: boolean }
+        sobre: { type: object, nullable: true }
+        contenido: { type: object, description: "La solicitud ya resuelta, solo si esta llave tiene acceso a la clave de datos de la empresa." }
+    SolicitudBorrador:
+      type: object
+      required: [version, tipoDte, items]
+      description: Los campos de `SolicitudDte` más la `version` del borrador.
+      properties:
+        version: { type: integer, minimum: 1 }
+        tipoDte: { type: string }
+        items: { type: array, items: { type: object } }
+      additionalProperties: true
     Entrega:
       type: object
       description: |
@@ -1833,13 +3456,13 @@ components:
     Receptor:
       type: object
       description: |
-        Un cliente guardado (`customerId`) se resuelve de dos maneras según la
-        llave. Con **«Catálogo legible por la API»** el servidor lo lee del
-        catálogo que la app publicó para esa llave (sin clave de desbloqueo). Con
-        el catálogo **cifrado**, el SDK de TypeScript lo resuelve desde el
-        catálogo cifrado local y envía los campos completos; una llamada HTTP
-        directa debe enviar el receptor completo, porque el servidor no puede
-        descifrar las filas canónicas.
+        Un cliente guardado (`customerId`) lo resuelve **el servidor**, en
+        cualquier llamada HTTP y con cualquier SDK, cuando la empresa guarda su
+        catálogo sin cifrar, cuando la llave tiene **«Catálogo legible por la
+        API»**, o cuando la empresa comparte su clave de datos y la persona
+        titular le dio acceso a la llave (el servidor abre la ficha solo durante
+        la petición). Si ninguno aplica (catálogo cifrado y la llave sin
+        acceso), el servidor no puede leerlo: envíe el receptor completo.
         Los campos inline se usan para este DTE y no crean ni actualizan una
         ficha del catálogo de clientes.
         Cuando se manda el receptor resuelto, los campos explícitos ganan sobre
@@ -1853,12 +3476,11 @@ components:
           type: string
           format: uuid
           description: |
-            Un cliente guardado. El servidor lo resuelve solo en una llave con
-            «Catálogo legible por la API» (`llave.catalogMode: readable`) o en
-            cualquier llave de una empresa con el catálogo sin cifrar
-            (`llave.catalogoSinCifrar: true`); en una
-            llave con catálogo cifrado lo resuelve el SDK de TypeScript en local
-            y una llamada directa debe enviar los campos completos.
+            Un cliente guardado, resuelto por el servidor: con el catálogo sin
+            cifrar (`llave.catalogoSinCifrar: true`), con «Catálogo legible por la
+            API» (`llave.catalogMode: readable`) o con el acceso que la persona
+            titular da a la llave sobre la clave de datos compartida. Sin ninguno
+            de los tres hay que enviar los campos completos.
         nombre: { type: string }
         tipoDocumento: { type: string, description: "CAT-022. 36 = NIT, 13 = DUI.", example: "36" }
         numDocumento: { type: string, example: "05110606161016" }
@@ -1881,7 +3503,8 @@ components:
           ajustar algo que no está en nuestro índice.
 
         Un código que no está en su índice es `404`; uno que está pero sin sello
-        es `400` — Hacienda no selló nada que ajustar.
+        es `400` — Hacienda no selló nada que ajustar. **Ambas respuestas llegan
+        antes de reservar el correlativo**: la nota no gasta ningún número.
       properties:
         codigoGeneracion: { type: string, format: uuid }
         tipoDocumento: { type: string, example: "03" }
@@ -1931,9 +3554,29 @@ components:
             escriba la redacción del Ministerio es pedirle que la escriba mal.
             Sin incoterm, el código y su descripción salen `null` juntos.
           example: "09"
-        recintoFiscal: { type: string, nullable: true, description: "CAT-027; null en exportación de servicios." }
-        tipoRegimen: { type: string, nullable: true, description: CAT-033. }
-        regimen: { type: string, nullable: true, description: CAT-028. }
+        recintoFiscal:
+          type: string
+          nullable: true
+          description: |
+            Recinto fiscal, **código de CAT-027** (`01`, `02`, … `99`); `null`
+            u omitido en exportación de servicios. Un código que no es del
+            catálogo es `422 validation_failed` con `details.supported`, sin
+            gastar correlativo.
+        tipoRegimen:
+          type: string
+          nullable: true
+          enum: ["EX-1", "EX-2", "EX-3", "TA-1", null]
+          description: Tipo de régimen, **código de CAT-033**. Mismo trato que `recintoFiscal`.
+        regimen:
+          type: string
+          nullable: true
+          description: |
+            Régimen de exportación, **código de CAT-028** (`1000.000`,
+            `1040.000`, …). Se acepta también la forma compuesta de hasta 13
+            caracteres `<CAT-033>.<CAT-028>` (por ejemplo `EX-1.1000.000`). Un
+            código que no es del catálogo —por ejemplo `EX-1` solo, que es un
+            tipo de régimen— es `422 validation_failed` con `details.supported`,
+            sin gastar correlativo.
         flete:
           type: number
           minimum: 0
@@ -1971,17 +3614,18 @@ components:
         Una línea se describe entera (`descripcion` y `precioUni`) o nombra un
         producto del catálogo con `productId`.
 
-        **`productId` lo resuelve el servidor solo en una llave con «Catálogo
-        legible por la API»** (`llave.catalogMode: readable` en `/v1/status`)
-        o en cualquier llave de una empresa con el catálogo sin cifrar:
+        **`productId` lo resuelve el servidor** en una llave con «Catálogo
+        legible por la API» (`llave.catalogMode: readable` en `/v1/status`), en
+        cualquier llave de una empresa con el catálogo sin cifrar y en una llave
+        con acceso a la clave de datos compartida de la empresa:
         la descripción, el precio, el código, el tipo y la unidad del producto
         completan lo que la línea omite, y los campos explícitos ganan. Un
         producto que no está en el catálogo publicado, o está inactivo, es
         `404`; si el precio del catálogo tiene una base de IVA distinta a la del
         documento (`vat_included`), es `400` con `reason: catalog_vat_basis` —
         envíe `precioUni` en la base del documento. En una llave con catálogo
-        cifrado la API no puede resolverlo: el SDK de TypeScript lo hace en
-        local, y una llamada directa debe enviar `descripcion` y `precioUni`.
+        cifrado y sin acceso para la llave la API no puede resolverlo, y hay que
+        enviar `descripcion` y `precioUni`.
       anyOf:
         - required: [descripcion, precioUni]
         - required: [productId]
@@ -2010,6 +3654,27 @@ components:
             una exportación (11) no hay IVA que incluir. En una FSE (14) el
             precio es el precio: no se le suma ni se le quita nada. Así lo
             definen los esquemas oficiales.
+        montoDescu:
+          type: number
+          minimum: 0
+          description: |
+            Descuento de **esta línea**, en dinero (no en porcentaje), en la
+            **misma base de IVA que `precioUni`**: en una FE (01) incluye el
+            IVA, en un CCF (03), una nota (05/06) y una exportación (11) no, y
+            en una FSE (14) es el precio tal cual. Vale en los seis tipos.
+
+            Tiene que estar entre 0 y `cantidad × precioUni` (el total de la
+            línea); si no, es `400`. Con `productId` y sin `precioUni`, el
+            tope se comprueba cuando el servidor trae el precio del catálogo.
+            El servidor calcula el resto: la línea sale con `montoDescu` y su
+            venta ya descontada, el IVA se calcula sobre lo descontado y el
+            resumen trae `totalDescu`. Es un descuento por línea: no existe
+            todavía un descuento global en el cable.
+
+            **El nombre es exacto.** `descuento`, `discount` o `descu` no
+            existen: se ignoran y la respuesta lo avisa con una advertencia
+            `campo_desconocido` que sugiere `montoDescu`.
+          example: 2.5
         codigo: { type: string, nullable: true }
         tipoItem: { type: integer, description: "CAT-011. 1 bien, 2 servicio, 3 ambos, 4 otro.", default: 2 }
         uniMedida: { type: integer, description: "CAT-014. 59 = unidad.", default: 59 }
@@ -2080,7 +3745,7 @@ components:
         |---|---|---|---|---|---|
         | **precio de la línea** | con IVA | sin IVA | sin IVA | sin IVA (tasa cero) | el precio, tal cual |
         | **receptor** | opcional | inscrito | inscrito | extranjero | el VENDEDOR |
-        | **campos propios** | — | — | `documentosRelacionados`, y `numPagoElectronico` solo en 06 | `exportacion` | `aplicarReteRenta` |
+        | **campos propios** | `aplicarRetencionIva` | `aplicarRetencionIva`, `aplicarPercepcionIva` | `documentosRelacionados`, y `numPagoElectronico` solo en 06 | `exportacion` | `aplicarReteRenta` |
 
         Mandar el campo propio de un tipo en otro es `400`, no un campo
         ignorado en silencio: si alguien manda `aplicarReteRenta` en una
@@ -2136,6 +3801,26 @@ components:
             servicios de una persona natural. **Nunca automática**: se pide.
             No se puede combinar con líneas `exenta` o `no_sujeta`
             (`422 retention_mixed_class_unsupported`).
+        aplicarRetencionIva:
+          type: boolean
+          default: false
+          description: |
+            Solo en el 01 y el 03. Retención de IVA del 1 % que practica el
+            receptor (art. 162 CT) sobre el monto neto gravado después de
+            descuentos. Depende de quién es el comprador, algo que la API no
+            puede ver, así que **nunca es automática**: se pide. En otro tipo
+            es `400`.
+        aplicarPercepcionIva:
+          type: boolean
+          default: false
+          description: |
+            Solo en el 03. Percepción de IVA del 1 % (art. 163 CT) sobre el
+            monto neto gravado de las líneas de **bienes** (`tipoItem` 1)
+            después de la parte proporcional del descuento global; los
+            servicios no entran en la base. Se suma al total a pagar
+            (`montoTotalOperacion + ivaPerci − ivaRete`) y no forma parte de
+            `montoTotalOperacion`. **Nunca es automática**: se pide. En otro
+            tipo es `400`.
         condicionOperacion: { type: integer, enum: [1, 2, 3], default: 1, description: 1 contado, 2 crédito, 3 otro. }
         plazo:
           type: string
@@ -2145,8 +3830,234 @@ components:
           type: integer
           minimum: 1
           description: Cuántos de esos plazos. Solo con `condicionOperacion` 2.
-        formaPago: { type: string, description: "CAT-017. 01 = efectivo.", example: "01" }
+        formaPago:
+          type: string
+          nullable: true
+          enum: ["01", "02", "03", "04", "05", "08", "09", "11", "12", "13", "14", "99", null]
+          example: "01"
+          description: |
+            Forma de pago, **código de CAT-017**: 01 billetes y monedas, 02
+            tarjeta de débito, 03 tarjeta de crédito, 04 cheque, 05
+            transferencia o depósito bancario, 08 dinero electrónico, 09
+            monedero electrónico, 11 bitcoin, 12 otras criptomonedas, 13
+            cuentas por pagar del receptor, 14 bonos o certificados de regalo,
+            99 otros. Sin él (u omitido o `null`) el servidor usa 01 (05 en la
+            exportación). **Un código que no es del catálogo es
+            `422 validation_failed` con `details.field` y `details.supported`,
+            y no gasta correlativo**: el esquema oficial solo acota el largo,
+            así que antes se firmaba y Hacienda lo rechazaba en vuelo. En 05 y
+            06 no se usa. No se combina con `pagos`.
+        pagos:
+          type: array
+          minItems: 1
+          maxItems: 10
+          description: |
+            **Varias formas de pago** para un mismo documento (01, 03, 11 y
+            14). Cada fila es `{ codigo, montoPago, referencia? }` y **la suma
+            de `montoPago` tiene que igualar el total a pagar del documento, al
+            centavo** (`422 validation_failed` con `details.totalPagar` y
+            `details.sumaPagos` si no, antes de reservar el correlativo). Sin
+            `pagos` el documento lleva una sola fila por el total, como
+            siempre.
+
+            Reglas: no se manda junto a `formaPago` (`400`); no existe en 05 ni
+            06, que no liquidan nada (`400`); y **no se combina con una
+            operación a crédito** (`condicionOperacion` 2, `422`): cómo se
+            reparte el plazo entre varias formas de pago no está publicado por
+            Hacienda, así que no se adivina. A crédito use `formaPago` con
+            `plazo` y `periodo`. Con `condicionOperacion` 3 (otro) sí se
+            admite. Hasta 10 filas.
+          items: { $ref: "#/components/schemas/Pago" }
+          example:
+            - { codigo: "01", montoPago: 40 }
+            - { codigo: "02", montoPago: 60, referencia: "VOUCHER-0042" }
         observaciones: { type: string, nullable: true }
+        apendice:
+          type: array
+          nullable: true
+          minItems: 1
+          maxItems: 10
+          description: |
+            La sección **Apéndice** del propio documento: hasta 10 filas
+            `campo` / `etiqueta` / `valor` que el esquema oficial admite en los
+            seis tipos (01, 03, 05, 06, 11 y 14). **Forma parte del DTE firmado
+            y transmitido a Hacienda** —por eso se valida contra el esquema
+            antes de gastar un correlativo— y la hoja la imprime como
+            «etiqueta: valor» bajo las observaciones. Úselo para lo que sí
+            pertenece al documento (orden de compra, vendedor, referencia).
+            Si lo que quiere es solo decorar la hoja, use `representacion`.
+
+            Una lista vacía es `400`: omita el campo o mande `null`. Se aplican
+            los mínimos más estrictos de los esquemas a todos los tipos
+            (`campo` ≥ 2, `etiqueta` ≥ 3) para que una fila válida lo sea en
+            cualquiera. Sin saltos de línea ni caracteres de control.
+          items: { $ref: "#/components/schemas/FilaApendice" }
+          example:
+            - { campo: ordenCompra, etiqueta: Orden de compra, valor: OC-2026-0417 }
+            - { campo: vendedor, etiqueta: Vendedor, valor: Ana Pérez }
+        representacion:
+          $ref: "#/components/schemas/Representacion"
+
+    Pago:
+      type: object
+      required: [codigo, montoPago]
+      description: Una forma de pago de `pagos[]`.
+      properties:
+        codigo:
+          type: string
+          enum: ["01", "02", "03", "04", "05", "08", "09", "11", "12", "13", "14", "99"]
+          description: Código de CAT-017 (ver `formaPago`).
+        montoPago:
+          type: number
+          exclusiveMinimum: 0
+          multipleOf: 0.01
+          description: Lo pagado con esta forma, con a lo más dos decimales.
+        referencia: { type: string, nullable: true, maxLength: 50, description: "Voucher, número de cheque, etc." }
+
+    FilaApendice:
+      type: object
+      required: [campo, etiqueta, valor]
+      additionalProperties: false
+      properties:
+        campo: { type: string, minLength: 2, maxLength: 25, description: Nombre del campo. }
+        etiqueta: { type: string, minLength: 3, maxLength: 50, description: Lo que lee la persona. }
+        valor: { type: string, minLength: 1, maxLength: 150 }
+
+    Representacion:
+      type: object
+      additionalProperties: false
+      description: |
+        Datos **solo de la hoja** (la representación gráfica). Nunca entran al
+        JSON firmado ni viajan a Hacienda: existen únicamente para que una
+        plantilla los dibuje (mesa y mesero de un restaurante, la placa de un
+        taller, los puntos de un programa de lealtad…). Un documento emitido
+        con y sin `representacion` produce exactamente los mismos bytes firmados
+        (una prueba lo fija), así que no hay cifra fiscal que se pueda colar por
+        aquí.
+
+        Se guardan con el índice del documento para que la hoja que se vuelve
+        a descargar o a dibujar salga igual. Una plantilla imprime solo los
+        bloques cuyos datos llegaron; las plantillas que no declaran una clave
+        la ignoran, así que mandarla es seguro y no cambia la hoja. **Solo la API los acepta**: desde la aplicación esos bloques no
+        se imprimen.
+
+        Todo texto va en una sola línea, sin caracteres de control. Hasta 20
+        valores en total entre las claves conocidas y las `filas`.
+        En `prepare` este objeto se rechaza con `400`: se manda en `/v1/dte/sign`
+        junto al `prepareToken`.
+      properties:
+        datos:
+          type: object
+          additionalProperties: false
+          description: Una clave desconocida es `400`; para etiquetas propias use `filas`.
+          properties:
+            mesa: { type: string, maxLength: 10, example: "12" }
+            mesero: { type: string, maxLength: 30, example: Luis }
+            comensales: { type: integer, minimum: 1, maximum: 999, example: 4 }
+            cajero: { type: string, maxLength: 40 }
+            pedido: { type: string, maxLength: 30, example: A-77 }
+            bomba: { type: string, maxLength: 20, description: Bomba o surtidor de una gasolinera. }
+            placa: { type: string, maxLength: 12, example: P123-456 }
+            kilometraje: { type: integer, minimum: 0, maximum: 9999999 }
+            tarjetaUltimos4:
+              type: string
+              pattern: "^[0-9]{4}$"
+              description: |
+                **Solo los últimos 4 dígitos** de la tarjeta, como texto para
+                conservar ceros a la izquierda. Cualquier otra longitud es `400`:
+                un número completo de tarjeta nunca debe viajar ni imprimirse.
+              example: "0042"
+            puntos: { type: integer, minimum: 0, maximum: 999999999, description: Saldo de puntos de lealtad que la hoja muestra., example: 120 }
+            propinaSugerida: { type: number, minimum: 0, maximum: 99999.99, description: "Monto en dólares con hasta 2 decimales. Es informativo: nunca se suma al total.", example: 4.5 }
+            paciente: { type: string, maxLength: 60, description: "Plantilla Consultorio.", example: Luis Alberto Mena }
+            expediente: { type: string, maxLength: 20, description: "Plantilla Consultorio.", example: EXP-4471 }
+            proximaCita: { type: string, maxLength: 40, description: "Plantilla Consultorio.", example: 20-10-2026 · 9:00 }
+            medico: { type: string, maxLength: 60, description: "Plantilla Consultorio: nombre bajo la línea de firma.", example: Dra. Lucía Hernández }
+            registroProfesional: { type: string, maxLength: 20, description: "Plantilla Consultorio: va tras el nombre del médico.", example: JVPM 4821 }
+            ordenTrabajo: { type: string, maxLength: 20, description: "Plantilla Angular.", example: OT-2291 }
+            entrega: { type: string, maxLength: 60, description: "Plantilla Angular: entrega estimada.", example: 16 de octubre }
+            evento: { type: string, maxLength: 60, description: "Plantilla Fluido.", example: Boda Rivas-Menjívar }
+            fechaEvento: { type: string, maxLength: 30, description: "Plantilla Fluido.", example: 24 de octubre de 2026 }
+            comentario: { type: string, maxLength: 60, description: "Plantilla Restaurante.", example: Sin picante }
+            proyecto: { type: string, maxLength: 60, description: "Plantilla Cubos.", example: Residencial Las Palmeras }
+            entregable: { type: string, maxLength: 40, description: "Plantilla Cubos.", example: Planos aprobados }
+            periodo: { type: string, maxLength: 40, description: "Plantilla Estado de cuenta: período que cubre el servicio (se imprime como «Período: …»).", example: del 1 al 31 de agosto de 2026 }
+            secciones:
+              type: string
+              maxLength: 400
+              description: |
+                Plantilla Por secciones. Un DTE no tiene secciones; con esta clave
+                la tabla se agrupa. Formato `Nombre:desde-hasta` separado por `;`
+                sobre el Nº de cada línea, sin huecos desde el 1 (hasta 12
+                secciones; nombre de 1 a 40 caracteres sin `:` ni `;`). Si los
+                rangos no cubren exactamente las líneas del documento, la hoja
+                sale como una sola lista.
+              example: "Alimentos:1-3;Bebidas:4-6;Servicio:7-9"
+            filas:
+              type: array
+              maxItems: 10
+              description: |
+                Filas libres «etiqueta: valor». La etiqueta no puede imitar un
+                campo fiscal del documento (`Total a pagar`, `IVA`, `Sello`,
+                `NIT`…): sobre el papel se leería como una cifra que el
+                documento no lleva.
+              items:
+                type: object
+                required: [etiqueta, valor]
+                additionalProperties: false
+                properties:
+                  etiqueta: { type: string, maxLength: 30, example: Zona }
+                  valor: { type: string, maxLength: 80, example: Terraza }
+        plantilla:
+          type: object
+          additionalProperties: false
+          description: |
+            La plantilla con la que se dibujan **este** documento (la carta o
+            PDF) y su ticket. Solo Lite y Pro pueden elegir las plantillas
+            pagadas; el plan siempre se lee de la empresa emisora, nunca de la
+            petición.
+
+            Cada valor es el id de una plantilla del catálogo (por ejemplo
+            `letter-institucional`, `ticket-aireado`) o `custom:<uuid>` de una
+            plantilla propia **publicada** de la empresa emisora (se usa su
+            versión vigente al emitir).
+
+            **Pedir una plantilla que no se puede aplicar no es un error.** El
+            documento se emite igual con la plantilla de la empresa y la
+            respuesta trae una advertencia `plantilla_no_aplicada` por cada
+            campo no atendido, con el `motivo`: `plan` (su plan no la incluye),
+            `no_existe` (no existe, no es de su empresa o no está publicada) o
+            `incompatible` (es de otro tipo de hoja, o ese tipo de documento no
+            tiene ticket). Un valor mal formado (no es texto, más de 64
+            caracteres, una forma que no es un id) sí es `400`.
+
+            La plantilla aplicada se guarda cifrada junto a `datos`: la
+            descarga posterior (`GET /v1/dte/{codigoGeneracion}/file?kind=pdf`
+            o `kind=ticket`), el correo, WhatsApp y el redibujado usan la misma
+            plantilla, también si la plantilla propia se vuelve a publicar
+            después. Los `datos` llegan al ticket cuando su plantilla los
+            declara. Sin `plantilla`, todo sigue como antes: la plantilla de la
+            empresa.
+          properties:
+            carta:
+              type: string
+              maxLength: 64
+              description: Plantilla de la carta (PDF).
+              example: letter-institucional
+            ticket:
+              type: string
+              maxLength: 64
+              description: Plantilla del ticket de 80 mm.
+              example: ticket-aireado
+      example:
+        datos:
+          mesa: "12"
+          mesero: Luis
+          comensales: 4
+          tarjetaUltimos4: "0042"
+          puntos: 120
+          filas:
+            - { etiqueta: Zona, valor: Terraza }
 
     SolicitudFirma:
       type: object
@@ -2154,6 +4065,8 @@ components:
       properties:
         prepareToken: { type: string, description: Tal cual lo devolvió `prepare`. Vence a los 15 min. }
         documento: { type: object, description: El documento canónico de `prepare`, sin tocar un centavo. }
+        representacion:
+          $ref: "#/components/schemas/Representacion"
 
     PersonaDeLaAnulacion:
       type: object
@@ -2239,6 +4152,63 @@ components:
             Si además pudimos anotarlo en nuestro libro. `false` no cambia que el
             documento está anulado —el sello de Hacienda es lo que manda— pero
             merece una mirada en la bitácora de peticiones.
+        archivoEvento:
+          type: [object, "null"]
+          description: |
+            El evento sellado en el formato del Archivo DTE (el evento firmado más
+            `firmaElectronica` y `selloRecibido`). Archívelo en `ruta`, al lado del
+            documento original, que no se toca: `<CODIGO-DEL-DOCUMENTO>.invalidacion.json`.
+            `null` si no se pudo armar.
+          properties:
+            nombre: { type: string }
+            ruta: { type: string }
+            contenido: { type: string }
+        storage:
+          description: |
+            El recibo de la copia del evento en Almacenamiento Facta: un solo
+            archivo (`invalidation`, `<CODIGO-DEL-DOCUMENTO>.invalidacion.json`)
+            guardado junto al `json` original, que no se toca; no hay parte `pdf`.
+            `null` si el índice no pudo anotar la anulación (`anotadoEnElIndice:
+            false`) o el evento no se pudo armar. Un fallo al escribir no deshace
+            la anulación: queda en `invalidation.state` (`failed`/`pending`) con
+            su `errorCode` (`authorization`, `coverage_unavailable`, ...).
+            Archive igualmente `archivoEvento` en sus destinos propios y avise
+            con `POST /v1/storage/copies/{codigoGeneracion}/byos`
+            (`kind: "invalidation"`).
+          oneOf:
+            - { type: "null" }
+            - { $ref: "#/components/schemas/ManagedInvalidationReceipt" }
+        avisoCliente:
+          type: object
+          description: |
+            El aviso «Documento invalidado» al cliente, con el PDF marcado como
+            invalidado y el evento firmado. Sale solo, justo después de que
+            Hacienda acepta la anulación, cuando la empresa tiene activo el envío
+            automático de correos (el mismo ajuste de la app; activo si nunca se
+            eligió) y el documento sellado trae el correo del receptor. Nunca
+            deshace ni falla la anulación: su resultado es este estado.
+          required: [estado, destino]
+          properties:
+            estado:
+              type: string
+              enum: [enviado, en_proceso, fallido, no_enviado]
+              description: |
+                `en_proceso` si el proveedor tarda más de unos segundos: el envío
+                sigue y queda anotado en Entregas del documento.
+            destino:
+              type: [string, "null"]
+              description: Correo enmascarado (`a•••@ejemplo.com`), o `null` si no hubo uno.
+            motivo:
+              type: string
+              description: |
+                Presente cuando `estado` no es `enviado`. Para `no_enviado`:
+                `envio_automatico_desactivado`, `servidor_de_correo_propio`
+                (la empresa envía con su SMTP, que solo su navegador tiene),
+                `documento_no_disponible` (el documento se emitió desde la app y
+                el servidor no guarda su copia), `sin_correo`, `evento_ilegible`,
+                `pdf_no_disponible`, `no_anotado_en_el_indice`. Para `fallido`:
+                `quota_exceeded`, `smtp_rejected`, `document_rejected`,
+                `provider_unavailable`.
 
     SolicitudRetorno:
       type: object
@@ -2479,7 +4449,68 @@ components:
             solo aparece con `X-Facta-Copies: deferred`: la copia se escribe
             después de responder. El
             almacenamiento nunca bloquea el sello: un fallo aquí no cambia que
-            el documento está sellado.
+            el documento está sellado. Con la política de retención `fallback`
+            la copia de retención es solo de emergencia: si el almacenamiento
+            administrado confirmó el archivo, aquí vendrá `ninguno` y `storage`
+            dirá `stored`; es lo normal, el archivo se descarga igual. Con
+            `sin_almacenamiento_duradero` aparece `retencion` (la copia temporal);
+            con `sin_copia_en_servidor`, `ninguno`.
+        advertencias:
+          type: array
+          description: |
+            Aparece cuando hay algo que revisar; su ausencia es la normalidad.
+            Cada elemento trae `codigo` y `mensaje` (en español, de usted). Un
+            reintento con la misma `Idempotency-Key` devuelve las mismas
+            advertencias. Hay dos clases: las que dicen que **un archivo está
+            en riesgo** y la que dice que **la petición traía un campo que no
+            existe** (`campo_desconocido`); la segunda no indica ningún riesgo
+            para los archivos.
+
+            · `campo_desconocido`: la petición trajo un campo que Facta DTE no
+            conoce, así que se **ignoró y no forma parte del documento**. Trae
+            `campo` (el camino exacto, p. ej. `items[2].descuento`,
+            `receptor.direccion.depto`) y, cuando es obvio, `sugerencia` (p. ej.
+            `items[2].montoDescu`). Sale hasta para 25 campos por respuesta y
+            la cabecera `Facta-Warning` cuenta los que se listan. Los objetos
+            `entrega`, `apendice` y `representacion` son estrictos: un campo de
+            más ahí es `400`, no una advertencia.
+
+            · `copia_solo_temporal`: no se pudo guardar en el almacenamiento
+            administrado; el archivo solo está en la copia temporal (una hora).
+            Descárguelo cuanto antes. Solo con la política de retención `fallback`.
+
+            · `sin_almacenamiento_duradero`: la empresa no tiene ningún
+            almacenamiento disponible (sin destino verificado, destinos
+            quitados o almacenamiento administrado no disponible). **Google Drive
+            no cuenta como almacenamiento de la API** (17-oct-2026): una empresa
+            cuyo único destino es Drive se trata como una sin destino. El documento
+            está sellado y **solo existe en la copia temporal** (una hora).
+            Guárdelo ya: el SDK lo hace con su mecanismo de emergencia. En este
+            caso la copia temporal se escribe SIEMPRE antes de responder, aun
+            con `X-Facta-Copies: deferred`.
+
+            · `sin_copia_en_servidor` (**crítica**): el documento está sellado
+            pero no se pudo guardar en ningún lugar del servidor. Esta respuesta
+            (`jws`, `archivoJson`, `representacionGrafica`) es el único
+            ejemplar seguro: guárdelo ahora. El documento está indexado y se
+            puede volver a descargar (se rearma desde el archivo), y el barrido
+            de reparación reintenta la copia administrada.
+
+            · `plantilla_no_aplicada`: `representacion.plantilla` pidió una
+            plantilla que no se pudo usar. El documento se emitió con la
+            plantilla de la empresa. Trae además `campo`
+            (`representacion.plantilla.carta` o `.ticket`) y `motivo`
+            (`plan`, `no_existe` o `incompatible`). No indica ningún riesgo
+            para los archivos.
+          items:
+            type: object
+            required: [codigo, mensaje]
+            properties:
+              codigo: { type: string, enum: [copia_solo_temporal, sin_almacenamiento_duradero, sin_copia_en_servidor, plantilla_no_aplicada, campo_desconocido] }
+              mensaje: { type: string }
+              campo: { type: string, description: "`plantilla_no_aplicada`: el campo de la petición no atendido. `campo_desconocido`: el camino del campo que no existe.", example: representacion.plantilla.ticket }
+              sugerencia: { type: string, description: "Solo `campo_desconocido`: el campo que probablemente quiso decir.", example: "items[0].montoDescu" }
+              motivo: { type: string, enum: [plan, no_existe, incompatible], description: "Solo `plantilla_no_aplicada`: por qué no se aplicó." }
         entrega:
           $ref: "#/components/schemas/EntregaMarcada"
 
@@ -2529,6 +4560,17 @@ components:
         totales: { $ref: "#/components/schemas/Totales" }
         documento: { type: object }
         prepareToken: { type: string }
+        advertencias:
+          type: array
+          description: Las mismas advertencias que el sellado (ver `DteSellado.advertencias`), p. ej. `campo_desconocido`.
+          items:
+            type: object
+            required: [codigo, mensaje]
+            properties:
+              codigo: { type: string }
+              mensaje: { type: string }
+              campo: { type: string }
+              sugerencia: { type: string }
 
     DteConsultado:
       type: object
@@ -2620,6 +4662,27 @@ components:
           properties:
             nombre: { type: string, nullable: true }
             numDocumento: { type: string, nullable: true }
+        archivoDte:
+          type: string
+          description: Solo con `include=dte`. El Archivo DTE, el mismo texto de `…/file?kind=json`.
+        dteError:
+          type: object
+          description: Solo con `include=dte`, en lugar de `archivoDte`, cuando el servidor no pudo entregar el JSON de esta fila.
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: "`not_sealed`, `storage_unavailable`, `not_found`, `timeout` o `needs_local_decrypt`."
+            message: { type: string }
+            destinos:
+              type: array
+              description: Solo con `needs_local_decrypt`. Las copias del libro donde el SDK puede leer el documento.
+              items:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  rutaJson: { type: string }
+                  verificada: { type: boolean }
 
     DocumentoRetenido:
       type: object
@@ -2652,6 +4715,18 @@ components:
         errorCode: { type: string, nullable: true, description: Código estable y sanitizado; nunca texto bruto del Worker. }
         retryable: { type: boolean }
 
+    ManagedInvalidationReceipt:
+      type: object
+      description: |
+        El recibo de un archivo único: el evento de invalidación sellado, guardado
+        bajo el código del documento ORIGINAL y junto a su `json`.
+      required: [destination, environment, invalidation, operationId]
+      properties:
+        destination: { type: string, enum: [managed, none] }
+        environment: { type: string, enum: ["00", "01"] }
+        invalidation: { $ref: "#/components/schemas/ManagedStorageArtifactReceipt" }
+        operationId: { type: string, format: uuid, description: "El código de generación del documento original." }
+
     ManagedStorageReceipt:
       type: object
       required: [destination, environment, json, pdf, operationId]
@@ -2662,6 +4737,38 @@ components:
         pdf: { $ref: "#/components/schemas/ManagedStorageArtifactReceipt" }
         operationId: { type: string, format: uuid }
 
+    PlantillasDisponibles:
+      type: object
+      required: [plantillas, predeterminada]
+      properties:
+        plantillas:
+          type: array
+          items:
+            type: object
+            required: [id, tipo, nombre, origen, permitida, clavesDatos]
+            properties:
+              id: { type: string, description: "El valor para `representacion.plantilla.carta` / `.ticket`.", example: letter-institucional }
+              tipo: { type: string, enum: [carta, ticket] }
+              nombre: { type: string, example: "H · Institucional" }
+              origen: { type: string, enum: [catalogo, propia], description: "`propia` es una plantilla publicada de la empresa (`custom:<uuid>`)." }
+              permitida: { type: boolean, description: "Si la empresa puede usarla ahora (plan vigente y, con `tipoDte`, ese tipo de documento)." }
+              motivo: { type: string, enum: [plan, incompatible], description: "Solo cuando `permitida` es `false`." }
+              tiposDte:
+                type: array
+                description: Solo si la plantilla no sirve para todos los tipos que emite la API.
+                items: { type: string }
+              clavesDatos:
+                type: array
+                description: Claves de `representacion.datos` que la plantilla imprime.
+                items: { type: string }
+        predeterminada:
+          type: object
+          required: [carta, ticket]
+          description: La elección actual de la empresa, la que se usa si la petición no pide plantilla.
+          properties:
+            carta: { type: string, example: letter-clasica }
+            ticket: { type: string, example: ticket-clasico }
+
     ManagedStorageStatus:
       type: object
       required: [capabilityVersion, managed, byos, supportedKinds, unsupportedKinds]
@@ -2671,7 +4778,8 @@ components:
           type: object
           description: Funciones opcionales de este servidor; ausente en servidores anteriores.
           properties:
-            byosCopyReport: { type: integer, description: "Versión de `POST /v1/storage/copies/{codigoGeneracion}/byos`." }
+            byosCopyReport: { type: integer, description: "Versión de `POST /v1/storage/copies/{codigoGeneracion}/byos`. 2: acepta además `kind: \"invalidation\"`." }
+            invalidationFile: { type: integer, description: "1: el almacenamiento administrado guarda el evento de anulación sellado como archivo propio (`kind: invalidation`). Los tipos nuevos se anuncian solo aquí, nunca en `supportedKinds`." }
         managed:
           type: object
           required: [configured, ready, state, integration, quotaBytes, usedBytes, reservedBytes, usedBytesTotal, reservedBytesTotal, coveredUntil, accessUntil, bucketState, backupState]
@@ -2694,15 +4802,24 @@ components:
           required: [ready]
           properties:
             ready: { type: boolean }
-        supportedKinds: { type: array, items: { type: string, enum: [json, pdf] } }
-        unsupportedKinds: { type: array, items: { type: string, enum: [ticket, invalidation] } }
+        supportedKinds:
+          type: array
+          description: |
+            CONGELADA: siempre `["json", "pdf"]`. Los SDK publicados (`@facta-dte/api` 0.5.2) la validan
+            exactamente y fallan con `storage_contract_invalid` si cambia. Un tipo de archivo nuevo se
+            anuncia solo en `capabilities`.
+          items: { type: string, enum: [json, pdf] }
+        unsupportedKinds:
+          type: array
+          description: "CONGELADA: siempre `[\"ticket\", \"invalidation\"]`, por la misma razón. Que el servidor guarde el evento de anulación se lee en `capabilities.invalidationFile`."
+          items: { type: string, enum: [ticket, invalidation] }
 
     ManagedDocumentCopy:
       type: object
       required: [generationCode, kind, environment, state, bytes, sha256, issuedDate, storedAt]
       properties:
         generationCode: { type: string, format: uuid }
-        kind: { type: string, enum: [json, pdf] }
+        kind: { type: string, enum: [json, pdf, invalidation], description: "`invalidation` es el evento de anulación sellado del documento, guardado bajo su código." }
         environment: { type: string, enum: ["00", "01"] }
         state: { type: string, enum: [stored, pending, failed] }
         bytes: { type: integer, minimum: 0 }
@@ -2765,7 +4882,7 @@ components:
             keyId: { type: string }
             label: { type: string, nullable: true }
             modo: { type: string, enum: [custodian, byok] }
-            alcances: { type: array, items: { type: string, enum: [issue, query, download, "entrega:correo", "entrega:whatsapp"] } }
+            alcances: { type: array, items: { type: string, enum: [issue, query, download, "entrega:correo", "entrega:whatsapp", "catalog:read", "catalog:write", draft] } }
             tiposDte: { type: array, items: { type: string } }
             venceEl: { type: string, format: date-time, nullable: true }
             catalogMode:
@@ -2784,6 +4901,13 @@ components:
                 `true` cuando la empresa guarda su catálogo sin cifrar y el
                 servidor resuelve `customerId` y `productId` desde las tablas,
                 para cualquier llave. Es una opción de la empresa, no de la llave.
+            catalogoEscritura:
+              type: boolean
+              description: |
+                `true` cuando el dueño permitió administrar clientes y productos
+                desde el API (Cuenta → API). Escribir además exige el alcance
+                `catalog:write` en `alcances`; sin lo uno o sin lo otro, las
+                rutas de escritura contestan `403`.
         catalogoLegible:
           type: object
           nullable: true
@@ -2837,7 +4961,15 @@ components:
             environment: { type: string, enum: ["00", "01"] }
             sign: { $ref: "#/components/schemas/SyncRevision" }
             destinations: { $ref: "#/components/schemas/SyncRevision" }
-            catalog: { $ref: "#/components/schemas/SyncRevision" }
+            catalog:
+              deprecated: true
+              description: |
+                **Obsoleto** (copia cifrada del catálogo retirada). Se conserva un
+                lanzamiento más para clientes escritos antes de la llave de datos.
+                `status` es `legacy` si la llave nunca tuvo copia y `retired` si
+                la tuvo (nunca `ready`: ya no se republica). Los números quedan
+                congelados. Un cliente nuevo no debe leerlo.
+              allOf: [{ $ref: "#/components/schemas/SyncRevision" }]
         limites:
           type: object
           description: |
@@ -2871,7 +5003,117 @@ components:
       properties:
         desiredRevision: { type: integer }
         publishedRevision: { type: integer, nullable: true }
-        status: { type: string, enum: [legacy, ready, pending, error] }
+        status: { type: string, enum: [legacy, ready, pending, error, retired] }
+
+    Cliente:
+      type: object
+      required: [id, nombre, activo]
+      properties:
+        id: { type: string, format: uuid }
+        nombre: { type: string }
+        tipoDocumento: { type: string, nullable: true, example: "13", description: "CAT-022: 36 NIT, 13 DUI, 37 otro, 03 pasaporte, 02 carnet de residente." }
+        numDocumento: { type: string, nullable: true, description: "DUI y NIT sin guiones." }
+        nrc: { type: string, nullable: true }
+        codActividad: { type: string, nullable: true, description: CAT-019. }
+        direccion:
+          allOf: [{ $ref: "#/components/schemas/Direccion" }]
+          nullable: true
+        telefono: { type: string, nullable: true }
+        correo: { type: string, nullable: true }
+        activo: { type: boolean }
+        creadoEn: { type: string, format: date-time, nullable: true }
+        actualizadoEn: { type: string, format: date-time, nullable: true }
+
+    ClienteEntrada:
+      type: object
+      required: [nombre]
+      additionalProperties: false
+      properties:
+        nombre: { type: string, maxLength: 250 }
+        tipoDocumento: { type: string, example: "13", description: Obligatorio si se manda `numDocumento` (CAT-022). }
+        numDocumento: { type: string, description: "Con o sin guiones; se guarda sin ellos (DUI 9 dígitos, NIT 14 o 9). Se comprueba su dígito verificador." }
+        nrc: { type: string, nullable: true, description: "2 a 8 dígitos; un solo guion y ceros a la izquierda se normalizan." }
+        codActividad: { type: string, nullable: true, description: CAT-019. }
+        direccion:
+          allOf:
+            - $ref: "#/components/schemas/Direccion"
+            - type: object
+              properties:
+                pais: { type: string, example: US, description: "Código CAT-020 de un cliente del exterior; con él Facta propone una exportación. Sin `pais` la dirección es de El Salvador." }
+          nullable: true
+          description: Entera o nada; con `distrito` obligatorio y coherente (CAT-012/013/008). Conserva `distrito` y, si lo manda, `pais`.
+        telefono: { type: string, nullable: true, minLength: 8, maxLength: 30 }
+        correo: { type: string, nullable: true, minLength: 6, maxLength: 100 }
+
+    ClienteCambio:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      description: Los mismos campos que `ClienteEntrada`, todos opcionales, más `activo`.
+      properties:
+        nombre: { type: string, maxLength: 250 }
+        tipoDocumento: { type: string, nullable: true }
+        numDocumento: { type: string, nullable: true }
+        nrc: { type: string, nullable: true }
+        codActividad: { type: string, nullable: true }
+        direccion:
+          allOf: [{ $ref: "#/components/schemas/Direccion" }]
+          nullable: true
+        telefono: { type: string, nullable: true }
+        correo: { type: string, nullable: true }
+        activo: { type: boolean, description: "`false` desactiva, `true` reactiva." }
+
+    Producto:
+      type: object
+      required: [id, descripcion, activo]
+      properties:
+        id: { type: string, format: uuid }
+        codigo: { type: string, nullable: true }
+        codigoBarras: { type: string, nullable: true }
+        descripcion: { type: string }
+        tipoItem: { type: integer, nullable: true, description: "1 bien, 2 servicio, 3 ambos, 4 otro (CAT-011)." }
+        uniMedida: { type: integer, nullable: true, description: "CAT-014; 59 es unidad." }
+        precioUni: { type: number, nullable: true, description: "Hasta 6 decimales." }
+        ivaIncluido: { type: boolean, description: "`true`: el precio ya trae el IVA." }
+        tipoVenta: { type: string, enum: [gravada, exenta, no_sujeta], description: Tratamiento de IVA; un producto que nunca eligió uno se lee como `gravada`. }
+        activo: { type: boolean }
+        actualizadoEn: { type: string, format: date-time, nullable: true }
+
+    ProductoEntrada:
+      type: object
+      required: [descripcion, tipoItem, precioUni]
+      additionalProperties: false
+      properties:
+        codigo: { type: string, nullable: true, maxLength: 25 }
+        codigoBarras: { type: string, nullable: true, maxLength: 50 }
+        descripcion: { type: string, minLength: 1, maxLength: 1500 }
+        tipoItem: { type: integer, enum: [1, 2, 3, 4] }
+        uniMedida: { type: integer, default: 59 }
+        precioUni:
+          oneOf:
+            - { type: number, exclusiveMinimum: 0, maximum: 999999.999999 }
+            - { type: string, pattern: "^\\d+(\\.\\d{1,6})?$" }
+        ivaIncluido: { type: boolean, default: true }
+        tipoVenta: { type: string, enum: [gravada, exenta, no_sujeta], default: gravada, description: Tratamiento de IVA del producto; sin él se lee como `gravada`. }
+
+    ProductoCambio:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      description: Los mismos campos que `ProductoEntrada`, todos opcionales, más `activo`.
+      properties:
+        codigo: { type: string, nullable: true }
+        codigoBarras: { type: string, nullable: true }
+        descripcion: { type: string }
+        tipoItem: { type: integer, enum: [1, 2, 3, 4] }
+        uniMedida: { type: integer }
+        precioUni:
+          oneOf:
+            - { type: number }
+            - { type: string }
+        ivaIncluido: { type: boolean }
+        tipoVenta: { type: string, enum: [gravada, exenta, no_sujeta] }
+        activo: { type: boolean, description: "`false` desactiva, `true` reactiva." }
 
 # ── La tabla de errores, código por código ─────────────────────────────────
 #
@@ -2905,7 +5147,7 @@ x-facta-errores:
   forbidden_scope:
     status: 403
     cuando: A la llave le falta el alcance que la ruta exige.
-    hacer: '`details.required` dice cuál hacía falta y `details.granted` los que tiene. El alcance se elige al acuñar y no se edita después.'
+    hacer: '`details.required` dice cuál hacía falta y `details.granted` los que tiene. Los alcances de emitir y consultar se eligen al acuñar; el dueño concede `catalog:read` y `catalog:write` por llave desde Cuenta → API.'
   dte_type_not_allowed:
     status: 403
     cuando: La llave no tiene permitido ese `tipoDte`.
@@ -2940,8 +5182,8 @@ x-facta-errores:
     hacer: '`details.field` señala el campo cuando lo hay. No gasta correlativo.'
   validation_failed:
     status: 422
-    cuando: El documento no cumple el esquema oficial del Ministerio de Hacienda.
-    hacer: '`details.issues` lista cada campo. **No gasta correlativo**: la validación corre antes de reservar.'
+    cuando: El documento no cumple el esquema oficial del Ministerio de Hacienda, un código no es del catálogo (`formaPago`, `pagos[].codigo`, `exportacion.recintoFiscal`, `.tipoRegimen`, `.regimen`), o `pagos` no suma el total.
+    hacer: '`details.issues` lista cada campo; un código de catálogo trae `details.field`, `details.catalog` y `details.supported`; `pagos` trae `details.totalPagar` y `details.sumaPagos`. **No gasta correlativo**: la validación corre antes de reservar.'
   retention_mixed_class_unsupported:
     status: 422
     cuando: Se pide `aplicarReteRenta` en un documento con alguna línea `exenta` o `no_sujeta` (`items[].tipoVenta`).
@@ -2950,6 +5192,22 @@ x-facta-errores:
     status: 404
     cuando: No existe el documento, o el `customerId`, o la ruta.
     hacer: Un documento de otra empresa contesta exactamente lo mismo que uno que no existe. Es a propósito.
+  drive_not_configured:
+    status: 503
+    cuando: Este servicio no tiene configurado el cliente OAuth de Google Drive.
+    hacer: No lo arregla el cliente. Escriba a soporte; mientras tanto, las copias a Drive esperan a que alguien abra Facta.
+  drive_reauthorization_required:
+    status: 409
+    cuando: Google retiró el permiso de la llave larga de ese Drive (revocado, vencido o cambio de contraseña).
+    hacer: Una persona debe abrir Facta y pulsar «Confirmar en Google» en ese destino de Google Drive. Reintentar no lo arregla.
+  drive_token_failed:
+    status: 502
+    cuando: Google no contestó o rechazó la renovación por una razón distinta a un permiso retirado.
+    hacer: Reintente en unos segundos. No se reenvía el texto de Google.
+  drive_not_available_for_api:
+    status: 403
+    cuando: Se llamó a la ruta de renovación de Google Drive. Drive está desactivado para la API (decisión de seguridad del 17-oct-2026) y no cuenta como almacenamiento de la API.
+    hacer: No reintente. Conecte Almacenamiento Facta u otro destino compatible (S3 y compatibles, Supabase Storage, FTP/SFTP). Una empresa cuyo único destino es Drive se trata como una empresa sin destino.
   method_not_allowed:
     status: 405
     cuando: La ruta existe, pero no con ese método.
@@ -2960,8 +5218,8 @@ x-facta-errores:
     hacer: Elija una cadena por operación. Sin ella, un reintento por timeout quemaría un segundo número.
   idempotency_key_reuse:
     status: 422
-    cuando: Ya usó esa `Idempotency-Key` con un cuerpo distinto.
-    hacer: Use una nueva. Devolver la factura de ayer para la venta de hoy sería peor que fallar.
+    cuando: 'Ya usó esa `Idempotency-Key` con un cuerpo distinto (o, con `X-Facta-Request-Fingerprint`, con otra huella). Si la primera petición terminó, `details` trae `codigoGeneracion`. Ya no se devuelve en `POST /v1/customers` ni `POST /v1/products` cuando la llave creó un registro: ahí se actualiza ese registro (`200`, `actualizado: true`).'
+    hacer: Use una nueva. Para cambiar un registro de catálogo, use `PATCH` con el `id`. Devolver la factura de ayer para la venta de hoy sería peor que fallar.
   idempotency_in_flight:
     status: 409
     cuando: La primera petición con esa llave todavía se está procesando.
@@ -2990,6 +5248,10 @@ x-facta-errores:
     status: 409
     cuando: Se intenta anular un documento que ya tiene eventos de retorno registrados.
     hacer: Hacienda no permite anularlo (Anexo V 44.4). No se mandó nada; corrija con los eventos de retorno y, si hace falta, una nota de crédito.
+  include_limit_exceeded:
+    status: 400
+    cuando: Se pidió `GET /v1/dte?include=dte` con `limit` mayor que 25.
+    hacer: Pida `limit=25` o menos y siga con `siguiente`. `details.maximo` dice el tope. Sin `include` la página sigue siendo de hasta 100.
   not_sealed:
     status: 409
     cuando: Se descarga el JSON (`kind=json`, sin `raw=true`) de un documento que todavía no tiene sello, o sea, en contingencia. El Archivo DTE necesita `selloRecibido`.
@@ -3010,22 +5272,30 @@ x-facta-errores:
     status: 502
     cuando: 'Reservado: la versión actual nunca lo devuelve.'
     hacer: Todo fallo de transporte sale como **202 contingencia**, porque para entonces el documento ya está firmado y se le debe a Hacienda.
+  mh_auth_failed:
+    status: 424
+    cuando: Hacienda contestó el inicio de sesión y no aceptó el usuario y la contraseña de transmisión (API) de la empresa.
+    hacer: 'No reintente igual: la persona titular debe actualizar la contraseña de la API del Ministerio en la app (Cuenta → Conexión con Hacienda). En una emisión **sí gastó correlativo** (`details.codigoGeneracion`, `details.numeroControl`, copia en `details.almacenamiento`): el documento quedó firmado, no lo emita otra vez.'
   correlative_unavailable:
     status: 503
-    cuando: No se pudo reservar el correlativo.
-    hacer: Reintente con la MISMA `Idempotency-Key`. No se gastó número.
+    cuando: No se pudo reservar el correlativo a tiempo.
+    hacer: Reintente con la MISMA `Idempotency-Key` después de `Retry-After`. Si la base alcanzó a reservar el número tras el aviso, Facta lo devuelve antes de contestar (y, para un borrador, el barrido de cinco minutos lo suelta); no queda un número huérfano.
+  paid_plan_required:
+    status: 402
+    cuando: 'La empresa es una empresa adicional de su propietario (Multiempresa) y emite en producción con plan gratuito o de prueba. En pruebas (`00`) no aplica.'
+    hacer: Contrate el plan Lite o Pro de esa empresa desde la app (Cuenta → Plan) y reintente. No se gastó número.
   no_storage_destination:
     status: 422
-    cuando: La empresa no tiene ningún destino de almacenamiento conectado y verificado en los últimos 30 días.
-    hacer: 'Conecte un destino desde la app. Corre antes que nada más, así que **no gasta correlativo**: firmar un documento que no tiene dónde aterrizar sería dejarlo sin ninguna copia.'
+    cuando: Un destino propio (BYOS) reportado no está entre los destinos publicados de la llave. La emisión ya NO devuelve este error por falta de almacenamiento (desde el 6-oct-2026).
+    hacer: 'Sincronice los destinos desde la app. Para emitir sin almacenamiento disponible no hace falta nada: el documento se emite y la respuesta trae `advertencias`.'
   storage_unsupported:
     status: 501
     cuando: El servidor todavía no publica la capacidad o ruta de almacenamiento administrado.
     hacer: El SDK conserva compatibilidad y marca la capacidad como desconocida; actualice el servidor antes de depender de ella.
   storage_unavailable:
     status: 503
-    cuando: La copia administrada no se pudo consultar o reparar temporalmente.
-    hacer: Reintente solo la operación de almacenamiento. No vuelva a emitir el DTE.
+    cuando: 'La copia administrada no se pudo consultar o reparar temporalmente. También lo devuelve la emisión, con `Retry-After`, cuando el interruptor de emergencia está abierto (la copia temporal viene fallando para esa empresa y no hay otro almacenamiento): no se gastó correlativo.'
+    hacer: 'Reintente solo la operación de almacenamiento. No vuelva a emitir el DTE. Si fue una emisión rechazada por el interruptor, espere `Retry-After` y reintente con la MISMA `Idempotency-Key`.'
   entrega_token_invalido:
     status: 401
     cuando: El `token` de entrega no corresponde a este documento y canal, está mal escrito, o el documento no tiene token (estaba en contingencia, o ningún canal se podía entregar).
@@ -3038,6 +5308,102 @@ x-facta-errores:
     status: 409
     cuando: El documento no marcó ese canal en `entrega` al emitirse.
     hacer: Los canales se marcan al emitir. Revise con `GET /v1/dte/{codigoGeneracion}/entrega` cuáles quedaron marcados.
+  catalog_write_disabled:
+    status: 403
+    cuando: Una ruta de escritura del catálogo (`POST`, `PATCH` o `DELETE` en `/v1/customers` y `/v1/products`) y el dueño de la cuenta no ha permitido administrar clientes y productos desde el API.
+    hacer: 'El dueño lo activa en Cuenta → API → «Permitir administrar clientes y productos desde el API» (eso guarda el catálogo sin cifrar en Facta DTE) y concede `catalog:write` a la llave. Se comprueba antes que el alcance y no cambia nada.'
+  catalog_encrypted:
+    status: 409
+    cuando: Una ruta del catálogo y los clientes y productos de la empresa están cifrados (o una ficha quedó cifrada a medias de una conversión).
+    hacer: El servidor no puede leer ese catálogo con esta llave. La persona titular puede darle acceso a la clave de datos compartida (Cuenta → Datos) o guardar el catálogo sin cifrar en Cuenta → API; hasta entonces, envíe el receptor y las líneas completos.
+  catalog_duplicate:
+    status: 409
+    cuando: Ya existe un cliente con ese documento, o un producto con ese código.
+    hacer: '`details.id` dice cuál y `details.activo` si está desactivado. Edítelo con `PATCH`, o reactívelo con `{"activo": true}`.'
+  content_hash_mismatch:
+    status: 422
+    cuando: El `contentHash` no es el SHA-256 del JSON canónico (RFC 8785) del `plaintext`.
+    hacer: Recalcule el hash sobre exactamente lo que cifró y reenvíe.
+  id_conflict:
+    status: 409
+    cuando: El `id` ya existe con otro contenido, o es de otra empresa.
+    hacer: Elija un UUID v4 nuevo. Con el mismo contenido sería una repetición.
+  item_final:
+    status: 409
+    cuando: El pendiente ya está resuelto (aplicado, emitido, cancelado, vencido...) y se le pidió un cambio.
+    hacer: Léalo con `GET` y, si necesita otro, cree uno con un `id` nuevo.
+  draft_claimed:
+    status: 409
+    cuando: Una persona de la empresa tiene el borrador abierto en la app.
+    hacer: Reintente en unos minutos; la reserva vence sola.
+  draft_issuing:
+    status: 409
+    cuando: El borrador se está emitiendo ahora, desde la app o desde otra petición.
+    hacer: No reintente. Consulte `GET /v1/drafts/{id}` hasta que diga `emitido`.
+  draft_issued:
+    status: 409
+    cuando: El borrador ya se emitió.
+    hacer: '`details.codigoGeneracion` dice el documento; consúltelo con `GET /v1/dte/{codigoGeneracion}`.'
+  draft_not_issuable:
+    status: 409
+    cuando: El borrador venció, perdió su contenido, es de otro ambiente o está en un estado que no se emite.
+    hacer: '`details.reason` dice cuál. Cree un borrador nuevo.'
+  version_mismatch:
+    status: 409
+    cuando: La versión del borrador cambió desde que la leyó.
+    hacer: Léalo de nuevo y reaplique su edición sobre la `version` actual.
+  inbox_cap_reached:
+    status: 429
+    cuando: Hay demasiados borradores sin resolver (500 por empresa).
+    hacer: Cancele los que no necesite o espere a que el dueño los resuelva.
+  drafts_not_ready:
+    status: 409
+    cuando: La empresa comparte su clave de datos y la persona titular todavía no ha abierto Facta con su vault desde entonces, así que no hay con qué sellar el borrador.
+    hacer: Pídale a la persona titular que abra Facta con su vault; basta una vez. Después el mismo cuerpo funciona sin cambios.
+  catalog_write_test_key:
+    status: 403
+    cuando: Una llave de pruebas (`00`) quiso escribir el catálogo y la empresa ya tiene una llave de producción viva.
+    hacer: Escriba el catálogo con la llave de producción; la de pruebas sigue leyendo y emitiendo.
+  inbox_retired:
+    status: 410
+    cuando: Llamó a `/v1/catalog/changes` o a una de sus rutas. Ese buzón de cambios de catálogo sellados se retiró; no se aplica nada.
+    hacer: Escriba el catálogo con `POST` y `PATCH` en `/v1/customers` y `/v1/products` (alcance `catalog:write`). Los borradores no cambiaron.
+  data_grant_unavailable:
+    status: 503
+    cuando: El catálogo de la empresa está compartido y Facta no pudo abrir el acceso de esta llave (su mitad, la clave de la época o un bloqueo de la empresa). Nada de lo que usted mandó lo causa.
+    hacer: Reintente en un momento. Si se repite, `details.reason` dice cuál fue; escriba a soporte con la hora y el `keyId`. No cambie ni rote la llave por esto.
+  data_grant_revoked:
+    status: 403
+    cuando: El dueño de la empresa revocó o suspendió el acceso de esta llave al catálogo cifrado.
+    hacer: Pídale que le dé acceso otra vez en Cuenta → API, o que cree una llave nueva.
+  data_epoch_stale:
+    status: 503
+    cuando: La clave de los datos de la empresa se rotó y el acceso de esta llave todavía no se renovó.
+    hacer: Reintente en unos minutos; el dueño lo renueva al abrir Facta. No hace falta cambiar la llave.
+  catalog_revision_conflict:
+    status: 409
+    cuando: Mandó `If-Match` con una revisión que ya no es la actual, o el registro cambió tres veces mientras lo editaba.
+    hacer: '`details.revisionActual` trae la revisión vigente; léalo de nuevo, reaplique su cambio y repita con ese `If-Match`.'
+  catalog_record_inactive:
+    status: 409
+    cuando: Quiso editar datos de un cliente o producto desactivado.
+    hacer: 'Mande también `"activo": true` para reactivarlo, o deje el registro como está.'
+  catalog_search_too_broad:
+    status: 422
+    cuando: La búsqueda de texto libre (`buscar`) sobre un catálogo cifrado con más de 5 000 registros activos.
+    hacer: Busque por documento exacto (`documento=`) o pagine con `cursor` sin `buscar`.
+  catalog_cursor_expired:
+    status: 410
+    cuando: "`GET /v1/catalog/changes?since=` con un cursor desde el que Facta ya no puede continuar: otra generación (una restauración), historial anterior a 90 días, un `since` mayor que la cabeza, o más de 1 000 cambios pendientes."
+    hacer: "`details.reason` dice cuál; lea el catálogo completo y siga con `since=details.cabeza` y `generacion=details.generacion`."
+  webhook_limit_reached:
+    status: 409
+    cuando: Quiso registrar un sexto webhook en la misma llave.
+    hacer: Borre uno (`DELETE /v1/webhooks/{id}`) o cambie la dirección de uno existente con `PATCH`.
+  webhook_duplicate:
+    status: 409
+    cuando: Esa dirección ya está registrada en esta llave.
+    hacer: Cambie los eventos del webhook que ya existe con `PATCH /v1/webhooks/{id}`.
   service_unavailable:
     status: 503
     cuando: Algo nuestro no contestó — la base, el registro de peticiones, el de idempotencia.

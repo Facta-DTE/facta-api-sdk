@@ -31,7 +31,8 @@ Copy the tracked placeholder file `.env.example` into an ignored local file
 and replace each placeholder through your secret manager. It contains no live
 credentials and is never loaded automatically by the SDK.
 
-Staging validation pins `FACTA_API_BASE_URL` to
+Staging validation (and any integration that tests on staging) points the client at staging with
+`baseUrl: FACTA_STAGING_BASE_URL` (exported by the package) or `FACTA_API_BASE_URL` set to
 `https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1` and uses only
 `facta_test_` API/signing keys. Production keys and issuance are outside this
 validation flow.
@@ -327,9 +328,7 @@ retrying it.
 
 ## Stored data and migration
 
-The API/SDK does not store customers or products. The owner maintains or CSV
-imports them in Facta and publishes encrypted snapshots from the web app. The
-SDK only reads the snapshot and resolves IDs in memory. Inline names, invoice
+The API/SDK does not store customers or products on its own: the owner maintains them in Facta (or imports a CSV), and the server resolves `customerId` / `productId` per request. Inline names, invoice
 lists, and fiscal content follow the key’s access limits. When migrating from
 another HTTP client, keep the same `Idempotency-Key`, map its response to
 `IssueResult`, and do not recalculate totals or the canonical document.

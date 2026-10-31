@@ -72,10 +72,66 @@ export interface LineItem {
   uniMedida?: number;
   /** Explicit FSE per-line withholding selection; available only in per-line mode. */
   applyIncomeWithholding?: never;
+  /**
+   * Discount of THIS line, in money (not a percentage), in the same VAT basis as `precioUni`.
+   * Between 0 and `cantidad × precioUni`, otherwise `400`. The exact spelling matters: `descuento`,
+   * `discount` or `descu` do not exist and come back as a `campo_desconocido` warning that suggests
+   * `montoDescu`. There is no global discount on the wire yet.
+   */
+  montoDescu?: number;
+  /**
+   * How this line treats VAT: `gravada` (the default, 13 %), `exenta` (`ventaExenta` column) or `no_sujeta`
+   * (`ventaNoSuj` column). Chosen by you, never deduced by Facta. Valid in 01, 03, 05 and 06; on 11 and 14 the
+   * server refuses it (`422 validation_failed`) even when it says `gravada`, so leave it out there. In a note
+   * use the class the corrected line had. With `productId` the product's class does not reach the API yet:
+   * send `tipoVenta` on the line. `aplicarReteRenta` next to an `exenta` or `no_sujeta` line is
+   * `422 retention_mixed_class_unsupported`.
+   */
+  tipoVenta?: SaleType;
 }
 
 export interface PerLineWithholdingItem extends Omit<LineItem, "applyIncomeWithholding"> {
   applyIncomeWithholding: boolean;
+}
+
+/** One row of `pagos[]`: a payment method and the amount paid with it. */
+export interface Pago {
+  /** Payment-method code of the Ministry's catalogue (e.g. "01"); the server checks it (`422 validation_failed`, `details.supported`). */
+  codigo: string;
+  /** Paid with this method, at most two decimals, greater than zero. */
+  montoPago: number;
+  /** Voucher, cheque number, etc. (at most 50 characters). */
+  referencia?: string | null;
+}
+
+/** A server warning in the sealed response (`advertencias`). Only the fields of its code are present. */
+export interface ServerWarning {
+  codigo?: string;
+  code?: string;
+  mensaje?: string;
+  detalle?: string;
+  /** `campo_desconocido`: exact path of the ignored field (`items[2].descuento`). `plantilla_no_aplicada`: the template field. */
+  campo?: string;
+  /** `campo_desconocido` only: the field the caller probably meant (`items[2].montoDescu`). */
+  sugerencia?: string;
+  /** `plantilla_no_aplicada` only: `plan`, `no_existe` or `incompatible`. */
+  motivo?: string;
+  [field: string]: unknown;
+}
+
+/** A request field Facta DTE does not know: it was ignored and is NOT part of the document. */
+export interface UnknownFieldWarning {
+  codigo: "campo_desconocido";
+  campo: string;
+  mensaje: string;
+  sugerencia?: string;
+}
+
+/** The parsed `Facta-Warning` response header (`campo_desconocido; campos=2`). */
+export interface FactaWarningHeader {
+  code: string;
+  /** The `campos=N` parameter, when the header carries it. */
+  count: number | null;
 }
 
 export type DteType = "01" | "03" | "05" | "06" | "11" | "14";
@@ -89,8 +145,11 @@ export type RelatedDocument =
 export interface ExportDetails {
   tipoItemExpor: 1 | 2 | 3;
   incoterms?: string | null;
+  /** Customs-precinct code; a code outside the catalogue is `422 validation_failed`. */
   recintoFiscal?: string | null;
+  /** Regime type code (`EX-1`, `EX-2`, `EX-3`, `TA-1`); checked like `recintoFiscal`. */
   tipoRegimen?: string | null;
+  /** Regime code, or the composite `<type>.<regime>`; checked like `recintoFiscal`. */
   regimen?: string | null;
   flete?: number;
   seguro?: number;
@@ -101,7 +160,14 @@ interface DteRequestBase {
   condicionOperacion?: 1 | 2 | 3;
   plazo?: "01" | "02" | "03" | null;
   periodo?: number | null;
+  /** Payment-method code. A code outside the catalogue is `422 validation_failed` (`details.field`, `details.supported`). Not combined with `pagos`. */
   formaPago?: string;
+  /**
+   * Several payment methods for one document (01, 03, 11, 14): 1 to 10 rows whose `montoPago` add up to the
+   * total to pay, to the cent. Refused (`400`) together with `formaPago` and on 05/06; refused (`422`) with
+   * `condicionOperacion` 2 (credit).
+   */
+  pagos?: Pago[];
   observaciones?: string | null;
 }
 
@@ -117,47 +183,40 @@ type PerLineFseRequestBase = Omit<DteRequestBase, "items"> & {
   aplicarReteRenta?: never;
 };
 
+/** Own fields of other types: the server answers `400` (not a silent ignore) when a type receives them. */
+interface VatOwnFieldsNever {
+  aplicarRetencionIva?: never;
+  aplicarPercepcionIva?: never;
+}
+
+/** 01 and 03: the 1 % VAT withholding the RECEIVER practises (art. 162 CT) on the taxable net after discounts. Never automatic: you ask for it. */
+interface VatWithholdingField {
+  aplicarRetencionIva?: boolean;
+}
+
 /** DTE request union. DTE-specific fields are available only on their type. */
 export type DteRequest =
-  | (DteRequestBase & { tipoDte: "01"; receptor?: Recipient | null; documentosRelacionados?: never; exportacion?: never; aplicarReteRenta?: never; incomeWithholding?: never; numPagoElectronico?: never })
-  | (DteRequestBase & { tipoDte: "03"; receptor?: Recipient | null; documentosRelacionados?: never; exportacion?: never; aplicarReteRenta?: never; incomeWithholding?: never; numPagoElectronico?: never })
-  | (DteRequestBase & { tipoDte: "05"; receptor?: Recipient | null; documentosRelacionados: RelatedDocument[]; exportacion?: never; aplicarReteRenta?: never; incomeWithholding?: never; numPagoElectronico?: never })
-  | (DteRequestBase & { tipoDte: "06"; receptor?: Recipient | null; documentosRelacionados: RelatedDocument[]; numPagoElectronico?: string | null; exportacion?: never; aplicarReteRenta?: never; incomeWithholding?: never })
-  | (DteRequestBase & { tipoDte: "11"; receptor: ExportRecipient; exportacion: ExportDetails; documentosRelacionados?: never; aplicarReteRenta?: never; incomeWithholding?: never; numPagoElectronico?: never })
-  | (DteRequestBase & { tipoDte: "14"; receptor: ExcludedSubjectRecipient; aplicarReteRenta?: boolean; incomeWithholding?: never; documentosRelacionados?: never; exportacion?: never; numPagoElectronico?: never })
-  | (PerLineFseRequestBase & { receptor: ExcludedSubjectRecipient; documentosRelacionados?: never; exportacion?: never; numPagoElectronico?: never });
-
-export interface CatalogSnapshot {
-  version: 1;
-  customers: CatalogCustomer[];
-  products: CatalogProduct[];
-}
+  | (DteRequestBase & VatWithholdingField & { aplicarPercepcionIva?: never; tipoDte: "01"; receptor?: Recipient | null; documentosRelacionados?: never; exportacion?: never; aplicarReteRenta?: never; incomeWithholding?: never; numPagoElectronico?: never })
+  | (DteRequestBase & VatWithholdingField & {
+    tipoDte: "03"; receptor?: Recipient | null; documentosRelacionados?: never; exportacion?: never; aplicarReteRenta?: never; incomeWithholding?: never; numPagoElectronico?: never;
+    /**
+     * Only 03. The 1 % VAT perception (art. 163 CT) on the taxable net of the GOODS lines (`tipoItem` 1) after
+     * the proportional share of any global discount; services are not in the base. Added to the total to pay,
+     * not part of `montoTotalOperacion`. Never automatic: you ask for it.
+     */
+    aplicarPercepcionIva?: boolean;
+  })
+  | (Omit<DteRequestBase, "pagos"> & VatOwnFieldsNever & { pagos?: never; tipoDte: "05"; receptor?: Recipient | null; documentosRelacionados: RelatedDocument[]; exportacion?: never; aplicarReteRenta?: never; incomeWithholding?: never; numPagoElectronico?: never })
+  | (Omit<DteRequestBase, "pagos"> & VatOwnFieldsNever & { pagos?: never; tipoDte: "06"; receptor?: Recipient | null; documentosRelacionados: RelatedDocument[]; numPagoElectronico?: string | null; exportacion?: never; aplicarReteRenta?: never; incomeWithholding?: never })
+  | (DteRequestBase & VatOwnFieldsNever & { tipoDte: "11"; receptor: ExportRecipient; exportacion: ExportDetails; documentosRelacionados?: never; aplicarReteRenta?: never; incomeWithholding?: never; numPagoElectronico?: never })
+  | (DteRequestBase & VatOwnFieldsNever & { tipoDte: "14"; receptor: ExcludedSubjectRecipient; aplicarReteRenta?: boolean; incomeWithholding?: never; documentosRelacionados?: never; exportacion?: never; numPagoElectronico?: never })
+  | (PerLineFseRequestBase & VatOwnFieldsNever & { aplicarPercepcionIva?: never; receptor: ExcludedSubjectRecipient; documentosRelacionados?: never; exportacion?: never; numPagoElectronico?: never });
 
 /** How the key's company stores the catalog the API can see. */
 export type CatalogMode = "encrypted" | "readable" | "plain";
 
-/** Public synchronization facts for this process-local catalog cache. */
-export interface CatalogState {
-  /**
-   * How this key reaches the catalog, from `/v1/status`: `encrypted` (decrypt the key's snapshot
-   * with `unlockKey`), `readable` (the owner published a readable snapshot) or `plain` (the company
-   * catalog is stored unencrypted and is read and written through the API). `null` when the
-   * server did not say (older API) or status could not be read.
-   */
-  catalogMode: CatalogMode | null;
-  /** `plain` reads are always live, so they report `fresh`. */
-  freshness: "fresh" | "stale" | "missing";
-  localRevision: number | null;
-  fetchedAt: string | null;
-  desiredRevision: number | null;
-  publishedRevision: number | null;
-  syncStatus: string | null;
-  /** Safe error code when the API could not be reached; never includes response data. */
-  statusError: string | null;
-}
-
-/** Explicit opt-in for non-fiscal catalog reads from the last process-local snapshot. */
 export interface CatalogReadOptions {
+  /** @deprecated No effect since 0.6: catalogue reads are always live (there is no local snapshot). */
   allowStale?: boolean;
   /** Include deactivated records (`active: false`). Default false. */
   includeInactive?: boolean;
@@ -169,6 +228,12 @@ export interface CatalogReadOptions {
 export interface CatalogWriteOptions {
   /** Create only: reuse the same key to make a retried create safe. One is minted when omitted. */
   idempotencyKey?: string;
+  /**
+   * Update only: apply the change only if the record is still at this revision (the `revision` you read).
+   * Otherwise `FactaError` `catalog_revision_conflict` (409) with `details.revisionActual`. Honoured by a
+   * company that shares its data key; a plain-catalogue company ignores it (last write wins per field).
+   */
+  ifMatch?: number | string;
   signal?: AbortSignal;
 }
 
@@ -253,7 +318,7 @@ export interface ProductInput {
 }
 
 /**
- * A customer, as the API returns it (Ministry names) and as an encrypted snapshot holds it
+ * A customer, as the API returns it (Ministry names) and as the stored record holds it
  * (stored names). Every record the SDK returns carries both spellings, so code written
  * against either keeps working in every catalog mode.
  */
@@ -279,6 +344,8 @@ export interface CatalogCustomer {
   phone?: string | null;
   email?: string | null;
   active?: boolean;
+  /** The record's catalogue revision, on single reads and writes of a company that shares its data key. Pass it as `ifMatch`. */
+  revision?: number;
   [field: string]: unknown;
 }
 
@@ -306,6 +373,8 @@ export interface CatalogProduct {
   unit_price?: number | null;
   vat_included?: boolean | null;
   active?: boolean;
+  /** See `CatalogCustomer.revision`. */
+  revision?: number;
   [field: string]: unknown;
 }
 
@@ -384,7 +453,11 @@ export interface SealedDte {
   /** Only with `debug: { timings: true }`. */
   debug?: DebugInfo;
   /** Server warnings (e.g. `sin_almacenamiento_duradero`); the emergency safeguard reads them. */
-  advertencias?: Array<string | { codigo?: string; code?: string; mensaje?: string; detalle?: string }>;
+  advertencias?: Array<string | ServerWarning>;
+  /** The `campo_desconocido` warnings of `advertencias`, ready to read. Present only when the request carried a field Facta DTE does not know. */
+  unknownFields?: UnknownFieldWarning[];
+  /** The `Facta-Warning` response header, parsed. Present only when the server sent it. */
+  factaWarning?: FactaWarningHeader;
   /** Present only when the emergency safeguard ran. */
   emergency?: import("./emergency.ts").EmergencyReport;
   /** SDK-side notices; `emergency_saved` / `emergency_failed`. */
@@ -413,7 +486,11 @@ export interface DteInContingency {
   /** Only with `debug: { timings: true }`. */
   debug?: DebugInfo;
   /** Server warnings (e.g. `sin_almacenamiento_duradero`); the emergency safeguard reads them. */
-  advertencias?: Array<string | { codigo?: string; code?: string; mensaje?: string; detalle?: string }>;
+  advertencias?: Array<string | ServerWarning>;
+  /** The `campo_desconocido` warnings of `advertencias`, ready to read. Present only when the request carried a field Facta DTE does not know. */
+  unknownFields?: UnknownFieldWarning[];
+  /** The `Facta-Warning` response header, parsed. Present only when the server sent it. */
+  factaWarning?: FactaWarningHeader;
   /** Present only when the emergency safeguard ran. */
   emergency?: import("./emergency.ts").EmergencyReport;
   /** SDK-side notices; `emergency_saved` / `emergency_failed`. */
@@ -494,6 +571,12 @@ export interface PreparedDte {
   prepareToken: string;
   /** Only with `debug: { timings: true }`. */
   debug?: DebugInfo;
+  /** Server warnings, e.g. `campo_desconocido`. Present only when there is something to review. */
+  advertencias?: Array<string | ServerWarning>;
+  /** The `campo_desconocido` warnings of `advertencias`. Present only when the request carried a field Facta DTE does not know. */
+  unknownFields?: UnknownFieldWarning[];
+  /** The `Facta-Warning` response header, parsed. Present only when the server sent it. */
+  factaWarning?: FactaWarningHeader;
 }
 
 export interface DocumentStatus {
@@ -760,6 +843,7 @@ export interface ApiSyncStatus {
   environment?: "00" | "01";
   sign?: SyncRevision;
   destinations?: SyncRevision;
+  /** @deprecated Retired in 0.6: the server no longer publishes a catalogue snapshot. */
   catalog?: SyncRevision;
 }
 
@@ -767,7 +851,7 @@ export interface Status {
   ok: boolean;
   version: string;
   ambiente: string;
-  /** Absent on older servers; per-line requests require an explicit true. */
+  /** Per-route behavior the API confirms; absent when the server does not advertise support. */
   capabilities?: { fseIncomeWithholdingPerLine?: boolean };
   /** Functions region the API runs in (e.g. `us-west-2`); absent on older APIs. */
   region?: string;
@@ -783,10 +867,9 @@ export interface Status {
     venceEl: string | null;
     /**
      * `plain`: the company catalog is unencrypted and the API reads and writes it.
-     * `readable`: the owner enabled «Catálogo legible por la API», so the
-     * server resolves `customerId` / `productId` and the SDK just sends the
-     * ids. `encrypted` (or absent on older servers): the SDK resolves them
-     * locally from the encrypted catalog and needs the unlock key.
+     * Since 0.6 the server resolves `customerId` / `productId` in every mode
+     * (also when the company keeps the catalog encrypted at rest) and the SDK
+     * just sends the ids; this field is informational.
      */
     catalogMode?: CatalogMode;
     /** true when the company stores its catalog unencrypted: the API reads and writes it. Advertised alongside `catalogMode: "readable"` for older SDKs. */
@@ -811,7 +894,7 @@ export interface Status {
       environment: string | null;
     } | null;
   };
-  /** Published/current revisions for signing, storage destinations, and the encrypted catalog. */
+  /** Published/current revisions for signing, and storage destinations. */
   sincronizacion?: ApiSyncStatus | null;
   /** Absent on older servers; use getStorageStatus() to negotiate the contract. */
   storage?: ManagedStorageStatus;

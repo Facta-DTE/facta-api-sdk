@@ -66,12 +66,10 @@ Deno.test("public live report contains a fixed safe row for each supported DTE v
   assertEquals(report.includes("PRIVATE"), false);
 });
 
-Deno.test("catalog and destination capabilities are positive only after snapshots open", () => {
+Deno.test("destination capability is positive only after the snapshot opens", () => {
   const checks = createValidationResults();
-  checks.catalog = "Passed";
   checks.destinations = "Failed";
   const report = renderLiveReport(checks);
-  assertStringIncludes(report, "| Encrypted catalog snapshot opened locally | Passed |");
   assertStringIncludes(report, "| Encrypted destination snapshot opened locally | Failed |");
 });
 

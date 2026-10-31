@@ -1,95 +1,44 @@
-# Instantáneas de catálogo y consultas sin conexión
+# Lectura del catálogo y resolución de ids
 
-La llave de API recibe una instantánea cifrada de los clientes que tiene
-autorización para consultar y de los productos activos. `syncCatalog()` descarga
-y descifra en memoria la última instantánea publicada. No crea ni modifica
-registros en el servidor. Las altas y cambios de clientes y productos se hacen
-en la app de Facta y mediante la importación CSV, o desde el API cuando la
-empresa guarda su catálogo en texto plano (vea la
-[guía de escritura](catalog-write.es.md)). `catalogMode` indica en cuál de los
-tres casos está: `encrypted` (esta guía), `readable` o `plain` (el SDK lee
-entonces por `GET /v1/customers` y `GET /v1/products` y no necesita
-`unlockKey`; los métodos de lectura conservan su firma).
+[Guía en inglés](catalog.md) · [README](../README.es.md)
 
-## Vigencia
-
-Los métodos auxiliares del catálogo consultan el estado de la API antes de
-reutilizar la caché del proceso. Si cambia la revisión publicada, descargan y
-verifican la nueva instantánea cifrada. Si la sincronización está pendiente, el
-comportamiento predeterminado es fallar con `no_storage_destination`; no se
-devuelven silenciosamente precios ni datos de clientes desactualizados.
-
-Las consultas no fiscales pueden optar por usar datos desactualizados. Esta
-opción sirve para una interfaz, búsqueda local o flujo que pueda mostrar con
-claridad que los resultados podrían estar vencidos:
+Desde el SDK 0.6 el **servidor** resuelve `customerId` y `productId`. El SDK los envía
+tal como usted los escribió, sea cual sea el modo del catálogo de la empresa (cifrado
+en reposo, `readable` o `plain`): ya no hay una instantánea del catálogo por llave que
+descargar, descifrar o guardar en memoria, el catálogo no necesita `unlockKey` y un
+cambio en el catálogo no puede dejar a la integración con una copia vieja.
+`syncCatalog()`, `catalogState()` y la opción `allowStale` se eliminaron (vea el
+[changelog](../CHANGELOG.md)).
 
 ```ts
-const state = await facta.catalogState();
-const products = await facta.listProducts({ allowStale: true });
-
-if (state.freshness !== "fresh") {
-  showCatalogWarning(state);
-}
+await facta.issue({
+  tipoDte: "03",
+  receptor: { customerId: "id-del-cliente" },
+  items: [{ productId: "id-del-producto", cantidad: 1 }],
+});
 ```
 
-`allowStale` solo permite leer la caché que ya mantiene esta instancia de
-`Facta`. No conserva el catálogo al reiniciar el proceso ni omite los errores de
-integridad al descifrar una instantánea nueva. Sin una caché, el SDK sigue
-requiriendo una sincronización inicial correcta.
+Un id desconocido responde `404` (`not_found`) con `details.reason:
+"catalog_unknown_id"`; un registro que la llave no puede usar responde igual. Los
+campos explícitos de la solicitud siempre ganan sobre los guardados. Los datos completos
+(`receptor` e `items` en línea) nunca necesitan el catálogo.
 
-`catalogState()` solo devuelve metadatos de sincronización:
+## Lectura
 
-| Campo | Significado |
+`listCustomers`, `getCustomer`, `searchCustomers` y los de productos llaman a
+`GET /v1/customers` y `GET /v1/products` y devuelven los mismos campos en cualquier
+modo. Los registros desactivados se omiten salvo con `includeInactive: true`. El
+servidor busca en memoria dentro de un catálogo cifrado: una búsqueda de texto sobre
+demasiadas filas responde `catalog_search_too_broad` (422); busque por documento.
+
+Las escrituras (`createCustomer`, `updateCustomer`, `deactivateCustomer` y las de
+productos) están en la [guía de escritura](catalog-write.es.md).
+
+## Errores que conviene atender
+
+| Código | Significado |
 |---|---|
-| `freshness` | `fresh` cuando coinciden las revisiones local y publicada; `stale` cuando difieren o falla la consulta de estado; `missing` si el proceso no tiene una instantánea descifrada. |
-| `localRevision` | Revisión descifrada en este proceso, o `null`. |
-| `fetchedAt` | Momento en que el proceso cargó esa revisión, o `null`. |
-| `desiredRevision` / `publishedRevision` | Revisiones públicas que devuelve la API, o `null` si no están disponibles. |
-| `syncStatus` | Estado público de sincronización del catálogo, o `null`. |
-| `statusError` | Código seguro del SDK si falló la consulta de estado. Nunca incluye credenciales ni contenido del vault. |
-
-## Catálogo legible por la API: el servidor resuelve los ids
-
-Si el dueño de la llave activó «Catálogo legible por la API» en Facta,
-`GET /v1/status` anuncia `llave.catalogMode: "readable"`. En ese modo el SDK
-**envía `customerId` y `productId` tal cual** y el servidor los resuelve desde el
-catálogo que la app publicó para esa llave: no hace falta `unlockKey`, no se
-descarga ni se descifra ninguna instantánea y un cambio en el catálogo no deja a
-la integración con una copia vieja. Un id desconocido responde `404` con
-`detail.reason: "catalog_unknown_id"`; `detail.catalogStale` indica si el
-catálogo publicado va atrasado respecto al de la app.
-
-Con `catalogMode: "encrypted"` (o un servidor anterior que no lo anuncia) todo
-funciona como se describe abajo. El SDK pregunta el modo una vez por minuto y,
-si no puede consultarlo, conserva la resolución local: esa consulta nunca es
-la razón de que una emisión falle. Una integración que envía los datos
-completos no depende de ninguno de los dos modos.
-
-## Las solicitudes fiscales siempre requieren una instantánea vigente
-
-`issue()` y `issueAndArchive()` resuelven `customerId` y `productId` contra una
-instantánea vigente. Nunca usan la opción `allowStale`. Si la sincronización
-está pendiente o no se puede confirmar el estado, la resolución de referencias
-falla antes de enviar la solicitud de factura. Si la integración ya tiene todos
-los datos inline del receptor y los artículos, puede omitir los IDs; esa ruta no
-requiere catálogo ni llave `unlockKey`.
-
-```ts
-try {
-  await facta.issue({
-    tipoDte: "03",
-    receptor: { customerId: "customer-id" },
-    items: [{ productId: "product-id", cantidad: 1 }],
-  });
-} catch (error) {
-  // Ante no_storage_destination, sincroniza la llave desde la app de Facta.
-  // No reintentes con una revisión de catálogo desactualizada.
-}
-```
-
-`catalogState()` puede ayudar a explicar el problema a un operador antes de
-emitir, pero el resultado es informativo y puede quedar desactualizado de
-inmediato. La API sigue siendo responsable de la autorización, la validación
-fiscal, los totales, la firma y la transmisión.
-
-[Versión en inglés](catalog.md) · [README en español](../README.es.md)
+| `data_grant_unavailable` (503) / `data_epoch_stale` (503) | El servidor no pudo abrir ahora el catálogo cifrado de la empresa, o su clave de datos se está rotando. Reintente en unos segundos. |
+| `data_grant_revoked` (403) | La dueña quitó a esta llave el acceso a los datos del catálogo. |
+| `catalog_revision_conflict` (409) | El registro cambió desde la revisión que envió en `If-Match`. |
+| `inbox_retired` (410) | El buzón sellado del catálogo ya no existe (la instantánea por llave solo está marcada como obsoleta y este SDK la ignora); use los métodos de arriba. |
