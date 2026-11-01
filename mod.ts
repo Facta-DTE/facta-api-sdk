@@ -2,6 +2,8 @@ export {
   type CallOptions,
   type DebugOptions,
   type DestinationSnapshot,
+  FACTA_PRODUCTION_BASE_URL,
+  FACTA_STAGING_BASE_URL,
   Facta,
   type FactaArchiveEmissionOptions,
   type FactaConfigV1,

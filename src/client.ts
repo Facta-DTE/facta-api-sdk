@@ -303,7 +303,12 @@ interface RemoteOptions {
 /** The API's largest catalog page (`limite`). */
 const SERVER_CATALOG_PAGE = 200;
 
-const DEFAULT_BASE_URL = "https://hcnvknpsbadplnfcflxx.supabase.co/functions/v1/api-v1";
+/** Public production API endpoint used when no base URL override is configured. */
+export const FACTA_PRODUCTION_BASE_URL = "https://hcnvknpsbadplnfcflxx.supabase.co/functions/v1/api-v1";
+/** Staging API endpoint. Pass as `baseUrl` to opt in; the default remains production. */
+export const FACTA_STAGING_BASE_URL = "https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1";
+
+const DEFAULT_BASE_URL = FACTA_PRODUCTION_BASE_URL;
 const RETRYABLE: ReadonlySet<FactaErrorCode> = new Set([
   "idempotency_in_flight",
   "mh_unreachable",

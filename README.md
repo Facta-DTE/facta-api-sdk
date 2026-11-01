@@ -19,7 +19,7 @@ The official package supports TypeScript and JavaScript. SDKs for other language
 
 The SDK root entry works in Node.js 22+, Deno, and Bun and does not eagerly import filesystem modules. The `@facta-dte/api/node` entry adds Node-only encrypted file archives and config-file loading. The dedicated `@facta-dte/api/file-archive` entry is also Node-only.
 
-The portable client relies on standard `fetch`, Web Crypto, `AbortSignal`, and `crypto.randomUUID`. Every request uses the configured API endpoint; a `facta_test_` key selects Hacienda's test environment at that same endpoint. There is no separate staging API URL.
+The portable client relies on standard `fetch`, Web Crypto, `AbortSignal`, and `crypto.randomUUID`. Every request uses the configured API endpoint; a `facta_test_` key selects Hacienda's test environment. The client defaults to production. To use the staging API, set `baseUrl` to the exported `FACTA_STAGING_BASE_URL` constant.
 
 ## Quick start
 
@@ -67,6 +67,14 @@ An `IssueResult` is a discriminated union. Check `result.estado`: `"sellado"` me
 | `clockFetch` | Optional fetch used only to calibrate the clock. |
 | `config` | Optional versioned scalar configuration (`FactaConfigV1`). |
 | `runtime` | Optional default archive, invalidation archive, remote destinations, and print transport (`FactaRuntimeConfigV1`). |
+
+Use the named endpoint constants when configuring the API host. `FACTA_PRODUCTION_BASE_URL` is the unchanged default; `baseUrl` overrides it when supplied.
+
+```ts
+import { Facta, FACTA_STAGING_BASE_URL } from "@facta-dte/api";
+
+const facta = new Facta({ apiKey: process.env.FACTA_API_KEY!, baseUrl: FACTA_STAGING_BASE_URL });
+```
 
 Configuration values do not include credentials. Flat legacy options override matching versioned config values. See the [Node guide](guides/node.md) or [Deno guide](guides/deno.md) for runtime setup and environment permissions.
 

@@ -275,7 +275,7 @@ un fallo de red. Evita registrar requests, documentos o configuraciones enteras.
 
 | Opción | Valor por defecto | Detalle |
 |---|---|---|
-| `baseUrl` | URL pública de Facta | La llave selecciona el ambiente de Hacienda; staging no usa otra URL de SDK. |
+| `baseUrl` | URL pública de Facta | Producción sigue siendo el valor predeterminado; configura `baseUrl: FACTA_STAGING_BASE_URL` para usar staging. |
 | `timeoutMs` | `60_000` | Deadline para la petición completa, incluido leer el cuerpo de respuesta. |
 | `region` | descubierta en `/v1/status` | Región de las funciones que se envía como `x-region` para que cada petición corra junto a la base de datos (medido: `POST /v1/dte` de 7,2 s a 4,3 s). Se lee una sola vez de `/v1/status`; una API antigua usa `us-west-2`. Una cadena la fija, `false` la apaga; también `config.region` y la variable `FACTA_API_REGION`. `await facta.region()` la devuelve y `diagnose()` informa la región que atendió. Un fallo al descubrirla nunca falla la operación. |
 | `maxRetries` | `3` | Hasta tres reintentos para `idempotency_in_flight`, `mh_unreachable`, `service_unavailable`, `correlative_unavailable` y `network_error`; todo `POST` conserva la misma clave. |
