@@ -3,6 +3,7 @@ export {
   type DebugOptions,
   type DestinationSnapshot,
   Facta,
+  FACTA_PRODUCTION_BASE_URL,
   type FactaArchiveEmissionOptions,
   type FactaConfigV1,
   type FactaEmergencyApi,

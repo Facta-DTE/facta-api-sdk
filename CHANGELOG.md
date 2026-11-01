@@ -2,7 +2,15 @@
 
 ## Unreleased
 
+No changes yet.
+
+## 0.6.0-next.4 (2026-11-01)
+
 Additive. Every call, type and default of 0.6.0-next.3 keeps working. Server behaviour that integrators will notice is listed first.
+
+### Endpoint constants
+
+- Exported `FACTA_PRODUCTION_BASE_URL` from the package root. `DEFAULT_BASE_URL` now refers to this constant and keeps the existing production URL; staging and custom `baseUrl` overrides remain unchanged.
 
 ### Idempotency is stricter (server, 30-Oct-2026)
 

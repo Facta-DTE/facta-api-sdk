@@ -353,7 +353,8 @@ interface RemoteOptions {
 /** The API's largest catalog page (`limite`). */
 const SERVER_CATALOG_PAGE = 200;
 
-const DEFAULT_BASE_URL = "https://hcnvknpsbadplnfcflxx.supabase.co/functions/v1/api-v1";
+export const FACTA_PRODUCTION_BASE_URL = "https://hcnvknpsbadplnfcflxx.supabase.co/functions/v1/api-v1";
+const DEFAULT_BASE_URL = FACTA_PRODUCTION_BASE_URL;
 /**
  * The staging API (test key `facta_test_…`, MH test environment 00; nothing reaches production). The
  * client defaults to the production URL, so a staging integration passes `baseUrl: FACTA_STAGING_BASE_URL`.
