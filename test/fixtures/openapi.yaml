@@ -863,6 +863,25 @@ paths:
                       cantidad: 1
                       precioUni: 30
                       tipoVenta: no_sujeta
+              facturaConDescuentoGlobalPorcentaje:
+                summary: FE con un descuento global del 10 % (toda la venta)
+                value:
+                  tipoDte: "01"
+                  items:
+                    - descripcion: "Café"
+                      cantidad: 10
+                      precioUni: 2
+                  descuentoGlobal: { modo: porcentaje, valor: 10 }
+              creditoFiscalConDescuentoGlobalMonto:
+                summary: CCF con un descuento global de $12.50, sin IVA como precioUni
+                value:
+                  tipoDte: "03"
+                  receptor: { customerId: "374114b6-e957-4c7a-8911-dd6381b1e0ea" }
+                  items:
+                    - descripcion: "Integración de la API de facturación electrónica"
+                      cantidad: 1
+                      precioUni: 125
+                  descuentoGlobal: { modo: monto, valor: 12.5 }
       responses:
         "200":
           description: |
@@ -886,7 +905,9 @@ paths:
         "400":
           description: |
             Cuerpo mal formado, ausente, de más de 1 MB, o falta
-            `Idempotency-Key`.
+            `Idempotency-Key`. También un `descuentoGlobal` mal formado o mayor
+            que el subtotal (`invalid_request`, `details.field`), y
+            `global_discount_not_supported` cuando va en una nota (05/06).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -2615,6 +2636,15 @@ paths:
         `Idempotency-Key` opcional, para siempre: repetir (con otro sobre
         también) devuelve el mismo borrador; la misma llave con otro contenido es
         `422 idempotency_key_reuse` y nombra el borrador.
+
+        **Campos que Facta DTE no conoce:** igual que en `POST /v1/dte`, un
+        campo mal escrito no se rechaza: la respuesta trae `advertencias` con
+        `codigo: campo_desconocido`, el `campo` exacto y, cuando es obvio, la
+        `sugerencia`, más la cabecera `Facta-Warning`. **Ese campo no queda en
+        el borrador** (se guarda la solicitud ya resuelta), así que corríjalo y
+        guarde una versión nueva antes de emitir. Si el borrador se rechaza por
+        otra razón, las advertencias van en `error.details.advertencias`. Una
+        repetición con la misma `Idempotency-Key` las vuelve a dar.
       parameters:
         - $ref: "#/components/parameters/IdempotencyKeyOpcional"
       requestBody:
@@ -2628,9 +2658,13 @@ paths:
       responses:
         "201":
           description: Borrador guardado.
+          headers:
+            Facta-Warning: { $ref: "#/components/headers/FactaWarning" }
           content: { application/json: { schema: { $ref: "#/components/schemas/BorradorEstado" } } }
         "200":
           description: Repetición.
+          headers:
+            Facta-Warning: { $ref: "#/components/headers/FactaWarning" }
           content: { application/json: { schema: { $ref: "#/components/schemas/BorradorEstado" } } }
         "400": { $ref: "#/components/responses/CatalogoPeticionInvalida" }
         "401": { $ref: "#/components/responses/NoAutorizado" }
@@ -2699,7 +2733,8 @@ paths:
         **Alcance: `draft`.** Pide `If-Match: <versión>`. Se rechaza si una
         persona de la empresa lo tiene abierto en la app, se está emitiendo o ya
         se resolvió. Mismo cuerpo que al crearlo; la versión nueva reemplaza a la
-        anterior.
+        anterior. Un campo que Facta DTE no conoce se advierte como al crearlo
+        (`advertencias` y `Facta-Warning`) y no queda en la versión nueva.
       parameters:
         - $ref: "#/components/parameters/BuzonId"
         - name: If-Match
@@ -2718,6 +2753,8 @@ paths:
       responses:
         "200":
           description: Nueva versión.
+          headers:
+            Facta-Warning: { $ref: "#/components/headers/FactaWarning" }
           content: { application/json: { schema: { $ref: "#/components/schemas/BorradorEstado" } } }
         "400": { $ref: "#/components/responses/CatalogoPeticionInvalida" }
         "401": { $ref: "#/components/responses/NoAutorizado" }
@@ -2770,7 +2807,9 @@ paths:
         **Alcance: `issue`** (y `draft`), más `X-Facta-Sign-Key`. El cuerpo es el
         de `POST /v1/dte` más la `version` del borrador. Gasta un correlativo;
         `Idempotency-Key` obligatoria, igual que allí. Responde como esa ruta
-        más `borradorId`. Una sola puerta evita la doble emisión (`409
+        más `borradorId`, con las mismas `advertencias` (un campo desconocido en
+        este cuerpo es `campo_desconocido` y `Facta-Warning`, nunca un `400`;
+        `version` es del borrador y no se advierte). Una sola puerta evita la doble emisión (`409
         draft_issuing` o `draft_claimed`, sin gastar nada); un rechazo de
         Hacienda cuenta como emitido y el borrador no se reabre.
       parameters:
@@ -2785,6 +2824,8 @@ paths:
       responses:
         "200":
           description: Emitido (sellado o en contingencia), como `POST /v1/dte`.
+          headers:
+            Facta-Warning: { $ref: "#/components/headers/FactaWarning" }
           content: { application/json: { schema: { type: object } } }
         "400": { $ref: "#/components/responses/CatalogoPeticionInvalida" }
         "401": { $ref: "#/components/responses/NoAutorizado" }
@@ -3275,7 +3316,8 @@ components:
     BuzonInvalido:
       description: |
         `validation_failed`, `content_hash_mismatch` o `idempotency_key_reuse`
-        (`details.borradorId`).
+        (`details.borradorId`). Si el cuerpo traía campos que Facta DTE no
+        conoce, `details.advertencias` los nombra (`campo_desconocido`).
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
     NoDisponible:
       description: |
@@ -3439,6 +3481,7 @@ components:
                 - sign_vault_locked
                 - sign_vault_missing
                 - invalid_request
+                - global_discount_not_supported
                 - include_limit_exceeded
                 - validation_failed
                 - retention_mixed_class_unsupported
@@ -3573,6 +3616,21 @@ components:
         editado: { type: boolean }
         sobre: { type: object, nullable: true }
         contenido: { type: object, description: "La solicitud ya resuelta, solo si esta llave tiene acceso a la clave de datos de la empresa." }
+        advertencias:
+          type: array
+          description: |
+            Solo al crear o guardar una versión (`POST /v1/drafts`, `PUT
+            /v1/drafts/{id}`), y solo cuando hay algo que revisar: hoy,
+            `campo_desconocido` (ver `DteSellado.advertencias`). El campo
+            nombrado se ignoró y **no forma parte del borrador**.
+          items:
+            type: object
+            required: [codigo, mensaje]
+            properties:
+              codigo: { type: string, enum: [campo_desconocido] }
+              mensaje: { type: string }
+              campo: { type: string }
+              sugerencia: { type: string }
     SolicitudBorrador:
       type: object
       required: [version, tipoDte, items]
@@ -4023,6 +4081,7 @@ components:
         | **precio de la línea** | con IVA | sin IVA | sin IVA | sin IVA (tasa cero) | el precio, tal cual |
         | **receptor** | opcional | inscrito | inscrito | extranjero | el VENDEDOR |
         | **campos propios** | `aplicarRetencionIva` | `aplicarRetencionIva`, `aplicarPercepcionIva` | `documentosRelacionados`, y `numPagoElectronico` solo en 06 | `exportacion` | `aplicarReteRenta` |
+        | **`descuentoGlobal`** | sí, con IVA | sí, sin IVA | no (`400 global_discount_not_supported`) | sí | sí |
 
         Mandar el campo propio de un tipo en otro es `400`, no un campo
         ignorado en silencio: si alguien manda `aplicarReteRenta` en una
@@ -4098,6 +4157,51 @@ components:
             (`montoTotalOperacion + ivaPerci − ivaRete`) y no forma parte de
             `montoTotalOperacion`. **Nunca es automática**: se pide. En otro
             tipo es `400`.
+        descuentoGlobal:
+          type: object
+          nullable: true
+          additionalProperties: false
+          required: [modo, valor]
+          properties:
+            modo:
+              type: string
+              enum: [monto, porcentaje]
+              description: "«monto» en dólares, «porcentaje» en puntos (10 = 10 %). Obligatorio: no tiene valor por omisión."
+            valor:
+              type: number
+              exclusiveMinimum: 0
+              multipleOf: 0.01
+              description: "Mayor que cero, con dos decimales como máximo. Un porcentaje no pasa de 100."
+          example: { modo: porcentaje, valor: 10 }
+          description: |
+            Solo en 01, 03, 11 y 14. El descuento de **toda la venta**, como lo
+            escribe la app: un monto o un porcentaje. Se aplica después de los
+            descuentos por línea (`items[].montoDescu`) y Facta lo reparte:
+
+            - **`porcentaje`**: el mismo porcentaje sobre cada tipo de venta
+              (gravada, exenta, no sujeta) y queda en
+              `resumen.porcentajeDescuento`.
+            - **`monto`**: en la **misma base de IVA que `precioUni`** de ese
+              tipo (con IVA en el 01, sin IVA en el 03 y el 11). Si hay varios
+              tipos de venta se reparte en proporción a cada uno y la suma
+              cuadra al centavo; `porcentajeDescuento` queda en 0.
+            - En el 11 todo cae en `descuGravada`; en el 14, en `resumen.descu`
+              (el único descuento global de la FSE).
+
+            El resultado se lee en `resumen.descuNoSuj`, `descuExenta`,
+            `descuGravada` (o `descu` en el 14) y `totalDescu`, y todo lo que
+            sigue se calcula ya descontado: IVA, `aplicarRetencionIva`,
+            `aplicarPercepcionIva`, `aplicarReteRenta`, `totalPagar` y la suma
+            que tiene que dar `pagos[]`.
+
+            Un descuento mayor que el subtotal es `400 invalid_request` con
+            `details.field: "descuentoGlobal"` y `details.subtotal`; un `modo`
+            mal escrito, un `valor` fuera de rango o cualquier otra clave dentro
+            del objeto es `400` sobre ese campo. En una nota de crédito (05) o
+            de débito (06) es `400 global_discount_not_supported`: sus montos
+            salen del documento que corrigen. `null` es lo mismo que omitirlo.
+            Ninguno de estos rechazos gasta correlativo. `GET /v1/status`
+            confirma el soporte con `capabilities.descuentoGlobal: true`.
         condicionOperacion: { type: integer, enum: [1, 2, 3], default: 1, description: 1 contado, 2 crédito, 3 otro. }
         plazo:
           type: string
@@ -5256,6 +5360,10 @@ components:
       properties:
         ok: { type: boolean }
         version: { type: string, const: v1 }
+        capabilities:
+          type: object
+          properties:
+            descuentoGlobal: { type: boolean, const: true, description: "El servidor lee `descuentoGlobal` en 01, 03, 11 y 14. Sin esta marca, una API anterior lo ignora (y lo advierte como campo desconocido)." }
         region:
           type: string
           nullable: true
@@ -5597,6 +5705,10 @@ x-facta-errores:
     status: 400
     cuando: Cuerpo ausente, que no es JSON, de más de 1 MB, un campo con la forma equivocada, o un código de generación que no tiene forma de UUID.
     hacer: '`details.field` señala el campo cuando lo hay. No gasta correlativo.'
+  global_discount_not_supported:
+    status: 400
+    cuando: Se mandó `descuentoGlobal` en una nota de crédito (05) o de débito (06).
+    hacer: 'Los montos de una nota salen del documento que corrige: ajuste el valor de las líneas y quite `descuentoGlobal`. No gasta correlativo.'
   validation_failed:
     status: 422
     cuando: El documento no cumple el esquema oficial del Ministerio de Hacienda, un código no es del catálogo (`formaPago`, `pagos[].codigo`, `exportacion.recintoFiscal`, `.tipoRegimen`, `.regimen`), o `pagos` no suma el total.

@@ -60,6 +60,7 @@ export { DELIVERY_LIMIT_REASONS, isDeliveryLimitReason } from "./src/delivery.ts
 export {
   FactaError,
   type FactaErrorCode,
+  type SignedNotTransmitted,
   type SpentCorrelative,
 } from "./src/errors.ts";
 export type * from "./src/types.ts";

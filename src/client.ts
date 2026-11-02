@@ -2846,7 +2846,11 @@ export class Facta {
    * with their vault since the company began sharing its data key: ask them to open it once.
    */
   async createDraft(input: DraftInput, options: CallOptions = {}): Promise<Draft> {
-    return draftOf(await this.#request<unknown>("POST", "/v1/drafts", draftBody(input), options));
+    let warningHeader: string | null = null;
+    const payload = await this.#request<unknown>("POST", "/v1/drafts", draftBody(input), {
+      ...options, onHeaders: (headers) => { warningHeader = headers.get("facta-warning"); },
+    });
+    return withWarnings(draftOf(payload), warningHeader);
   }
 
   /** The drafts this key left, newest first, with filters. Follow `next` for more. */
@@ -2873,10 +2877,13 @@ export class Facta {
 
   /** Save a new version of a draft that is still pending. `version` is the one you read (`If-Match`). */
   async updateDraft(draftId: string, version: number, input: DraftInput, options: CallOptions = {}): Promise<Draft> {
-    return draftOf(await this.#request<unknown>("PUT", `/v1/drafts/${encodeURIComponent(requireId(draftId, "draft"))}`, draftBody(input), {
+    let warningHeader: string | null = null;
+    const payload = await this.#request<unknown>("PUT", `/v1/drafts/${encodeURIComponent(requireId(draftId, "draft"))}`, draftBody(input), {
       ...options,
       headers: { "If-Match": String(draftVersion(version)) },
-    }));
+      onHeaders: (headers) => { warningHeader = headers.get("facta-warning"); },
+    });
+    return withWarnings(draftOf(payload), warningHeader);
   }
 
   /** Cancel a draft that is still pending and closed. */
@@ -2895,8 +2902,11 @@ export class Facta {
     const { deliver, ...call } = options;
     const resolved = withDelivery(request, deliver);
     const body = { ...resolved, version: draftVersion(version) };
-    const result = await this.#request<IssueResult & { borradorId: string }>("POST", `/v1/drafts/${encodeURIComponent(requireId(draftId, "draft"))}/issue`, body, call);
-    return await this.#guard(result, []);
+    let warningHeader: string | null = null;
+    const result = await this.#request<IssueResult & { borradorId: string }>("POST", `/v1/drafts/${encodeURIComponent(requireId(draftId, "draft"))}/issue`, body, {
+      ...call, onHeaders: (headers) => { warningHeader = headers.get("facta-warning"); },
+    });
+    return withWarnings(await this.#guard(result, []), warningHeader);
   }
 
   /** Fetch the server's published OpenAPI JSON contract. */
@@ -2945,6 +2955,9 @@ export class Facta {
         return await this.#attempt<T>(method, path, headers, body, binary, options.signal, timings, this.#timeoutMs, options.onHeaders);
       } catch (cause) {
         if (!(cause instanceof FactaError) || !RETRYABLE.has(cause.code)) throw cause;
+        // Signed but not transmitted: the key is bound to that document and replays this same 503.
+        // Another attempt changes nothing; the caller finishes it with `retryDocument`.
+        if (cause.signedNotTransmitted !== null) throw cause;
         lastError = cause;
       }
     }

@@ -6,6 +6,8 @@
 // opens it in the app. It expires after 30 days; a company holds at most 500.
 
 import { FactaError } from "./errors.ts";
+import type { FactaWarningHeader, UnknownFieldWarning } from "./types.ts";
+import { unknownFieldWarnings } from "./warnings.ts";
 
 /** The states a draft can be in; `pendiente` as a filter means «everything not resolved yet». */
 export const DRAFT_STATES = [
@@ -46,6 +48,15 @@ export interface Draft {
   envelope?: Record<string, unknown> | null;
   /** The resolved request, only when this key can open the company data key (`include: "contenido"` or a single read). */
   content?: Record<string, unknown>;
+  /**
+   * `createDraft` / `updateDraft` only: request fields Facta DTE does not know (`campo_desconocido`, with a
+   * `sugerencia` when it is obvious). Each one was ignored and is **not part of the draft** (Facta keeps the
+   * resolved request), so fix it and save a new version before issuing. Present only when there is one; a
+   * replay with the same `Idempotency-Key` reports them again.
+   */
+  unknownFields?: UnknownFieldWarning[];
+  /** The `Facta-Warning` response header, parsed. Present only when the server sent it. */
+  factaWarning?: FactaWarningHeader;
 }
 
 /** The body of a draft: the same request as `issue`, plus an optional id and your own reference. */
@@ -105,6 +116,8 @@ export function draftOf(payload: unknown): Draft {
   if (typeof r["editado"] === "boolean") draft.edited = r["editado"];
   if (r["sobre"] !== undefined) draft.envelope = isObject(r["sobre"]) ? r["sobre"] : null;
   if (isObject(r["contenido"])) draft.content = r["contenido"];
+  const unknownFields = unknownFieldWarnings(isObject(payload) && Array.isArray(payload["advertencias"]) ? payload : r);
+  if (unknownFields.length > 0) draft.unknownFields = unknownFields;
   return draft;
 }
 

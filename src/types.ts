@@ -74,7 +74,7 @@ export interface LineItem {
    * Discount of THIS line, in money (not a percentage), in the same VAT basis as `precioUni`.
    * Between 0 and `cantidad × precioUni`, otherwise `400`. The exact spelling matters: `descuento`,
    * `discount` or `descu` do not exist and come back as a `campo_desconocido` warning that suggests
-   * `montoDescu`. There is no global discount on the wire yet.
+   * `montoDescu`. For a discount on the whole sale use `descuentoGlobal` on the request (01, 03, 11, 14).
    */
   montoDescu?: number;
   /**
@@ -149,6 +149,14 @@ export interface ExportDetails {
   seguro?: number;
 }
 
+/** `descuentoGlobal`: one discount for the whole sale, in dollars or in percentage points. */
+export interface GlobalDiscount {
+  /** `monto`: dollars, in the VAT basis of `precioUni`. `porcentaje`: points (10 = 10 %). Required: there is no default. */
+  modo: "monto" | "porcentaje";
+  /** Greater than zero, at most two decimals. A percentage is at most 100. */
+  valor: number;
+}
+
 interface DteRequestBase {
   items: LineItem[];
   condicionOperacion?: 1 | 2 | 3;
@@ -162,6 +170,29 @@ interface DteRequestBase {
    * `condicionOperacion` 2 (credit).
    */
   pagos?: Pago[];
+  /**
+   * The discount of the WHOLE sale, as the Facta app writes it (01, 03, 11 and 14 only). Applied after
+   * the line discounts (`items[].montoDescu`) and allocated by Facta:
+   *
+   * - `porcentaje`: the same percentage on every sale class (gravada, exenta, no sujeta); it is also
+   *   written to `resumen.porcentajeDescuento`.
+   * - `monto`: dollars in the SAME VAT basis as `precioUni` of that type (VAT included on 01, excluded on
+   *   03 and 11). Over several sale classes it is split in proportion and adds up to the cent;
+   *   `porcentajeDescuento` stays 0.
+   * - On 11 it all goes to `descuGravada`; on 14 to `resumen.descu`.
+   *
+   * Everything after it (VAT, `aplicarRetencionIva`, `aplicarPercepcionIva`, `aplicarReteRenta`,
+   * `totalPagar` and the sum `pagos[]` must match) is computed on the discounted amounts. Read the result in
+   * `resumen.descuNoSuj` / `descuExenta` / `descuGravada` (or `descu` on 14) and `totalDescu`.
+   *
+   * A discount above the subtotal is `400 invalid_request` (`details.field: "descuentoGlobal"`,
+   * `details.subtotal`); a bad `modo`, a `valor` out of range or any other key is `400` on that field. On a
+   * credit (05) or debit (06) note it is `400 global_discount_not_supported`: a note's amounts come from the
+   * document it corrects. None of these spends a control number. `null` is the same as leaving it out.
+   * Check `status().capabilities?.descuentoGlobal` first: an older API ignores the field and only warns
+   * about it as `campo_desconocido`.
+   */
+  descuentoGlobal?: GlobalDiscount | null;
   observaciones?: string | null;
 }
 
@@ -842,10 +873,21 @@ export interface ApiSyncStatus {
   catalog?: SyncRevision;
 }
 
+/** `GET /v1/status` → `capabilities`: features an integration can detect before relying on them. */
+export interface StatusCapabilities {
+  /** The server reads `descuentoGlobal` on 01, 03, 11 and 14. Without it an older API ignores the field (and warns `campo_desconocido`). */
+  descuentoGlobal?: boolean;
+  /** The server accepts the explicit FSE per-line income withholding (`incomeWithholding: { mode: "per_line" }`). */
+  fseIncomeWithholdingPerLine?: boolean;
+  [capability: string]: unknown;
+}
+
 export interface Status {
   ok: boolean;
   version: string;
   ambiente: string;
+  /** Behaviour the API confirms; absent when the server advertises nothing. A flag that is not `true` means «not supported». */
+  capabilities?: StatusCapabilities;
   /** Functions region the API runs in (e.g. `us-west-2`); absent on older APIs. */
   region?: string;
   /** Region that served this very call, when the API reports it. */
