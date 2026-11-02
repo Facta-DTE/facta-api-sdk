@@ -24,6 +24,21 @@ export type FactaErrorCode =
   | "sign_vault_locked"
   | "sign_vault_missing"
   | "invalid_request"
+  // FSE (14) per-line income-tax withholding controls (`incomeWithholding`, `items[].applyIncomeWithholding`),
+  // all HTTP 400 and nothing spent. The SDK does not build these controls yet; the codes are typed so a
+  // caller sending them by hand can branch on the server's answer.
+  /** `incomeWithholding.mode` is not `per_line`, or the object carries an unknown key. */
+  | "fse_withholding_mode_invalid"
+  /** `incomeWithholding` or per-line decisions combined with `aplicarReteRenta`. */
+  | "fse_withholding_legacy_conflict"
+  /** Per-line FSE withholding controls on a type other than 14. */
+  | "fse_withholding_not_supported"
+  /** Per-line mode with no lines, or a line missing its `applyIncomeWithholding` decision. */
+  | "fse_withholding_selection_required"
+  /** An `applyIncomeWithholding` decision that is not a boolean. */
+  | "fse_withholding_selection_invalid"
+  /** `applyIncomeWithholding` sent without `incomeWithholding.mode: per_line`. */
+  | "fse_withholding_mode_required"
   /** `descuentoGlobal` on a credit (05) or debit (06) note (HTTP 400): a note's amounts come from the document it corrects. Nothing spent. */
   | "global_discount_not_supported"
   /** A non-taxed line (`items[].noGravado`) on a document with no sale line above zero (HTTP 400). Also raised locally (status 0). Nothing spent. */

@@ -113,6 +113,32 @@ Deno.test("a non-taxed line carrying a sale field is invalid_request naming the 
   localError(() => assertNonTaxedLines({ tipoDte: "01", items: [SALE, { ...CAPITAL, noGravado: 1e-9 }] }), "invalid_request");
 });
 
+Deno.test("local checks follow the server's order and rules: uniMedida 99, bounds, codigo, numeroDocumento", () => {
+  const field = (request: unknown) =>
+    (localError(() => assertNonTaxedLines(request), "invalid_request").details as Record<string, unknown>)["field"];
+  // uniMedida is accepted only when it is 99.
+  assertNonTaxedLines({ tipoDte: "01", items: [SALE, { ...CAPITAL, uniMedida: 99 }] });
+  assertEquals(field({ tipoDte: "01", items: [SALE, { ...CAPITAL, uniMedida: 59 }] }), "items[1].uniMedida");
+  // The amount is checked first, then the sale fields, as nonTaxedWireProblem does.
+  assertEquals(field({ tipoDte: "01", items: [SALE, { ...CAPITAL, noGravado: 0, cantidad: 1 }] }), "items[1].noGravado");
+  assertEquals(field({ tipoDte: "01", items: [SALE, { ...CAPITAL, cantidad: 1, uniMedida: 59 }] }), "items[1].cantidad");
+  assertEquals(field({ tipoDte: "01", items: [SALE, { noGravado: 5, descripcion: "" }] }), "items[1].descripcion");
+  // |noGravado| below 1e11 (the contract's exclusive bounds).
+  assertEquals(field({ tipoDte: "01", items: [SALE, { ...CAPITAL, noGravado: -1e11 }] }), "items[1].noGravado");
+  assertNonTaxedLines({ tipoDte: "01", items: [SALE, { ...CAPITAL, noGravado: 99999999999.5 }] });
+  assertEquals(field({ tipoDte: "01", items: [SALE, { ...CAPITAL, codigo: 7 }] }), "items[1].codigo");
+  assertNonTaxedLines({ tipoDte: "01", items: [SALE, { ...CAPITAL, codigo: null }] });
+  // numeroDocumento only on a note.
+  assertEquals(field({ tipoDte: "01", items: [SALE, { ...CAPITAL, numeroDocumento: "X" }] }), "items[1].numeroDocumento");
+  assertNonTaxedLines({ tipoDte: "05", items: [SALE, { ...CAPITAL, numeroDocumento: "X" }] });
+  assertEquals(field({ tipoDte: "06", items: [SALE, { ...CAPITAL, numeroDocumento: " " }] }), "items[1].numeroDocumento");
+});
+
+Deno.test("a sale line fully discounted to $0.00 does not count as a sale line (cantidad × precioUni − montoDescu)", () => {
+  localError(() => assertNonTaxedLines({ tipoDte: "01", items: [{ descripcion: "x", cantidad: 2, precioUni: 5, montoDescu: 10 }, CAPITAL] }), "non_taxed_requires_sale_line");
+  assertNonTaxedLines({ tipoDte: "01", items: [{ descripcion: "x", cantidad: 2, precioUni: 5, montoDescu: 9.99 }, CAPITAL] });
+});
+
 Deno.test("a request without non-taxed lines is not inspected (zero-priced or any shape still goes to the server)", async () => {
   const { facta, calls } = harness(() => json(SEALED));
   await facta.issue({ tipoDte: "14", receptor: { nombre: "Ana", numDocumento: "1", direccion: { departamento: "06", municipio: "20", complemento: "x" } }, items: [{ descripcion: "x", cantidad: 1, precioUni: 0 }] });
@@ -154,6 +180,9 @@ Deno.test("the line is typed: a non-taxed line cannot carry sale fields and 14 c
   const withProduct: DteRequest = { tipoDte: "01", items: [SALE, { descripcion: "Capital", noGravado: 5, tipoItem: 2, productId: "p" }] };
   // @ts-expect-error tipoItem is required on a non-taxed line
   const noType: DteRequest = { tipoDte: "01", items: [SALE, { descripcion: "Capital", noGravado: 5 }] };
+  // @ts-expect-error uniMedida on a non-taxed line can only be 99
+  const unit: DteRequest = { tipoDte: "01", items: [SALE, { ...CAPITAL, uniMedida: 59 }] };
+  const unit99: DteRequest = { tipoDte: "01", items: [SALE, { ...CAPITAL, uniMedida: 99 }] };
   // @ts-expect-error tipoItem 4 (tributo) is not a non-taxed line type
   const tributo: DteRequest = { tipoDte: "01", items: [SALE, { descripcion: "Capital", noGravado: 5, tipoItem: 4 }] };
   // @ts-expect-error 14 (FSE) has no noGravado line
@@ -163,5 +192,5 @@ Deno.test("the line is typed: a non-taxed line cannot carry sale fields and 14 c
     items: [{ descripcion: "Servicio", cantidad: 1, precioUni: 50 }, CAPITAL],
   };
   const ok: DteRequest = { tipoDte: "11", receptor: exportWithReimbursement.receptor as never, exportacion: { tipoItemExpor: 2 }, items: [{ descripcion: "Servicio", cantidad: 1, precioUni: 1 }, CAPITAL] };
-  assert([withQuantity, withPrice, withProduct, noType, tributo, fse, ok].every((request) => typeof request.tipoDte === "string"));
+  assert([withQuantity, withPrice, withProduct, noType, unit, unit99, tributo, fse, ok].every((request) => typeof request.tipoDte === "string"));
 });

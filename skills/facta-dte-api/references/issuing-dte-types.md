@@ -93,7 +93,8 @@ v2.0 §XII) is its own line on 01, 03, 05, 06 and 11:
 `{ descripcion, noGravado, tipoItem, codigo? }` (`NonTaxedLine`; `tipoItem`
 required, never defaulted). It moves only `resumen.totalNoGravado` and
 `totalPagar` (VAT, subtotal, discounts and withholding bases unchanged), cannot
-carry `cantidad`/`precioUni`/`montoDescu`/`tipoVenta`/`productId`, needs at least
+carry `cantidad`/`precioUni`/`montoDescu`/`tipoVenta`/`productId` (`uniMedida`
+only as 99), needs at least
 one sale line above zero (`non_taxed_requires_sale_line`) and is
 `non_taxed_not_supported` on 14; the SDK checks these locally (status 0). Credits
 below a zero total are `non_taxed_total_negative`. In an export (11) every good or

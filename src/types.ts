@@ -101,7 +101,7 @@ export interface LineItem {
  * - `noGravado` > 0 is a charge (adds to the total to pay); < 0 is a credit (subtracts). Never 0, at most
  *   8 decimals. A total to pay below zero is `400 non_taxed_total_negative`.
  * - It cannot be combined with `cantidad`, `precioUni`, `montoDescu`, `tipoVenta` or `productId`
- *   (`400 invalid_request` naming the field); the type forbids them.
+ *   (`400 invalid_request` naming the field); the type forbids them. `uniMedida`, if sent, must be 99.
  * - The document needs at least one sale line (gravada, exenta or no sujeta) with an amount above zero:
  *   `400 non_taxed_requires_sale_line`. On 14 (FSE) it is `400 non_taxed_not_supported`.
  * - In an export (11) every good or service sold is a sale line (taxed at 0 %); only a charge that is not a
@@ -126,7 +126,8 @@ export interface NonTaxedLine {
   montoDescu?: never;
   tipoVenta?: never;
   productId?: never;
-  uniMedida?: never;
+  /** Optional; when present it must be 99 (Facta writes 99 anyway). Any other unit is `400 invalid_request`. */
+  uniMedida?: 99;
 }
 
 /** A line of 01, 03, 05, 06 or 11: a sale line, or a non-taxed charge/credit line. */

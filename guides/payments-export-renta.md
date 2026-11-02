@@ -134,7 +134,7 @@ const result = await facta.issue({
 
 - The line is `{ descripcion, noGravado, tipoItem, codigo? }` (`NonTaxedLine`). `noGravado` > 0 is a charge (adds to the total to pay), < 0 a credit (subtracts); never 0, at most 8 decimals. `tipoItem` (1 bien, 2 servicio, 3 ambos) is **required**: Facta never picks it for you.
 - Facta writes it as the Manual says (cantidad 1, `uniMedida` 99, `precioUni` 0, every sale column and tax 0) and adds it **only** to `resumen.totalNoGravado` and `totalPagar`. VAT, subtotal, `montoTotalOperacion`, line and global discounts, and the bases of `aplicarRetencionIva` / `aplicarPercepcionIva` do not move. `pagos[]` must add up to the new `totalPagar`.
-- It cannot carry `cantidad`, `precioUni`, `montoDescu`, `tipoVenta` or `productId`: the types refuse them, and so does the server (`400 invalid_request` naming the field).
+- It cannot carry `cantidad`, `precioUni`, `montoDescu`, `tipoVenta` or `productId`: the types refuse them, and so does the server (`400 invalid_request` naming the field). `uniMedida` may be left out; if sent it must be 99.
 - The document needs at least one sale line (gravada, exenta or no sujeta) above zero: `400 non_taxed_requires_sale_line`. On 14 (FSE) it is `400 non_taxed_not_supported`. The SDK checks both before sending (a `FactaError` with that code, status 0, `details.local: true`), so nothing is reserved. Credits that leave the total below zero are `400 non_taxed_total_negative` from the server. None of these spends a number.
 - **Exports (11):** every good or service you sell is a sale line, taxed at 0 %. Only a charge that is **not** a sale, such as reimbursing a courier cost paid for the buyer, goes as `noGravado`:
 

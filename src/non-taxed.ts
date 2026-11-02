@@ -52,6 +52,7 @@ export function assertNonTaxedLines(request: unknown): void {
       field: first, tipoDte, supported: [...NON_TAXED_DTE_TYPES],
     });
   }
+  const isNote = tipoDte === "05" || tipoDte === "06";
   let saleLines = 0;
   for (const [index, item] of items.entries()) {
     const label = `items[${index}]`;
@@ -60,20 +61,32 @@ export function assertNonTaxedLines(request: unknown): void {
       continue;
     }
     const line = item as unknown as Record<string, unknown>;
+    // Same checks, same order and same `details.field` as the server's `nonTaxedWireProblem`.
+    const amount = line["noGravado"];
+    if (typeof amount !== "number" || !Number.isFinite(amount) || amount === 0 || Math.abs(amount) >= 1e11 || !decimalsOk(amount)) {
+      refuse("invalid_request", `${label}.noGravado tiene que ser un número distinto de cero, menor que 100 000 000 000 en valor absoluto y con 8 decimales como máximo.`, { field: `${label}.noGravado` });
+    }
     for (const field of EXCLUSIVE_FIELDS) {
       if (line[field] !== undefined) {
         refuse("invalid_request", `${label}.${field} no va en una línea no gravada: lleve solo descripcion, noGravado, tipoItem y codigo.`, { field: `${label}.${field}` });
       }
     }
-    const amount = line["noGravado"];
-    if (typeof amount !== "number" || !Number.isFinite(amount) || amount === 0 || !decimalsOk(amount)) {
-      refuse("invalid_request", `${label}.noGravado tiene que ser un número distinto de cero, con 8 decimales como máximo.`, { field: `${label}.noGravado` });
+    if (line["uniMedida"] !== undefined && line["uniMedida"] !== 99) {
+      refuse("invalid_request", `${label}.uniMedida de una línea no gravada es siempre 99 (u omítala).`, { field: `${label}.uniMedida` });
+    }
+    if (typeof line["descripcion"] !== "string" || line["descripcion"].trim() === "") {
+      refuse("invalid_request", `${label}.descripcion es obligatoria en una línea no gravada.`, { field: `${label}.descripcion` });
     }
     if (line["tipoItem"] !== 1 && line["tipoItem"] !== 2 && line["tipoItem"] !== 3) {
       refuse("invalid_request", `${label}.tipoItem es obligatorio en una línea no gravada: 1 (bien), 2 (servicio) o 3 (ambos).`, { field: `${label}.tipoItem` });
     }
-    if (typeof line["descripcion"] !== "string" || line["descripcion"].trim() === "") {
-      refuse("invalid_request", `${label}.descripcion es obligatoria en una línea no gravada.`, { field: `${label}.descripcion` });
+    const codigo = line["codigo"];
+    if (codigo !== undefined && codigo !== null && typeof codigo !== "string") {
+      refuse("invalid_request", `${label}.codigo tiene que ser un texto.`, { field: `${label}.codigo` });
+    }
+    const numeroDocumento = line["numeroDocumento"];
+    if (numeroDocumento !== undefined && (!isNote || typeof numeroDocumento !== "string" || numeroDocumento.trim() === "")) {
+      refuse("invalid_request", `${label}.numeroDocumento solo va en una nota (05/06), como texto.`, { field: `${label}.numeroDocumento` });
     }
   }
   if (saleLines === 0) {
@@ -82,11 +95,16 @@ export function assertNonTaxedLines(request: unknown): void {
 }
 
 /**
- * A sale line that may carry an amount. Only an explicit zero (`cantidad` or `precioUni` equal to 0) is known
- * locally not to; a `productId` line without a price is resolved by the server, which decides.
+ * A sale line that may carry an amount: the server's rule is `cantidad × precioUni − montoDescu > 0`. It is
+ * applied locally only when both numbers are on the line; a `productId` line without a price is resolved by
+ * the server, which decides.
  */
 function isSaleLineWithAmount(item: unknown): boolean {
   if (typeof item !== "object" || item === null) return false;
   const line = item as Record<string, unknown>;
-  return line["cantidad"] !== 0 && line["precioUni"] !== 0;
+  const cantidad = line["cantidad"];
+  const precioUni = line["precioUni"];
+  if (typeof cantidad !== "number" || typeof precioUni !== "number") return line["cantidad"] !== 0 && line["precioUni"] !== 0;
+  const descuento = typeof line["montoDescu"] === "number" ? line["montoDescu"] : 0;
+  return cantidad * precioUni - descuento > 0;
 }

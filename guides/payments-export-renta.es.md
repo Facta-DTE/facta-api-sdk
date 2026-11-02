@@ -134,7 +134,7 @@ const result = await facta.issue({
 
 - La línea es `{ descripcion, noGravado, tipoItem, codigo? }` (`NonTaxedLine`). `noGravado` > 0 es un cargo (suma al total a pagar), < 0 un abono (resta); nunca 0, con 8 decimales como máximo. `tipoItem` (1 bien, 2 servicio, 3 ambos) es **obligatorio**: Facta no lo elige por usted.
 - Facta la escribe como dice el Manual (cantidad 1, `uniMedida` 99, `precioUni` 0, todas las ventas y tributos en 0) y la suma **solo** a `resumen.totalNoGravado` y a `totalPagar`. El IVA, el subtotal, `montoTotalOperacion`, los descuentos por línea y global, y las bases de `aplicarRetencionIva` / `aplicarPercepcionIva` no se mueven. `pagos[]` tiene que sumar el nuevo `totalPagar`.
-- No lleva `cantidad`, `precioUni`, `montoDescu`, `tipoVenta` ni `productId`: los tipos los rechazan, y el servidor también (`400 invalid_request` con el campo).
+- No lleva `cantidad`, `precioUni`, `montoDescu`, `tipoVenta` ni `productId`: los tipos los rechazan, y el servidor también (`400 invalid_request` con el campo). `uniMedida` puede omitirse; si va, tiene que ser 99.
 - El documento necesita al menos una línea de venta (gravada, exenta o no sujeta) mayor que cero: `400 non_taxed_requires_sale_line`. En el 14 (FSE) es `400 non_taxed_not_supported`. El SDK revisa las dos cosas antes de enviar (un `FactaError` con ese código, status 0, `details.local: true`), así que no se reserva nada. Los abonos que dejan el total por debajo de cero son `400 non_taxed_total_negative`, del servidor. Ninguno gasta número.
 - **Exportaciones (11):** todo bien o servicio que usted vende es una línea de venta, gravada al 0 %. Solo un cargo que **no** es venta, como reembolsar un courier pagado por cuenta del comprador, va como `noGravado`:
 

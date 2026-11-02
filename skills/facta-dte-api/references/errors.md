@@ -53,6 +53,12 @@ Everything else is final for that request.
 | `method_not_allowed` | 405 | Route exists, wrong method (only outside the SDK). |
 | `prepare_token_invalid` | 422 | Token expired (15 min), other key, or document changed → `prepare` again. |
 | `include_limit_exceeded` | 400 | `listDocuments` with `include: ["dte"]` asked for more than 25 rows (`details.maximo`) → ask for 25 or fewer and follow `siguiente`. |
+| `fse_withholding_mode_invalid` | 400 | FSE per-line withholding: `incomeWithholding.mode` not `per_line` or an unknown key; nothing spent → send only `{ mode: "per_line" }`. |
+| `fse_withholding_legacy_conflict` | 400 | per-line controls combined with `aplicarReteRenta`; nothing spent → choose one mode. |
+| `fse_withholding_not_supported` | 400 | per-line FSE withholding controls outside 14; nothing spent → remove `incomeWithholding` and `applyIncomeWithholding`. |
+| `fse_withholding_selection_required` | 400 | per-line mode with no lines or a line without `applyIncomeWithholding`; nothing spent → send a boolean on every line. |
+| `fse_withholding_selection_invalid` | 400 | an `applyIncomeWithholding` that is not a boolean; nothing spent → send `true` or `false`. |
+| `fse_withholding_mode_required` | 400 | `applyIncomeWithholding` without the per-line mode; nothing spent → add `incomeWithholding.mode: "per_line"` or remove the decisions. |
 | `global_discount_not_supported` | 400 | `descuentoGlobal` on a credit (05) or debit (06) note; nothing spent → adjust the line values and leave `descuentoGlobal` out. |
 | `non_taxed_requires_sale_line` | 400 | a `noGravado` line with no sale line above zero; also raised locally (status 0); nothing spent → add a sale line with an amount. |
 | `non_taxed_not_supported` | 400 | a `noGravado` line on 14 (or 07/15); also raised locally (status 0); nothing spent → remove it; only 01, 03, 05, 06, 11 accept it. |
