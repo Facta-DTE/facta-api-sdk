@@ -91,9 +91,31 @@ await facta.issue({
 }, { idempotencyKey: "export-1" });
 ```
 
+## Descuento global (`descuentoGlobal`)
+
+Un descuento para toda la venta, como lo escribe la aplicación de Facta, en 01, 03, 11 y 14:
+
+```ts
+const status = await facta.status();
+if (status.capabilities?.descuentoGlobal !== true) throw new Error("Esta API todavía no lee descuentoGlobal.");
+
+await facta.issue({
+  tipoDte: "01",
+  items: [{ descripcion: "Café", cantidad: 10, precioUni: 2 }],
+  descuentoGlobal: { modo: "porcentaje", valor: 10 }, // o { modo: "monto", valor: 12.5 }
+}, { idempotencyKey: "pedido-81" });
+```
+
+- `modo` es obligatorio: `"porcentaje"` (puntos, 10 = 10 %, como máximo 100) o `"monto"` (dólares). `valor` es mayor que cero y lleva como máximo dos decimales.
+- Se aplica **después** de los descuentos por línea (`montoDescu`). Un `monto` va en la **misma base de IVA que `precioUni`** de ese tipo: con IVA en el 01, sin IVA en el 03 y el 11.
+- Facta lo reparte: un porcentaje se aplica a cada tipo de venta (gravada, exenta, no sujeta) y queda en `resumen.porcentajeDescuento`; un monto se reparte en proporción entre los tipos y cuadra al centavo. En el 11 todo cae en `descuGravada`; en el 14, en `resumen.descu`.
+- Todo lo que sigue se calcula ya descontado: IVA, `aplicarRetencionIva`, `aplicarPercepcionIva`, `aplicarReteRenta`, `totalPagar` y la suma que tiene que dar `pagos[]`. El resultado se lee en `resumen.descuNoSuj` / `descuExenta` / `descuGravada` (o `descu` en el 14) y `totales.totalDescu`.
+- Más que el subtotal es `400 invalid_request` con `details.field: "descuentoGlobal"` y `details.subtotal`; un `modo` mal escrito, un `valor` fuera de rango u otra clave dentro del objeto es `400` sobre ese campo. En una nota de crédito (05) o de débito (06) es `400 global_discount_not_supported`: los montos de una nota salen del documento que corrige. Ninguno de estos rechazos gasta número. `null` es lo mismo que omitirlo.
+- El mismo campo sirve en `prepare()`, `createDraft()` y `updateDraft()`. Sin `capabilities.descuentoGlobal`, una API anterior ignora el campo y solo lo advierte (`campo_desconocido`): revise la capacidad antes de depender de él.
+
 ## Retención de renta (14)
 
-`aplicarReteRenta` (solo en el tipo 14) es opcional: omitida o `false` no retiene (`reteRenta` vale `0`); `true` aplica la tasa **vigente** de renta (hoy 10 %, art. 156 del Código Tributario) sobre **todo el subtotal después de los descuentos por línea** (`montoDescu`; en el tipo 14 no hay descuento global). Qué significa:
+`aplicarReteRenta` (solo en el tipo 14) es opcional: omitida o `false` no retiene (`reteRenta` vale `0`); `true` aplica la tasa **vigente** de renta (hoy 10 %, art. 156 del Código Tributario) sobre **todo el subtotal después de los descuentos** (`montoDescu` por línea y `descuentoGlobal`, que en el tipo 14 queda en `resumen.descu`). Qué significa:
 
 - **No** selecciona líneas según `tipoItem`. Si un servicio incluye bienes como insumos, esos materiales forman parte de la operación y quedan dentro del subtotal. Ejemplo: materiales de $100 más mano de obra de $50 dan un subtotal de $150; al 10 % la retención es $15 y el total a pagar es $135.
 - Se resta del total a pagar: `totalPagar = subTotal − reteRenta`.

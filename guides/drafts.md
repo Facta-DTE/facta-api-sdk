@@ -35,6 +35,15 @@ await facta.cancelDraft(draft.id); // only while it is pending and nobody has it
 | `cancelDraft(id)` | `DELETE /v1/drafts/{id}` | Only if pending and closed. |
 | `issueDraft(id, version, request, options?)` | `POST /v1/drafts/{id}/issue` | One door prevents double issuing: `draft_issuing` / `draft_claimed` (409) spent nothing. A Hacienda rejection counts as issued and the draft is not reopened. |
 
+## Misspelled fields
+
+Like `issue()`, a draft never refuses a field Facta DTE does not know: `createDraft` and `updateDraft` return it in `draft.unknownFields` (`codigo: "campo_desconocido"`, the exact `campo` and, when obvious, a `sugerencia`) and the parsed `Facta-Warning` header in `draft.factaWarning`. **That field is not in the draft**: Facta keeps the resolved request, so fix it and save a new version with `updateDraft` before anybody issues it. A replay with the same `idempotencyKey` reports the same warnings again, and a refused draft carries them in `error.unknownFields`. `issueDraft` reports them like `issue()`.
+
+```ts
+const draft = await facta.createDraft({ tipoDte: "01", items, descuento: 1 }, { idempotencyKey: "order-77" });
+for (const w of draft.unknownFields ?? []) console.warn(w.campo, "→", w.sugerencia); // descuento → descuentoGlobal
+```
+
 ## Errors worth handling
 
 `drafts_not_ready` (409): the owner has not opened Facta with their vault since the company began sharing its data key; ask them to open it once and repeat. `version_mismatch` (409): read the draft again. `draft_claimed`, `draft_issuing`, `draft_issued`, `draft_not_issuable`, `item_final` (409): the draft is in use or resolved; read it with `getDraft`. `inbox_cap_reached` (429): too many open drafts. None of these is retried automatically. All are in [errors.md](errors.md#drafts).

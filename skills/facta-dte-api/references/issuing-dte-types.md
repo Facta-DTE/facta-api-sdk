@@ -90,7 +90,7 @@ do not declare the first three, so use a direct HTTP call for them. Sending a ty
 
 `aplicarReteRenta` is optional: omitted or `false` = no withholding (`reteRenta` 0);
 `true` applies the **current** income-tax rate (10 % today, art. 156 CT) to the
-**whole subtotal after per-line discounts** (`montoDescu`; no global discount on
+**whole subtotal after discounts** (`montoDescu` and `descuentoGlobal`, in `descu` on
 14). It does not select lines by `tipoItem`: goods used as inputs of a service
 stay in the base (materials $100 + labour $50 → subtotal $150 → withholding $15,
 total $135). A goods-only purchase is not automatically subject just because it

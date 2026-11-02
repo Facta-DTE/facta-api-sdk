@@ -2,7 +2,26 @@
 
 ## Unreleased
 
-No changes yet.
+Additive. Server behaviour on API staging (integration of 2-Nov-2026); production follows the API's own release.
+
+### Global discount (`descuentoGlobal`)
+
+- **`DteRequest.descuentoGlobal?: GlobalDiscount | null`**, `{ modo: "monto" | "porcentaje", valor: number }`: one discount for the whole sale, after the line discounts, on 01, 03, 11 and 14, in `issue`, `prepare`, `issueAndArchive`, `createDraft` and `updateDraft`. A `monto` is in the VAT basis of `precioUni` (VAT included on 01, excluded on 03 and 11); Facta allocates it over the sale classes and everything after it (VAT, withholdings, perception, `totalPagar`, `pagos[]`) is computed discounted. `null` is the same as leaving it out.
+- New error code **`global_discount_not_supported`** (HTTP 400) when it is sent on a credit (05) or debit (06) note. A discount above the subtotal is `400 invalid_request` with `details.field: "descuentoGlobal"` and `details.subtotal`. None of these spends a number.
+- **`Status.capabilities`** is typed (`StatusCapabilities`): `descuentoGlobal` and `fseIncomeWithholdingPerLine`. Without `capabilities.descuentoGlobal`, an older API ignores the field and only warns `campo_desconocido`.
+- Documented in `payments-export-renta` (English and Spanish), the method reference and the agent skill. The `LineItem.montoDescu` docs no longer say there is no global discount.
+
+### Drafts warn about misspelled fields
+
+- `createDraft` and `updateDraft` now return **`draft.unknownFields`** (`campo_desconocido`, with `sugerencia`) and **`draft.factaWarning`** (the parsed `Facta-Warning` header), like `issue()`. The field named was ignored and is **not part of the draft**: fix it and save a new version. A replay with the same `idempotencyKey` reports them again; a refused draft carries them in `error.unknownFields`.
+- `issueDraft` now surfaces `unknownFields` / `factaWarning` exactly like `issue()`.
+- Server requirement: draft warnings need the API from 2-Nov-2026 (API staging); older servers simply send none.
+
+### Signed but not transmitted: never issue again
+
+- The `503 service_unavailable` of `POST /v1/dte` (and of a draft issue) whose `details.estado` is `firmado_sin_transmitir` means the document is signed (or, with `confirmado: false`, may be), its number is spent (`details.codigoGeneracion`, `details.numeroControl`) and it was not sent to Hacienda. The `Idempotency-Key` stays bound to it and a retry with it replays the same answer.
+- New getter **`FactaError.signedNotTransmitted`** (`SignedNotTransmitted`: `codigoGeneracion`, `numeroControl`, `estado`, `confirmado`, `siguientePaso`), `null` for any other error. `error.spent` returns the number too.
+- **Behaviour change:** the SDK no longer retries that one `503` (another attempt only replayed it). Every other `503 service_unavailable` is still retried. Do not issue again with any key; finish it with `retryDocument(codigoGeneracion)` (after `getDocumentStatus` when `confirmado` is `false`), or let `recoverServerPending()` pick it up. Documented in `errors` and `pending-documents` (English and Spanish) and the skill.
 
 ## 0.6.0-next.4 (2026-11-01)
 

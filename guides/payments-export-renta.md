@@ -91,9 +91,31 @@ await facta.issue({
 }, { idempotencyKey: "export-1" });
 ```
 
+## Global discount (`descuentoGlobal`)
+
+One discount for the whole sale, the way the Facta app writes it, on 01, 03, 11 and 14:
+
+```ts
+const status = await facta.status();
+if (status.capabilities?.descuentoGlobal !== true) throw new Error("This API does not read descuentoGlobal yet.");
+
+await facta.issue({
+  tipoDte: "01",
+  items: [{ descripcion: "Café", cantidad: 10, precioUni: 2 }],
+  descuentoGlobal: { modo: "porcentaje", valor: 10 }, // or { modo: "monto", valor: 12.5 }
+}, { idempotencyKey: "order-81" });
+```
+
+- `modo` is required: `"porcentaje"` (points, 10 = 10 %, at most 100) or `"monto"` (dollars). `valor` is greater than zero with at most two decimals.
+- It applies **after** the line discounts (`montoDescu`). A `monto` is in the **same VAT basis as `precioUni`** of that type: VAT included on 01, excluded on 03 and 11.
+- Facta allocates it: a percentage goes on every sale class (gravada, exenta, no sujeta) and is written to `resumen.porcentajeDescuento`; an amount is split in proportion over the classes and adds up to the cent. On 11 it all goes to `descuGravada`; on 14 to `resumen.descu`.
+- Everything after it is computed on the discounted amounts: VAT, `aplicarRetencionIva`, `aplicarPercepcionIva`, `aplicarReteRenta`, `totalPagar`, and the sum `pagos[]` must match. Read the result in `resumen.descuNoSuj` / `descuExenta` / `descuGravada` (or `descu` on 14) and `totales.totalDescu`.
+- More than the subtotal is `400 invalid_request` with `details.field: "descuentoGlobal"` and `details.subtotal`; a bad `modo`, an out-of-range `valor` or another key inside the object is `400` on that field. On a credit (05) or debit (06) note it is `400 global_discount_not_supported`: a note's amounts come from the document it corrects. None of these spends a number. `null` is the same as leaving it out.
+- The same field works in `prepare()`, `createDraft()` and `updateDraft()`. Without `capabilities.descuentoGlobal` an older API ignores the field and only warns about it (`campo_desconocido`), so check the capability before relying on it.
+
 ## Income-tax withholding (14)
 
-`aplicarReteRenta` (type 14 only) is optional: omitted or `false` means no withholding (`reteRenta` is `0`); `true` applies the **current** income-tax rate (10 % today, art. 156 of the Código Tributario) to the **whole subtotal after per-line discounts** (`montoDescu`; there is no global discount on type 14). What that means:
+`aplicarReteRenta` (type 14 only) is optional: omitted or `false` means no withholding (`reteRenta` is `0`); `true` applies the **current** income-tax rate (10 % today, art. 156 of the Código Tributario) to the **whole subtotal after discounts** (per-line `montoDescu` and `descuentoGlobal`, which lands in `resumen.descu` on type 14). What that means:
 
 - It does **not** select lines by `tipoItem`. If a service includes goods as inputs, those materials are part of the operation and stay inside the subtotal. Example: materials of $100 plus labour of $50 give a $150 subtotal; at 10 % the withholding is $15 and the total to pay is $135.
 - It is subtracted from the total to pay: `totalPagar = subTotal − reteRenta`.
