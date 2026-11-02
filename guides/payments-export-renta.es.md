@@ -113,6 +113,40 @@ await facta.issue({
 - Más que el subtotal es `400 invalid_request` con `details.field: "descuentoGlobal"` y `details.subtotal`; un `modo` mal escrito, un `valor` fuera de rango u otra clave dentro del objeto es `400` sobre ese campo. En una nota de crédito (05) o de débito (06) es `400 global_discount_not_supported`: los montos de una nota salen del documento que corrige. Ninguno de estos rechazos gasta número. `null` es lo mismo que omitirlo.
 - El mismo campo sirve en `prepare()`, `createDraft()` y `updateDraft()`. Sin `capabilities.descuentoGlobal`, una API anterior ignora el campo y solo lo advierte (`campo_desconocido`): revise la capacidad antes de depender de él.
 
+## Líneas no gravadas (`noGravado`)
+
+Un cargo o abono que no afecta la base imponible («Cargos/Abonos que no afectan la base imponible», Manual Funcional del Sistema de Transmisión v2.0 §XII) es una **línea propia** en 01, 03, 05, 06 y 11. El caso típico es la cuota de un préstamo: el interés es una venta (aquí exenta), el capital que se devuelve no lo es.
+
+```ts
+const status = await facta.status();
+if (status.capabilities?.noGravado !== true) throw new Error("Esta API todavía no acepta líneas noGravado.");
+
+const result = await facta.issue({
+  tipoDte: "03",
+  receptor: { customerId },
+  items: [
+    { descripcion: "Intereses de la cuota 7", cantidad: 1, precioUni: 1250, tipoItem: 2, tipoVenta: "exenta" },
+    { descripcion: "Capital", noGravado: 50000, tipoItem: 2, codigo: "CAP" }, // una NonTaxedLine
+  ],
+}, { idempotencyKey: "prestamo-77-cuota-7" });
+// result.totales.totalNoGravado === 50000, ya dentro de totalPagar.
+```
+
+- La línea es `{ descripcion, noGravado, tipoItem, codigo? }` (`NonTaxedLine`). `noGravado` > 0 es un cargo (suma al total a pagar), < 0 un abono (resta); nunca 0, con 8 decimales como máximo. `tipoItem` (1 bien, 2 servicio, 3 ambos) es **obligatorio**: Facta no lo elige por usted.
+- Facta la escribe como dice el Manual (cantidad 1, `uniMedida` 99, `precioUni` 0, todas las ventas y tributos en 0) y la suma **solo** a `resumen.totalNoGravado` y a `totalPagar`. El IVA, el subtotal, `montoTotalOperacion`, los descuentos por línea y global, y las bases de `aplicarRetencionIva` / `aplicarPercepcionIva` no se mueven. `pagos[]` tiene que sumar el nuevo `totalPagar`.
+- No lleva `cantidad`, `precioUni`, `montoDescu`, `tipoVenta` ni `productId`: los tipos los rechazan, y el servidor también (`400 invalid_request` con el campo).
+- El documento necesita al menos una línea de venta (gravada, exenta o no sujeta) mayor que cero: `400 non_taxed_requires_sale_line`. En el 14 (FSE) es `400 non_taxed_not_supported`. El SDK revisa las dos cosas antes de enviar (un `FactaError` con ese código, status 0, `details.local: true`), así que no se reserva nada. Los abonos que dejan el total por debajo de cero son `400 non_taxed_total_negative`, del servidor. Ninguno gasta número.
+- **Exportaciones (11):** todo bien o servicio que usted vende es una línea de venta, gravada al 0 %. Solo un cargo que **no** es venta, como reembolsar un courier pagado por cuenta del comprador, va como `noGravado`:
+
+```ts
+items: [
+  { descripcion: "Desarrollo de software, octubre", cantidad: 1, precioUni: 4800, tipoItem: 2 },
+  { descripcion: "Reembolso de gastos de courier", noGravado: 35.4, tipoItem: 2 },
+],
+```
+
+- Las notas de crédito (05) y de débito (06) también admiten sus propias líneas no gravadas. La misma línea sirve en `prepare()`, `issueAndArchive()`, `createDraft()`, `updateDraft()` e `issueDraft()`. Ejemplo completo: [`examples/non-taxed-lines.ts`](../examples/non-taxed-lines.ts).
+
 ## Retención de renta (14)
 
 `aplicarReteRenta` (solo en el tipo 14) es opcional: omitida o `false` no retiene (`reteRenta` vale `0`); `true` aplica la tasa **vigente** de renta (hoy 10 %, art. 156 del Código Tributario) sobre **todo el subtotal después de los descuentos** (`montoDescu` por línea y `descuentoGlobal`, que en el tipo 14 queda en `resumen.descu`). Qué significa:
@@ -126,4 +160,4 @@ await facta.issue({
 
 ## Qué trae `totales`
 
-`result.totales` lleva los totales que calculó el servidor (`totalGravada`, `totalIva`, `totalPagar`, …). Con el lanzamiento a staging que acompaña esta guía también lleva, solo cuando el `resumen` del documento tiene el campo: `reteRenta` (14), `ivaRete` (01, 03) e `ivaPerci` (03). Ya están dentro de `totalPagar`. Contra un servidor anterior las claves simplemente no aparecen.
+`result.totales` lleva los totales que calculó el servidor (`totalGravada`, `totalIva`, `totalPagar`, …). Con el lanzamiento a staging que acompaña esta guía también lleva, solo cuando el `resumen` del documento tiene el campo: `reteRenta` (14), `ivaRete` (01, 03), `ivaPerci` (03) y `totalNoGravado` (01, 03, 05, 06, 11). Ya están dentro de `totalPagar`. Contra un servidor anterior las claves simplemente no aparecen.

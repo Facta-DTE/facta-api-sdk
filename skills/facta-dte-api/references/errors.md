@@ -54,6 +54,9 @@ Everything else is final for that request.
 | `prepare_token_invalid` | 422 | Token expired (15 min), other key, or document changed → `prepare` again. |
 | `include_limit_exceeded` | 400 | `listDocuments` with `include: ["dte"]` asked for more than 25 rows (`details.maximo`) → ask for 25 or fewer and follow `siguiente`. |
 | `global_discount_not_supported` | 400 | `descuentoGlobal` on a credit (05) or debit (06) note; nothing spent → adjust the line values and leave `descuentoGlobal` out. |
+| `non_taxed_requires_sale_line` | 400 | a `noGravado` line with no sale line above zero; also raised locally (status 0); nothing spent → add a sale line with an amount. |
+| `non_taxed_not_supported` | 400 | a `noGravado` line on 14 (or 07/15); also raised locally (status 0); nothing spent → remove it; only 01, 03, 05, 06, 11 accept it. |
+| `non_taxed_total_negative` | 400 | non-taxed credits leave `totalPagar` below zero; nothing spent → reduce the credit or issue a credit note. |
 | `not_sealed` | 409 | Default JSON download of a document with no seal (contingency) → `{ raw: true }` or wait for the seal. |
 | `catalog_write_disabled` | 403 | Company did not enable catalog administration from the API → enable it in the app. |
 | `catalog_encrypted` | 409 | Catalog encrypted and this key has no access (`details.hint`) → the owner shares the data with the key (Account → API) or stores the catalog unencrypted. A read-only key hears `forbidden_scope` first. |

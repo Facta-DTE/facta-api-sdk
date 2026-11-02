@@ -86,6 +86,20 @@ receiver), `aplicarPercepcionIva` (03; 1 %, goods lines only) and
 `aplicarReteRenta` (14) are typed from `0.6.0-next.3`; on `0.5.x` the types
 do not declare the first three, so use a direct HTTP call for them. Sending a type's own field on another type is `400`.
 
+### Non-taxed lines (`noGravado`)
+
+A charge (+) or credit (−) that does not affect the tax base (Manual Funcional
+v2.0 §XII) is its own line on 01, 03, 05, 06 and 11:
+`{ descripcion, noGravado, tipoItem, codigo? }` (`NonTaxedLine`; `tipoItem`
+required, never defaulted). It moves only `resumen.totalNoGravado` and
+`totalPagar` (VAT, subtotal, discounts and withholding bases unchanged), cannot
+carry `cantidad`/`precioUni`/`montoDescu`/`tipoVenta`/`productId`, needs at least
+one sale line above zero (`non_taxed_requires_sale_line`) and is
+`non_taxed_not_supported` on 14; the SDK checks these locally (status 0). Credits
+below a zero total are `non_taxed_total_negative`. In an export (11) every good or
+service sold is a sale line at 0 %; only a charge that is not a sale (a
+reimbursement) goes as `noGravado`. Gate on `status().capabilities?.noGravado`.
+
 ### Income-tax withholding (14), exactly as it works today
 
 `aplicarReteRenta` is optional: omitted or `false` = no withholding (`reteRenta` 0);
