@@ -15,7 +15,7 @@ import type { NonTaxedLine } from "./types.ts";
 export const NON_TAXED_DTE_TYPES = ["01", "03", "05", "06", "11"] as const;
 
 /** Fields a non-taxed line cannot carry: Facta fills them as the Manual says. */
-const EXCLUSIVE_FIELDS = ["cantidad", "precioUni", "montoDescu", "tipoVenta", "productId", "productoId", "applyIncomeWithholding"] as const;
+const EXCLUSIVE_FIELDS = ["cantidad", "precioUni", "montoDescu", "tipoVenta", "productId", "applyIncomeWithholding"] as const;
 
 /** `true` when the line is a non-taxed charge or credit (it carries `noGravado`). */
 export function isNonTaxedLine(line: unknown): line is NonTaxedLine {
@@ -29,10 +29,10 @@ function refuse(code: "invalid_request" | "non_taxed_not_supported" | "non_taxed
 
 /** At most 8 decimals, read on the number's own text (no arithmetic on the amount). */
 function decimalsOk(value: number): boolean {
-  const text = String(value);
-  if (/e/i.test(text)) return false;
-  const dot = text.indexOf(".");
-  return dot < 0 || text.length - dot - 1 <= 8;
+  const [mantissa = "", exponent] = String(Math.abs(value)).toLowerCase().split("e");
+  const dot = mantissa.indexOf(".");
+  const places = (dot < 0 ? 0 : mantissa.length - dot - 1) - Number(exponent ?? 0);
+  return places <= 8;
 }
 
 /**
@@ -46,9 +46,10 @@ export function assertNonTaxedLines(request: unknown): void {
   const items = (request as Record<string, unknown>)["items"];
   if (!Array.isArray(items) || !items.some(isNonTaxedLine)) return;
   const tipoDte = (request as Record<string, unknown>)["tipoDte"];
+  const first = `items[${items.findIndex(isNonTaxedLine)}].noGravado`;
   if (typeof tipoDte === "string" && !(NON_TAXED_DTE_TYPES as readonly string[]).includes(tipoDte)) {
     refuse("non_taxed_not_supported", `El tipo ${tipoDte} no admite líneas no gravadas (noGravado).`, {
-      field: "items", tipoDte, supported: [...NON_TAXED_DTE_TYPES],
+      field: first, tipoDte, supported: [...NON_TAXED_DTE_TYPES],
     });
   }
   let saleLines = 0;
@@ -76,7 +77,7 @@ export function assertNonTaxedLines(request: unknown): void {
     }
   }
   if (saleLines === 0) {
-    refuse("non_taxed_requires_sale_line", "Una línea no gravada necesita al menos una línea de venta (gravada, exenta o no sujeta) con valor mayor que cero.", { field: "items" });
+    refuse("non_taxed_requires_sale_line", "Una línea no gravada necesita al menos una línea de venta (gravada, exenta o no sujeta) con valor mayor que cero.", { field: first });
   }
 }
 

@@ -76,6 +76,7 @@ Deno.test("type 14 refuses a non-taxed line locally with non_taxed_not_supported
   assertEquals(error.code, "non_taxed_not_supported");
   assertEquals(error.status, 0);
   assertEquals((error.details as Record<string, unknown>)["supported"], ["01", "03", "05", "06", "11"]);
+  assertEquals((error.details as Record<string, unknown>)["field"], "items[1].noGravado");
   await assertRejects(() => facta.prepare(fse), FactaError);
   await assertRejects(() => facta.createDraft({ ...(fse as object) }), FactaError);
   for (const tipoDte of ["07", "15"]) localError(() => assertNonTaxedLines({ ...fse, tipoDte }), "non_taxed_not_supported");
@@ -87,6 +88,7 @@ Deno.test("a document whose only lines are non-taxed is refused locally with non
   const { facta, calls } = harness(() => json(SEALED));
   const error = await assertRejects(() => facta.issue({ tipoDte: "03", receptor: { customerId: "c" }, items: [CAPITAL] }), FactaError);
   assertEquals(error.code, "non_taxed_requires_sale_line");
+  assertEquals((error.details as Record<string, unknown>)["field"], "items[0].noGravado", "the server names the first non-taxed line");
   localError(() => assertNonTaxedLines({ tipoDte: "01", items: [{ descripcion: "Gratis", cantidad: 1, precioUni: 0 }, CAPITAL] }), "non_taxed_requires_sale_line");
   // A productId line has no local price: the server decides.
   assertNonTaxedLines({ tipoDte: "01", items: [{ productId: "p-1", cantidad: 1 }, CAPITAL] });
@@ -94,7 +96,7 @@ Deno.test("a document whose only lines are non-taxed is refused locally with non
 });
 
 Deno.test("a non-taxed line carrying a sale field is invalid_request naming the field", () => {
-  for (const [field, value] of [["cantidad", 1], ["precioUni", 5], ["montoDescu", 1], ["tipoVenta", "exenta"], ["productId", "p-1"], ["productoId", "p-1"], ["applyIncomeWithholding", true]] as const) {
+  for (const [field, value] of [["cantidad", 1], ["precioUni", 5], ["montoDescu", 1], ["tipoVenta", "exenta"], ["productId", "p-1"], ["applyIncomeWithholding", true]] as const) {
     const error = localError(() => assertNonTaxedLines({ tipoDte: "03", items: [SALE, { ...CAPITAL, [field]: value }] }), "invalid_request");
     assertEquals((error.details as Record<string, unknown>)["field"], `items[1].${field}`);
   }
@@ -105,8 +107,10 @@ Deno.test("a non-taxed line carrying a sale field is invalid_request naming the 
     assertEquals((bad.details as Record<string, unknown>)["field"], "items[1].noGravado");
   }
   localError(() => assertNonTaxedLines({ tipoDte: "01", items: [SALE, { ...CAPITAL, descripcion: " " }] }), "invalid_request");
-  // Eight decimals and a credit are fine.
+  // Eight decimals, a credit and a small amount printed with an exponent are fine; a ninth decimal is not.
   assertNonTaxedLines({ tipoDte: "01", items: [SALE, { ...CAPITAL, noGravado: -0.12345678 }] });
+  assertNonTaxedLines({ tipoDte: "01", items: [SALE, { ...CAPITAL, noGravado: 1e-7 }] });
+  localError(() => assertNonTaxedLines({ tipoDte: "01", items: [SALE, { ...CAPITAL, noGravado: 1e-9 }] }), "invalid_request");
 });
 
 Deno.test("a request without non-taxed lines is not inspected (zero-priced or any shape still goes to the server)", async () => {
