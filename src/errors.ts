@@ -26,6 +26,12 @@ export type FactaErrorCode =
   | "invalid_request"
   /** `descuentoGlobal` on a credit (05) or debit (06) note (HTTP 400): a note's amounts come from the document it corrects. Nothing spent. */
   | "global_discount_not_supported"
+  /** A non-taxed line (`items[].noGravado`) on a document with no sale line above zero (HTTP 400). Also raised locally (status 0). Nothing spent. */
+  | "non_taxed_requires_sale_line"
+  /** A non-taxed line on a type whose schema has no `noGravado` (14 FSE; 07, 15) (HTTP 400). Also raised locally (status 0). Nothing spent. */
+  | "non_taxed_not_supported"
+  /** The non-taxed credits leave the total to pay below zero (HTTP 400). Only the server knows the total. Nothing spent. */
+  | "non_taxed_total_negative"
   /** `listDocuments({ include: ["dte"] })` asked for more than 25 rows (HTTP 400). `details.maximo` is the cap. */
   | "include_limit_exceeded"
   | "validation_failed"

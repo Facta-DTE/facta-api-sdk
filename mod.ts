@@ -65,6 +65,7 @@ export {
 } from "./src/errors.ts";
 export type * from "./src/types.ts";
 export { parseFactaWarning, unknownFieldWarnings } from "./src/warnings.ts";
+export { assertNonTaxedLines, isNonTaxedLine, NON_TAXED_DTE_TYPES } from "./src/non-taxed.ts";
 export {
   constructWebhookEvent,
   MemoryWebhookReplayStore,

@@ -121,6 +121,7 @@ import type {
   RemoteReplicationReport,
 } from "./archive.ts";
 import { withWarnings } from "./warnings.ts";
+import { assertNonTaxedLines } from "./non-taxed.ts";
 import { DEBUG_HEADER, DEBUG_TIMINGS, debugFromBody, debugFromServerTiming } from "./debug.ts";
 import { deliveryRequestFor, GENERATION_CODE, isFinalDeliveryState } from "./delivery.ts";
 import type {
@@ -1362,6 +1363,7 @@ export class Facta {
   /** Emit in one call: correlative, signature, transmission and index. */
   async issue(request: DteRequest, options: IssueOptions = {}): Promise<IssueResult> {
     throwIfAborted(options.signal);
+    assertNonTaxedLines(request);
     const { deliver, ...call } = options;
     // `customerId` / `productId` travel as given: the server resolves them, so the body is the
     // request and the server's idempotency claim hashes the body (no fingerprint header, AP-07).
@@ -1430,6 +1432,7 @@ export class Facta {
     if (!archive) throw new TypeError("issueAndArchive requires archive or runtime.archive.");
     const { operationId, idempotencyKey, signal } = options;
     throwIfAborted(signal);
+    assertNonTaxedLines(request);
     const remote: RemoteOptions = {
       destinations: options.remoteDestinations ?? this.#runtime.remoteDestinations,
       replicate: options.replicate ?? this.#runtime.replicate,
@@ -2288,6 +2291,7 @@ export class Facta {
   /** Reserve the correlative and get the canonical document, unsigned. */
   async prepare(request: DteRequest, options: CallOptions = {}): Promise<PreparedDte> {
     throwIfAborted(options.signal);
+    assertNonTaxedLines(request);
     let warningHeader: string | null = null;
     const prepared = await this.#request<PreparedDte>("POST", "/v1/dte/prepare", request, {
       ...options, onHeaders: (headers) => { warningHeader = headers.get("facta-warning"); },
@@ -2846,6 +2850,7 @@ export class Facta {
    * with their vault since the company began sharing its data key: ask them to open it once.
    */
   async createDraft(input: DraftInput, options: CallOptions = {}): Promise<Draft> {
+    assertNonTaxedLines(input);
     let warningHeader: string | null = null;
     const payload = await this.#request<unknown>("POST", "/v1/drafts", draftBody(input), {
       ...options, onHeaders: (headers) => { warningHeader = headers.get("facta-warning"); },
@@ -2877,6 +2882,7 @@ export class Facta {
 
   /** Save a new version of a draft that is still pending. `version` is the one you read (`If-Match`). */
   async updateDraft(draftId: string, version: number, input: DraftInput, options: CallOptions = {}): Promise<Draft> {
+    assertNonTaxedLines(input);
     let warningHeader: string | null = null;
     const payload = await this.#request<unknown>("PUT", `/v1/drafts/${encodeURIComponent(requireId(draftId, "draft"))}`, draftBody(input), {
       ...options,
@@ -2899,6 +2905,7 @@ export class Facta {
    */
   async issueDraft(draftId: string, version: number, request: DteRequest, options: IssueOptions = {}): Promise<IssueResult & { borradorId: string }> {
     throwIfAborted(options.signal);
+    assertNonTaxedLines(request);
     const { deliver, ...call } = options;
     const resolved = withDelivery(request, deliver);
     const body = { ...resolved, version: draftVersion(version) };

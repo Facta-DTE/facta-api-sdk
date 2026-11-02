@@ -86,7 +86,51 @@ export interface LineItem {
    * `422 retention_mixed_class_unsupported`.
    */
   tipoVenta?: SaleType;
+  /** A sale line never carries `noGravado`: a non-taxed charge or credit is its own line ({@link NonTaxedLine}). */
+  noGravado?: never;
 }
+
+/**
+ * A charge or credit that does not affect the tax base («Cargos/Abonos que no afectan la base imponible»,
+ * Manual Funcional del Sistema de Transmisión v2.0 §XII): its OWN line of the document, accepted on 01, 03,
+ * 05, 06 and 11. Facta writes it as the Manual says (cantidad 1, `uniMedida` 99, `precioUni` 0, every
+ * sale column and tax 0, `tributos` null) and adds `noGravado` to `resumen.totalNoGravado` and
+ * `totalPagar` ONLY: VAT, subtotal, `montoTotalOperacion`, discounts and the withholding/perception bases do
+ * not move. Read the sum in `totales.totalNoGravado`.
+ *
+ * - `noGravado` > 0 is a charge (adds to the total to pay); < 0 is a credit (subtracts). Never 0, at most
+ *   8 decimals. A total to pay below zero is `400 non_taxed_total_negative`.
+ * - It cannot be combined with `cantidad`, `precioUni`, `montoDescu`, `tipoVenta` or `productId`
+ *   (`400 invalid_request` naming the field); the type forbids them.
+ * - The document needs at least one sale line (gravada, exenta or no sujeta) with an amount above zero:
+ *   `400 non_taxed_requires_sale_line`. On 14 (FSE) it is `400 non_taxed_not_supported`.
+ * - In an export (11) every good or service sold is a sale line (taxed at 0 %); only a charge that is not a
+ *   sale (a reimbursement, for example) goes as `noGravado`.
+ *
+ * The SDK checks these rules locally before sending (a {@link FactaError} with the same code and status 0),
+ * so nothing is reserved. Gate on `status().capabilities?.noGravado`: an older API does not know the field.
+ */
+export interface NonTaxedLine {
+  /** What the charge or credit is («Capital», «Reembolso de gastos de envío»). */
+  descripcion: string;
+  /** Positive: charge. Negative: credit (abono). Not zero, at most 8 decimals. */
+  noGravado: number;
+  /** Required, never defaulted (Hacienda's item-type catalogue): 1 bien, 2 servicio, 3 ambos. */
+  tipoItem: 1 | 2 | 3;
+  /** Your own code for the charge, or `null`. */
+  codigo?: string | null;
+  /** 05/06: the corrected document this line belongs to, when the note corrects several. */
+  numeroDocumento?: string;
+  cantidad?: never;
+  precioUni?: never;
+  montoDescu?: never;
+  tipoVenta?: never;
+  productId?: never;
+  uniMedida?: never;
+}
+
+/** A line of 01, 03, 05, 06 or 11: a sale line, or a non-taxed charge/credit line. */
+export type DocumentLine = LineItem | NonTaxedLine;
 
 /** One row of `pagos[]`: a payment method and the amount paid with it. */
 export interface Pago {
@@ -158,7 +202,8 @@ export interface GlobalDiscount {
 }
 
 interface DteRequestBase {
-  items: LineItem[];
+  /** Sale lines and, except on 14, non-taxed charge/credit lines ({@link NonTaxedLine}). */
+  items: DocumentLine[];
   condicionOperacion?: 1 | 2 | 3;
   plazo?: "01" | "02" | "03" | null;
   periodo?: number | null;
@@ -222,7 +267,7 @@ export type DteRequest =
   | (Omit<DteRequestBase, "pagos"> & VatOwnFieldsNever & { pagos?: never; tipoDte: "05"; receptor?: Recipient | null; documentosRelacionados: RelatedDocument[]; exportacion?: never; aplicarReteRenta?: never; numPagoElectronico?: never })
   | (Omit<DteRequestBase, "pagos"> & VatOwnFieldsNever & { pagos?: never; tipoDte: "06"; receptor?: Recipient | null; documentosRelacionados: RelatedDocument[]; numPagoElectronico?: string | null; exportacion?: never; aplicarReteRenta?: never })
   | (DteRequestBase & VatOwnFieldsNever & { tipoDte: "11"; receptor: ExportRecipient; exportacion: ExportDetails; documentosRelacionados?: never; aplicarReteRenta?: never; numPagoElectronico?: never })
-  | (DteRequestBase & VatOwnFieldsNever & { tipoDte: "14"; receptor: ExcludedSubjectRecipient; aplicarReteRenta?: boolean; documentosRelacionados?: never; exportacion?: never; numPagoElectronico?: never });
+  | (Omit<DteRequestBase, "items"> & VatOwnFieldsNever & { items: LineItem[]; tipoDte: "14"; receptor: ExcludedSubjectRecipient; aplicarReteRenta?: boolean; documentosRelacionados?: never; exportacion?: never; numPagoElectronico?: never });
 
 /** How the key's company stores the catalog the API can see. */
 export type CatalogMode = "encrypted" | "readable" | "plain";
@@ -411,6 +456,11 @@ export interface Totals {
   ivaRete?: number;
   /** 03 only: the 1 % VAT perception, already added to `totalPagar`; 0 when not requested. */
   ivaPerci?: number;
+  /**
+   * 01, 03, 05, 06 and 11: the sum of the non-taxed lines (`resumen.totalNoGravado`), already in `totalPagar`
+   * (charges add, credits subtract); 0 when there is none. Absent against a server that does not report it.
+   */
+  totalNoGravado?: number;
 }
 
 // --- Debug timings (a debugging aid, off by default) ----------------------------
@@ -879,6 +929,8 @@ export interface StatusCapabilities {
   descuentoGlobal?: boolean;
   /** The server accepts the explicit FSE per-line income withholding (`incomeWithholding: { mode: "per_line" }`). */
   fseIncomeWithholdingPerLine?: boolean;
+  /** The server accepts non-taxed charge/credit lines (`items[].noGravado`) on 01, 03, 05, 06 and 11. */
+  noGravado?: boolean;
   [capability: string]: unknown;
 }
 
