@@ -228,7 +228,9 @@ const facta = new Facta({
 
 | Field / helper | What it does |
 |---|---|
-| `LineItem.montoDescu` | Discount of one line in money, between 0 and `cantidad × precioUni`, in the same VAT basis as `precioUni`. No global or percentage discount yet. |
+| `LineItem.montoDescu` | Discount of one line in money, between 0 and `cantidad × precioUni`, in the same VAT basis as `precioUni`. For the whole sale use `descuentoGlobal`. |
+| `DteRequest.descuentoGlobal` / `GlobalDiscount` | `{ modo: "monto" \| "porcentaje", valor }`: one discount for the whole sale, after line discounts, on 01, 03, 11 and 14 (`400 global_discount_not_supported` on 05/06). Gate on `status().capabilities?.descuentoGlobal`. See [payments-export-renta.md](payments-export-renta.md#global-discount-descuentoglobal). |
+| `NonTaxedLine` / `isNonTaxedLine` / `assertNonTaxedLines` | `{ descripcion, noGravado, tipoItem, codigo? }`: a charge (+) or credit (−) that does not affect the tax base, its own line on 01, 03, 05, 06 and 11; only `totalNoGravado` and `totalPagar` move. No sale fields; `tipoItem` required; needs a sale line (`non_taxed_requires_sale_line`); `non_taxed_not_supported` on 14. Checked locally before sending. Gate on `status().capabilities?.noGravado`. See [payments-export-renta.md](payments-export-renta.md#non-taxed-lines-nogravado). |
 | `LineItem.tipoVenta` | VAT treatment of the line: `gravada` (default), `exenta` or `no_sujeta`. Chosen by you, never deduced. 01, 03, 05, 06 only; `422` on 11 and 14. |
 | `DteRequest.aplicarRetencionIva` / `aplicarPercepcionIva` | 1 % VAT withholding (01, 03) and perception (03 only, goods lines). Never automatic; `400` on other types, refused by the types. |
 | `DteRequest.formaPago` / `plazo` / `periodo` | How payment is reported: cash with one method, `pagos[]` for several, credit with `formaPago` + `plazo` + `periodo` (never `pagos`), nothing on 05/06. See [payments-export-renta.md](payments-export-renta.md). |
@@ -236,6 +238,8 @@ const facta = new Facta({
 | `result.unknownFields`, `unknownFieldWarnings(source)` | `campo_desconocido` warnings of `advertencias`: a request field Facta DTE does not know is ignored and is not in the document. Each has `campo` and, when obvious, `sugerencia`. |
 | `prepared.unknownFields`, `error.unknownFields` | The same warnings on `prepare()` results and on a `FactaError` (from `details.advertencias`). Unknown fields are always warnings, never errors. |
 | `result.factaWarning`, `parseFactaWarning(header)` | The `Facta-Warning: campo_desconocido; campos=N` response header, parsed to `{ code, count }`. |
+| `draft.unknownFields`, `draft.factaWarning` | The same on `createDraft` / `updateDraft`. The field named is **not** in the draft: fix it and save a new version. |
+| `error.signedNotTransmitted` | `{ codigoGeneracion, numeroControl, estado: "firmado_sin_transmitir", confirmado, siguientePaso }` on the `503` of a document signed but not sent; never retried. Do not issue again: `retryDocument(codigoGeneracion)`. |
 | `FACTA_STAGING_BASE_URL` | The staging API base. |
 
 Catalogue codes that are not in the Ministry's catalogue (`formaPago`, `exportacion.recintoFiscal`, `.regimen`, `.tipoRegimen`) answer `422 validation_failed` with `details.field`, `details.catalog` and `details.supported`, before any control number is spent.

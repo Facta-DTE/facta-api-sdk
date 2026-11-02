@@ -24,6 +24,29 @@ export type FactaErrorCode =
   | "sign_vault_locked"
   | "sign_vault_missing"
   | "invalid_request"
+  // FSE (14) per-line income-tax withholding controls (`incomeWithholding`, `items[].applyIncomeWithholding`),
+  // all HTTP 400 and nothing spent. The SDK does not build these controls yet; the codes are typed so a
+  // caller sending them by hand can branch on the server's answer.
+  /** `incomeWithholding.mode` is not `per_line`, or the object carries an unknown key. */
+  | "fse_withholding_mode_invalid"
+  /** `incomeWithholding` or per-line decisions combined with `aplicarReteRenta`. */
+  | "fse_withholding_legacy_conflict"
+  /** Per-line FSE withholding controls on a type other than 14. */
+  | "fse_withholding_not_supported"
+  /** Per-line mode with no lines, or a line missing its `applyIncomeWithholding` decision. */
+  | "fse_withholding_selection_required"
+  /** An `applyIncomeWithholding` decision that is not a boolean. */
+  | "fse_withholding_selection_invalid"
+  /** `applyIncomeWithholding` sent without `incomeWithholding.mode: per_line`. */
+  | "fse_withholding_mode_required"
+  /** `descuentoGlobal` on a credit (05) or debit (06) note (HTTP 400): a note's amounts come from the document it corrects. Nothing spent. */
+  | "global_discount_not_supported"
+  /** A non-taxed line (`items[].noGravado`) on a document with no sale line above zero (HTTP 400). Also raised locally (status 0). Nothing spent. */
+  | "non_taxed_requires_sale_line"
+  /** A non-taxed line on a type whose schema has no `noGravado` (14 FSE; 07, 15) (HTTP 400). Also raised locally (status 0). Nothing spent. */
+  | "non_taxed_not_supported"
+  /** The non-taxed credits leave the total to pay below zero (HTTP 400). Only the server knows the total. Nothing spent. */
+  | "non_taxed_total_negative"
   /** `listDocuments({ include: ["dte"] })` asked for more than 25 rows (HTTP 400). `details.maximo` is the cap. */
   | "include_limit_exceeded"
   | "validation_failed"
@@ -142,6 +165,19 @@ export interface SpentCorrelative {
   numeroControl: string;
 }
 
+/**
+ * `details` of the `503 service_unavailable` that `POST /v1/dte` (and a draft issue) answers when the
+ * document IS signed, or may be, but was not sent to Hacienda from that request. Its control number is
+ * spent and the `Idempotency-Key` stays bound to it: the same key replays this same answer.
+ */
+export interface SignedNotTransmitted extends SpentCorrelative {
+  estado: "firmado_sin_transmitir";
+  /** `true`: the signature is on record. `false`: Facta could not confirm it; look the document up first. */
+  confirmado: boolean | null;
+  /** The route that finishes it, today `POST /v1/dte/{codigoGeneracion}/reintentar` (`retryDocument`). */
+  siguientePaso: string | null;
+}
+
 export class FactaError extends Error {
   override readonly name = "FactaError";
   readonly code: FactaErrorCode;
@@ -167,9 +203,10 @@ export class FactaError extends Error {
   /**
    * The correlative this failure already burned, when there is one.
    *
-   * Only a rejection has it. It matters because §167 of the normativa lets the
-   * corrected document reuse that same number and generation code — so the
-   * integrator has to be able to read it off the error.
+   * A rejection has it: §167 of the normativa lets the corrected document reuse
+   * that same number and generation code, so the integrator has to be able to
+   * read it off the error. A signed-but-not-transmitted `503` has it too (see
+   * {@link signedNotTransmitted}).
    */
   get spent(): SpentCorrelative | null {
     const details = this.details as Record<string, unknown> | null | undefined;
@@ -177,6 +214,30 @@ export class FactaError extends Error {
     const nc = details?.["numeroControl"];
     if (typeof cg !== "string" || typeof nc !== "string") return null;
     return { codigoGeneracion: cg, numeroControl: nc };
+  }
+
+  /**
+   * Set when the server answered `503 service_unavailable` with `details.estado: "firmado_sin_transmitir"`:
+   * the document is signed (or may be) and its number spent, but it was not sent to Hacienda from this
+   * request. **Do not issue again** (not with this key, not with a new one: that would be a second document
+   * for the same sale). Finish it with `retryDocument(codigoGeneracion)`, or read it with
+   * `getDocumentStatus(codigoGeneracion)` first when `confirmado` is `false`. Repeating the request with the same
+   * `Idempotency-Key` only replays this answer, so the SDK does not retry it. `null` for any other error.
+   */
+  get signedNotTransmitted(): SignedNotTransmitted | null {
+    if (this.code !== "service_unavailable") return null;
+    const details = this.details as Record<string, unknown> | null | undefined;
+    if (details?.["estado"] !== "firmado_sin_transmitir") return null;
+    const spent = this.spent;
+    if (spent === null) return null;
+    const confirmado = details["confirmado"];
+    const siguientePaso = details["siguientePaso"];
+    return {
+      ...spent,
+      estado: "firmado_sin_transmitir",
+      confirmado: typeof confirmado === "boolean" ? confirmado : null,
+      siguientePaso: typeof siguientePaso === "string" ? siguientePaso : null,
+    };
   }
 
   /**

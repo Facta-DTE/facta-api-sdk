@@ -91,9 +91,65 @@ await facta.issue({
 }, { idempotencyKey: "export-1" });
 ```
 
+## Global discount (`descuentoGlobal`)
+
+One discount for the whole sale, the way the Facta app writes it, on 01, 03, 11 and 14:
+
+```ts
+const status = await facta.status();
+if (status.capabilities?.descuentoGlobal !== true) throw new Error("This API does not read descuentoGlobal yet.");
+
+await facta.issue({
+  tipoDte: "01",
+  items: [{ descripcion: "Café", cantidad: 10, precioUni: 2 }],
+  descuentoGlobal: { modo: "porcentaje", valor: 10 }, // or { modo: "monto", valor: 12.5 }
+}, { idempotencyKey: "order-81" });
+```
+
+- `modo` is required: `"porcentaje"` (points, 10 = 10 %, at most 100) or `"monto"` (dollars). `valor` is greater than zero with at most two decimals.
+- It applies **after** the line discounts (`montoDescu`). A `monto` is in the **same VAT basis as `precioUni`** of that type: VAT included on 01, excluded on 03 and 11.
+- Facta allocates it: a percentage goes on every sale class (gravada, exenta, no sujeta) and is written to `resumen.porcentajeDescuento`; an amount is split in proportion over the classes and adds up to the cent. On 11 it all goes to `descuGravada`; on 14 to `resumen.descu`.
+- Everything after it is computed on the discounted amounts: VAT, `aplicarRetencionIva`, `aplicarPercepcionIva`, `aplicarReteRenta`, `totalPagar`, and the sum `pagos[]` must match. Read the result in `resumen.descuNoSuj` / `descuExenta` / `descuGravada` (or `descu` on 14) and `totales.totalDescu`.
+- More than the subtotal is `400 invalid_request` with `details.field: "descuentoGlobal"` and `details.subtotal`; a bad `modo`, an out-of-range `valor` or another key inside the object is `400` on that field. On a credit (05) or debit (06) note it is `400 global_discount_not_supported`: a note's amounts come from the document it corrects. None of these spends a number. `null` is the same as leaving it out.
+- The same field works in `prepare()`, `createDraft()` and `updateDraft()`. Without `capabilities.descuentoGlobal` an older API ignores the field and only warns about it (`campo_desconocido`), so check the capability before relying on it.
+
+## Non-taxed lines (`noGravado`)
+
+A charge or credit that does not affect the tax base («Cargos/Abonos que no afectan la base imponible», Manual Funcional del Sistema de Transmisión v2.0 §XII) is its **own line** on 01, 03, 05, 06 and 11. A loan instalment is the usual case: the interest is a sale (exempt here), the repaid capital is not.
+
+```ts
+const status = await facta.status();
+if (status.capabilities?.noGravado !== true) throw new Error("This API does not accept noGravado lines yet.");
+
+const result = await facta.issue({
+  tipoDte: "03",
+  receptor: { customerId },
+  items: [
+    { descripcion: "Intereses de la cuota 7", cantidad: 1, precioUni: 1250, tipoItem: 2, tipoVenta: "exenta" },
+    { descripcion: "Capital", noGravado: 50000, tipoItem: 2, codigo: "CAP" }, // a NonTaxedLine
+  ],
+}, { idempotencyKey: "loan-77-instalment-7" });
+// result.totales.totalNoGravado === 50000, already inside totalPagar.
+```
+
+- The line is `{ descripcion, noGravado, tipoItem, codigo? }` (`NonTaxedLine`). `noGravado` > 0 is a charge (adds to the total to pay), < 0 a credit (subtracts); never 0, at most 8 decimals. `tipoItem` (1 bien, 2 servicio, 3 ambos) is **required**: Facta never picks it for you.
+- Facta writes it as the Manual says (cantidad 1, `uniMedida` 99, `precioUni` 0, every sale column and tax 0) and adds it **only** to `resumen.totalNoGravado` and `totalPagar`. VAT, subtotal, `montoTotalOperacion`, line and global discounts, and the bases of `aplicarRetencionIva` / `aplicarPercepcionIva` do not move. `pagos[]` must add up to the new `totalPagar`.
+- It cannot carry `cantidad`, `precioUni`, `montoDescu`, `tipoVenta` or `productId`: the types refuse them, and so does the server (`400 invalid_request` naming the field). `uniMedida` may be left out; if sent it must be 99.
+- The document needs at least one sale line (gravada, exenta or no sujeta) above zero: `400 non_taxed_requires_sale_line`. On 14 (FSE) it is `400 non_taxed_not_supported`. The SDK checks both before sending (a `FactaError` with that code, status 0, `details.local: true`), so nothing is reserved. Credits that leave the total below zero are `400 non_taxed_total_negative` from the server. None of these spends a number.
+- **Exports (11):** every good or service you sell is a sale line, taxed at 0 %. Only a charge that is **not** a sale, such as reimbursing a courier cost paid for the buyer, goes as `noGravado`:
+
+```ts
+items: [
+  { descripcion: "Software development, October", cantidad: 1, precioUni: 4800, tipoItem: 2 },
+  { descripcion: "Reembolso de gastos de courier", noGravado: 35.4, tipoItem: 2 },
+],
+```
+
+- Credit (05) and debit (06) notes accept their own non-taxed lines too. The same line works in `prepare()`, `issueAndArchive()`, `createDraft()`, `updateDraft()` and `issueDraft()`. Full example: [`examples/non-taxed-lines.ts`](../examples/non-taxed-lines.ts).
+
 ## Income-tax withholding (14)
 
-`aplicarReteRenta` (type 14 only) is optional: omitted or `false` means no withholding (`reteRenta` is `0`); `true` applies the **current** income-tax rate (10 % today, art. 156 of the Código Tributario) to the **whole subtotal after per-line discounts** (`montoDescu`; there is no global discount on type 14). What that means:
+`aplicarReteRenta` (type 14 only) is optional: omitted or `false` means no withholding (`reteRenta` is `0`); `true` applies the **current** income-tax rate (10 % today, art. 156 of the Código Tributario) to the **whole subtotal after discounts** (per-line `montoDescu` and `descuentoGlobal`, which lands in `resumen.descu` on type 14). What that means:
 
 - It does **not** select lines by `tipoItem`. If a service includes goods as inputs, those materials are part of the operation and stay inside the subtotal. Example: materials of $100 plus labour of $50 give a $150 subtotal; at 10 % the withholding is $15 and the total to pay is $135.
 - It is subtracted from the total to pay: `totalPagar = subTotal − reteRenta`.
@@ -104,4 +160,4 @@ await facta.issue({
 
 ## What `totales` carries
 
-`result.totales` holds the totals the server computed (`totalGravada`, `totalIva`, `totalPagar`, …). Since the staging release that accompanies this guide it also carries, only when the document's `resumen` has the field: `reteRenta` (14), `ivaRete` (01, 03) and `ivaPerci` (03). They are already inside `totalPagar`. Against an older server the keys are simply absent.
+`result.totales` holds the totals the server computed (`totalGravada`, `totalIva`, `totalPagar`, …). Since the staging release that accompanies this guide it also carries, only when the document's `resumen` has the field: `reteRenta` (14), `ivaRete` (01, 03), `ivaPerci` (03) and `totalNoGravado` (01, 03, 05, 06, 11). They are already inside `totalPagar`. Against an older server the keys are simply absent.

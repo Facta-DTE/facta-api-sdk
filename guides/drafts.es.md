@@ -35,6 +35,15 @@ await facta.cancelDraft(draft.id); // solo si está pendiente y nadie lo tiene a
 | `cancelDraft(id)` | `DELETE /v1/drafts/{id}` | Solo si está pendiente y cerrado. |
 | `issueDraft(id, version, request, options?)` | `POST /v1/drafts/{id}/issue` | Una sola puerta evita la doble emisión: `draft_issuing` / `draft_claimed` (409) no gastaron nada. Un rechazo de Hacienda cuenta como emitido y el borrador no se reabre. |
 
+## Campos mal escritos
+
+Igual que `issue()`, un borrador nunca rechaza un campo que Facta DTE no conoce: `createDraft` y `updateDraft` lo devuelven en `draft.unknownFields` (`codigo: "campo_desconocido"`, el `campo` exacto y, cuando es obvio, una `sugerencia`) y la cabecera `Facta-Warning` ya leída en `draft.factaWarning`. **Ese campo no queda en el borrador**: Facta guarda la solicitud ya resuelta, así que corríjalo y guarde una versión nueva con `updateDraft` antes de que alguien lo emita. Repetir con la misma `idempotencyKey` vuelve a dar las mismas advertencias, y un borrador rechazado las trae en `error.unknownFields`. `issueDraft` las informa como `issue()`.
+
+```ts
+const draft = await facta.createDraft({ tipoDte: "01", items, descuento: 1 }, { idempotencyKey: "pedido-77" });
+for (const w of draft.unknownFields ?? []) console.warn(w.campo, "→", w.sugerencia); // descuento → descuentoGlobal
+```
+
 ## Errores que conviene atender
 
 `drafts_not_ready` (409): la persona titular no ha abierto Facta con su vault desde que la empresa comparte su clave de datos; pídale que la abra una vez y repita. `version_mismatch` (409): lea el borrador otra vez. `draft_claimed`, `draft_issuing`, `draft_issued`, `draft_not_issuable`, `item_final` (409): el borrador está en uso o resuelto; léalo con `getDraft`. `inbox_cap_reached` (429): demasiados borradores abiertos. Ninguno se reintenta solo. Todos están en [errors.es.md](errors.es.md#borradores).

@@ -109,6 +109,7 @@ for (const r of report.results) {
 | You see | It means | Do |
 | --- | --- | --- |
 | `503 service_unavailable` (`retryAfterSeconds`) | Something of Facta's did not answer. If it says the signed document could not be recorded, **nothing was sent to Hacienda** and the number was handed back. | Wait, replay the **same** request with the **same** `idempotencyKey`. |
+| `503 service_unavailable` with `details.estado: "firmado_sin_transmitir"` (`error.signedNotTransmitted`) | Signed (or, with `confirmado: false`, maybe signed) and the number spent, but not sent to Hacienda from that request. The same key replays this answer, so the SDK does not retry it. | **Do not issue again**, not even with a new key. `retryDocument(error.signedNotTransmitted.codigoGeneracion)`; with `confirmado: false`, `getDocumentStatus()` first. `recoverServerPending()` also picks it up. |
 | `202`, `estado: "contingencia"` on issue | Signed; Hacienda did not answer. | Keep `jws` and `numeroControl`; later `listPendingDocuments()` and `retryDocument()`. |
 | Your process died or the connection dropped | You do not know if it arrived. | Replay the same request with the same key, or `listPendingDocuments()`. |
 | `advertencias: indice_pendiente` | Sealed, but Facta DTE's own record could not be written. The answer carries `documento` and `jws`: keep them. | `retryDocument()` finishes the record without resending. Do not issue again. |

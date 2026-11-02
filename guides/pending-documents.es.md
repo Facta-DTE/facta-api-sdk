@@ -108,6 +108,7 @@ for (const r of informe.results) {
 | Lo que ve | Qué significa | Qué hacer |
 | --- | --- | --- |
 | `503 service_unavailable` (`retryAfterSeconds`) | Algo de Facta no contestó. Si dice que no se pudo dejar constancia del documento firmado, **no se envió nada a Hacienda** y el número se devolvió. | Espere y repita la **misma** petición con la **misma** `idempotencyKey`. |
+| `503 service_unavailable` con `details.estado: "firmado_sin_transmitir"` (`error.signedNotTransmitted`) | Firmado (o, con `confirmado: false`, quizá firmado) y el número gastado, pero no se envió a Hacienda desde esa petición. La misma llave repite esta respuesta, así que el SDK no la reintenta. | **No emita otra vez**, ni con una llave nueva. `retryDocument(error.signedNotTransmitted.codigoGeneracion)`; con `confirmado: false`, antes `getDocumentStatus()`. `recoverServerPending()` también lo recoge. |
 | `202`, `estado: "contingencia"` al emitir | Firmado; Hacienda no contestó. | Guarde `jws` y `numeroControl`; luego `listPendingDocuments()` y `retryDocument()`. |
 | Su proceso se cayó o se cortó la conexión | No sabe si llegó. | Repita la misma petición con la misma llave, o `listPendingDocuments()`. |
 | `advertencias: indice_pendiente` | Sellado, pero el registro de Facta DTE no se pudo escribir. La respuesta trae `documento` y `jws`: guárdelos. | `retryDocument()` termina el registro sin reenviar. No emita otra vez. |
