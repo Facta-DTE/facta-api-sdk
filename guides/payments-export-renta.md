@@ -98,7 +98,8 @@ await facta.issue({
 - It does **not** select lines by `tipoItem`. If a service includes goods as inputs, those materials are part of the operation and stay inside the subtotal. Example: materials of $100 plus labour of $50 give a $150 subtotal; at 10 % the withholding is $15 and the total to pay is $135.
 - It is subtracted from the total to pay: `totalPagar = subTotal − reteRenta`.
 - A goods-only purchase is not automatically subject just because it carries no VAT; do not present art. 156 as an automatic rule for every purchase from a natural person.
-- A **partial base** (withholding only the service when one document joins an independent goods purchase with a service) is **not supported** and is pending confirmation.
+- This is the **legacy mode**: `aplicarReteRenta` always applies to the whole subtotal. A separate explicit per-line mode is available only when the SDK's `/v1/status` response advertises `capabilities.fseIncomeWithholdingPerLine: true`. It uses `incomeWithholding: { mode: "per_line" }` and requires a boolean `applyIncomeWithholding` on every item; omit `aplicarReteRenta` entirely. The server calculates the retention from selected net line amounts after line discounts at its current rate; callers cannot choose a rate or amount. No line is selected from `tipoItem`.
+- The per-line selection expresses the caller's requested calculation base; it does not establish that the purchase qualifies for withholding under tax law. It also does not bypass existing unsupported FSE sale-class restrictions.
 - `tipoVenta: "exenta"` or `"no_sujeta"` together with `aplicarReteRenta: true` is `422 retention_mixed_class_unsupported`, before a number is spent.
 - Read the amount in `result.documento.resumen.reteRenta` and in `result.totales.reteRenta`.
 
