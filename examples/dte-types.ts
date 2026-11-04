@@ -101,3 +101,59 @@ export const excludedSubjectInvoice: DteRequest = {
   aplicarReteRenta: false,
   items: [{ descripcion: "Local service", cantidad: 1, precioUni: 50 }],
 };
+
+/** Remission note (04): goods move without a sale. `receptor.bienTitulo` (CAT-025) is required and has no default. */
+export const remissionNote: DteRequest = {
+  tipoDte: "04",
+  receptor: {
+    nombre: "Commercial customer, Inc.",
+    tipoDocumento: "36",
+    numDocumento: "TEST-RECIPIENT-ID",
+    nrc: "1234567",
+    codActividad: "46510",
+    direccion: {
+      departamento: "06",
+      municipio: "20",
+      distrito: "01",
+      complemento: "Warehouse 2, San Miguel",
+    },
+    correo: "warehouse@example.com",
+    bienTitulo: "04", // CAT-025: transfer
+  },
+  // Optional: the sealed 01, 03 or 11 the goods travel with.
+  // documentosRelacionados: [{ codigoGeneracion: "REPLACE_WITH_ISSUER_OWNED_SEALED_DOCUMENT" }],
+  items: [{ descripcion: "Box of spare parts", cantidad: 2, precioUni: 25, tipoItem: 1 }],
+};
+
+/**
+ * Retention receipt (07): only for a company designated as a retention agent (otherwise `403 retention_agent_required`).
+ * Each line is a withholding, not a sale: no quantity or unit price. The first references an electronic CCF;
+ * the second is a paper purchase (no reference) under `C9`, which requires `ivaRetenido`.
+ */
+export const retentionReceipt: DteRequest = {
+  tipoDte: "07",
+  receptor: {
+    nombre: "Supplier, Inc.",
+    tipoDocumento: "36",
+    numDocumento: "TEST-RECIPIENT-ID",
+    nrc: "1234567",
+    codActividad: "46510",
+    direccion: {
+      departamento: "06",
+      municipio: "20",
+      distrito: "01",
+      complemento: "Downtown, San Miguel",
+    },
+    correo: "supplier@example.com",
+  },
+  items: [
+    {
+      tipoDte: "03",
+      numeroDocumento: "REPLACE_WITH_THE_CCF_GENERATION_CODE",
+      fechaEmision: "2026-10-05",
+      montoSujetoGrav: 1000,
+      codigoRetencionMH: "22", // CAT-006: 1 %, computed by the server
+    },
+    { montoSujetoGrav: 250.5, codigoRetencionMH: "C9", ivaRetenido: 2.5, descripcion: "Paper purchase" },
+  ],
+};

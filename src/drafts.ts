@@ -6,6 +6,8 @@
 // opens it in the app. It expires after 30 days; a company holds at most 500.
 
 import { FactaError } from "./errors.ts";
+import type { DteRequest, IgnoredFieldWarning, ServerWarning } from "./types.ts";
+import { ignoredFieldWarnings } from "./warnings.ts";
 
 /** The states a draft can be in; `pendiente` as a filter means «everything not resolved yet». */
 export const DRAFT_STATES = [
@@ -46,10 +48,14 @@ export interface Draft {
   envelope?: Record<string, unknown> | null;
   /** The resolved request, only when this key can open the company data key (`include: "contenido"` or a single read). */
   content?: Record<string, unknown>;
+  /** Server warnings of the response (for example `campo_ignorado`, `campo_desconocido`). Present only when there are any. */
+  advertencias?: Array<string | ServerWarning>;
+  /** The `campo_ignorado` warnings: settlement fields sent on a 04 or 07 draft, which have none. */
+  ignoredFields?: IgnoredFieldWarning[];
 }
 
 /** The body of a draft: the same request as `issue`, plus an optional id and your own reference. */
-export type DraftInput = Record<string, unknown> & {
+export type DraftInput = (DteRequest | Record<string, unknown>) & {
   /** Your UUID v4 for the draft; Facta picks one when omitted. */
   id?: string;
   /** Up to 64 characters, yours, no personal data. Filters `listDrafts`. */
@@ -105,6 +111,11 @@ export function draftOf(payload: unknown): Draft {
   if (typeof r["editado"] === "boolean") draft.edited = r["editado"];
   if (r["sobre"] !== undefined) draft.envelope = isObject(r["sobre"]) ? r["sobre"] : null;
   if (isObject(r["contenido"])) draft.content = r["contenido"];
+  if (Array.isArray(r["advertencias"]) && r["advertencias"].length > 0) {
+    draft.advertencias = r["advertencias"] as Array<string | ServerWarning>;
+    const ignored = ignoredFieldWarnings(r["advertencias"]);
+    if (ignored.length > 0) draft.ignoredFields = ignored;
+  }
   return draft;
 }
 

@@ -63,7 +63,7 @@ export {
   type SpentCorrelative,
 } from "./src/errors.ts";
 export type * from "./src/types.ts";
-export { parseFactaWarning, unknownFieldWarnings } from "./src/warnings.ts";
+export { ignoredFieldWarnings, parseFactaWarning, unknownFieldWarnings } from "./src/warnings.ts";
 export {
   constructWebhookEvent,
   MemoryWebhookReplayStore,

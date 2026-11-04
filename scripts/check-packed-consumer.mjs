@@ -368,7 +368,7 @@ await workflows.catalogRequest(fake, 'fixture-customer', 'fixture-product');
 await workflows.readTicket(fake, 'designated-test-invoice');
 await workflows.invalidateDesignatedTest(fake, {} as InvalidationArchive, 'designated-test-invoice', {} as InvalidationRequest, 'fixture-invalidation');
 await workflows.inspectCompatibility(fake);
-if (calls.filter(call => call === 'issue:stable-fixture-order').length !== 7 || !calls.includes('recover') || !calls.includes('ticket') || !calls.includes('invalidate')) throw new Error('Example scenario execution failed');
+if (calls.filter(call => call === 'issue:stable-fixture-order').length !== Object.values(requests).length || !calls.includes('recover') || !calls.includes('ticket') || !calls.includes('invalidate')) throw new Error('Example scenario execution failed');
 const runtime = globalThis as any;
 const syntheticEnv = { FACTA_API_KEY: 'facta_test_fixture.secret', FACTA_SIGN_KEY: 'factask_fixture', FACTA_API_BASE_URL: 'https://packed.example.test/api-v1', ERP_ORDER_ID: 'stable-example-order' };
 for (const [name, value] of Object.entries(syntheticEnv)) {

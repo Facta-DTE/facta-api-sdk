@@ -76,7 +76,7 @@ export interface DataActionOptions {
 }
 
 const UUID = /^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/;
-const DTE_TYPES = ["01", "03", "05", "06", "11", "14"];
+const DTE_TYPES = ["01", "03", "04", "05", "06", "07", "11", "14"];
 const ESTADOS = ["contingencia", "firmado", "invalidado", "sellado"];
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const CONTENT_TYPES: Record<FactaDownloadKind, string> = {

@@ -121,6 +121,13 @@ export interface UnknownFieldWarning {
   sugerencia?: string;
 }
 
+/** A settlement field sent on a 04 or 07: ignored, the document is issued without it. */
+export interface IgnoredFieldWarning {
+  codigo: "campo_ignorado";
+  campo: string;
+  mensaje: string;
+}
+
 /** The parsed `Facta-Warning` response header (`campo_desconocido; campos=2`). */
 export interface FactaWarningHeader {
   code: string;
@@ -128,7 +135,62 @@ export interface FactaWarningHeader {
   count: number | null;
 }
 
-export type DteType = "01" | "03" | "05" | "06" | "11" | "14";
+export type DteType = "01" | "03" | "04" | "05" | "06" | "07" | "11" | "14";
+
+/**
+ * Catalogue catalogue 025, the title under which goods travel on a remission note (04): `01` deposit, `02` ownership,
+ * `03` consignment, `04` transfer, `05` other. There is no default: it is what the document legally states.
+ *
+ */
+export type BienTitulo = "01" | "02" | "03" | "04" | "05";
+
+/** Recipient of a remission note (04): a registered taxpayer like a CCF's, plus the mandatory title of the goods. */
+export interface RemissionRecipient extends Recipient {
+  /** catalogue 025. Missing is `400 invalid_request` (`details.field: "receptor.bienTitulo"`); a code outside the catalogue is `422 validation_failed`. */
+  bienTitulo: BienTitulo;
+}
+
+/** Withholding codes of a retention receipt (07), catalogue 006: `22` 1 %, `C4` 13 %, `C9` other cases (no fixed rate). */
+export type RetentionCode = "22" | "C4" | "C9";
+
+/** The reference to the document a retention line withholds on; the first three fields travel together or not at all. */
+interface RetentionReference {
+  /** Type of the referenced document: `01` or `03`. */
+  tipoDte: "01" | "03";
+  numeroDocumento: string;
+  /** `YYYY-MM-DD`. */
+  fechaEmision: string;
+  /** 1 paper, 2 electronic (the default). */
+  tipoGeneracion?: 1 | 2;
+}
+
+interface NoRetentionReference {
+  tipoDte?: never;
+  numeroDocumento?: never;
+  fechaEmision?: never;
+  tipoGeneracion?: never;
+}
+
+interface RetentionLineBase {
+  /** The amount withheld on, greater than zero, at most two decimals. */
+  montoSujetoGrav: number;
+  /** Free text; optional. */
+  descripcion?: string;
+  /** A retention line has no quantity, unit price or product: those fields do not exist here. */
+  cantidad?: never;
+  precioUni?: never;
+  productId?: never;
+}
+
+/**
+ * One line of a retention receipt (07). `22` and `C4` are computed by the server, so `ivaRetenido` is refused
+ * there (`400`); `C9` has no fixed rate and requires it. The reference fields are all-or-nothing (a paper
+ * purchase or a purchase from an excluded subject carries none).
+ */
+export type RetentionLine =
+  & RetentionLineBase
+  & ({ codigoRetencionMH: "22" | "C4"; ivaRetenido?: never } | { codigoRetencionMH: "C9"; ivaRetenido: number })
+  & (RetentionReference | NoRetentionReference);
 
 export type RelatedDocument =
   /** The API can resolve this short form for a document in the same company. */
@@ -176,6 +238,15 @@ interface VatWithholdingField {
   aplicarRetencionIva?: boolean;
 }
 
+/** A remission note (04) and a retention receipt (07) settle nothing: the server ignores these fields and warns `campo_ignorado`, so the types do not offer them. */
+interface NoSettlementFields {
+  condicionOperacion?: never;
+  plazo?: never;
+  periodo?: never;
+  formaPago?: never;
+  pagos?: never;
+}
+
 /** DTE request union. DTE-specific fields are available only on their type. */
 export type DteRequest =
   | (DteRequestBase & VatWithholdingField & { aplicarPercepcionIva?: never; tipoDte: "01"; receptor?: Recipient | null; documentosRelacionados?: never; exportacion?: never; aplicarReteRenta?: never; numPagoElectronico?: never })
@@ -188,8 +259,22 @@ export type DteRequest =
      */
     aplicarPercepcionIva?: boolean;
   })
+  | (Pick<DteRequestBase, "items" | "observaciones"> & NoSettlementFields & VatOwnFieldsNever & {
+    /**
+     * Remission note. Items are priced like a CCF's (VAT excluded); `receptor.bienTitulo` is required.
+     * `documentosRelacionados` (optional) may name sealed 01, 03 or 11 documents.
+     */
+    tipoDte: "04"; receptor: RemissionRecipient; documentosRelacionados?: RelatedDocument[]; exportacion?: never; aplicarReteRenta?: never; numPagoElectronico?: never;
+  })
   | (Omit<DteRequestBase, "pagos"> & VatOwnFieldsNever & { pagos?: never; tipoDte: "05"; receptor?: Recipient | null; documentosRelacionados: RelatedDocument[]; exportacion?: never; aplicarReteRenta?: never; numPagoElectronico?: never })
   | (Omit<DteRequestBase, "pagos"> & VatOwnFieldsNever & { pagos?: never; tipoDte: "06"; receptor?: Recipient | null; documentosRelacionados: RelatedDocument[]; numPagoElectronico?: string | null; exportacion?: never; aplicarReteRenta?: never })
+  | (Pick<DteRequestBase, "observaciones"> & NoSettlementFields & VatOwnFieldsNever & {
+    /**
+     * Retention receipt. `receptor` is the supplier withheld from. Up to 500 withholding lines. Only a company
+     * marked as a retention agent may issue it (`403 retention_agent_required`, before any number is spent).
+     */
+    tipoDte: "07"; receptor: Recipient; items: RetentionLine[]; documentosRelacionados?: never; exportacion?: never; aplicarReteRenta?: never; numPagoElectronico?: never;
+  })
   | (DteRequestBase & VatOwnFieldsNever & { tipoDte: "11"; receptor: ExportRecipient; exportacion: ExportDetails; documentosRelacionados?: never; aplicarReteRenta?: never; numPagoElectronico?: never })
   | (DteRequestBase & VatOwnFieldsNever & { tipoDte: "14"; receptor: ExcludedSubjectRecipient; aplicarReteRenta?: boolean; documentosRelacionados?: never; exportacion?: never; numPagoElectronico?: never });
 
@@ -443,6 +528,8 @@ export interface SealedDte {
   advertencias?: Array<string | ServerWarning>;
   /** The `campo_desconocido` warnings of `advertencias`, ready to read. Present only when the request carried a field Facta DTE does not know. */
   unknownFields?: UnknownFieldWarning[];
+  /** The `campo_ignorado` warnings of `advertencias`: settlement fields sent on a 04 or 07, which have none. */
+  ignoredFields?: IgnoredFieldWarning[];
   /** The `Facta-Warning` response header, parsed. Present only when the server sent it. */
   factaWarning?: FactaWarningHeader;
   /** Present only when the emergency safeguard ran. */
@@ -476,6 +563,8 @@ export interface DteInContingency {
   advertencias?: Array<string | ServerWarning>;
   /** The `campo_desconocido` warnings of `advertencias`, ready to read. Present only when the request carried a field Facta DTE does not know. */
   unknownFields?: UnknownFieldWarning[];
+  /** The `campo_ignorado` warnings of `advertencias`: settlement fields sent on a 04 or 07, which have none. */
+  ignoredFields?: IgnoredFieldWarning[];
   /** The `Facta-Warning` response header, parsed. Present only when the server sent it. */
   factaWarning?: FactaWarningHeader;
   /** Present only when the emergency safeguard ran. */
@@ -570,6 +659,8 @@ export interface PreparedDte {
   advertencias?: Array<string | ServerWarning>;
   /** The `campo_desconocido` warnings of `advertencias`. Present only when the request carried a field Facta DTE does not know. */
   unknownFields?: UnknownFieldWarning[];
+  /** The `campo_ignorado` warnings of `advertencias`: settlement fields sent on a 04 or 07, which have none. */
+  ignoredFields?: IgnoredFieldWarning[];
   /** The `Facta-Warning` response header, parsed. Present only when the server sent it. */
   factaWarning?: FactaWarningHeader;
 }

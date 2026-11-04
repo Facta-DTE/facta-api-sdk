@@ -5,6 +5,8 @@ import {
   debitNote,
   excludedSubjectInvoice,
   exportInvoice,
+  remissionNote,
+  retentionReceipt,
   finalConsumerInvoice,
   namedFinalConsumerInvoice,
 } from "../examples/dte-types.ts";
@@ -24,6 +26,11 @@ const requests: DteRequest[] = [
     items: [{ descripcion: "CCF", cantidad: 1, precioUni: 1 }],
   },
   {
+    tipoDte: "04",
+    receptor: { nombre: "Cliente", bienTitulo: "04" },
+    items: [{ descripcion: "NR", cantidad: 1, precioUni: 1 }],
+  },
+  {
     tipoDte: "05",
     documentosRelacionados: [{ codigoGeneracion: "gen-05" }],
     items: [{ descripcion: "NC", cantidad: 1, precioUni: 1 }],
@@ -33,6 +40,11 @@ const requests: DteRequest[] = [
     documentosRelacionados: [{ codigoGeneracion: "gen-06" }],
     numPagoElectronico: "TRF-1",
     items: [{ descripcion: "ND", cantidad: 1, precioUni: 1 }],
+  },
+  {
+    tipoDte: "07",
+    receptor: { nombre: "Supplier" },
+    items: [{ montoSujetoGrav: 100, codigoRetencionMH: "22" }],
   },
   {
     tipoDte: "11",
@@ -74,7 +86,7 @@ const fullRelatedDocument: RelatedDocument = {
   fechaEmision: "2026-09-30",
   tipoGeneracion: 1,
 };
-const supported: DteType[] = ["01", "03", "05", "06", "11", "14"];
+const supported: DteType[] = ["01", "03", "04", "05", "06", "07", "11", "14"];
 const listFilters: ListDocumentsFilters[] = [{ estado: "sellado" }, { estado: "invalidado" }];
 const listedDocumentState: ListedDte["estado"] = "contingencia";
 const unavailableListedReceiver: ListedDte["receptor"] = null;
@@ -82,14 +94,30 @@ const documentedExamples: DteRequest[] = [
   finalConsumerInvoice,
   namedFinalConsumerInvoice,
   creditFiscalInvoice,
+  remissionNote,
   creditNote,
   debitNote,
+  retentionReceipt,
   exportInvoice,
   excludedSubjectInvoice,
 ];
 
 // @ts-expect-error export invoices require both a foreign recipient and export block
 const incompleteExport: DteRequest = { tipoDte: "11", items: [] };
+// @ts-expect-error a remission note requires receptor.bienTitulo
+const remissionWithoutTitle: DteRequest = { tipoDte: "04", receptor: { nombre: "x" }, items: [] };
+// @ts-expect-error bienTitulo is CAT-025 (01 to 05)
+const remissionBadTitle: DteRequest = { tipoDte: "04", receptor: { nombre: "x", bienTitulo: "09" }, items: [] };
+// @ts-expect-error a retention line has no quantity or unit price
+const retentionWithSaleLine: DteRequest = { tipoDte: "07", receptor: { nombre: "x" }, items: [{ descripcion: "x", cantidad: 1, precioUni: 1 }] };
+// @ts-expect-error C9 requires ivaRetenido
+const retentionC9WithoutIva: DteRequest = { tipoDte: "07", receptor: { nombre: "x" }, items: [{ montoSujetoGrav: 1, codigoRetencionMH: "C9" }] };
+// @ts-expect-error 22 and C4 are computed by the server: ivaRetenido is refused
+const retentionWithComputedIva: DteRequest = { tipoDte: "07", receptor: { nombre: "x" }, items: [{ montoSujetoGrav: 1, codigoRetencionMH: "22", ivaRetenido: 1 }] };
+// @ts-expect-error the reference group travels whole: a document number alone is not accepted
+const retentionPartialReference: DteRequest = { tipoDte: "07", receptor: { nombre: "x" }, items: [{ montoSujetoGrav: 1, codigoRetencionMH: "22", numeroDocumento: "X" }] };
+// @ts-expect-error neither settles anything: the types do not offer pagos
+const remissionWithPayments: DteRequest = { tipoDte: "04", receptor: { nombre: "x", bienTitulo: "01" }, items: [], pagos: [{ codigo: "01", montoPago: 1 }] };
 // @ts-expect-error payment transfer reference is only accepted for debit notes
 const paymentReferenceOnInvoice: DteRequest = {
   tipoDte: "01",
@@ -104,6 +132,13 @@ const rejectedListFilter: ListDocumentsFilters = { estado: "rechazado" };
 const rejectedListedDocument: ListedDte = { estado: "rechazado", codigoGeneracion: "x", numeroControl: "y", tipoDte: "01", fecEmi: "2026-10-01" };
 
 void [
+  remissionWithoutTitle,
+  remissionBadTitle,
+  retentionWithSaleLine,
+  retentionC9WithoutIva,
+  retentionWithComputedIva,
+  retentionPartialReference,
+  remissionWithPayments,
   shortRelatedDocument,
   fullRelatedDocument,
   supported,

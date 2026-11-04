@@ -304,8 +304,10 @@ export const esMessages: FactaMessages = {
   docTypes: {
     "01": "Factura",
     "03": "Crédito fiscal",
+    "04": "Nota de remisión",
     "05": "Nota de crédito",
     "06": "Nota de débito",
+    "07": "Comprobante de retención",
     "11": "Factura de exportación",
     "14": "Sujeto excluido",
   },
@@ -686,6 +688,7 @@ export const esMessages: FactaMessages = {
     sign_vault_missing: "Aún no hay un certificado de firma configurado para esta cuenta.",
     invalid_request: "Los datos del documento no son válidos.",
     validation_failed: "Los datos del documento no cumplen los requisitos de Hacienda. Revise la información e intente de nuevo.",
+    retention_agent_required: "Su empresa no está habilitada como agente de retención. Active esa opción en el perfil fiscal para emitir comprobantes de retención.",
     retention_mixed_class_unsupported: "La retención de renta no se puede aplicar a un documento con líneas exentas o no sujetas. Emítalas en otro documento o no aplique la retención.",
     not_found: "No encontramos el documento.",
     not_sealed: "El documento todavía no tiene sello de Hacienda; use raw para el original.",

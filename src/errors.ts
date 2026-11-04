@@ -29,6 +29,8 @@ export type FactaErrorCode =
   | "validation_failed"
   /** `aplicarReteRenta` on a document with an `exenta` or `no_sujeta` line (HTTP 422). Nothing was signed and no number spent. */
   | "retention_mixed_class_unsupported"
+  /** A retention receipt (07) from a company that is not a designated retention agent (HTTP 403). Refused before any number is spent. */
+  | "retention_agent_required"
   | "not_found"
   | "method_not_allowed"
   /** JSON download of a document that has no Hacienda seal yet, e.g. contingency (HTTP 409). Retry with `raw: true` for the original. */

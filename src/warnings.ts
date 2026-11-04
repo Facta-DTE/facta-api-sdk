@@ -1,4 +1,4 @@
-import type { FactaWarningHeader, UnknownFieldWarning } from "./types.ts";
+import type { FactaWarningHeader, IgnoredFieldWarning, UnknownFieldWarning } from "./types.ts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -25,6 +25,22 @@ export function unknownFieldWarnings(source: unknown): UnknownFieldWarning[] {
   return out;
 }
 
+/**
+ * The `campo_ignorado` warnings of a sealed response, a prepare response or a draft: settlement fields
+ * (`condicionOperacion`, `formaPago`, `pagos`, `plazo`, `periodo`, `descuentoGlobal`) sent on a remission note (04)
+ * or a retention receipt (07), which have none. They were ignored and the document was issued without them.
+ */
+export function ignoredFieldWarnings(source: unknown): IgnoredFieldWarning[] {
+  const list = Array.isArray(source) ? source : isRecord(source) ? source.advertencias : undefined;
+  if (!Array.isArray(list)) return [];
+  const out: IgnoredFieldWarning[] = [];
+  for (const item of list) {
+    if (!isRecord(item) || (item.codigo ?? item.code) !== "campo_ignorado" || typeof item.campo !== "string") continue;
+    out.push({ codigo: "campo_ignorado", campo: item.campo, mensaje: typeof item.mensaje === "string" ? item.mensaje : "" });
+  }
+  return out;
+}
+
 /** Parse a `Facta-Warning` header value such as `campo_desconocido; campos=2`. `null` for an empty value. */
 export function parseFactaWarning(value: string | null | undefined): FactaWarningHeader | null {
   if (typeof value !== "string") return null;
@@ -42,10 +58,12 @@ export function parseFactaWarning(value: string | null | undefined): FactaWarnin
 export function withWarnings<T extends object>(result: T, header: string | null): T {
   const unknownFields = unknownFieldWarnings(result);
   const factaWarning = parseFactaWarning(header);
-  if (unknownFields.length === 0 && factaWarning === null) return result;
+  const ignoredFields = ignoredFieldWarnings(result);
+  if (unknownFields.length === 0 && ignoredFields.length === 0 && factaWarning === null) return result;
   return {
     ...result,
     ...(unknownFields.length > 0 ? { unknownFields } : {}),
+    ...(ignoredFields.length > 0 ? { ignoredFields } : {}),
     ...(factaWarning !== null ? { factaWarning } : {}),
   };
 }
