@@ -4,7 +4,7 @@ Sources: `src/types.ts` (`DteRequest`), `examples/dte-types.ts`,
 `guides/prepare-sign.md`, `guides/node.md`, and the contract's `SolicitudDte`,
 `Item` and receiver schemas.
 
-## One method, six types
+## One method, eight types
 
 `facta.issue(request, { idempotencyKey, deliver?, signal?, debug? })` →
 `IssueResult` (`SealedDte | DteInContingency`, discriminated by `estado`).
@@ -18,16 +18,19 @@ Spanish spelling; do not translate them.
 | --- | --- | --- | --- | --- |
 | `"01"` | Factura (FE) | **includes** VAT | optional (omit = consumidor final) | — |
 | `"03"` | Comprobante de Crédito Fiscal (CCF) | **excludes** VAT | required: a registered taxpayer | — |
+| `"04"` | Nota de remisión (NRE) | excludes VAT | registered receiver, **plus `bienTitulo` (required)** | `receptor.bienTitulo`, `documentosRelacionados?` (01, 03, 11), `descuentoGlobal?`; **no payment fields** |
 | `"05"` | Nota de crédito | excludes VAT | like 03 | `documentosRelacionados` (required) |
 | `"06"` | Nota de débito | excludes VAT | like 03 | `documentosRelacionados` (required), `numPagoElectronico?` |
+| `"07"` | Comprobante de retención (CR) | **no price**: each line is a withholding (`montoSujetoGrav`) | required: the **supplier** withheld from | `items` are retention lines; **no payment fields**; retention agents only (`retention_agent_required`) |
 | `"11"` | Factura de exportación (FEX) | no VAT (rate zero) | required: foreign receiver (`ExportRecipient`) | `exportacion` (required) |
 | `"14"` | Factura de sujeto excluido (FSE) | the price as is | required: the **seller** you bought from (`ExcludedSubjectRecipient`) | `aplicarReteRenta?` |
 
 The server does not guess the VAT basis: sending a CCF price with VAT included
-gives wrong totals, not an error. **07 (Comprobante de retención) and 15
-(Comprobante de donación) are not exposed by the API contract or the SDK**
-(`DteType` is `"01" | "03" | "05" | "06" | "11" | "14"`); do not offer them.
-A key may be restricted to some types (`dte_type_not_allowed`).
+gives wrong totals, not an error. **15 (Comprobante de donación) is not exposed
+by the API contract or the SDK**; do not offer it. 04 and 07 are described in
+their own sections below. A key may be restricted to some types
+(`dte_type_not_allowed`): a key minted before 04/07 existed does not carry them,
+mint it again with those types ticked.
 
 Common request fields (`DteRequestBase`): `items` (1–2000), `condicionOperacion`
 (1 contado, 2 crédito, 3 otro), `plazo` (`"01"` days, `"02"` months, `"03"`
@@ -115,6 +118,141 @@ is signed and Hacienda rejects it. Always send all three for goods:
 exportacion: { tipoItemExpor: 1, incoterms: "09", recintoFiscal: "02",
                tipoRegimen: "EX-1", regimen: "1000.000", flete: 150, seguro: 20 }
 ```
+
+### Remission note (04): goods that move without a sale
+
+**What it is for.** A Nota de remisión accompanies goods that change place or hands
+**without being sold at that moment**: goods sent on consignment, a transfer
+between the company's own establishments, goods on the way to a customer
+before the sale is invoiced, goods left in deposit. It still carries the value of
+the goods (lines and totals), but it **collects nothing**: there is no payment, no
+payment condition and no due date on it. The sale, when it happens, is a 01/03/11.
+
+**Who may issue it.** Any company allowed to issue the type (the key must carry `"04"`).
+
+**Fields** (source: the official 04 schema and Normativa v2.0; Facta rules are marked):
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `tipoDte: "04"` | yes | |
+| `receptor` | yes | A stored customer (`customerId`) **or** spelled out: `nombre`, `tipoDocumento`, `numDocumento`, `codActividad` (`descActividad` is accepted too). What you spell out wins over the stored customer. The SDK types enforce this. |
+| `receptor.bienTitulo` | **yes, no default** | Catalogue 025, the title under which the goods travel: `01` Depósito, `02` Propiedad, `03` Consignación, `04` Traslado, `05` Otros. It is what the document legally states, so Facta never guesses it and a stored customer does not supply it. Missing: `400 invalid_request` (`details.field: "receptor.bienTitulo"`). A code outside the catalogue: `422 validation_failed`. On any other type it is `400`. |
+| `receptor.nrc`, `correo`, `direccion` | no | The official 04 schema allows them to be null. (Decision of the product owner, Nov 2026: a CCF requires the receiver's NIT, NRC, activity, address and e-mail; a 04 does not.) |
+| `items` | yes | Like a CCF: `precioUni` **excludes** VAT, `cantidad`, `tipoItem`, `tipoVenta` (gravada/exenta/no_sujeta), `montoDescu`. Each line may name the document it belongs to with `numeroDocumento`. |
+| `documentosRelacionados` | no | Sealed documents the goods travel with: **01, 03 or 11** only. Short form `{ codigoGeneracion }` (the server completes it from your company's index) or the full form. |
+| `descuentoGlobal` | no | `{ modo: "monto" | "porcentaje", valor }`, same shape as on 01/03/11/14. Decision of the product owner (Nov 2026): the Normativa v2.0 lists the global discounts per sale class (`descuNoSuj`, `descuExenta`, `descuGravada`) as valid for FE, CCF and NRE, and the official 04 schema requires them in `resumen`; a remission settles nothing but carries the value of the goods, and that value can be discounted. |
+| `observaciones` | no | |
+
+**Not sent, and why.** `condicionOperacion`, `formaPago`, `pagos`, `plazo`, `periodo`
+are not in the 04 schema. If you send them anyway they are **ignored** (never an
+error), the document is issued without them and the response carries one
+`advertencias` entry per field, `{ codigo: "campo_ignorado", campo, mensaje }`
+(SDK: `result.ignoredFields`, `ignoredFieldWarnings(result)`). The SDK types do not
+offer them. `apendice` is not accepted (`400`).
+
+**Related documents.** A 04 may relate a sealed 01, 03 or 11. A credit or debit
+note (05/06) may in turn relate a sealed 03 or 07.
+
+```ts
+const nre = await facta.issue({
+  tipoDte: "04",
+  receptor: {
+    nombre: "Comercial Ejemplo, S.A. de C.V.", tipoDocumento: "36", numDocumento: "05110606161016",
+    codActividad: "46510",
+    nrc: "2513113",                       // optional on a 04
+    direccion: { departamento: "06", municipio: "20", distrito: "01", complemento: "Bodega 2, San Miguel" }, // optional
+    correo: "bodega@example.com",         // optional
+    bienTitulo: "04",                     // required: Traslado
+  },
+  items: [{ descripcion: "Caja de repuestos", cantidad: 2, precioUni: 25, tipoItem: 1 }],
+  descuentoGlobal: { modo: "porcentaje", valor: 10 },   // optional
+}, { idempotencyKey: "transfer-0042" });
+
+// As a draft for a person to review (nothing is signed, no number is spent):
+await facta.createDraft({ /* same body */ reference: "transfer-0042" }, { idempotencyKey: "transfer-0042" });
+```
+
+### Retention receipt (07): a withholding agent's receipt
+
+**What it is for.** A Comprobante de retención is issued by a **withholding agent
+designated by Hacienda** when it buys from a smaller supplier: the agent withholds
+part of the VAT on that purchase and gives the supplier this receipt, which the
+supplier uses to claim the withheld amount. Lines are not products: each line says
+**on how much** was withheld and **under which code**.
+
+**Who may issue it.** Only a company marked as a retention agent. Any other company
+gets `403 retention_agent_required`, refused **before** any control number is
+reserved (nothing is spent). The owner turns it on in the Facta DTE app:
+**Cuenta → Perfil fiscal → «agente de retención»**. Mark it only if Hacienda
+designated the company as such.
+
+**Fields:**
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `tipoDte: "07"` | yes | |
+| `receptor` | yes | The **supplier** the withholding is made from: a registered taxpayer (`nombre`, NIT in `numDocumento`, `nrc`, `codActividad`, `direccion`, `correo`) or a `customerId`. |
+| `items` | yes, 1 to **500** | Withholding lines, below. |
+| `observaciones` | no | |
+
+Withholding line (`RetentionLine`). There is no `cantidad`, `precioUni` or `productId`:
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `montoSujetoGrav` | yes | Amount the withholding is made on: greater than zero, at most **two decimals**. |
+| `codigoRetencionMH` | yes | `"22"` withholding of 1 % of VAT (art. 162 Código Tributario); `"C4"` withholding of 13 %; `"C9"` other cases, with no fixed rate. Another value: `422 validation_failed`. |
+| `ivaRetenido` | **only with `C9`, where it is required** | With `22` and `C4` the server derives it from the code and **sending it is `400`**. |
+| `tipoDte`, `numeroDocumento`, `fechaEmision`, `tipoGeneracion` | all-or-nothing group | The document the purchase is documented by: `tipoDte` `"01"` or `"03"`, its `numeroDocumento` (generation code if electronic), `fechaEmision` `YYYY-MM-DD`, `tipoGeneracion` 1 paper / 2 electronic (default 2, only with the document). **Send all of `tipoDte`/`numeroDocumento`/`fechaEmision`, or none**: a paper purchase or a purchase from an excluded subject carries none. A partial group is refused. |
+| `descripcion` | no | Free text. |
+
+**Why `ivaRetenido` is derived for 22 and C4 (Facta rule).** The code fixes the rate
+(22 = 1 %, C4 = 13 %); the law fixes the rate, not who computes it, and Facta's rule
+is that a client never sends computed money (the web app works the same way).
+Known limit: a difference of one cent of rounding against the supplier's own
+document cannot be adjusted except through `C9`, where you state the amount.
+
+**Ignored with `campo_ignorado`:** `condicionOperacion`, `formaPago`, `pagos`,
+`plazo`, `periodo` and `descuentoGlobal`: the 07 has no settlement and no discount
+(unlike the 04, which accepts `descuentoGlobal`).
+
+**Related documents.** A credit or debit note (05/06) may relate a sealed 07.
+
+```ts
+const cr = await facta.issue({
+  tipoDte: "07",
+  receptor: {
+    nombre: "ZD, S.A. de C.V.", tipoDocumento: "36", numDocumento: "05110606161016",
+    nrc: "2513113", codActividad: "46510",
+    direccion: { departamento: "06", municipio: "20", distrito: "01", complemento: "Colonia Centro, San Miguel" },
+    correo: "proveedor@example.com",
+  },
+  items: [
+    { tipoDte: "03", numeroDocumento: "1BC3E8A1-1111-4111-8111-11111111ABCD", fechaEmision: "2026-10-05",
+      montoSujetoGrav: 1000, codigoRetencionMH: "22" },                    // IVA withheld derived: 1 %
+    { montoSujetoGrav: 250.5, codigoRetencionMH: "C9", ivaRetenido: 2.5,   // paper purchase: no reference
+      descripcion: "Compra en papel" },
+  ],
+}, { idempotencyKey: "retention-0099" });
+
+await facta.createDraft({ /* same body */ reference: "retention-0099" }, { idempotencyKey: "retention-0099" });
+```
+
+**Common mistakes (04 and 07):**
+
+| Mistake | What happens | Do this |
+| --- | --- | --- |
+| 04 receptor with `nrc`/`correo`/`direccion` filled "to be safe" | Harmless but unnecessary | Only `nombre`, `tipoDocumento`, `numDocumento`, `codActividad`, `bienTitulo` are required |
+| 04 without `receptor.bienTitulo` | `400 invalid_request` | Always choose the title (catalogue 025) |
+| `bienTitulo` outside 01 to 05, or on another type | `422` / `400` | Only 04, only codes 01 to 05 |
+| `pagos`/`formaPago`/`condicionOperacion` on a 04 or 07 | Ignored, with `campo_ignorado` warnings | Leave them out |
+| `descuentoGlobal` on a 07 | Ignored with a warning (it is valid on a 04) | Leave it out |
+| `ivaRetenido` with `22` or `C4` | `400` | Let the server derive it; use `C9` to state it |
+| `C9` without `ivaRetenido` | `400` | State the amount withheld |
+| Only some of `tipoDte`/`numeroDocumento`/`fechaEmision` | Refused | All three, or none |
+| `cantidad`/`precioUni` on a 07 line | Not part of the line | `montoSujetoGrav` only |
+| More than 500 lines, or `montoSujetoGrav` with 3 decimals or ≤ 0 | `400`/`422` | Split the document; two decimals |
+| 07 from a company that is not a retention agent | `403 retention_agent_required` | The owner enables «agente de retención» in Cuenta → Perfil fiscal, if Hacienda designated it |
+| Key without `"04"`/`"07"` | `dte_type_not_allowed` | Mint a key with those types |
 
 ## Examples (from `examples/dte-types.ts`)
 
@@ -254,5 +392,5 @@ the same rejection. A corrected document is a different body, so it needs a new
 key; store `error.spent` with your order for reconciliation. Never "fix" a
 rejection by reusing the old key with new data (`idempotency_key_reuse`).
 
-`validation_failed` and `retention_mixed_class_unsupported` (422) and
-`invalid_request` (400) spend nothing.
+`validation_failed` and `retention_mixed_class_unsupported` (422),
+`invalid_request` (400) and `retention_agent_required` (403) spend nothing.

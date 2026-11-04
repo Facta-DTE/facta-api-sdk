@@ -35,7 +35,7 @@ await facta.cancelDraft(draft.id); // only while it is pending and nobody has it
 | `cancelDraft(id)` | `DELETE /v1/drafts/{id}` | Only if pending and closed. |
 | `issueDraft(id, version, request, options?)` | `POST /v1/drafts/{id}/issue` | One door prevents double issuing: `draft_issuing` / `draft_claimed` (409) spent nothing. A Hacienda rejection counts as issued and the draft is not reopened. |
 
-Remission notes (04) and retention receipts (07) are accepted as drafts too, with the same bodies as `issue` (see `remissionNote` and `retentionReceipt` in [examples/dte-types.ts](../examples/dte-types.ts)). Settlement fields sent on them are ignored; the draft carries `ignoredFields` (`campo_ignorado`). A 07 from a company that is not a retention agent is refused with `retention_agent_required` (403) before the draft is stored.
+Remission notes (04) and retention receipts (07) are accepted as drafts too, with the same bodies as `issue` (see `remissionNote` and `retentionReceipt` in [examples/dte-types.ts](../examples/dte-types.ts)). Settlement fields sent on them are ignored (`descuentoGlobal` is valid on a 04 and ignored on a 07); the draft carries `ignoredFields` (`campo_ignorado`). A 07 from a company that is not a retention agent is refused with `retention_agent_required` (403) before the draft is stored.
 
 ## Errors worth handling
 

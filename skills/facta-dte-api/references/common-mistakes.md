@@ -19,7 +19,7 @@ Each one is documented in the SDK guides or contract; use this as a review list.
 | `receptor` missing fields on 03 | `validation_failed` or `mh_rejected` (spends a number) | Complete taxpayer data or a valid `customerId` |
 | Dashes in DUI/NIT | Hacienda's format check fails | Digits only (DUI 9, NIT 14) |
 | `incoterms` with the description | Wrong value | Only the CAT-031 code (`"01"`–`"11"`) |
-| Sending a type's own field on another type | `400` | `aplicarReteRenta` only 14, `documentosRelacionados` only 05/06, `exportacion` only 11 |
+| Sending a type's own field on another type | `400` | `aplicarReteRenta` only 14, `documentosRelacionados` only 04/05/06, `bienTitulo` only 04, `exportacion` only 11 |
 | Mixing `exenta`/`no_sujeta` lines with `aplicarReteRenta` | `422 retention_mixed_class_unsupported` | Separate documents |
 | Re-serializing `documento` to archive or send | Bytes differ from what was signed | Use `jws`, `archivoJson`, `archivoDte` |
 | Expecting the old JSON from `downloadDocument(code, "json")` (≥ 0.5.0) | Archivo DTE arrives instead | `{ raw: true }` for the stored original |
@@ -35,6 +35,11 @@ Each one is documented in the SDK guides or contract; use this as a review list.
 | Turning on a plain catalog without telling the owner | Facta DTE can then read customers | Explain the privacy trade-off first |
 | `diagnose().overall === "ready"` as a gate | Healthy integrations read `attention` | Gate on `canIssue` etc. |
 | Leaving `debug.timings` on | Larger responses, internal names in logs | Only while investigating |
-| Offering types 07/15 | Not exposed by the API | Only 01, 03, 05, 06, 11, 14 |
+| Offering type 15 | Not exposed by the API | 01, 03, 04, 05, 06, 07, 11, 14 |
+| 04 without `receptor.bienTitulo` | `400 invalid_request` | Choose the title (catalogue 025: 01 Depósito, 02 Propiedad, 03 Consignación, 04 Traslado, 05 Otros) |
+| Payment fields on a 04 or 07 | Ignored with `campo_ignorado` warnings; the document settles nothing | Leave `pagos`/`formaPago`/`condicionOperacion` out |
+| `ivaRetenido` with `22` or `C4` on a 07 line | `400`: the server derives it | Send it only with `C9` |
+| Partial reference group on a 07 line | Refused | `tipoDte` + `numeroDocumento` + `fechaEmision` together, or none |
+| Issuing a 07 from a company that is not a retention agent | `403 retention_agent_required` | Owner enables «agente de retención» in Cuenta → Perfil fiscal (only if Hacienda designated it) |
 | Issuing with a `facta_live_` key while developing | Real fiscal documents | `expectedEnvironment: "00"` in dev; `facta_test_` keys |
 | Invalidating without confirmation, or an unsealed/returned document | Irreversible / `has_return_events` | Confirm; for returned documents use more returns or a credit note |

@@ -511,10 +511,10 @@ integridad y requieren revisión.
 Los tipos públicos se exportan desde `mod.ts` y están definidos en
 `src/types.ts`. `DteRequest` es una unión discriminada por `tipoDte` y cubre
 los ocho tipos admitidos por la API (`01`, `03`, `04`, `05`, `06`, `07`, `11`, `14`).
-La nota de remisión (`04`) lleva un `receptor` como el del CCF más `receptor.bienTitulo` obligatorio (catálogo 025);
+La nota de remisión (`04`) traslada bienes sin venta (consignación, traslado entre establecimientos, bienes en camino). Su `receptor` es un cliente guardado o `nombre`, `tipoDocumento`, `numDocumento` y `codActividad` (`nrc`, `correo` y `direccion` son opcionales), más `receptor.bienTitulo` obligatorio (catálogo 025: `01` Depósito, `02` Propiedad, `03` Consignación, `04` Traslado, `05` Otros); admite `documentosRelacionados` (01, 03 u 11 sellados) y `descuentoGlobal` (`{ modo: "monto" | "porcentaje", valor }`);
 el comprobante de retención (`07`) lleva al proveedor como `receptor` y `RetentionLine[]`
 como `items` (`montoSujetoGrav`, `codigoRetencionMH` `22`/`C4`/`C9`, `ivaRetenido` solo con `C9`; solo una empresa
-agente de retención lo emite: `retention_agent_required`, 403). Ninguno liquida nada: si se envían campos de pago el
+agente de retención lo emite —se activa en Cuenta → Perfil fiscal—: `retention_agent_required`, 403). Ninguno liquida nada: si se envían campos de pago (o `descuentoGlobal` en el 07) el
 servidor los ignora y el resultado trae `ignoredFields` (`campo_ignorado`).
 `ExportRecipient`, `ExcludedSubjectRecipient`, `RelatedDocument` y
 `ExportDetails` tipan los campos particulares. `Recipient`, `Address` e `LineItem`
@@ -540,7 +540,7 @@ que representan los ocho códigos soportados.
 | FE consumidor final anónima (01) | `finalConsumerInvoice` | Omite `receptor`; no crea ficha de cliente. |
 | FE con receptor inline (01) | `namedFinalConsumerInvoice` | Envía nombre y correo solo para ese documento. |
 | Crédito fiscal (03) | `creditFiscalInvoice` | Recipient inline con documento, NRC, actividad y dirección. |
-| Nota de remisión (04) | `remissionNote` | Requiere `receptor.bienTitulo`; sin campos de pago. |
+| Nota de remisión (04) | `remissionNote` | Requiere `receptor.bienTitulo`; `nrc`, `correo`, `direccion` opcionales; admite `descuentoGlobal`; sin campos de pago. |
 | Nota de crédito (05) | `creditNote` | Requiere `documentosRelacionados`. |
 | Nota de débito (06) | `debitNote` | Requiere documento relacionado; admite `numPagoElectronico`. |
 | Comprobante de retención (07) | `retentionReceipt` | Líneas de retención (`montoSujetoGrav`, `codigoRetencionMH`); solo agentes de retención. |

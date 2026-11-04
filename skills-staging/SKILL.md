@@ -1,6 +1,6 @@
 ---
 name: facta-dte-api-staging
-description: STAGING variant, ready to test with TypeScript (`npm i @facta-dte/api@next`, staging API URL, test key in ambiente 00, nothing reaches production). Use when integrating Facta DTE electronic invoicing for El Salvador (Hacienda DTE: Factura, Crédito Fiscal, notas, exportación, sujeto excluido) into an application, through the TypeScript/JavaScript SDK `@facta-dte/api` or the Facta HTTP API (`X-Facta-Key`, `/v1/dte`). Covers setup and keys, issuing each DTE type, idempotency, contingency, invalidation and returns, PDF/JSON/ticket files, e-mail and WhatsApp delivery, catalog, storage, errors, debugging and the production checklist. Do not use for other countries' e-invoicing or for the Hacienda portal itself.
+description: STAGING variant, ready to test with TypeScript (`npm i @facta-dte/api@next`, staging API URL, test key in ambiente 00, nothing reaches production). Use when integrating Facta DTE electronic invoicing for El Salvador (Hacienda DTE: Factura, Crédito Fiscal, notas de remisión/crédito/débito, comprobante de retención, exportación, sujeto excluido) into an application, through the TypeScript/JavaScript SDK `@facta-dte/api` or the Facta HTTP API (`X-Facta-Key`, `/v1/dte`). Covers setup and keys, issuing each DTE type, idempotency, contingency, invalidation and returns, PDF/JSON/ticket files, e-mail and WhatsApp delivery, catalog, storage, errors, debugging and the production checklist. Do not use for other countries' e-invoicing or for the Hacienda portal itself.
 ---
 
 # Facta DTE en STAGING: listo para probar con TypeScript
@@ -103,7 +103,7 @@ if `ambiente !== "00"` (`config.expectedEnvironment: "00"` does the same check).
 | The developer wants to… | Read |
 | --- | --- |
 | install the SDK, get keys, choose environment, configure the client, call the HTTP API without the SDK | [references/setup-and-keys.md](references/setup-and-keys.md) |
-| issue a Factura, Crédito Fiscal, nota de crédito/débito, exportación or sujeto excluido; know what each needs; prepare then sign | [references/issuing-dte-types.md](references/issuing-dte-types.md) |
+| issue a Factura, Crédito Fiscal, nota de remisión (04), nota de crédito/débito, comprobante de retención (07), exportación or sujeto excluido; know what each needs; prepare then sign | [references/issuing-dte-types.md](references/issuing-dte-types.md) |
 | make issuing safe against retries, timeouts and duplicate webhooks; order-to-invoice | [references/idempotency-and-recovery.md](references/idempotency-and-recovery.md) |
 | handle contingency, cancel (invalidate) a document, register a return | [references/contingency-invalidation-return.md](references/contingency-invalidation-return.md) |
 | give the customer the JSON/PDF/ticket, list documents, send by e-mail or WhatsApp | [references/files-and-delivery.md](references/files-and-delivery.md) |
