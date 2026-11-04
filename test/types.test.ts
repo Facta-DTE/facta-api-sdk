@@ -27,7 +27,7 @@ const requests: DteRequest[] = [
   },
   {
     tipoDte: "04",
-    receptor: { nombre: "Cliente", bienTitulo: "04" },
+    receptor: { nombre: "Cliente", tipoDocumento: "36", numDocumento: "TEST-ID", codActividad: "46510", bienTitulo: "04" },
     items: [{ descripcion: "NR", cantidad: 1, precioUni: 1 }],
   },
   {
@@ -105,9 +105,9 @@ const documentedExamples: DteRequest[] = [
 // @ts-expect-error export invoices require both a foreign recipient and export block
 const incompleteExport: DteRequest = { tipoDte: "11", items: [] };
 // @ts-expect-error a remission note requires receptor.bienTitulo
-const remissionWithoutTitle: DteRequest = { tipoDte: "04", receptor: { nombre: "x" }, items: [] };
+const remissionWithoutTitle: DteRequest = { tipoDte: "04", receptor: { nombre: "x", tipoDocumento: "36", numDocumento: "1", codActividad: "46510" }, items: [] };
 // @ts-expect-error bienTitulo is CAT-025 (01 to 05)
-const remissionBadTitle: DteRequest = { tipoDte: "04", receptor: { nombre: "x", bienTitulo: "09" }, items: [] };
+const remissionBadTitle: DteRequest = { tipoDte: "04", receptor: { nombre: "x", tipoDocumento: "36", numDocumento: "1", codActividad: "46510", bienTitulo: "09" }, items: [] };
 // @ts-expect-error a retention line has no quantity or unit price
 const retentionWithSaleLine: DteRequest = { tipoDte: "07", receptor: { nombre: "x" }, items: [{ descripcion: "x", cantidad: 1, precioUni: 1 }] };
 // @ts-expect-error C9 requires ivaRetenido
@@ -116,8 +116,18 @@ const retentionC9WithoutIva: DteRequest = { tipoDte: "07", receptor: { nombre: "
 const retentionWithComputedIva: DteRequest = { tipoDte: "07", receptor: { nombre: "x" }, items: [{ montoSujetoGrav: 1, codigoRetencionMH: "22", ivaRetenido: 1 }] };
 // @ts-expect-error the reference group travels whole: a document number alone is not accepted
 const retentionPartialReference: DteRequest = { tipoDte: "07", receptor: { nombre: "x" }, items: [{ montoSujetoGrav: 1, codigoRetencionMH: "22", numeroDocumento: "X" }] };
+// @ts-expect-error a spelled-out 04 receptor needs its identity (numDocumento and codActividad here)
+const remissionPartialReceptor: DteRequest = { tipoDte: "04", receptor: { nombre: "x", tipoDocumento: "36", bienTitulo: "01" }, items: [] };
+// A 04 receptor may leave out nrc, correo and direccion, or be a stored customer, and may carry a global discount.
+const remissionMinimal: DteRequest = {
+  tipoDte: "04",
+  receptor: { nombre: "x", tipoDocumento: "36", numDocumento: "1", codActividad: "46510", bienTitulo: "01" },
+  items: [{ descripcion: "x", cantidad: 1, precioUni: 10 }],
+  descuentoGlobal: { modo: "porcentaje", valor: 10 },
+};
+const remissionByCustomer: DteRequest = { tipoDte: "04", receptor: { customerId: "id", bienTitulo: "03" }, items: [] };
 // @ts-expect-error neither settles anything: the types do not offer pagos
-const remissionWithPayments: DteRequest = { tipoDte: "04", receptor: { nombre: "x", bienTitulo: "01" }, items: [], pagos: [{ codigo: "01", montoPago: 1 }] };
+const remissionWithPayments: DteRequest = { tipoDte: "04", receptor: { nombre: "x", tipoDocumento: "36", numDocumento: "1", codActividad: "46510", bienTitulo: "01" }, items: [], pagos: [{ codigo: "01", montoPago: 1 }] };
 // @ts-expect-error payment transfer reference is only accepted for debit notes
 const paymentReferenceOnInvoice: DteRequest = {
   tipoDte: "01",
@@ -132,6 +142,9 @@ const rejectedListFilter: ListDocumentsFilters = { estado: "rechazado" };
 const rejectedListedDocument: ListedDte = { estado: "rechazado", codigoGeneracion: "x", numeroControl: "y", tipoDte: "01", fecEmi: "2026-10-01" };
 
 void [
+  remissionPartialReceptor,
+  remissionMinimal,
+  remissionByCustomer,
   remissionWithoutTitle,
   remissionBadTitle,
   retentionWithSaleLine,

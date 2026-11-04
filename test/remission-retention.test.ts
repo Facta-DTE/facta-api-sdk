@@ -108,3 +108,17 @@ Deno.test("createDraft accepts a 04 and a 07 and reports campo_ignorado", async 
   assertEquals((clean.calls[0]?.body?.items as unknown[]).length, 2);
   assert(!("ignoredFields" in second) && !("advertencias" in second));
 });
+
+Deno.test("a 04 carries descuentoGlobal and a minimal receptor untouched", async () => {
+  const { facta, calls } = harness(() => json(SEALED));
+  const request: DteRequest = {
+    tipoDte: "04",
+    receptor: { nombre: "Warehouse", tipoDocumento: "36", numDocumento: "TEST-ID", codActividad: "46510", bienTitulo: "03" },
+    items: [{ descripcion: "Box", cantidad: 1, precioUni: 100 }],
+    descuentoGlobal: { modo: "monto", valor: 12.5 },
+  };
+  await facta.issue(request);
+  assertEquals(calls[0]?.body?.descuentoGlobal, { modo: "monto", valor: 12.5 });
+  const receptor = calls[0]?.body?.receptor as Record<string, unknown>;
+  assert(!("nrc" in receptor) && !("correo" in receptor) && !("direccion" in receptor));
+});

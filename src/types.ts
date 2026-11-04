@@ -144,11 +144,25 @@ export type DteType = "01" | "03" | "04" | "05" | "06" | "07" | "11" | "14";
  */
 export type BienTitulo = "01" | "02" | "03" | "04" | "05";
 
-/** Recipient of a remission note (04): a registered taxpayer like a CCF's, plus the mandatory title of the goods. */
-export interface RemissionRecipient extends Recipient {
+/** A global discount over the whole document: a `monto` (money) or a `porcentaje`, in the VAT basis of the line prices. */
+export interface GlobalDiscount {
+  modo: "monto" | "porcentaje";
+  valor: number;
+}
+
+interface RemissionRecipientBase extends Recipient {
   /** catalogue 025. Missing is `400 invalid_request` (`details.field: "receptor.bienTitulo"`); a code outside the catalogue is `422 validation_failed`. */
   bienTitulo: BienTitulo;
 }
+
+/**
+ * Recipient of a remission note (04): either a stored customer (`customerId`, whatever you spell out wins over
+ * what is stored) or the identity spelled out: `nombre`, `tipoDocumento`, `numDocumento` and `codActividad`.
+ * `nrc`, `correo` and `direccion` are optional on a 04 (the official schema allows them null). `bienTitulo` is always required.
+ */
+export type RemissionRecipient =
+  | (RemissionRecipientBase & { customerId: string })
+  | (RemissionRecipientBase & { nombre: string; tipoDocumento: string; numDocumento: string; codActividad: string });
 
 /** Withholding codes of a retention receipt (07), catalogue 006: `22` 1 %, `C4` 13 %, `C9` other cases (no fixed rate). */
 export type RetentionCode = "22" | "C4" | "C9";
@@ -238,7 +252,7 @@ interface VatWithholdingField {
   aplicarRetencionIva?: boolean;
 }
 
-/** A remission note (04) and a retention receipt (07) settle nothing: the server ignores these fields and warns `campo_ignorado`, so the types do not offer them. */
+/** A remission note (04) and a retention receipt (07) settle nothing: the server ignores these fields and warns `campo_ignorado`, so the types do not offer them (a 07 also ignores `descuentoGlobal`). */
 interface NoSettlementFields {
   condicionOperacion?: never;
   plazo?: never;
@@ -264,7 +278,9 @@ export type DteRequest =
      * Remission note. Items are priced like a CCF's (VAT excluded); `receptor.bienTitulo` is required.
      * `documentosRelacionados` (optional) may name sealed 01, 03 or 11 documents.
      */
-    tipoDte: "04"; receptor: RemissionRecipient; documentosRelacionados?: RelatedDocument[]; exportacion?: never; aplicarReteRenta?: never; numPagoElectronico?: never;
+    tipoDte: "04"; receptor: RemissionRecipient; documentosRelacionados?: RelatedDocument[];
+    /** Discount over the value of the goods, like on 01, 03, 11 and 14. A remission settles nothing, but it carries the value of what moves. */
+    descuentoGlobal?: GlobalDiscount; exportacion?: never; aplicarReteRenta?: never; numPagoElectronico?: never;
   })
   | (Omit<DteRequestBase, "pagos"> & VatOwnFieldsNever & { pagos?: never; tipoDte: "05"; receptor?: Recipient | null; documentosRelacionados: RelatedDocument[]; exportacion?: never; aplicarReteRenta?: never; numPagoElectronico?: never })
   | (Omit<DteRequestBase, "pagos"> & VatOwnFieldsNever & { pagos?: never; tipoDte: "06"; receptor?: Recipient | null; documentosRelacionados: RelatedDocument[]; numPagoElectronico?: string | null; exportacion?: never; aplicarReteRenta?: never })

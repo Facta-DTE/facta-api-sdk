@@ -109,8 +109,9 @@ export const remissionNote: DteRequest = {
     nombre: "Commercial customer, Inc.",
     tipoDocumento: "36",
     numDocumento: "TEST-RECIPIENT-ID",
-    nrc: "1234567",
     codActividad: "46510",
+    // nrc, correo and direccion are optional on a 04.
+    nrc: "1234567",
     direccion: {
       departamento: "06",
       municipio: "20",
@@ -120,6 +121,8 @@ export const remissionNote: DteRequest = {
     correo: "warehouse@example.com",
     bienTitulo: "04", // CAT-025: transfer
   },
+  // Optional: a discount over the value of the goods, like on 01, 03, 11 and 14.
+  // descuentoGlobal: { modo: "porcentaje", valor: 10 },
   // Optional: the sealed 01, 03 or 11 the goods travel with.
   // documentosRelacionados: [{ codigoGeneracion: "REPLACE_WITH_ISSUER_OWNED_SEALED_DOCUMENT" }],
   items: [{ descripcion: "Box of spare parts", cantidad: 2, precioUni: 25, tipoItem: 1 }],
