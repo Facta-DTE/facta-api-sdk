@@ -720,6 +720,9 @@ const facta = new Facta({
 | `DteRequest.formaPago` / `plazo` / `periodo` | Cómo se informa el pago: contado con un medio, `pagos[]` para varios, crédito con `formaPago` + `plazo` + `periodo` (nunca `pagos`), nada en 05/06. Vea [payments-export-renta.es.md](payments-export-renta.es.md). |
 | `DteRequest.pagos` / `Pago` | De 1 a 10 filas `{ codigo, montoPago, referencia? }` (01, 03, 11, 14) que suman el total a pagar al centavo. No junto a `formaPago`, no en 05/06 (los tipos lo rechazan), no con `condicionOperacion` 2 (`422`). |
 | `result.unknownFields`, `unknownFieldWarnings(source)` | Las advertencias `campo_desconocido` de `advertencias`: un campo que Facta DTE no conoce se ignora y no está en el documento. Cada una trae `campo` y, si es obvio, `sugerencia`. |
+| `result.ignoredFields`, `ignoredFieldWarnings(source)` | Las advertencias `campo_ignorado` de `advertencias`: campos de liquidación (`condicionOperacion`, `formaPago`, `pagos`, `plazo`, `periodo`, `descuentoGlobal`) enviados en un 04 o 07, que no liquidan nada. El documento sale sin ellos. También en `prepare()` y en `Draft.ignoredFields`. |
+| `tipoDte: "04"` | Nota de remisión: líneas como las del CCF (sin IVA), `receptor.bienTitulo` obligatorio (catalogue 025), `documentosRelacionados` opcional (01, 03 u 11 sellados). Sin campos de pago. |
+| `tipoDte: "07"` | Comprobante de retención: `receptor` es el proveedor; `items` son `RetentionLine` `{ montoSujetoGrav, codigoRetencionMH, ivaRetenido (solo C9), tipoDte/numeroDocumento/fechaEmision/tipoGeneracion (todos o ninguno), descripcion? }`, hasta 500. `403 retention_agent_required` si la empresa no es agente de retención. Una 05/06 puede relacionar un 07 sellado. |
 | `result.factaWarning`, `parseFactaWarning(header)` | La cabecera `Facta-Warning: campo_desconocido; campos=N`, convertida a `{ code, count }`. |
 | `FACTA_STAGING_BASE_URL` | La API base de staging. |
 

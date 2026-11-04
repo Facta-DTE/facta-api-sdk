@@ -35,6 +35,10 @@ await facta.cancelDraft(draft.id); // solo si está pendiente y nadie lo tiene a
 | `cancelDraft(id)` | `DELETE /v1/drafts/{id}` | Solo si está pendiente y cerrado. |
 | `issueDraft(id, version, request, options?)` | `POST /v1/drafts/{id}/issue` | Una sola puerta evita la doble emisión: `draft_issuing` / `draft_claimed` (409) no gastaron nada. Un rechazo de Hacienda cuenta como emitido y el borrador no se reabre. |
 
+Las notas de remisión (04) y los comprobantes de retención (07) también se aceptan como borradores, con los mismos cuerpos que `issue` (vea `remissionNote` y `retentionReceipt` en [examples/dte-types.ts](../examples/dte-types.ts)). Los campos de liquidación enviados se ignoran y el borrador trae `ignoredFields` (`campo_ignorado`). Un 07 de una empresa que no es agente de retención se rechaza con `retention_agent_required` (403) antes de guardar el borrador.
+
+Las notas de remisión (04) y los comprobantes de retención (07) también se aceptan como borradores, con los mismos cuerpos que `issue` (vea `remissionNote` y `retentionReceipt` en [examples/dte-types.ts](../examples/dte-types.ts)). Los campos de liquidación enviados se ignoran y el borrador trae `ignoredFields` (`campo_ignorado`). Un 07 de una empresa que no es agente de retención se rechaza con `retention_agent_required` (403) antes de guardar el borrador.
+
 ## Errores que conviene atender
 
 `drafts_not_ready` (409): la persona titular no ha abierto Facta con su vault desde que la empresa comparte su clave de datos; pídale que la abra una vez y repita. `version_mismatch` (409): lea el borrador otra vez. `draft_claimed`, `draft_issuing`, `draft_issued`, `draft_not_issuable`, `item_final` (409): el borrador está en uso o resuelto; léalo con `getDraft`. `inbox_cap_reached` (429): demasiados borradores abiertos. Ninguno se reintenta solo. Todos están en [errors.es.md](errors.es.md#borradores).

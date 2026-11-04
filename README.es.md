@@ -510,7 +510,12 @@ integridad y requieren revisión.
 
 Los tipos públicos se exportan desde `mod.ts` y están definidos en
 `src/types.ts`. `DteRequest` es una unión discriminada por `tipoDte` y cubre
-los seis tipos admitidos por la API (`01`, `03`, `05`, `06`, `11`, `14`).
+los ocho tipos admitidos por la API (`01`, `03`, `04`, `05`, `06`, `07`, `11`, `14`).
+La nota de remisión (`04`) lleva un `receptor` como el del CCF más `receptor.bienTitulo` obligatorio (catálogo 025);
+el comprobante de retención (`07`) lleva al proveedor como `receptor` y `RetentionLine[]`
+como `items` (`montoSujetoGrav`, `codigoRetencionMH` `22`/`C4`/`C9`, `ivaRetenido` solo con `C9`; solo una empresa
+agente de retención lo emite: `retention_agent_required`, 403). Ninguno liquida nada: si se envían campos de pago el
+servidor los ignora y el resultado trae `ignoredFields` (`campo_ignorado`).
 `ExportRecipient`, `ExcludedSubjectRecipient`, `RelatedDocument` y
 `ExportDetails` tipan los campos particulares. `Recipient`, `Address` e `LineItem`
 describen los datos comunes; `IssueResult` discrimina `SealedDte` y `DteInContingency` por
@@ -528,15 +533,17 @@ fiscales sigue en el [contrato OpenAPI publicado](https://hcnvknpsbadplnfcflxx.s
 
 Los ejemplos completos están en [examples/dte-types.ts](examples/dte-types.ts).
 La suite TypeScript los importa y compila en cada ejecución, además de verificar
-que representan los seis códigos soportados.
+que representan los ocho códigos soportados.
 
 | DTE | Ejemplo | Particularidad |
 |---|---|---|
 | FE consumidor final anónima (01) | `finalConsumerInvoice` | Omite `receptor`; no crea ficha de cliente. |
 | FE con receptor inline (01) | `namedFinalConsumerInvoice` | Envía nombre y correo solo para ese documento. |
 | Crédito fiscal (03) | `creditFiscalInvoice` | Recipient inline con documento, NRC, actividad y dirección. |
+| Nota de remisión (04) | `remissionNote` | Requiere `receptor.bienTitulo`; sin campos de pago. |
 | Nota de crédito (05) | `creditNote` | Requiere `documentosRelacionados`. |
 | Nota de débito (06) | `debitNote` | Requiere documento relacionado; admite `numPagoElectronico`. |
+| Comprobante de retención (07) | `retentionReceipt` | Líneas de retención (`montoSujetoGrav`, `codigoRetencionMH`); solo agentes de retención. |
 | Exportación (11) | `exportInvoice` | Requiere receptor extranjero y bloque `exportacion`. |
 | Sujeto excluido (14) | `excludedSubjectInvoice` | Usa `ExcludedSubjectRecipient` y `aplicarReteRenta`. |
 

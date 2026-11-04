@@ -2,7 +2,20 @@
 
 ## Unreleased
 
-No changes yet.
+Additive. Every call and type of 0.6.0-next.4 keeps working.
+
+### Remission note (04) and retention receipt (07)
+
+- `DteType` and `DteRequest` now cover `"04"` and `"07"` on `issue`, `prepare`/`sign` and `createDraft` (the server gained both in the API).
+  - **04**: `receptor` is a `RemissionRecipient` (a `Recipient` with a mandatory `bienTitulo`, catalogue 025); items are ordinary `LineItem`s (VAT excluded, like a CCF); `documentosRelacionados` is optional (sealed 01, 03 or 11).
+  - **07**: `receptor` is the supplier; `items` are `RetentionLine[]` (`montoSujetoGrav`, `codigoRetencionMH` `22 | C4 | C9`, `ivaRetenido` required with `C9` and refused otherwise, an all-or-nothing reference group `tipoDte`/`numeroDocumento`/`fechaEmision`/`tipoGeneracion`, optional `descripcion`), up to 500. A 05/06 may relate a sealed 07.
+  - Neither type offers `condicionOperacion`, `formaPago`, `pagos`, `plazo` or `periodo`; they settle nothing. The SDK computes no money for them.
+- New types: `BienTitulo`, `RetentionCode`, `RemissionRecipient`, `RetentionLine`, `IgnoredFieldWarning`.
+- **Warnings**: payment fields sent anyway on a 04 or 07 are ignored by the server with `campo_ignorado` warnings. They are exposed as `ignoredFields` on `issue`/`prepare` results and on `Draft`, with `ignoredFieldWarnings(source)`. `Draft` also carries `advertencias`.
+- New error code `retention_agent_required` (403, not retried): a 07 from a company that is not a retention agent, refused before any number is spent. Spanish message in the browser flow; documented in both error guides.
+- `DraftInput` is now typed as `DteRequest` or a loose record (existing callers compile unchanged).
+- Browser and React: `docTypes` labels «Nota de remisión» and «Comprobante de retención»; the server handler's `tipoDte` filter accepts both.
+- Examples `remissionNote` and `retentionReceipt` in `examples/dte-types.ts`; README, reference and drafts guides updated.
 
 ## 0.6.0-next.4 (2026-11-01)
 

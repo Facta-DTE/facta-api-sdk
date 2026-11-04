@@ -144,7 +144,9 @@ Preparation reserves a control number. The prepared document and token must be p
 
 ## DTE types and fiscal payloads
 
-The exported TypeScript types include `DteRequest`, `IssueResult`, `PreparedDte`, `DocumentStatus`, `InvalidationRequest`, `InvalidationResult`, `DteType`, `Recipient`, `Address`, `LineItem`, `Totals`, and `DtePage`. DTE request types form a union keyed by the unchanged `tipoDte` field, covering `"01"`, `"03"`, `"05"`, `"06"`, `"11"`, and `"14"`.
+The exported TypeScript types include `DteRequest`, `IssueResult`, `PreparedDte`, `DocumentStatus`, `InvalidationRequest`, `InvalidationResult`, `DteType`, `Recipient`, `Address`, `LineItem`, `Totals`, and `DtePage`. DTE request types form a union keyed by the unchanged `tipoDte` field, covering `"01"`, `"03"`, `"04"`, `"05"`, `"06"`, `"07"`, `"11"`, and `"14"`.
+
+Two types have request shapes of their own. A remission note (`"04"`) takes a CCF-like `receptor` plus a mandatory `receptor.bienTitulo` (catalogue 025) and optional `documentosRelacionados`. A retention receipt (`"07"`) takes the supplier as `receptor` and `RetentionLine[]` as `items`: `{ montoSujetoGrav, codigoRetencionMH: "22" | "C4" | "C9", ivaRetenido (C9 only), tipoDte/numeroDocumento/fechaEmision (all or none), descripcion? }`; the server computes the withheld amounts, and only a company marked as a retention agent may issue it (`retention_agent_required`, 403). Neither settles anything: payment fields are not part of their types, and if sent anyway the server ignores them and the result carries `ignoredFields` (`campo_ignorado`). Both work with `issue`, `prepare`/`sign` and `createDraft`; see `remissionNote` and `retentionReceipt` in [examples/dte-types.ts](examples/dte-types.ts).
 
 The type system helps construct payloads but does not replace server-side tax validation. The SDK has no local VAT engine and does not infer fiscal totals. For a catalog-backed price, the item's VAT basis must match the DTE type; provide an explicit `precioUni` in the document's expected basis to override the catalog price.
 
@@ -255,7 +257,7 @@ The full staging live workflow requires, for BYOS setups, its owner-published de
 The shipped [workflow examples](examples/workflows.ts) cover managed emission,
 managed plus encrypted local/BYOS copies, restart recovery, catalog references,
 58 mm tickets, designated test invalidations and older-server diagnostics.
-The [six DTE request examples](examples/dte-types.ts) are typed fixture templates:
+The [eight DTE request examples](examples/dte-types.ts) are typed fixture templates:
 replace recipient placeholders and supply appropriate issuer-owned sealed
 references for notes before live use. Imports perform no fiscal work.
 

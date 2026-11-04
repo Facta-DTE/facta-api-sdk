@@ -235,6 +235,9 @@ const facta = new Facta({
 | `DteRequest.pagos` / `Pago` | 1 to 10 `{ codigo, montoPago, referencia? }` rows (01, 03, 11, 14) that add up to the total to pay to the cent. Not with `formaPago`, not on 05/06 (the types refuse it), not with `condicionOperacion` 2 (`422`). |
 | `result.unknownFields`, `unknownFieldWarnings(source)` | `campo_desconocido` warnings of `advertencias`: a request field Facta DTE does not know is ignored and is not in the document. Each has `campo` and, when obvious, `sugerencia`. |
 | `prepared.unknownFields`, `error.unknownFields` | The same warnings on `prepare()` results and on a `FactaError` (from `details.advertencias`). Unknown fields are always warnings, never errors. |
+| `result.ignoredFields`, `ignoredFieldWarnings(source)` | `campo_ignorado` warnings of `advertencias`: settlement fields (`condicionOperacion`, `formaPago`, `pagos`, `plazo`, `periodo`, `descuentoGlobal`) sent on a 04 or 07, which settle nothing. The document is issued without them. Also on `prepare()` results and on `Draft.ignoredFields`. |
+| `tipoDte: "04"` | Remission note: items like a CCF's (VAT excluded), `receptor.bienTitulo` required (catalogue 025), optional `documentosRelacionados` (sealed 01, 03 or 11). No payment fields. |
+| `tipoDte: "07"` | Retention receipt: `receptor` is the supplier; `items` are `RetentionLine`s `{ montoSujetoGrav, codigoRetencionMH, ivaRetenido (C9 only), tipoDte/numeroDocumento/fechaEmision/tipoGeneracion (all or none), descripcion? }`, up to 500. `403 retention_agent_required` unless the company is a retention agent. A 05/06 may relate a sealed 07. |
 | `result.factaWarning`, `parseFactaWarning(header)` | The `Facta-Warning: campo_desconocido; campos=N` response header, parsed to `{ code, count }`. |
 | `FACTA_STAGING_BASE_URL` | The staging API base. |
 
