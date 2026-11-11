@@ -38,6 +38,10 @@ Work through it in order; do not skip because the test environment "worked".
     leave `exposeRecipient` off unless needed; `authorize` is real; `sessionSecret`
     is a strong server secret.
 11. **Limits:** respect `RateLimit-*` / `Retry-After`; back off on `rate_limited`.
+    **Calls per operation measured and under the key's ceiling** ([call-budget.md](call-budget.md)):
+    the per-hour and per-day call plan is written down, compared with `status().limites` of the
+    production key, no read-before-write, no per-document polling, no re-downloads, and the
+    owner has raised the key's limits if the plan needs more.
 12. **Invalidation and returns** need confirmation UX; invalidation is irreversible.
 13. **Pin the SDK version** in your lockfile; `0.5.0` behaviour change: default JSON
     download is the Archivo DTE.
