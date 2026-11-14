@@ -28,6 +28,7 @@ const LABELS = Object.freeze({
   journal: "Completed operation journal",
   restart: "Encrypted journal restart and recovery",
   "email-delivery": "E-mail delivery (a mail quota or provider outage only warns)",
+  templates: "Per-document template (opt-in: choice, applied template, data on the sheet)",
 });
 const STATES = new Set([
   "Not checked", "Failed", "Passed", "Passed (sealed test FE, $0.01)",
@@ -41,6 +42,12 @@ const STATES = new Set([
   "Passed (writes enabled; an unknown id answers not_found)",
   "Passed (change feed and webhook list)",
   "Warning (key lacks catalog:write)",
+  "Passed (template applied and data on the sheet)",
+  "Warning (template routes not deployed on staging yet)",
+  "Warning (applied-template header not deployed yet)",
+  "Warning (sheet text not checked)",
+  "Not run (no permitted template with data keys)",
+  "Not run (not requested)",
   "Warning (catalog write routes not deployed on staging yet)",
 ]);
 const ERROR_CODES = new Set([
@@ -62,7 +69,7 @@ const ERROR_CODES = new Set([
   "storage_unsupported", "storage_unavailable", "storage_contract_invalid",
   "fixture_required", "fixture_invalid", "permission_missing", "related_document_invalid",
   "idempotency_window_expired", "assertion_failed",
-  "email_delivery_failed", "delivery_inbox_invalid",
+  "email_delivery_failed", "delivery_inbox_invalid", "templates_failed",
 ]);
 
 export function createValidationResults() {
