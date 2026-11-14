@@ -2,7 +2,39 @@
 
 ## Unreleased
 
-No changes yet.
+Additive. Server behaviour on API staging (integration of 2-Nov-2026); production follows the API's own release.
+
+### Global discount (`descuentoGlobal`)
+
+- **`DteRequest.descuentoGlobal?: GlobalDiscount | null`**, `{ modo: "monto" | "porcentaje", valor: number }`: one discount for the whole sale, after the line discounts, on 01, 03, 11 and 14, in `issue`, `prepare`, `issueAndArchive`, `createDraft` and `updateDraft`. A `monto` is in the VAT basis of `precioUni` (VAT included on 01, excluded on 03 and 11); Facta allocates it over the sale classes and everything after it (VAT, withholdings, perception, `totalPagar`, `pagos[]`) is computed discounted. `null` is the same as leaving it out.
+- New error code **`global_discount_not_supported`** (HTTP 400) when it is sent on a credit (05) or debit (06) note. A discount above the subtotal is `400 invalid_request` with `details.field: "descuentoGlobal"` and `details.subtotal`. None of these spends a number.
+- **`Status.capabilities`** is typed (`StatusCapabilities`): `descuentoGlobal` and `fseIncomeWithholdingPerLine`. Without `capabilities.descuentoGlobal`, an older API ignores the field and only warns `campo_desconocido`.
+- Documented in `payments-export-renta` (English and Spanish), the method reference and the agent skill. The `LineItem.montoDescu` docs no longer say there is no global discount.
+
+### Non-taxed lines (`noGravado`)
+
+- **`NonTaxedLine`** `{ descripcion, noGravado, tipoItem, codigo?, numeroDocumento? }`: a charge (positive) or credit (negative) that does not affect the tax base (Manual Funcional v2.0 §XII), as its own line in `items[]` of 01, 03, 05, 06 and 11. `DteRequest.items` is now `DocumentLine[]` (`LineItem | NonTaxedLine`) on those types and stays `LineItem[]` on 14. The types refuse `cantidad`, `precioUni`, `montoDescu`, `tipoVenta` and `productId` on a non-taxed line, accept `uniMedida` only as 99, and require `tipoItem` (1, 2 or 3); `LineItem.noGravado` is `never`.
+- **Local checks** (`assertNonTaxedLines`, run by `issue`, `prepare`, `issueAndArchive`, `createDraft`, `updateDraft` and `issueDraft`), only when a line carries `noGravado`: `non_taxed_not_supported` outside 01/03/05/06/11, `invalid_request` with `details.field` in the server's order — a `noGravado` that is 0, not finite, at or above 1e11 in absolute value or over 8 decimals; a sale field (`cantidad`, `precioUni`, `montoDescu`, `tipoVenta`, `productId`, `applyIncomeWithholding`); a `uniMedida` other than 99; a missing `descripcion` or `tipoItem`; a non-string `codigo`; a `numeroDocumento` outside a note (05/06) —, and `non_taxed_requires_sale_line` when no sale line has `cantidad × precioUni − montoDescu` above zero. They are `FactaError`s with the server's code, `status` 0 and `details.local: true`; nothing is sent. A request without non-taxed lines is not inspected.
+- New server error codes **`non_taxed_requires_sale_line`**, **`non_taxed_not_supported`** and **`non_taxed_total_negative`** (HTTP 400, nothing spent). Only the server raises the last one: it knows the total.
+- **`Totals.totalNoGravado`** (already inside `totalPagar`) and **`StatusCapabilities.noGravado`**. Exported helpers `isNonTaxedLine` and `NON_TAXED_DTE_TYPES`.
+- Example [`examples/non-taxed-lines.ts`](examples/non-taxed-lines.ts): a CCF with an exempt interest line plus a «Capital» non-taxed line, and an export (11) with a non-taxed reimbursement. In an export every good or service sold is a sale line at 0 %; only a charge that is not a sale goes as `noGravado`. Documented in `payments-export-renta`, `reference`, `errors` (English and Spanish) and the skill.
+- Server requirement: the API that advertises `capabilities.noGravado` (being built for API staging); an older API does not know the field.
+
+### Contract snapshot
+
+- `test/fixtures/openapi.yaml` refreshed from the final API contract of the 2-Nov integration. It also lists the six FSE per-line withholding codes (`fse_withholding_mode_invalid`, `fse_withholding_legacy_conflict`, `fse_withholding_not_supported`, `fse_withholding_selection_required`, `fse_withholding_selection_invalid`, `fse_withholding_mode_required`), now in `FactaErrorCode` and the error guides; the SDK does not build those controls yet.
+
+### Drafts warn about misspelled fields
+
+- `createDraft` and `updateDraft` now return **`draft.unknownFields`** (`campo_desconocido`, with `sugerencia`) and **`draft.factaWarning`** (the parsed `Facta-Warning` header), like `issue()`. The field named was ignored and is **not part of the draft**: fix it and save a new version. A replay with the same `idempotencyKey` reports them again; a refused draft carries them in `error.unknownFields`.
+- `issueDraft` now surfaces `unknownFields` / `factaWarning` exactly like `issue()`.
+- Server requirement: draft warnings need the API from 2-Nov-2026 (API staging); older servers simply send none.
+
+### Signed but not transmitted: never issue again
+
+- The `503 service_unavailable` of `POST /v1/dte` (and of a draft issue) whose `details.estado` is `firmado_sin_transmitir` means the document is signed (or, with `confirmado: false`, may be), its number is spent (`details.codigoGeneracion`, `details.numeroControl`) and it was not sent to Hacienda. The `Idempotency-Key` stays bound to it and a retry with it replays the same answer.
+- New getter **`FactaError.signedNotTransmitted`** (`SignedNotTransmitted`: `codigoGeneracion`, `numeroControl`, `estado`, `confirmado`, `siguientePaso`), `null` for any other error. `error.spent` returns the number too.
+- **Behaviour change:** the SDK no longer retries that one `503` (another attempt only replayed it). Every other `503 service_unavailable` is still retried. Do not issue again with any key; finish it with `retryDocument(codigoGeneracion)` (after `getDocumentStatus` when `confirmado` is `false`), or let `recoverServerPending()` pick it up. Documented in `errors` and `pending-documents` (English and Spanish) and the skill.
 
 ## 0.6.0-next.4 (2026-11-01)
 

@@ -53,6 +53,16 @@ Everything else is final for that request.
 | `method_not_allowed` | 405 | Route exists, wrong method (only outside the SDK). |
 | `prepare_token_invalid` | 422 | Token expired (15 min), other key, or document changed → `prepare` again. |
 | `include_limit_exceeded` | 400 | `listDocuments` with `include: ["dte"]` asked for more than 25 rows (`details.maximo`) → ask for 25 or fewer and follow `siguiente`. |
+| `fse_withholding_mode_invalid` | 400 | FSE per-line withholding: `incomeWithholding.mode` not `per_line` or an unknown key; nothing spent → send only `{ mode: "per_line" }`. |
+| `fse_withholding_legacy_conflict` | 400 | per-line controls combined with `aplicarReteRenta`; nothing spent → choose one mode. |
+| `fse_withholding_not_supported` | 400 | per-line FSE withholding controls outside 14; nothing spent → remove `incomeWithholding` and `applyIncomeWithholding`. |
+| `fse_withholding_selection_required` | 400 | per-line mode with no lines or a line without `applyIncomeWithholding`; nothing spent → send a boolean on every line. |
+| `fse_withholding_selection_invalid` | 400 | an `applyIncomeWithholding` that is not a boolean; nothing spent → send `true` or `false`. |
+| `fse_withholding_mode_required` | 400 | `applyIncomeWithholding` without the per-line mode; nothing spent → add `incomeWithholding.mode: "per_line"` or remove the decisions. |
+| `global_discount_not_supported` | 400 | `descuentoGlobal` on a credit (05) or debit (06) note; nothing spent → adjust the line values and leave `descuentoGlobal` out. |
+| `non_taxed_requires_sale_line` | 400 | a `noGravado` line with no sale line above zero; also raised locally (status 0); nothing spent → add a sale line with an amount. |
+| `non_taxed_not_supported` | 400 | a `noGravado` line on 14 (or 07/15); also raised locally (status 0); nothing spent → remove it; only 01, 03, 05, 06, 11 accept it. |
+| `non_taxed_total_negative` | 400 | non-taxed credits leave `totalPagar` below zero; nothing spent → reduce the credit or issue a credit note. |
 | `not_sealed` | 409 | Default JSON download of a document with no seal (contingency) → `{ raw: true }` or wait for the seal. |
 | `catalog_write_disabled` | 403 | Company did not enable catalog administration from the API → enable it in the app. |
 | `catalog_encrypted` | 409 | Catalog encrypted and this key has no access (`details.hint`) → the owner shares the data with the key (Account → API) or stores the catalog unencrypted. A read-only key hears `forbidden_scope` first. |
@@ -111,7 +121,7 @@ Everything else is final for that request.
 | `mh_rejected` | 422 | no | Hacienda refused it; the number **was spent** (`error.spent`) → read `error.mhObservations`, fix the data, issue a corrected request with a new key. A replay of the same key returns the same rejection. |
 | `mh_unreachable` | 502 | yes | Reserved; issuance never returns it (transport failures become a 202 contingency). On invalidation: nothing was invalidated → replay the same key. |
 | `correlative_unavailable` | 503 | yes | Control number could not be reserved; none spent → replay the same key. |
-| `service_unavailable` | 503 | yes | A Facta dependency did not answer, or the signed document could not be recorded (nothing was sent to Hacienda) → wait `retryAfterSeconds`, replay the SAME request with the SAME key, never a new key; if it had signed, `listPendingDocuments()`. Locally, a vault/catalog envelope failed its digest → re-sync from the app. |
+| `service_unavailable` | 503 | yes | A Facta dependency did not answer, or the signed document could not be recorded (nothing was sent to Hacienda) → wait `retryAfterSeconds`, replay the SAME request with the SAME key, never a new key; if it had signed, `listPendingDocuments()`. Locally, a vault/catalog envelope failed its digest → re-sync from the app. **Not retried** when `details.estado` is `firmado_sin_transmitir` (`error.signedNotTransmitted`): signed (or maybe), number spent, not sent; the same key replays it → NEVER issue again, call `retryDocument(codigoGeneracion)`. |
 | `document_not_retryable` | 409 | no | `retryDocument()` on a document the API cannot finish (`details.motivo`: `documento_de_la_aplicacion`, `sin_copia_firmada`, `sin_documento_firmado`) → retry app documents from the app; never issue a new one. |
 | `retry_in_progress` | 409 | yes | Another retry of the same document is running; nothing was sent → the SDK waits `retryAfterSeconds` and replays. |
 | `mh_auth_failed` | 424 | no | Hacienda refused the company's own transmission credentials → the owner fixes them in the app; retrying cannot. |

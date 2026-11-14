@@ -60,10 +60,12 @@ export { DELIVERY_LIMIT_REASONS, isDeliveryLimitReason } from "./src/delivery.ts
 export {
   FactaError,
   type FactaErrorCode,
+  type SignedNotTransmitted,
   type SpentCorrelative,
 } from "./src/errors.ts";
 export type * from "./src/types.ts";
 export { parseFactaWarning, unknownFieldWarnings } from "./src/warnings.ts";
+export { assertNonTaxedLines, isNonTaxedLine, NON_TAXED_DTE_TYPES } from "./src/non-taxed.ts";
 export {
   constructWebhookEvent,
   MemoryWebhookReplayStore,
