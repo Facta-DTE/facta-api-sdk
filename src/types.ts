@@ -70,6 +70,8 @@ export interface LineItem {
   codigo?: string | null;
   tipoItem?: 1 | 2 | 3 | 4;
   uniMedida?: number;
+  /** Explicit FSE per-line withholding selection; available only in per-line mode. */
+  applyIncomeWithholding?: never;
   /**
    * Discount of THIS line, in money (not a percentage), in the same VAT basis as `precioUni`.
    * Between 0 and `cantidad × precioUni`, otherwise `400`. The exact spelling matters: `descuento`,
@@ -132,6 +134,11 @@ export interface NonTaxedLine {
 
 /** A line of 01, 03, 05, 06 or 11: a sale line, or a non-taxed charge/credit line. */
 export type DocumentLine = LineItem | NonTaxedLine;
+
+
+export interface PerLineWithholdingItem extends Omit<LineItem, "applyIncomeWithholding"> {
+  applyIncomeWithholding: boolean;
+}
 
 /** One row of `pagos[]`: a payment method and the amount paid with it. */
 export interface Pago {
@@ -308,6 +315,18 @@ interface DteRequestBase {
   observaciones?: string | null;
 }
 
+/** Explicit opt-in to per-line income withholding for FSE requests. */
+export interface IncomeWithholdingPerLine {
+  mode: "per_line";
+}
+
+type PerLineFseRequestBase = Omit<DteRequestBase, "items"> & {
+  tipoDte: "14";
+  items: PerLineWithholdingItem[];
+  incomeWithholding: IncomeWithholdingPerLine;
+  aplicarReteRenta?: never;
+};
+
 /** Own fields of other types: the server answers `400` (not a silent ignore) when a type receives them. */
 interface VatOwnFieldsNever {
   aplicarRetencionIva?: never;
@@ -321,9 +340,9 @@ interface VatWithholdingField {
 
 /** DTE request union. DTE-specific fields are available only on their type. */
 export type DteRequest =
-  | (DteRequestBase & VatWithholdingField & { aplicarPercepcionIva?: never; tipoDte: "01"; receptor?: Recipient | null; documentosRelacionados?: never; exportacion?: never; aplicarReteRenta?: never; numPagoElectronico?: never })
+  | (DteRequestBase & VatWithholdingField & { aplicarPercepcionIva?: never; tipoDte: "01"; receptor?: Recipient | null; documentosRelacionados?: never; exportacion?: never; aplicarReteRenta?: never; incomeWithholding?: never; numPagoElectronico?: never })
   | (DteRequestBase & VatWithholdingField & {
-    tipoDte: "03"; receptor?: Recipient | null; documentosRelacionados?: never; exportacion?: never; aplicarReteRenta?: never; numPagoElectronico?: never;
+    tipoDte: "03"; receptor?: Recipient | null; documentosRelacionados?: never; exportacion?: never; aplicarReteRenta?: never; incomeWithholding?: never; numPagoElectronico?: never;
     /**
      * Only 03. The 1 % VAT perception (art. 163 CT) on the taxable net of the GOODS lines (`tipoItem` 1) after
      * the proportional share of any global discount; services are not in the base. Added to the total to pay,
@@ -331,10 +350,11 @@ export type DteRequest =
      */
     aplicarPercepcionIva?: boolean;
   })
-  | (Omit<DteRequestBase, "pagos"> & VatOwnFieldsNever & { pagos?: never; tipoDte: "05"; receptor?: Recipient | null; documentosRelacionados: RelatedDocument[]; exportacion?: never; aplicarReteRenta?: never; numPagoElectronico?: never })
-  | (Omit<DteRequestBase, "pagos"> & VatOwnFieldsNever & { pagos?: never; tipoDte: "06"; receptor?: Recipient | null; documentosRelacionados: RelatedDocument[]; numPagoElectronico?: string | null; exportacion?: never; aplicarReteRenta?: never })
-  | (DteRequestBase & VatOwnFieldsNever & { tipoDte: "11"; receptor: ExportRecipient; exportacion: ExportDetails; documentosRelacionados?: never; aplicarReteRenta?: never; numPagoElectronico?: never })
-  | (Omit<DteRequestBase, "items"> & VatOwnFieldsNever & { items: LineItem[]; tipoDte: "14"; receptor: ExcludedSubjectRecipient; aplicarReteRenta?: boolean; documentosRelacionados?: never; exportacion?: never; numPagoElectronico?: never });
+  | (Omit<DteRequestBase, "pagos"> & VatOwnFieldsNever & { pagos?: never; tipoDte: "05"; receptor?: Recipient | null; documentosRelacionados: RelatedDocument[]; exportacion?: never; aplicarReteRenta?: never; incomeWithholding?: never; numPagoElectronico?: never })
+  | (Omit<DteRequestBase, "pagos"> & VatOwnFieldsNever & { pagos?: never; tipoDte: "06"; receptor?: Recipient | null; documentosRelacionados: RelatedDocument[]; numPagoElectronico?: string | null; exportacion?: never; aplicarReteRenta?: never; incomeWithholding?: never })
+  | (DteRequestBase & VatOwnFieldsNever & { tipoDte: "11"; receptor: ExportRecipient; exportacion: ExportDetails; documentosRelacionados?: never; aplicarReteRenta?: never; incomeWithholding?: never; numPagoElectronico?: never })
+  | (Omit<DteRequestBase, "items"> & VatOwnFieldsNever & { items: LineItem[]; tipoDte: "14"; receptor: ExcludedSubjectRecipient; aplicarReteRenta?: boolean; incomeWithholding?: never; documentosRelacionados?: never; exportacion?: never; numPagoElectronico?: never })
+  | (PerLineFseRequestBase & VatOwnFieldsNever & { aplicarPercepcionIva?: never; receptor: ExcludedSubjectRecipient; documentosRelacionados?: never; exportacion?: never; numPagoElectronico?: never });
 
 /** How the key's company stores the catalog the API can see. */
 export type CatalogMode = "encrypted" | "readable" | "plain";
