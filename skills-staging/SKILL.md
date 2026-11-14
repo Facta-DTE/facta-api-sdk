@@ -91,6 +91,18 @@ sources, it is not in the skill: say so to the developer instead of guessing.
     files but does **not** confirm. The company owner is mailed from day one (production
     only). See [references/storage-and-emergency.md](references/storage-and-emergency.md).
 
+11. **Count your calls.** Facta counts EVERY request against the key's per-hour and per-day
+    ceilings, not only emissions. **Before writing any sync, loop, scheduled job or per-record
+    code**, open [references/call-budget.md](references/call-budget.md), write down the calls each
+    business operation will make and choose the flow with the fewest. In particular: no
+    read-before-write (no list/get before create or update); upsert customers and products with
+    `createCustomer` / `createProduct` and a stable `idempotencyKey` built from the ERP's own id
+    (one call per changed record); use what `issue()` already returned (JSON, PDF) instead of
+    downloading it; no polling per document (`listPendingDocuments()`, one paginated
+    `listDocuments`); no `status()` before each call; no re-downloading files already received;
+    honour `Retry-After` and never retry in a tight loop. Compare calls per hour with the key's
+    `status().limites` before finishing.
+
 ## Ambiente
 
 Staging only has the test environment: `status().ambiente` is `"00"` (Hacienda's
@@ -104,6 +116,7 @@ if `ambiente !== "00"` (`config.expectedEnvironment: "00"` does the same check).
 | --- | --- |
 | install the SDK, get keys, choose environment, configure the client, call the HTTP API without the SDK | [references/setup-and-keys.md](references/setup-and-keys.md) |
 | issue a Factura, Crédito Fiscal, nota de crédito/débito, exportación or sujeto excluido; know what each needs; prepare then sign | [references/issuing-dte-types.md](references/issuing-dte-types.md) |
+| write ANY sync, loop, scheduled job or bulk code; keep calls under the key's hourly/daily ceiling (`rate_limited`, 429); update customers or products from an ERP | [references/call-budget.md](references/call-budget.md) |
 | make issuing safe against retries, timeouts and duplicate webhooks; order-to-invoice | [references/idempotency-and-recovery.md](references/idempotency-and-recovery.md) |
 | handle contingency, cancel (invalidate) a document, register a return | [references/contingency-invalidation-return.md](references/contingency-invalidation-return.md) |
 | give the customer the JSON/PDF/ticket, list documents, send by e-mail or WhatsApp | [references/files-and-delivery.md](references/files-and-delivery.md) |

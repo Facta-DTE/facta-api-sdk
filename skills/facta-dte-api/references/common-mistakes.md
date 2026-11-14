@@ -38,3 +38,11 @@ Each one is documented in the SDK guides or contract; use this as a review list.
 | Offering types 07/15 | Not exposed by the API | Only 01, 03, 05, 06, 11, 14 |
 | Issuing with a `facta_live_` key while developing | Real fiscal documents | `expectedEnvironment: "00"` in dev; `facta_test_` keys |
 | Invalidating without confirmation, or an unsealed/returned document | Irreversible / `has_return_events` | Confirm; for returned documents use more returns or a credit note |
+| Syncing customers or products by list, then GET, then PATCH | 3 calls per record; the key's hourly ceiling is gone in minutes | `createCustomer` / `createProduct` with `idempotencyKey` from the ERP id: 1 call, creates or updates |
+| GET or `downloadDocument` right after `issue` | Extra counted calls for what the answer already carries | Store `archivoDte`, `archivoJson`, `jws` and the PDF from the issue result |
+| `status()` or `diagnose()` before every call or run | Burns the status window and adds latency | Once at start-up; a low-rate health check |
+| Polling every document for its state | N calls per round, all counted | `listPendingDocuments()` for what is unanswered; one paginated `listDocuments` for a period |
+| Re-downloading JSON/PDF of every sealed document on each job run | Hundreds of counted calls for files you already hold | Store the files at issue time; download on demand only |
+| Listing drafts to find yours | One call per page, then filtering | `getDraftByKey(idempotencyKey)` |
+| Retrying on `rate_limited` immediately or in a loop, or a full re-sync after one failure | Retry storm; the ceiling stays hit | Wait `retryAfterSeconds`, same request and key; retry only the failed record; cap calls per job run |
+| Writing a sync without a call plan | Surprise 429s in production | Open [call-budget.md](call-budget.md) first; calls per hour vs `status().limites` |

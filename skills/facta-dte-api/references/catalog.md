@@ -105,7 +105,38 @@ await facta.deactivateProduct(product.id); // DELETE deactivates; there is no ha
 - `tipoDocumento`: `36` NIT, `13` DUI, `37` other, `03` passport, `02` residence card.
 - A customer with the same document, or a product with the same code, already existing is
   `catalog_duplicate` (409; `details.id` names it): edit it, or reactivate it if deactivated.
-- Only creates take an `idempotencyKey`; updates and deactivations are repeatable.
+- **Sync from another system: upsert with ONE call per record (the fewest calls).** Give
+  `createCustomer` / `createProduct` a stable `idempotencyKey` derived from the other system's
+  own id. The first call creates the record (`201`). Repeating the **same key with a different
+  body** updates **that same record** (`200`, `actualizado: true`): the fields you send overwrite,
+  fields you omit are kept, `activo` does not change, and the same validations and gates as
+  `PATCH` apply (a document that collides with ANOTHER customer is `409 catalog_duplicate`, and the
+  key still points at its own record). The key identifies the record **for ever**, not only for
+  the 24 h the answers are remembered; if the record no longer exists the call creates a new one
+  and the key now points to it. So: no list, no GET, no PATCH, and no need to store Facta's id.
+
+  ```ts
+  // For every ERP customer that CHANGED since the last run (not every customer):
+  const customer = await facta.createCustomer(
+    { nombre: erp.name, tipoDocumento: "13", numDocumento: erp.dui, correo: erp.email,
+      direccion: { departamento: "06", municipio: "14", distrito: "01", complemento: erp.address } },
+    { idempotencyKey: `erp-customer-${erp.id}` },
+  );
+  // same for products: facta.createProduct({ ... }, { idempotencyKey: `erp-product-${erp.sku}` })
+  ```
+
+  HTTP equivalent: `POST /v1/customers` (or `/v1/products`) with header
+  `Idempotency-Key: erp-customer-<erpId>` and the JSON body; `201` = created, `200` with
+  `"actualizado": true` = updated. Trade-offs: the key belongs to the **API key** that created it
+  (two API keys can use the same text without crossing, so every system that syncs must use the
+  same key); the SDK validates a create body locally, so send the full record each time; the SDK
+  returns the record but not the `actualizado` flag (use HTTP if you must tell the two apart);
+  and an idempotency key text is bound to the record it created, so never reuse the text of one
+  ERP id for another record.
+  See [call-budget.md](call-budget.md).
+- Use `updateCustomer(id, changes)` (PATCH) only when you already hold the Facta id for some other
+  reason and want a partial edit, `ifMatch`, or to reactivate/deactivate. Do not list or GET first
+  to find it. Updates and deactivations are repeatable and take no idempotency key.
 - Deactivated records still resolve for past documents, vanish from lists, and a
   deactivated product cannot be issued. **Reactivate through the API**:
   `updateCustomer(id, { activo: true })` / `updateProduct(id, { activo: true })`
