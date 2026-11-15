@@ -6,7 +6,7 @@ Read the [Spanish README](README.es.md). The full [method reference](guides/refe
 
 **Package and source:** [npm `@facta-dte/api`](https://www.npmjs.com/package/@facta-dte/api) · [public GitHub repository](https://github.com/Facta-DTE/facta-api-sdk).
 
-**Version selection:** This source checkout prepares `0.6.0-next.4` for the npm `next` channel; `latest` remains on stable `0.5.3`. The [npm registry](https://www.npmjs.com/package/@facta-dte/api?activeTab=versions) is authoritative for published versions and distribution tags. Confirm that your installed published version includes a method before using it; validate source-only capabilities with a packed checkout.
+**Version selection:** This source checkout is release `0.6.0`, the stable version (npm `latest`). The [npm registry](https://www.npmjs.com/package/@facta-dte/api?activeTab=versions) is authoritative for published versions and distribution tags. Confirm that your installed published version includes a method before using it; validate source-only capabilities with a packed checkout.
 
 **Endpoint selection:** `FACTA_PRODUCTION_BASE_URL` names the production endpoint used by default. Use `baseUrl: FACTA_STAGING_BASE_URL` to opt into staging, or provide a custom endpoint. An official PHP SDK is also available at [`facta-dte/api`](https://github.com/Facta-DTE/facta-api-sdk-php).
 
@@ -27,7 +27,7 @@ The portable client relies on standard `fetch`, Web Crypto, `AbortSignal`, and `
 # Verify published versions and tags, then install the approved stable release:
 npm view @facta-dte/api version dist-tags
 pnpm add @facta-dte/api
-# Optionally install the prerelease channel:
+# Optionally install a prerelease, when one is published:
 pnpm add @facta-dte/api@next
 ```
 

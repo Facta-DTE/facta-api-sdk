@@ -2,7 +2,13 @@
 
 ## Unreleased
 
-Additive. Server behaviour on API staging (integration of 2-Nov-2026); production follows the API's own release.
+No changes yet.
+
+## 0.6.0 (2026-11-14)
+
+**Stable release.** It collects 0.6.0-next.1 to 0.6.0-next.4 (read those entries below for the shared-data-key breaking changes, drafts, webhooks, `pagos`, pending documents and the temporary copy) and adds the items listed here. The API features it relies on are in production. Install with `npm i @facta-dte/api` (dist-tag `latest`); a 0.5.x integration must read «Breaking removals» under 0.6.0-next.1 before upgrading: `syncCatalog()` and `catalogState()` are gone, the server resolves `customerId` / `productId`.
+
+Not included, on purpose: Google Drive copies from the destinations vault (`driveToken`, Drive entries in `issueAndArchive`). Google Drive is not available for the API, so that code stays out of the package.
 
 ### Global discount (`descuentoGlobal`)
 
@@ -20,9 +26,25 @@ Additive. Server behaviour on API staging (integration of 2-Nov-2026); productio
 - Example [`examples/non-taxed-lines.ts`](examples/non-taxed-lines.ts): a CCF with an exempt interest line plus a «Capital» non-taxed line, and an export (11) with a non-taxed reimbursement. In an export every good or service sold is a sale line at 0 %; only a charge that is not a sale goes as `noGravado`. Documented in `payments-export-renta`, `reference`, `errors` (English and Spanish) and the skill.
 - Server requirement: the API that advertises `capabilities.noGravado` (being built for API staging); an older API does not know the field.
 
+### FSE per-line withholding
+
+- **`incomeWithholding: { mode: "per_line" }`** on an FSE (14) with a strict boolean **`applyIncomeWithholding`** on every item: you choose which lines carry the 10 % income-tax withholding. It is exclusive with the legacy `aplicarReteRenta` (the types refuse both and the runtime rejects a mix, a missing or a non-boolean decision before anything is sent or archived). The legacy flag keeps its whole-discounted-subtotal behaviour. Gate on `status().capabilities.fseIncomeWithholdingPerLine`; new-mode issuance checks it first, including when recovering after a rollback. Guide: [`docs/fse-per-line-withholding-sdk.md`](docs/fse-per-line-withholding-sdk.md) and `payments-export-renta`.
+- The six `fse_withholding_*` error codes are typed and documented.
+
+### Per-document graphical representation
+
+- **`representacion`** on `issue`, `issueAndArchive` and `sign(prepared, { representacion })`: `datos` (per-sale values a template prints: mesa, mesero, comensales, paciente, proximaCita, ... and up to ten free `filas` of `{ etiqueta, valor }`) and `plantilla: { carta?, ticket? }` (a catalogue id or `custom:<uuid>`). The values appear only on the sheet or ticket, never in the signed document. `prepare` strips `representacion` (the API rejects it there). Types `Representation`, `RepresentationData`, `RepresentationRow`, `RepresentationTemplateChoice`.
+- **`listTemplates({ tipoDte? })`** (`GET /v1/representacion/plantillas`): the templates the company can choose, with `permitida`, the reason when not, the DTE types they draw and the `datos` keys each prints.
+- **`TemplateNotAppliedWarning`**: a template the plan, company or DTE type does not allow is not an error; the document is issued with the company template and `advertencias` carries `{ codigo: "plantilla_no_aplicada", campo, motivo, mensaje }`. The browser handler forwards these to the window.
+- **`DownloadedDocument.plantilla`** on PDF and ticket downloads, from `X-Facta-Plantilla`.
+
+### Agent skill
+
+- New non-negotiable rule «Count your calls» and `references/call-budget.md`: an integration counts the requests per business operation before writing a sync or loop (no read-before-write, no per-document polling, upsert by idempotency key for catalogue sync).
+
 ### Contract snapshot
 
-- `test/fixtures/openapi.yaml` refreshed from the final API contract of the 2-Nov integration. It also lists the six FSE per-line withholding codes (`fse_withholding_mode_invalid`, `fse_withholding_legacy_conflict`, `fse_withholding_not_supported`, `fse_withholding_selection_required`, `fse_withholding_selection_invalid`, `fse_withholding_mode_required`), now in `FactaErrorCode` and the error guides; the SDK does not build those controls yet.
+- `test/fixtures/openapi.yaml` refreshed from the final API contract of the 2-Nov integration. It also lists the six FSE per-line withholding codes (`fse_withholding_mode_invalid`, `fse_withholding_legacy_conflict`, `fse_withholding_not_supported`, `fse_withholding_selection_required`, `fse_withholding_selection_invalid`, `fse_withholding_mode_required`), now in `FactaErrorCode` and the error guides; the controls themselves are the next section.
 
 ### Drafts warn about misspelled fields
 

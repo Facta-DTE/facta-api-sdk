@@ -215,7 +215,7 @@ the SDK: mark channels with `issue(…, { deliver })` and start them with
 
 `SealedDte.archivoDte?: string` is the exact UTF-8 Archivo DTE: the signed document plus `firmaElectronica` and `selloRecibido`. It is absent in contingency and on API servers that predate it. `archivoDteOf(result)` returns it, or builds the same bytes from `documento`, `jws` and `selloRecibido` (two-space pretty print, document keys first), or `null` when there is no seal. `archivoJson` and `jws` are unchanged. `FactaErrorCode` gains `not_sealed` (HTTP 409): the JSON download of an unsealed document.
 
-## Testing on staging (`0.6.0-next.3`)
+## Testing on staging (`0.6.0`)
 
 Install the staging SDK with `npm i @facta-dte/api@next` and point the client at the staging API with a `facta_test_` key created in https://staging.factadte.com. The default `baseUrl` is the PRODUCTION host, so staging needs it explicitly; a staging key sent to the default host fails with `401`, and production keys never go to staging.
 

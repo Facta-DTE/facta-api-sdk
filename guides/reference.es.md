@@ -699,7 +699,7 @@ La `Idempotency-Key` se acuña **una vez, fuera del bucle**. Generar una nueva p
 
 Y un `202` no es un error, así que no pasa por aquí: llega como un resultado con `estado: "contingencia"`. Lo cuenta entera la guía [Contingencia y resultados inciertos](/guias/contingencia-y-resultados-inciertos/).
 
-## Probar en staging (`0.6.0-next.2`)
+## Probar en staging (`0.6.0`)
 
 Instale el SDK de staging con `npm i @facta-dte/api@next` y apunte el cliente a la API de staging con una llave `facta_test_` creada en https://staging.factadte.com. El `baseUrl` por defecto es el de PRODUCCIÓN, así que en staging hay que ponerlo explícito; una llave de staging enviada al servidor por defecto falla con `401`, y las llaves de producción nunca van a staging.
 
