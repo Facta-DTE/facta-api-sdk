@@ -23,7 +23,10 @@ documents for one sale. The `Idempotency-Key` header prevents that.
   `deliver`). Never hide it with a new key.
 - First request still running → `409 idempotency_in_flight` (not queued; the SDK
   retries it for you; `details.enVueloSegundos`, `details.codigoGeneracion`).
-- **TTL 24 hours.** The same request a day later is a **new sale**.
+- **A key is bound to its sale for ever** (stricter since 30-Oct-2026). The stored
+  answer lasts 7 days; afterwards the same key and body return the existing document
+  rebuilt (`Idempotency-Replay-Source: rebuilt`), never a new one, and a different
+  body is always `422 idempotency_key_reuse`. One key per sale, for ever.
 
 ## One key per business operation
 
@@ -57,12 +60,13 @@ only for: `idempotency_in_flight`, `network_error` (including its own
 `issue` threw `network_error` (or another retryable code, retries exhausted): you
 do not know whether it was issued and you do not have the `codigoGeneracion`.
 
-1. **Replay the same request with the same key** within 24 h. You get the stored
-   answer, including the code.
+1. **Replay the same request with the same key.** Within 7 days you get the stored
+   answer; later, the existing document rebuilt. Either way you get the code.
 2. Then `getDocumentStatus(codigoGeneracion)` for anything that evolves
    afterwards (a contingency being sealed).
-3. Never issue with a new key to "fix" it. Check `getDocumentStatus` /
-   `listDocuments` before anything else if 24 h have passed.
+3. Never issue with a new key to "fix" it. If it is still unclear, call
+   `listPendingDocuments()` and finish with `retryDocument()`
+   ([pending-documents.md](pending-documents.md)).
 
 ```ts
 async function issueSafely(facta: Facta, request: DteRequest, key: string) {

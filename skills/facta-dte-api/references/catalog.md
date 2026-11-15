@@ -8,21 +8,14 @@ receiver and line data depends on no catalog at all.** Use the catalog only if
 you want to refer to customers/products by id (`receptor: { customerId }`,
 `items: [{ productId, cantidad }]`).
 
-## Three modes
+## One road since 0.6
 
-`GET /v1/status` tells the SDK which one the key is in
-(`llave.catalogMode`, also `facta.catalogState().catalogMode` and
-`diagnose().catalogMode`):
-
-| Mode | Who can read the catalog | How ids resolve | Needs `unlockKey`? |
-| --- | --- | --- | --- |
-| `encrypted` | Only the company (end-to-end). Facta cannot read names or documents. | **The SDK resolves locally** from the key's encrypted snapshot, in memory. A direct HTTP call cannot. | Yes (`factauk_…`) |
-| `readable` | The owner enabled «Catálogo legible por la API». | **The server resolves** `customerId`/`productId`; the SDK sends the ids as they are. Unknown id → `404` with `detail.reason: "catalog_unknown_id"` (`detail.catalogStale` says if the published catalog lags). | No |
-| `plain` | Facta DTE and any key allowed to read the catalog. | Server, always live. Reads via `GET /v1/customers` and `/v1/products`. | No |
-
-An older server that does not advertise the mode behaves as `encrypted`. The SDK
-asks for the mode about once a minute and, if it cannot read it, keeps resolving
-locally; that check is never the reason an emission fails.
+The **server** resolves `customerId` / `productId` for every key, whether the company keeps
+its catalog `encrypted` at rest, `readable` or `plain`. The SDK sends the ids as they are:
+no `unlockKey`, no snapshot to download, nothing to refresh. `GET /v1/status` still
+reports `llave.catalogMode` (also `diagnose().catalogMode`) for information. An unknown id is
+`404` with `detail.reason: "catalog_unknown_id"`. `syncCatalog()`, `catalogState()` and
+`allowStale` were removed in 0.6.
 
 ## Reading (all modes)
 
@@ -31,20 +24,9 @@ locally; that check is never the reason an emission fails.
 Deactivated records are left out; pass `includeInactive: true` to see them.
 `limit` is an integer 1–500 (default 50). Search is case- and diacritic-insensitive.
 
-```ts
-const state = await facta.catalogState(); // { catalogMode, freshness, localRevision, desiredRevision, publishedRevision, syncStatus, statusError }
-if (state.catalogMode === "encrypted" && state.freshness !== "fresh") await facta.syncCatalog(); // needs unlockKey
-```
-
-- **Encrypted catalogs and fiscal requests:** `issue` / `issueAndArchive` resolve
-  ids against a **fresh** snapshot and never accept stale data. If the snapshot is
-  pending or its status cannot be confirmed, resolution fails *before* anything is
-  sent (`no_storage_destination` with `details.reason: "catalog_out_of_sync"`, or
-  `not_found` for an id that is not in it). Fix it by publishing the snapshot from
-  the Facta app. Do not retry with stale data.
-- `allowStale: true` exists for **non-fiscal reads only** (a UI, local search) and
-  only reuses this process's cache; it does not persist across restarts and does not
-  suppress integrity errors.
+- If the server cannot open the company's encrypted catalog right now it answers
+  `data_grant_unavailable` / `data_epoch_stale` (503, retry shortly) or
+  `data_grant_revoked` (403, the owner removed the key's access).
 - Explicit fields in the request win over catalog values. Inline receiver data never
   creates or edits a customer.
 - A catalog price carries a VAT basis (`vat_included`). If it does not match the
@@ -111,10 +93,7 @@ await facta.deactivateProduct(product.id); // DELETE deactivates; there is no ha
   `barcode`, `vat_included`) are **still accepted** (deprecated): do not mix both for the same
   field. On an SDK older than 0.5.0 only the old spellings exist.
 - Every record the SDK returns carries **both** spellings, in every catalog mode, plus
-  `activo`; the product's `tipoVenta` rides on every line issued from it, and
-  `customerId` / `productId` resolve to the same line in all three modes. Timestamps
-  (`creadoEn`, `actualizadoEn`) read `null` from an encrypted snapshot. An encrypted catalog
-  without `unlockKey` fails with `unauthorized` (`details.missing` names it).
+  `activo`; the product's `tipoVenta` rides on every line issued from it.
 - Direct HTTP uses the same names; list queries use `buscar`, `limite`, `incluirInactivos` and
   responses use `clientes` / `productos`. The SDK methods keep their signatures
   (`searchCustomers(query, { limit, includeInactive })`).
@@ -126,7 +105,38 @@ await facta.deactivateProduct(product.id); // DELETE deactivates; there is no ha
 - `tipoDocumento`: `36` NIT, `13` DUI, `37` other, `03` passport, `02` residence card.
 - A customer with the same document, or a product with the same code, already existing is
   `catalog_duplicate` (409; `details.id` names it): edit it, or reactivate it if deactivated.
-- Only creates take an `idempotencyKey`; updates and deactivations are repeatable.
+- **Sync from another system: upsert with ONE call per record (the fewest calls).** Give
+  `createCustomer` / `createProduct` a stable `idempotencyKey` derived from the other system's
+  own id. The first call creates the record (`201`). Repeating the **same key with a different
+  body** updates **that same record** (`200`, `actualizado: true`): the fields you send overwrite,
+  fields you omit are kept, `activo` does not change, and the same validations and gates as
+  `PATCH` apply (a document that collides with ANOTHER customer is `409 catalog_duplicate`, and the
+  key still points at its own record). The key identifies the record **for ever**, not only for
+  the 24 h the answers are remembered; if the record no longer exists the call creates a new one
+  and the key now points to it. So: no list, no GET, no PATCH, and no need to store Facta's id.
+
+  ```ts
+  // For every ERP customer that CHANGED since the last run (not every customer):
+  const customer = await facta.createCustomer(
+    { nombre: erp.name, tipoDocumento: "13", numDocumento: erp.dui, correo: erp.email,
+      direccion: { departamento: "06", municipio: "14", distrito: "01", complemento: erp.address } },
+    { idempotencyKey: `erp-customer-${erp.id}` },
+  );
+  // same for products: facta.createProduct({ ... }, { idempotencyKey: `erp-product-${erp.sku}` })
+  ```
+
+  HTTP equivalent: `POST /v1/customers` (or `/v1/products`) with header
+  `Idempotency-Key: erp-customer-<erpId>` and the JSON body; `201` = created, `200` with
+  `"actualizado": true` = updated. Trade-offs: the key belongs to the **API key** that created it
+  (two API keys can use the same text without crossing, so every system that syncs must use the
+  same key); the SDK validates a create body locally, so send the full record each time; the SDK
+  returns the record but not the `actualizado` flag (use HTTP if you must tell the two apart);
+  and an idempotency key text is bound to the record it created, so never reuse the text of one
+  ERP id for another record.
+  See [call-budget.md](call-budget.md).
+- Use `updateCustomer(id, changes)` (PATCH) only when you already hold the Facta id for some other
+  reason and want a partial edit, `ifMatch`, or to reactivate/deactivate. Do not list or GET first
+  to find it. Updates and deactivations are repeatable and take no idempotency key.
 - Deactivated records still resolve for past documents, vanish from lists, and a
   deactivated product cannot be issued. **Reactivate through the API**:
   `updateCustomer(id, { activo: true })` / `updateProduct(id, { activo: true })`
@@ -137,3 +147,9 @@ await facta.deactivateProduct(product.id); // DELETE deactivates; there is no ha
   adds six `catalog.customers|products.create|update|deactivate` actions; it
   **requires an `authorize` function** (`"session-only"` is refused at construction).
   The pickers `FactaCustomerPicker` / `FactaProductPicker` work in plain mode unchanged.
+
+## Changes, revisions and webhooks (scope `catalog:read`)
+
+- `listCatalogChanges({ since, generation, limit })` returns ids, revisions, operation and actor, never content; follow `next` while `hasMore`. `catalog_cursor_expired` (410) keeps `reason`, `cabeza` and `generacion` in `error.details`: re-read everything, then continue from `cabeza`.
+- Webhooks: `createWebhook` (the `secret` is returned once), `listWebhooks`, `getWebhook`, `updateWebhook`, `deleteWebhook`, `rotateWebhookSecret`, `testWebhook`. Verify every delivery on the RAW body with `verifyWebhook` / `constructWebhookEvent` (header `Facta-Signature`), refuse a repeated `deliveryId` with a replay store, answer 2xx fast.
+- A company that shares its data key gives single records a `revision`; pass it as `ifMatch` to `updateCustomer` / `updateProduct`. A plain catalogue ignores `ifMatch`.

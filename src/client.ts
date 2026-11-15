@@ -35,8 +35,44 @@
 //     error-handling story.
 
 import { FactaError, type FactaErrorCode } from "./errors.ts";
+import {
+  catalogChangesOf,
+  type CatalogChangesOptions,
+  type CatalogChangesPage,
+  type Webhook,
+  type WebhookChanges,
+  type WebhookInput,
+  type WebhookWithSecret,
+  webhookBody,
+  webhookOf,
+} from "./webhooks.ts";
+import {
+  type Draft,
+  type DraftInput,
+  type DraftPage,
+  type ListDraftsOptions,
+  draftBody,
+  draftOf,
+  draftPageOf,
+  draftKey,
+  draftVersion,
+} from "./drafts.ts";
 import { validateFactaConfig } from "./config-validation.ts";
-import { resolveCatalogRefs } from "./catalog.ts";
+import { validateFseWithholdingRequest } from "./fse-withholding.ts";
+import {
+  confirmationBody,
+  isStorageConfirmation,
+  isUnconfirmedPage,
+  type ListUnconfirmedOptions,
+  sha256OfBytes,
+  type StorageConfirmation,
+  type StorageConfirmationInput,
+  type StoreAndConfirmDocumentResult,
+  type StoreAndConfirmOptions,
+  type StoreAndConfirmReport,
+  type UnconfirmedDocument,
+  type UnconfirmedPage,
+} from "./confirm-storage.ts";
 import { envelopeDigest, fingerprintV1 } from "./jcs.ts";
 import {
   CATALOG_WRITE_MESSAGES,
@@ -85,6 +121,8 @@ import type {
   RemoteDestinationProbeReport,
   RemoteReplicationReport,
 } from "./archive.ts";
+import { withWarnings } from "./warnings.ts";
+import { assertNonTaxedLines } from "./non-taxed.ts";
 import { DEBUG_HEADER, DEBUG_TIMINGS, debugFromBody, debugFromServerTiming } from "./debug.ts";
 import { deliveryRequestFor, GENERATION_CODE, isFinalDeliveryState } from "./delivery.ts";
 import type {
@@ -96,8 +134,6 @@ import type {
   ProductInput,
   CatalogReadOptions,
   CatalogSearchOptions,
-  CatalogSnapshot,
-  CatalogState,
   DeliverOptions,
   DeliveryChannel,
   DeliveryChannelResult,
@@ -110,12 +146,21 @@ import type {
   DownloadedDocument,
   HoldingPage,
   ListDocumentsFilters,
+  ListPendingDocumentsFilters,
+  PendingDocumentsPage,
+  PendingNotRetryableReason,
+  RecoverServerPendingOptions,
+  RecoverServerPendingReport,
+  RetryResult,
   IssueResult,
   ManagedDocumentCopy,
   ManagedStorageReceipt,
   ManagedStorageStatus,
   InvalidationRequest,
   DteRequest,
+  DteType,
+  Representation,
+  RepresentationTemplates,
   ReturnResult,
   ReturnRequest,
   Status,
@@ -182,7 +227,7 @@ export interface FactaConfigV1 {
   expectedEnvironment?: "00" | "01";
   /** Scopes the application expects this API key to have; checked by diagnose(). */
   requiredScopes?: readonly string[];
-  /** Permit stale catalog reads by default for non-fiscal lookups only. */
+  /** @deprecated No effect since 0.6 (there is no local catalogue snapshot); accepted so saved configs keep loading. */
   allowStaleCatalogReads?: boolean;
   /** Default ticket width in millimeters; 40–120, defaults to 80. */
   ticketPaperWidthMm?: number;
@@ -214,6 +259,13 @@ export interface FactaRuntimeConfigV1 {
   emergencyStore?: EmergencyStoreFn;
   /** Optional alert hook for the same emergencies; errors are swallowed. */
   onEmergency?: (event: EmergencyEvent) => void | Promise<void>;
+  /**
+   * Default `false`. When `true`, `issueAndArchive` / `recoverOperation` tell Facta the document is
+   * stored as soon as the local archive holds it (`POST …/storage-confirmation`, `where:
+   * "local-archive"`). Turn it on only when the archive is durable storage you are responsible
+   * for: a `FileInvoiceArchive` on a disk that is backed up, not a temporary folder.
+   */
+  confirmArchive?: boolean;
 }
 
 /** `facta.emergency`. */
@@ -229,6 +281,8 @@ export type FactaArchiveEmissionOptions = Omit<ArchiveEmissionOptions, "archive"
   archive?: InvoiceArchive;
   /** Mark delivery channels. Part of the journaled request, so a recovery replays it. */
   deliver?: DeliverOptions;
+  /** Per call override of `runtime.confirmArchive`: report the local archive as the stored copy. */
+  confirmArchive?: boolean;
 };
 
 export interface FactaInvalidationArchiveOptions {
@@ -244,6 +298,11 @@ export interface FactaInvalidationArchiveOptions {
 export interface DebugOptions {
   /** Ask for per-step processing times (`X-Facta-Debug: timings`). */
   timings?: boolean;
+}
+
+export interface SignOptions extends CallOptions {
+  /** Per-sale values and template choice for the graphical representation of the signed document. */
+  representacion?: Representation;
 }
 
 export interface CallOptions {
@@ -265,7 +324,7 @@ const FINGERPRINT_HEADER = "X-Facta-Request-Fingerprint";
 const FINGERPRINT_PATHS: ReadonlySet<string> = new Set(["/v1/dte", "/v1/dte/prepare"]);
 
 /** Internal: `CallOptions` plus the fingerprint some routes send. Never public. */
-type RequestOptions = CallOptions & { fingerprint?: string };
+type RequestOptions = CallOptions & { fingerprint?: string; headers?: Record<string, string>; onHeaders?: (headers: Headers) => void };
 
 /** `CallOptions` of the calls that can mark delivery channels. */
 export interface IssueOptions extends CallOptions {
@@ -298,18 +357,32 @@ export interface DestinationSnapshot {
 interface RemoteOptions {
   destinations?: readonly RemoteArtifactDestination[] | undefined;
   replicate?: boolean | undefined;
+  confirmArchive?: boolean | undefined;
 }
 
 /** The API's largest catalog page (`limite`). */
 const SERVER_CATALOG_PAGE = 200;
 
-const DEFAULT_BASE_URL = "https://hcnvknpsbadplnfcflxx.supabase.co/functions/v1/api-v1";
+export const FACTA_PRODUCTION_BASE_URL = "https://hcnvknpsbadplnfcflxx.supabase.co/functions/v1/api-v1";
+const DEFAULT_BASE_URL = FACTA_PRODUCTION_BASE_URL;
+/**
+ * The staging API (test key `facta_test_…`, MH test environment 00; nothing reaches production). The
+ * client defaults to the production URL, so a staging integration passes `baseUrl: FACTA_STAGING_BASE_URL`.
+ */
+export const FACTA_STAGING_BASE_URL = "https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1";
 const RETRYABLE: ReadonlySet<FactaErrorCode> = new Set([
   "idempotency_in_flight",
+  // Another retry of the same pending document holds the claim; nothing was sent.
+  "retry_in_progress",
   "mh_unreachable",
   "service_unavailable",
   "correlative_unavailable",
   "storage_unavailable",
+  // The shared data key could not be opened for this request, or is mid-rotation: both are the
+  // server's 503 and clear on their own. `data_grant_revoked` (403) is the owner's decision and
+  // is never retried.
+  "data_grant_unavailable",
+  "data_epoch_stale",
   "network_error",
 ]);
 
@@ -457,6 +530,10 @@ function throwIfAborted(signal?: AbortSignal): void {
 const SIGNING_PATHS: ReadonlySet<string> = new Set(["/v1/dte", "/v1/dte/sign"]);
 /** The two events signed on a document's own path: `/invalidate` and `/return`. */
 const SIGNING_EVENT_PATH = /^\/v1\/dte\/[^/?]+\/(?:invalidate|return)$/;
+/** Issuing a draft opens the signing vault like `POST /v1/dte`, so it carries the second password too. */
+const SIGNING_DRAFT_PATH = /^\/v1\/drafts\/[^/?]+\/issue$/;
+/** Retrying a pending document needs the vault too: the Hacienda credentials live there. */
+const SIGNING_RETRY_PATH = /^\/v1\/dte\/[^/?]+\/reintentar$/;
 const SENSITIVE_ERROR_FIELD = /(?:authorization|api[-_]?key|sign[-_]?key|unlock[-_]?key|password|passphrase|secret|token|credential|private[-_]?key|ciphertext|refresh[-_]?token|service[-_]?key)/i;
 
 function redactErrorValue(value: unknown, secrets: readonly string[], depth = 0): unknown {
@@ -497,9 +574,6 @@ function catalogSearchLimit(value: number | undefined): number {
   return limit;
 }
 
-/** How long the key's advertised catalog mode is trusted before status is asked again. */
-const CATALOG_MODE_TTL_MS = 60_000;
-
 /**
  * Supabase Edge Functions run near the caller, but the Facta database lives in one region, so every
  * extra hop across the country costs seconds. Used only when `/v1/status` does not advertise a
@@ -507,6 +581,7 @@ const CATALOG_MODE_TTL_MS = 60_000;
  */
 const DEFAULT_REGIONS = { test: "us-west-2", live: "us-west-2" } as const;
 const REGION_PATTERN = /^[a-z]{2}(?:-[a-z]+)+-\d+$/;
+const TEMPLATE_TAG = /^(?:[A-Za-z0-9][A-Za-z0-9_-]{0,63}|custom:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}@[1-9][0-9]{0,8})$/;
 const REGION_DISCOVERY_TIMEOUT_MS = 5_000;
 const REGION_RETRY_MS = 60_000;
 
@@ -535,7 +610,6 @@ export class Facta {
   readonly #clock: ReferenceClock | null;
   readonly emergency: FactaEmergencyApi;
   readonly #desk: EmergencyDesk;
-  #catalogCache: { revision: number; snapshot: CatalogSnapshot; fetchedAt: string } | null = null;
   #catalogModeCache: { mode: CatalogMode | null; at: number } | null = null;
   readonly #regionSetting: string | false | undefined;
   #region: { value: string | null; at: number; failed: boolean } | null = null;
@@ -836,6 +910,202 @@ export class Facta {
     return receipt;
   }
 
+  /**
+   * The sealed documents that still depend on Facta's temporary encrypted copy, the ones deleted
+   * first at the top. Each row carries `borradoEl`, the date its copy is deleted if nobody confirms
+   * it. No document content, paths or receiver data. `download` scope.
+   *
+   * Poll it daily, or let `storeAndConfirmUnconfirmed` drain it. The company owner is mailed the
+   * same table from day one (production only).
+   *
+   * @throws FactaError `storage_unsupported` on a server that predates the route.
+   */
+  async listUnconfirmedDocuments(options: ListUnconfirmedOptions = {}): Promise<UnconfirmedPage> {
+    if (options.limit !== undefined && (!Number.isInteger(options.limit) || options.limit < 1 || options.limit > 100)) {
+      throw new TypeError("limit must be an integer from 1 through 100.");
+    }
+    const query = new URLSearchParams();
+    if (options.limit !== undefined) query.set("limit", String(options.limit));
+    if (options.cursor !== undefined && options.cursor !== "") query.set("cursor", options.cursor);
+    const text = query.toString();
+    let value: unknown;
+    try {
+      value = await this.#request<unknown>("GET", `/v1/storage/unconfirmed${text ? `?${text}` : ""}`, undefined, options.signal ? { signal: options.signal } : {});
+    } catch (cause) {
+      if (cause instanceof FactaError && (cause.status === 404 || cause.status === 501)) {
+        throw new FactaError("storage_unsupported", "This API server does not list unconfirmed documents.", cause.status);
+      }
+      throw cause;
+    }
+    if (!isUnconfirmedPage(value)) {
+      throw new FactaError("storage_contract_invalid", "API returned an invalid unconfirmed-documents response.", 502);
+    }
+    return value;
+  }
+
+  /**
+   * Tell Facta you stored the JSON of a sealed document, so its temporary encrypted copy is deleted
+   * 2 days later instead of at 30 days. `issue` scope. Safe to repeat: a second call answers
+   * `yaConfirmado: true` and keeps the first source.
+   *
+   * Give `sha256` (of the JSON bytes you stored, as `downloadDocument(code, "json")` returned them)
+   * or `bytes` and the SDK hashes them. A document issued by the API is checked against the file
+   * Facta can rebuild (`verificado: true`; a wrong hash is `FactaError` `storage_hash_mismatch` and
+   * nothing is recorded). A document issued from the app cannot be checked: it is accepted as
+   * `informado: true`.
+   *
+   * `emergencyStore` alone does not confirm: call this after your store (or after
+   * `facta.emergency.replicate` left nothing in a synced destination).
+   *
+   * @throws FactaError `storage_unsupported` on a server that does not advertise
+   * `capabilities.storageConfirmation`; `not_found`; `storage_hash_mismatch`.
+   */
+  async confirmDocumentStorage(generationCode: string, input: StorageConfirmationInput, options: CallOptions = {}): Promise<StorageConfirmation> {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(generationCode)) {
+      throw new TypeError("generationCode must be a UUID.");
+    }
+    const body = await confirmationBody(input);
+    const version = (await this.#capabilities())["storageConfirmation"];
+    if (typeof version !== "number" || version < 1) {
+      throw new FactaError("storage_unsupported", "This API server does not advertise capabilities.storageConfirmation.", 501);
+    }
+    const value = await this.#request<unknown>("POST", `/v1/dte/${encodeURIComponent(generationCode)}/storage-confirmation`, body, options);
+    if (!isStorageConfirmation(value)) {
+      throw new FactaError("storage_contract_invalid", "API returned an invalid storage-confirmation response.", 502);
+    }
+    return value;
+  }
+
+  /**
+   * Drain the unconfirmed list: for each document, download the JSON (and the PDF), hand them to
+   * YOUR `store`, and confirm with the SHA-256 of the exact bytes you were given. Bounded
+   * (`limit`, default 200), safe to run daily, and it never throws for a per-document problem:
+   * read the report. A failed document is skipped (it stays on the list and in the owner's mail);
+   * the run stops early after `maxFailures`, on your signal, or on an error that affects every
+   * document (a revoked key, a server without the capability).
+   *
+   * Your `store` must resolve only when the files are durably stored.
+   */
+  async storeAndConfirmUnconfirmed(options: StoreAndConfirmOptions): Promise<StoreAndConfirmReport> {
+    if (typeof options?.store !== "function") throw new TypeError("storeAndConfirmUnconfirmed requires a store function.");
+    const limit = options.limit ?? 200;
+    const pageSize = options.pageSize ?? 50;
+    const maxFailures = options.maxFailures ?? 5;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 1000) throw new TypeError("limit must be an integer from 1 through 1000.");
+    if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 100) throw new TypeError("pageSize must be an integer from 1 through 100.");
+    if (!Number.isInteger(maxFailures) || maxFailures < 1) throw new TypeError("maxFailures must be a positive integer.");
+    const where = options.where?.trim() || "store";
+    const signal = options.signal;
+    const call = signal ? { signal } : {};
+    const results: StoreAndConfirmDocumentResult[] = [];
+    const left = new Map<string, string>(); // code -> borradoEl of documents NOT confirmed
+    let confirmed = 0;
+    let failed = 0;
+    let listed = 0;
+    let total: number | null = null;
+    let cursor: string | undefined;
+    let stopped: StoreAndConfirmReport["stopped"] = "complete";
+    let error: StoreAndConfirmReport["error"];
+    const FATAL = new Set<string>(["storage_unsupported", "unauthorized", "invalid_api_key", "key_revoked", "key_expired", "key_inactive", "forbidden_scope", "ip_not_allowed", "environment_not_allowed", "storage_contract_invalid"]);
+    const describe = (cause: unknown) => cause instanceof FactaError
+      ? { code: cause.code as string, message: cause.message }
+      : { code: "store_failed", message: cause instanceof Error ? cause.message : String(cause) };
+
+    run: while (true) {
+      if (signal?.aborted) { stopped = "aborted"; break; }
+      let page: UnconfirmedPage;
+      try {
+        page = await this.listUnconfirmedDocuments({ limit: Math.min(pageSize, limit - listed), ...(cursor === undefined ? {} : { cursor }), ...call });
+      } catch (cause) {
+        if (signal?.aborted) { stopped = "aborted"; break; }
+        stopped = "list_failed";
+        error = describe(cause);
+        break;
+      }
+      total = page.total;
+      for (const doc of page.documentos) {
+        if (signal?.aborted) { stopped = "aborted"; break run; }
+        listed++;
+        const row = await this.#storeOne(doc, options, where, call, FATAL, describe);
+        results.push(row.result);
+        if (row.result.state === "confirmed") confirmed++;
+        else {
+          failed++;
+          left.set(doc.codigoGeneracion, doc.borradoEl);
+        }
+        if (row.fatal) { stopped = "fatal"; error = { code: row.result.code ?? "unknown", message: row.result.message ?? "" }; break run; }
+        if (failed >= maxFailures) { stopped = "too_many_failures"; break run; }
+        if (listed >= limit) { stopped = page.siguiente === null && doc === page.documentos[page.documentos.length - 1] ? "complete" : "limit"; break run; }
+      }
+      if (page.siguiente === null) break;
+      cursor = page.siguiente;
+    }
+    if (signal?.aborted && stopped === "complete") stopped = "aborted";
+    const waiting = [...left.values()].sort();
+    return {
+      listed,
+      confirmed,
+      failed,
+      results,
+      remaining: total === null ? null : Math.max(0, total - confirmed),
+      firstDeletionAt: waiting[0] ?? null,
+      stopped,
+      ...(error === undefined ? {} : { error }),
+    };
+  }
+
+  async #storeOne(
+    doc: UnconfirmedDocument,
+    options: StoreAndConfirmOptions,
+    defaultWhere: string,
+    call: { signal?: AbortSignal },
+    fatalCodes: ReadonlySet<string>,
+    describe: (cause: unknown) => { code: string; message: string },
+  ): Promise<{ result: StoreAndConfirmDocumentResult; fatal: boolean }> {
+    const code = doc.codigoGeneracion;
+    const fail = (step: "download" | "store" | "confirm", cause: unknown) => {
+      const info = describe(cause);
+      return { result: { codigoGeneracion: code, state: "failed" as const, step, ...info }, fatal: step !== "store" && fatalCodes.has(info.code) };
+    };
+    let json: Uint8Array;
+    try {
+      json = (await this.downloadDocument(code, "json", call)).bytes;
+    } catch (cause) {
+      return fail("download", cause);
+    }
+    let pdf: Uint8Array | null = null;
+    if (options.includePdf !== false) {
+      try { pdf = (await this.downloadDocument(code, "pdf", call)).bytes; } catch { pdf = null; }
+    }
+    const sha256 = await sha256OfBytes(json);
+    let place: string | void;
+    try {
+      place = await options.store({ codigoGeneracion: code, json, pdf, sha256 }, doc);
+    } catch (cause) {
+      return fail("store", cause);
+    }
+    const stored = typeof place === "string" && place.trim() !== "" ? place.trim().slice(0, 200) : defaultWhere;
+    try {
+      const answer = await this.confirmDocumentStorage(code, { where: stored, sha256 }, call);
+      return {
+        fatal: false,
+        result: {
+          codigoGeneracion: code,
+          state: "confirmed",
+          by: answer.por,
+          alreadyConfirmed: answer.yaConfirmado,
+          verificado: answer.verificado,
+          informado: answer.informado,
+          where: stored,
+          ...(pdf === null && options.includePdf !== false ? { pdfMissing: true } : {}),
+          borradoEl: answer.borradoEl,
+        },
+      };
+    } catch (cause) {
+      return fail("confirm", cause);
+    }
+  }
+
   /** Download and open the destination snapshot in this process only. */
   async syncDestinations(): Promise<DestinationSnapshot> {
     if (this.#unlockKey === null) {
@@ -903,162 +1173,19 @@ export class Facta {
     }
   }
 
-  /** Download and locally decrypt the latest customer/product snapshot. */
-  async syncCatalog(): Promise<CatalogSnapshot> {
-    if (this.#unlockKey === null) {
-      throw new FactaError(
-        'unauthorized',
-        'El catálogo de esta empresa está cifrado y falta la clave de desbloqueo: pase unlockKey al crear el cliente (o defina FACTA_UNLOCK_KEY). Con ella el SDK lo descifra aquí y devuelve los mismos datos que en un catálogo legible o en texto plano. / This catalog is encrypted and no unlockKey was configured: set unlockKey (or FACTA_UNLOCK_KEY).',
-        0,
-        { reason: 'unlock_key_missing', missing: 'unlockKey' },
-      );
-    }
-    const bundle = await this.#request<Record<string, unknown>>('GET', '/v1/vault/destinations');
-    const vault = bundle['vault'] as Record<string, unknown> | null;
-    const catalog = vault?.['catalog'] as Record<string, unknown> | null;
-    if (catalog === null || catalog === undefined || catalog['syncStatus'] !== 'ready') {
-      // The code stays `no_storage_destination` for compatibility with callers
-      // that already branch on it; `detail.reason` is the stable machine name.
-      throw new FactaError('no_storage_destination', 'The catalog of this key is out of date; open Facta to synchronize it.', 422, {
-        reason: 'catalog_out_of_sync',
-        syncStatus: catalog?.['syncStatus'] ?? 'missing',
-        desiredRevision: catalog?.['desiredRevision'],
-        publishedRevision: catalog?.['publishedRevision'],
-      });
-    }
-    const catalogEnvelope = {
-      id: catalog['id'],
-      kind: 'catalog_snapshot',
-      iv: catalog['iv'],
-      ciphertext: catalog['ciphertext'],
-      formatVersion: catalog['formatVersion'],
-      revision: catalog['revision'],
-    };
-    if (await digestEnvelope(catalogEnvelope) !== catalog['envelopeDigest']) {
-      throw new FactaError('service_unavailable', 'Catalog digest does not match; snapshot was not opened.', 503);
-    }
-    const wrapped = vault?.['wrapPass'] as { iv?: string; ciphertext?: string } | undefined;
-    const vaultId = vault?.['id'];
-    const salt = vault?.['passSalt'];
-    const companyId = bundle['companyId'];
-    if (typeof vaultId !== 'string' || typeof salt !== 'string' || typeof companyId !== 'string' || !wrapped?.iv || !wrapped.ciphertext) {
-      throw new FactaError('service_unavailable', 'Response does not contain the envelopes needed to open the catalog.', 503);
-    }
-    const fromBase64 = (value: string) => Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
-    const unlockMaterial = await crypto.subtle.importKey('raw', new TextEncoder().encode(this.#unlockKey), 'HKDF', false, ['deriveKey']);
-    const kek = await crypto.subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt: fromBase64(salt), info: new TextEncoder().encode('facta-api-vault-destinations') }, unlockMaterial,
-      { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
-    const dekBytes = new Uint8Array(await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: fromBase64(wrapped.iv), additionalData: new TextEncoder().encode(`api-vault:${vaultId}:pass`) },
-      kek,
-      fromBase64(wrapped.ciphertext),
-    ));
-    try {
-      const master = await crypto.subtle.importKey('raw', dekBytes, 'HKDF', false, ['deriveKey']);
-      const catalogDek = await crypto.subtle.deriveKey({
-        name: 'HKDF',
-        hash: 'SHA-256',
-        salt: new Uint8Array(32),
-        info: new TextEncoder().encode('facta-api-vault-catalog'),
-      }, master, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
-      const rowId = String(catalog['id']);
-      const revisionText = String(catalog['revision']);
-      const aad = `api-secret:v2:${companyId}:${this.#keyId()}:catalog:catalog_snapshot:${rowId}:${revisionText}`;
-      const clear = await crypto.subtle.decrypt({
-        name: 'AES-GCM',
-        iv: fromBase64(String(catalog['iv'])),
-        additionalData: new TextEncoder().encode(aad),
-      }, catalogDek, fromBase64(String(catalog['ciphertext'])));
-      const snapshot = JSON.parse(new TextDecoder().decode(clear)) as CatalogSnapshot & { excludedCustomerIds?: unknown };
-      if (snapshot?.version !== 1 || !Array.isArray(snapshot.customers) || !Array.isArray(snapshot.products)) {
-        throw new FactaError('service_unavailable', 'Encrypted catalog uses a version this SDK does not recognize.', 503);
-      }
-      // The app's encrypted sync policy contains IDs for excluded customers.
-      // Keep those control records private to the app; they are not part of
-      // the API consumer's authorized customer snapshot.
-      const publicSnapshot = {
-        version: 1 as const,
-        customers: snapshot.customers.map((row) => normalizeCustomer(row)),
-        products: snapshot.products.map((row) => normalizeProduct(row)),
-      };
-      const revision = Number(catalog['revision']);
-      if (!Number.isSafeInteger(revision) || revision < 0) {
-        throw new FactaError('service_unavailable', 'Catalog revision is invalid.', 503);
-      }
-      this.#catalogCache = { revision, snapshot: publicSnapshot, fetchedAt: this.#stamp() };
-      return publicSnapshot;
-    } finally {
-      dekBytes.fill(0);
-    }
-  }
-
-  /** Public revision/freshness without returning any catalog content. */
-  async catalogState(): Promise<CatalogState> {
-    const local = this.#catalogCache;
-    try {
-      const status = await this.status();
-      const catalogMode = this.#rememberCatalogMode(status);
-      if (catalogMode === 'plain') {
-        // The company catalog is read live through the API: there is no snapshot to lag behind.
-        return {
-          catalogMode, freshness: 'fresh', localRevision: null, fetchedAt: null,
-          desiredRevision: null, publishedRevision: null, syncStatus: null, statusError: null,
-        };
-      }
-      const sync = status.sincronizacion as Record<string, unknown> | null | undefined;
-      const catalog = sync?.['catalog'] as Record<string, unknown> | undefined;
-      const desired = Number(catalog?.['desiredRevision']);
-      const published = Number(catalog?.['publishedRevision']);
-      const desiredRevision = Number.isSafeInteger(desired) ? desired : null;
-      const publishedRevision = Number.isSafeInteger(published) ? published : null;
-      const ready = catalog?.['status'] === 'ready'
-        && desiredRevision !== null && desiredRevision === publishedRevision;
-      return {
-        catalogMode,
-        freshness: local === null ? 'missing' : ready && publishedRevision === local.revision ? 'fresh' : 'stale',
-        localRevision: local?.revision ?? null,
-        fetchedAt: local?.fetchedAt ?? null,
-        desiredRevision,
-        publishedRevision,
-        syncStatus: typeof catalog?.['status'] === 'string' ? catalog['status'] : null,
-        statusError: null,
-      };
-    } catch (cause) {
-      const code = cause instanceof FactaError ? cause.code : 'network_error';
-      return {
-        catalogMode: this.#catalogModeCache?.mode ?? null,
-        freshness: local === null ? 'missing' : 'stale',
-        localRevision: local?.revision ?? null,
-        fetchedAt: local?.fetchedAt ?? null,
-        desiredRevision: null,
-        publishedRevision: null,
-        syncStatus: null,
-        statusError: code,
-      };
-    }
-  }
-
   /**
-   * List customers. Reads follow the catalog mode the key reports: the key's decrypted snapshot
-   * (`encrypted`, needs `unlockKey`), or the API itself (`readable`, `plain`; no `unlockKey`).
-   * Deactivated customers are left out unless `includeInactive` is set.
+   * List customers through the API. The server reads the catalogue (also when the company keeps it
+   * encrypted at rest), so no `unlockKey` is needed. Deactivated customers are left out unless
+   * `includeInactive` is set.
    */
   async listCustomers(options: CatalogReadOptions = {}): Promise<CatalogCustomer[]> {
-    return await this.#catalogRead(
-      async () => (await this.#listAll<CatalogCustomer>('/v1/customers', ['clientes'], options, options.includeInactive === true ? { incluirInactivos: 'true' } : {})).filter((row) => options.includeInactive === true || row.active !== false),
-      async () => [...(await this.#freshCatalog(options.allowStale ?? this.#config.allowStaleCatalogReads)).customers],
-    );
+    return (await this.#listAll<CatalogCustomer>('/v1/customers', ['clientes'], options, options.includeInactive === true ? { incluirInactivos: 'true' } : {})).filter((row) => options.includeInactive === true || row.active !== false);
   }
 
   /** Find one authorized customer by its stable Facta ID. */
   async getCustomer(customerId: string, options: CatalogReadOptions = {}): Promise<CatalogCustomer | null> {
-    return await this.#catalogRead(
-      async () => {
-        const row = await this.#getOne<CatalogCustomer>(`/v1/customers/${encodeURIComponent(customerId)}`, ['cliente'], options);
-        return row === null || (row.active === false && options.includeInactive !== true) ? null : row;
-      },
-      async () => (await this.#freshCatalog(options.allowStale ?? this.#config.allowStaleCatalogReads)).customers.find((customer) => customer.id === customerId) ?? null,
-    );
+    const row = await this.#getOne<CatalogCustomer>(`/v1/customers/${encodeURIComponent(customerId)}`, ['cliente'], options);
+    return row === null || (row.active === false && options.includeInactive !== true) ? null : row;
   }
 
   /** Search customer name, document number, NRC, and email. */
@@ -1066,39 +1193,21 @@ export class Facta {
     const needle = normalizeCatalogQuery(query);
     if (!needle) return [];
     const limit = catalogSearchLimit(options.limit);
-    return await this.#catalogRead(
-      async () => (await this.#searchServer<CatalogCustomer>('/v1/customers', ['clientes'], query, limit, options))
-        .filter((row) => options.includeInactive === true || row.active !== false)
-        .slice(0, limit),
-      async () => (await this.#freshCatalog(options.allowStale ?? this.#config.allowStaleCatalogReads)).customers
-        .filter((customer) => [customer.name, customer.doc_number, customer.nrc, customer.email]
-          .some((value) => typeof value === 'string' && normalizeCatalogQuery(value).includes(needle)))
-        .slice(0, limit),
-    );
+    return (await this.#searchServer<CatalogCustomer>('/v1/customers', ['clientes'], query, limit, options))
+      .filter((row) => options.includeInactive === true || row.active !== false)
+      .slice(0, limit);
   }
 
   /** List active products (all of them with `includeInactive`). Same modes as `listCustomers`. */
   async listProducts(options: CatalogReadOptions = {}): Promise<CatalogProduct[]> {
-    return await this.#catalogRead(
-      async () => (await this.#listAll<CatalogProduct>('/v1/products', ['productos'], options, options.includeInactive === true ? { incluirInactivos: 'true' } : {}))
-        .filter((product) => options.includeInactive === true || product.active !== false),
-      async () => (await this.#freshCatalog(options.allowStale ?? this.#config.allowStaleCatalogReads)).products
-        .filter((product) => options.includeInactive === true || product.active !== false),
-    );
+    return (await this.#listAll<CatalogProduct>('/v1/products', ['productos'], options, options.includeInactive === true ? { incluirInactivos: 'true' } : {}))
+      .filter((product) => options.includeInactive === true || product.active !== false);
   }
 
   /** Find one authorized product by its stable Facta ID. Inactive products are `null` unless `includeInactive`. */
   async getProduct(productId: string, options: CatalogReadOptions = {}): Promise<CatalogProduct | null> {
-    return await this.#catalogRead(
-      async () => {
-        const row = await this.#getOne<CatalogProduct>(`/v1/products/${encodeURIComponent(productId)}`, ['producto'], options);
-        return row === null || (row.active === false && options.includeInactive !== true) ? null : row;
-      },
-      async () => {
-        const product = (await this.#freshCatalog(options.allowStale ?? this.#config.allowStaleCatalogReads)).products.find((row) => row.id === productId);
-        return product === undefined || (product.active === false && options.includeInactive !== true) ? null : product;
-      },
-    );
+    const row = await this.#getOne<CatalogProduct>(`/v1/products/${encodeURIComponent(productId)}`, ['producto'], options);
+    return row === null || (row.active === false && options.includeInactive !== true) ? null : row;
   }
 
   /** Search active product descriptions, codes, and barcodes. */
@@ -1106,16 +1215,9 @@ export class Facta {
     const needle = normalizeCatalogQuery(query);
     if (!needle) return [];
     const limit = catalogSearchLimit(options.limit);
-    return await this.#catalogRead(
-      async () => (await this.#searchServer<CatalogProduct>('/v1/products', ['productos'], query, limit, options))
-        .filter((product) => options.includeInactive === true || product.active !== false)
-        .slice(0, limit),
-      async () => (await this.#freshCatalog(options.allowStale ?? this.#config.allowStaleCatalogReads)).products
-        .filter((product) => (options.includeInactive === true || product.active !== false)
-          && [product.description, product.code, product.barcode]
-            .some((value) => typeof value === 'string' && normalizeCatalogQuery(value).includes(needle)))
-        .slice(0, limit),
-    );
+    return (await this.#searchServer<CatalogProduct>('/v1/products', ['productos'], query, limit, options))
+      .filter((product) => options.includeInactive === true || product.active !== false)
+      .slice(0, limit);
   }
 
   // --- Catalog writes (plain-text catalog, scope `catalog:write`) ---------------------------------
@@ -1168,35 +1270,17 @@ export class Facta {
     options: CatalogWriteOptions,
     id?: string,
   ): Promise<T> {
+    let revision: number | null = null;
     const payload = await this.#request<unknown>(method, path, body, {
       ...(options.idempotencyKey === undefined ? {} : { idempotencyKey: options.idempotencyKey }),
       ...(options.signal === undefined ? {} : { signal: options.signal }),
+      ...(method === 'PATCH' && options.ifMatch !== undefined ? { headers: { 'If-Match': ifMatchHeader(options.ifMatch) } } : {}),
+      onHeaders: (headers) => { revision = catalogRevisionOf(headers); },
     });
     const record = recordOf<T>(payload, keys);
-    if (record !== null) return normalizeRecord(path, record);
+    if (record !== null) return withRevision(normalizeRecord(path, record), revision);
     if (method === 'DELETE' && id !== undefined) return normalizeRecord(path, { id, activo: false } as unknown as T);
     throw new FactaError('internal_error', 'La respuesta del catálogo no trae el registro.', 502);
-  }
-
-  /**
-   * How the key reaches the catalog. Learned from `/v1/status` (shared with region discovery, so
-   * normally no extra request) and trusted for a minute. `null` when the server does not say or
-   * status failed, which keeps the encrypted-snapshot path.
-   */
-  async #catalogMode(): Promise<CatalogMode | null> {
-    const cached = this.#catalogModeCache;
-    if (cached !== null && Date.now() - cached.at < CATALOG_MODE_TTL_MS) return cached.mode;
-    // Region discovery reads the same status document: let it run first so one request serves both.
-    if (this.#regionSetting === undefined) {
-      await this.region();
-      const learned = this.#catalogModeCache as { mode: CatalogMode | null; at: number } | null;
-      if (learned !== null && Date.now() - learned.at < CATALOG_MODE_TTL_MS) return learned.mode;
-    }
-    try {
-      return this.#rememberCatalogMode(await this.status());
-    } catch {
-      return null;
-    }
   }
 
   #rememberCatalogMode(status: Status): CatalogMode | null {
@@ -1206,23 +1290,6 @@ export class Facta {
     const mode = advertised === 'plain' || advertised === 'readable' || advertised === 'encrypted' ? advertised : null;
     this.#catalogModeCache = { mode, at: Date.now() };
     return mode;
-  }
-
-  /** Pick the read path for the key's catalog mode. `readable` tries the API and falls back to the snapshot. */
-  async #catalogRead<T>(viaApi: () => Promise<T>, viaSnapshot: () => Promise<T>): Promise<T> {
-    const mode = await this.#catalogMode();
-    if (mode === 'plain') return await viaApi();
-    if (mode === 'readable') {
-      try {
-        return await viaApi();
-      } catch (cause) {
-        const routeMissing = cause instanceof FactaError &&
-          (cause.status === 404 || cause.status === 501 || cause.code === 'catalog_encrypted');
-        if (!routeMissing || this.#unlockKey === null) throw cause;
-        return await viaSnapshot();
-      }
-    }
-    return await viaSnapshot();
   }
 
   async #listPage<T extends { id: string }>(path: string, keys: readonly string[], query: Record<string, string>, options: { signal?: AbortSignal }): Promise<T[]> {
@@ -1259,38 +1326,17 @@ export class Facta {
 
   async #getOne<T extends { id: string }>(path: string, keys: readonly string[], options: { signal?: AbortSignal }): Promise<T | null> {
     try {
-      const payload = await this.#request<unknown>('GET', path, undefined, options.signal ? { signal: options.signal } : {});
+      let revision: number | null = null;
+      const payload = await this.#request<unknown>('GET', path, undefined, {
+        ...(options.signal ? { signal: options.signal } : {}),
+        onHeaders: (headers) => { revision = catalogRevisionOf(headers); },
+      });
       const record = recordOf<T>(payload, keys);
-      return record === null ? null : normalizeRecord(path, record);
+      return record === null ? null : withRevision(normalizeRecord(path, record), revision);
     } catch (cause) {
       if (cause instanceof FactaError && cause.status === 404 && cause.code === 'not_found') return null;
       throw cause;
     }
-  }
-
-  async #freshCatalog(allowStale = false): Promise<CatalogSnapshot> {
-    if (this.#catalogCache === null) return this.syncCatalog();
-    let status: Status;
-    try {
-      status = await this.status();
-    } catch (cause) {
-      const code = cause instanceof FactaError ? cause.code : 'network_error';
-      if (allowStale && (code === 'network_error' || code === 'service_unavailable')) {
-        return this.#catalogCache.snapshot;
-      }
-      throw cause;
-    }
-    const sync = status.sincronizacion as Record<string, unknown> | null | undefined;
-    const remoteCatalog = sync?.['catalog'] as Record<string, unknown> | undefined;
-    const desiredRevision = Number(remoteCatalog?.['desiredRevision']);
-    const publishedRevision = Number(remoteCatalog?.['publishedRevision']);
-    if (remoteCatalog?.['status'] === 'ready'
-      && desiredRevision === publishedRevision
-      && publishedRevision === this.#catalogCache.revision) {
-      return this.#catalogCache.snapshot;
-    }
-    if (allowStale && remoteCatalog?.['status'] !== 'ready') return this.#catalogCache.snapshot;
-    return this.syncCatalog();
   }
 
   #keyId(): string { return this.#apiKey.slice(0, this.#apiKey.indexOf('.')); }
@@ -1326,14 +1372,20 @@ export class Facta {
 
   /** Emit in one call: correlative, signature, transmission and index. */
   async issue(request: DteRequest, options: IssueOptions = {}): Promise<IssueResult> {
+    validateFseWithholdingRequest(request);
     throwIfAborted(options.signal);
+    assertNonTaxedLines(request);
+    await this.#assertFseWithholdingSupported(request, options.signal);
     const { deliver, ...call } = options;
-    // Taken before catalog resolution, so a catalog change between an attempt and its retry
-    // cannot change what the server's idempotency claim compares.
-    const fingerprint = await fingerprintV1(withDelivery(request, deliver));
-    const resolved = withDelivery(await this.#resolveCatalogRefs(request), deliver);
+    // `customerId` / `productId` travel as given: the server resolves them, so the body is the
+    // request and the server's idempotency claim hashes the body (no fingerprint header, AP-07).
+    const resolved = withDelivery(request, deliver);
     throwIfAborted(options.signal);
-    return await this.#guard(await this.#request<IssueResult>("POST", "/v1/dte", resolved, { ...call, fingerprint }), []);
+    let warningHeader: string | null = null;
+    const result = await this.#guard(await this.#request<IssueResult>("POST", "/v1/dte", resolved, {
+      ...call, onHeaders: (headers) => { warningHeader = headers.get("facta-warning"); },
+    }), []);
+    return withWarnings(result, warningHeader);
   }
 
   /**
@@ -1388,13 +1440,17 @@ export class Facta {
    * even if archival later fails; callers must inspect `archive.state`.
    */
   async issueAndArchive(request: DteRequest, options: FactaArchiveEmissionOptions): Promise<ArchiveEmissionResult> {
+    validateFseWithholdingRequest(request);
+    await this.#assertFseWithholdingSupported(request, options.signal);
     const archive = options.archive ?? this.#runtime.archive;
     if (!archive) throw new TypeError("issueAndArchive requires archive or runtime.archive.");
     const { operationId, idempotencyKey, signal } = options;
     throwIfAborted(signal);
+    assertNonTaxedLines(request);
     const remote: RemoteOptions = {
       destinations: options.remoteDestinations ?? this.#runtime.remoteDestinations,
       replicate: options.replicate ?? this.#runtime.replicate,
+      confirmArchive: options.confirmArchive ?? this.#runtime.confirmArchive,
     };
     if (options.includeTicket === false && options.ticketPaperWidthMm !== undefined) {
       throw new TypeError("ticketPaperWidthMm cannot be supplied when includeTicket is false.");
@@ -1411,8 +1467,7 @@ export class Facta {
     throwIfAborted(signal);
     await this.#clock?.ensure();
     const identity = await this.#archiveIdentity(signal);
-    const requestFingerprint = await fingerprintV1(withDelivery(request, options.deliver));
-    const resolved = withDelivery(await this.#resolveCatalogRefs(request), options.deliver);
+    const resolved = withDelivery(request, options.deliver);
     throwIfAborted(signal);
     const requestBytes = new TextEncoder().encode(JSON.stringify(resolved));
     const requestSha256 = await sha256Hex(requestBytes);
@@ -1421,8 +1476,7 @@ export class Facta {
       identity,
       idempotencyKey,
       requestSha256,
-      idempotencyHash: "fingerprint-v1",
-      requestFingerprint,
+      idempotencyHash: "body",
       request: resolved,
       createdAt: this.#stamp(),
       state: "started",
@@ -1435,10 +1489,11 @@ export class Facta {
         ...(signal ? { signal } : {}),
         ...(remote.destinations ? { remoteDestinations: remote.destinations } : {}),
         ...(remote.replicate === undefined ? {} : { replicate: remote.replicate }),
+        ...(remote.confirmArchive === undefined ? {} : { confirmArchive: remote.confirmArchive }),
       });
     }
 
-    const emission = await this.#request<IssueResult>("POST", "/v1/dte", resolved, { idempotencyKey, fingerprint: requestFingerprint, ...(signal ? { signal } : {}) });
+    const emission = await this.#request<IssueResult>("POST", "/v1/dte", resolved, { idempotencyKey, ...(signal ? { signal } : {}) });
     return await this.#archiveEmission({ id: operationId, idempotencyKey, requestSha256, createdAt: this.#stamp(), state: "started", ...(ticketPaperWidthMm === undefined ? {} : { ticketPaperWidthMm }) }, emission, archive, signal, remote);
   }
 
@@ -1463,14 +1518,18 @@ export class Facta {
       remoteDestinations?: readonly RemoteArtifactDestination[];
       /** `false` opts out of the default replication to the synced destinations. */
       replicate?: boolean;
+      /** Per call override of `runtime.confirmArchive`. */
+      confirmArchive?: boolean;
     } = {},
   ): Promise<ArchiveEmissionResult> {
     const request = options.request;
+    if (request !== undefined) validateFseWithholdingRequest(request);
     const archive = options.archive ?? this.#runtime.archive;
     const signal = options.signal;
     const remote: RemoteOptions = {
       destinations: options.remoteDestinations ?? this.#runtime.remoteDestinations,
       replicate: options.replicate ?? this.#runtime.replicate,
+      confirmArchive: options.confirmArchive ?? this.#runtime.confirmArchive,
     };
     if (!archive) throw new TypeError("recoverOperation requires archive or runtime.archive.");
     await archive.assertReady();
@@ -1478,6 +1537,8 @@ export class Facta {
     throwIfAborted(signal);
     const operation = await archive.find(operationId);
     if (operation === null) throw new Error("Archive operation not found: " + operationId + ".");
+    const savedRequest = request ?? operation.request;
+    if (savedRequest !== undefined) validateFseWithholdingRequest(savedRequest);
     const identity = await this.#archiveIdentity(signal);
     this.#assertArchiveIdentity(operation.identity, identity, operationId);
     throwIfAborted(signal);
@@ -1522,7 +1583,7 @@ export class Facta {
       }
       const step = await this.#remoteStep(operationId, archive, remote, storedArtifacts, signal);
       const remoteCopies = step.remoteCopies ?? operation.remoteCopies;
-      return {
+      return await this.#confirmArchived({
         ...(managedStorage === undefined ? {} : { managedStorage }),
         ...(storageErrorCode === undefined ? {} : { storageErrorCode }),
         ...(step.warnings.length ? { warnings: step.warnings } : {}),
@@ -1532,14 +1593,14 @@ export class Facta {
           artifacts: storedArtifacts,
           ...(remoteCopies ? { remoteCopies } : {}),
         },
-      };
+      }, archive, remote, signal);
     }
 
     const recoveryRequest = request ?? operation.request;
     if (!recoveryRequest) {
       throw new Error("Legacy journal does not contain the original request; provide it to recover the operation.");
     }
-    const resolved = await this.#resolveCatalogRefs(recoveryRequest);
+    const resolved = recoveryRequest;
     const requestSha256 = await sha256Hex(new TextEncoder().encode(JSON.stringify(resolved)));
     if (requestSha256 !== operation.requestSha256) {
       throw new Error("Request does not match the saved fingerprint; it was not retried to avoid issuing a different document.");
@@ -1549,7 +1610,7 @@ export class Facta {
       const codigoGeneracion = operation.codigoGeneracion!;
       await this.getDocumentStatus(codigoGeneracion);
       const archived = await this.#archiveArtifacts(operation.id, codigoGeneracion, archive, signal, operation.ticketPaperWidthMm, remote);
-      return { ...(managedStorage === undefined ? {} : { managedStorage }), ...(storageErrorCode === undefined ? {} : { storageErrorCode }), ...(archived.warnings.length ? { warnings: archived.warnings } : {}), archive: archived.archive };
+      return await this.#confirmArchived({ ...(managedStorage === undefined ? {} : { managedStorage }), ...(storageErrorCode === undefined ? {} : { storageErrorCode }), ...(archived.warnings.length ? { warnings: archived.warnings } : {}), archive: archived.archive }, archive, remote, signal);
     }
 
     {
@@ -1561,6 +1622,7 @@ export class Facta {
         await archive.markNeedsAttention(operationId, detail);
         throw new Error(detail);
       }
+      await this.#assertFseWithholdingSupported(recoveryRequest, signal);
       // `idempotencyHash` says how the server claim was hashed. "fingerprint-v1" sends the stored
       // fingerprint; "body" sends no header. A record without it (written by an older SDK, or the
       // field was dropped by a custom archive) is ambiguous: try without the header first, and if
@@ -1881,7 +1943,59 @@ export class Facta {
       try { await archive.markNeedsAttention(operation.id, detail.slice(0, 500)); } catch { /* Preserve the successful fiscal result. */ }
       result = { emission, ...(emission.entrega === undefined ? {} : { entrega: emission.entrega }), ...base, archive: { state: "needs_attention", operationId: operation.id, artifacts, detail } };
     }
-    return await this.#guardArchived(result, signal);
+    return await this.#confirmArchived(await this.#guardArchived(result, signal), archive, remote, signal);
+  }
+
+  /**
+   * Say whether Facta was told the document is stored. Never throws: the document is already sealed.
+   * Free of HTTP calls unless `confirmArchive` is on and nothing else already marked the document.
+   */
+  async #confirmArchived(
+    result: ArchiveEmissionResult,
+    archive: InvoiceArchive,
+    remote: RemoteOptions,
+    signal?: AbortSignal,
+  ): Promise<ArchiveEmissionResult> {
+    const code = result.emission?.codigoGeneracion ?? (await archive.find(result.archive.operationId))?.codigoGeneracion;
+    if (!code) return result;
+    const copies = result.archive.remoteCopies ?? [];
+    const reported = copies.some((copy) => copy.kind === "json" && copy.state === "stored" && copy.report === "reported");
+    if (reported) return { ...result, confirmation: { state: "confirmed", by: "sdk_report" } };
+    if ((result.managedStorage ?? result.emission?.storage)?.json.state === "stored") {
+      return { ...result, confirmation: { state: "confirmed", by: "facta_managed" } };
+    }
+    if (remote.confirmArchive === true && result.archive.state === "complete") {
+      try {
+        const json = await archive.getArtifact(code, "json");
+        if (json) {
+          const answer = await this.confirmDocumentStorage(code, { where: "local-archive", bytes: json.bytes }, signal ? { signal } : {});
+          return { ...result, confirmation: { state: "confirmed", by: answer.por, borradoEl: answer.borradoEl } };
+        }
+      } catch (cause) {
+        // A server that predates the rule deletes nothing: nothing to confirm, nothing to warn about.
+        if (cause instanceof FactaError && cause.code === "storage_unsupported") {
+          return { ...result, confirmation: { state: "unsupported", detail: "This API server does not advertise capabilities.storageConfirmation; it deletes no temporary copy." } };
+        }
+        const reason = cause instanceof FactaError ? cause.code : "network_error";
+        return {
+          ...result,
+          confirmation: { state: "failed" },
+          warnings: [...(result.warnings ?? []), {
+            code: "confirmation_failed",
+            detail: `The local archive holds the document but Facta was not told (${reason}). Call confirmDocumentStorage, or run storeAndConfirmUnconfirmed, before its temporary copy is deleted.`,
+          }],
+        };
+      }
+    }
+    // Not a warning: a document archived without a synced destination is normal for many integrations
+    // and the warnings list of existing callers stays as it was. The field is the signal.
+    return {
+      ...result,
+      confirmation: {
+        state: "pending",
+        detail: "No copy was reported to Facta. Its temporary encrypted copy is deleted 30 days after sealing (2 days after you confirm it): call confirmDocumentStorage, or run storeAndConfirmUnconfirmed daily. runtime.emergencyStore alone does not confirm.",
+      },
+    };
   }
 
   /** Emergency triggers of an archived emission: server warnings, no durable destination, or every destination failed. */
@@ -2115,25 +2229,33 @@ export class Facta {
     }
   }
 
-  /** `true` only when the server advertises `capabilities.byosCopyReport`; cached per client. */
-  #byosReportCapability: Promise<boolean> | undefined = undefined;
-  async #serverAcceptsByosReports(): Promise<boolean> {
-    this.#byosReportCapability ??= (async () => {
+  /**
+   * The capability numbers `GET /v1/storage/status` advertises; cached per client. A server that
+   * predates the route (404/501) has none. A transient failure is not cached.
+   */
+  #storageCapabilities: Promise<Record<string, unknown>> | undefined = undefined;
+  async #capabilities(): Promise<Record<string, unknown>> {
+    this.#storageCapabilities ??= (async () => {
       try {
         const status = await this.#request<unknown>("GET", "/v1/storage/status");
-        const caps = isRecord(status) && isRecord(status.capabilities) ? status.capabilities : undefined;
-        return caps?.byosCopyReport === 1;
+        return isRecord(status) && isRecord(status.capabilities) ? status.capabilities : {};
       } catch (cause) {
-        if (cause instanceof FactaError && (cause.status === 404 || cause.status === 501)) return false;
+        if (cause instanceof FactaError && (cause.status === 404 || cause.status === 501)) return {};
         throw cause;
       }
     })();
     try {
-      return await this.#byosReportCapability;
+      return await this.#storageCapabilities;
     } catch (cause) {
-      this.#byosReportCapability = undefined; // a transient failure is not cached
+      this.#storageCapabilities = undefined; // a transient failure is not cached
       throw cause;
     }
+  }
+
+  /** `true` when the server advertises `capabilities.byosCopyReport` (1 or higher). */
+  async #serverAcceptsByosReports(): Promise<boolean> {
+    const version = (await this.#capabilities())["byosCopyReport"];
+    return typeof version === "number" && version >= 1;
   }
 
   async #reportCopies(
@@ -2186,44 +2308,30 @@ export class Facta {
 
   /** Reserve the correlative and get the canonical document, unsigned. */
   async prepare(request: DteRequest, options: CallOptions = {}): Promise<PreparedDte> {
+    validateFseWithholdingRequest(request);
     throwIfAborted(options.signal);
-    const fingerprint = await fingerprintV1(request);
-    const resolved = await this.#resolveCatalogRefs(request);
-    throwIfAborted(options.signal);
-    return this.#request<PreparedDte>("POST", "/v1/dte/prepare", resolved, { ...options, fingerprint });
+    assertNonTaxedLines(request);
+    await this.#assertFseWithholdingSupported(request, options.signal);
+    let warningHeader: string | null = null;
+    // `representacion` belongs to sign/issue; prepare rejects it, so a request shared between the two flows is stripped here.
+    const { representacion: _representacion, ...forPrepare } = request as DteRequest & { representacion?: Representation };
+    const prepared = await this.#request<PreparedDte>("POST", "/v1/dte/prepare", forPrepare, {
+      ...options, onHeaders: (headers) => { warningHeader = headers.get("facta-warning"); },
+    });
+    return withWarnings(prepared, warningHeader);
   }
 
-  /**
-   * True when `/v1/status` advertises `llave.catalogMode: "readable"`. Cached
-   * for a minute (the owner switches it rarely). Any failure answers false,
-   * which keeps the previous behaviour — local resolution from the encrypted
-   * snapshot — so this check can never be the reason an emission fails.
-   */
-  async #serverResolvesCatalog(): Promise<boolean> {
-    const cached = this.#catalogModeCache;
-    if (cached !== null && Date.now() - cached.at < CATALOG_MODE_TTL_MS) {
-      return cached.mode === "readable" || cached.mode === "plain";
+  /** Recheck every per-line operation so a stale positive result cannot hide a rollback. */
+  async #assertFseWithholdingSupported(request: DteRequest, signal?: AbortSignal): Promise<void> {
+    if (request.incomeWithholding?.mode !== "per_line") return;
+    throwIfAborted(signal);
+    const status = await this.status(signal ? { signal } : {});
+    throwIfAborted(signal);
+    if (status.capabilities?.fseIncomeWithholdingPerLine !== true) {
+      throw new FactaError("fse_withholding_not_supported",
+        "Esta versión de la API no confirma soporte para retención de renta por línea. No se emitió el documento.",
+        0, { field: "incomeWithholding" });
     }
-    try {
-      const mode = this.#rememberCatalogMode(await this.status());
-      return mode === "readable" || mode === "plain";
-    } catch {
-      return false;
-    }
-  }
-
-  async #resolveCatalogRefs(request: DteRequest): Promise<DteRequest> {
-    const hasCustomer = request.receptor !== undefined && request.receptor !== null &&
-      "customerId" in request.receptor && typeof request.receptor.customerId === "string";
-    const hasProduct = request.items.some((item) => typeof item.productId === "string");
-    if (!hasCustomer && !hasProduct) return request;
-    // A key whose owner enabled «Catálogo legible por la API»: the server
-    // resolves the ids itself, so no unlock key and no local snapshot are
-    // needed, and a catalog change can never leave the SDK with a stale copy.
-    if (await this.#serverResolvesCatalog()) return request;
-    await this.#freshCatalog();
-    const catalog = this.#catalogCache!;
-    return resolveCatalogRefs(request, catalog.snapshot, catalog.revision);
   }
 
   /**
@@ -2232,11 +2340,25 @@ export class Facta {
    * Pass the document through UNCHANGED. The server checks a MAC over its
    * canonical hash, so a single altered cent is refused instead of signed.
    */
-  async sign(prepared: PreparedDte, options: CallOptions = {}): Promise<IssueResult> {
+  async sign(prepared: PreparedDte, options: SignOptions = {}): Promise<IssueResult> {
+    const { representacion, ...call } = options;
     return await this.#guard(await this.#request<IssueResult>("POST", "/v1/dte/sign", {
       prepareToken: prepared.prepareToken,
       documento: prepared.documento,
-    }, options), []);
+      ...(representacion === undefined ? {} : { representacion }),
+    }, call), []);
+  }
+
+  /**
+   * Templates the key's company can choose per document (`representacion.plantilla`), with the `datos`
+   * keys each one prints. Free plans see only free templates as `permitida: true`; pass `tipoDte` to
+   * list only those that can draw that type.
+   * Throws a `FactaError` with status 404 on an API server that does not have the endpoint yet.
+   */
+  listTemplates(options: { tipoDte?: DteType } & CallOptions = {}): Promise<RepresentationTemplates> {
+    const { tipoDte, ...call } = options;
+    const query = tipoDte === undefined ? "" : `?tipoDte=${encodeURIComponent(tipoDte)}`;
+    return this.#request<RepresentationTemplates>("GET", `/v1/representacion/plantillas${query}`, undefined, call);
   }
 
   /**
@@ -2332,6 +2454,116 @@ export class Facta {
       undefined,
       options,
     );
+  }
+
+  /**
+   * Documents Facta signed whose number is spent but that Hacienda has not answered
+   * (`GET /v1/dte/pendientes`, scope `query`). Look here after any uncertain emission, BEFORE
+   * issuing again: a new emission is another sale. Oldest first; metadata only.
+   */
+  listPendingDocuments(filters: ListPendingDocumentsFilters = {}, options: { signal?: AbortSignal } = {}): Promise<PendingDocumentsPage> {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(filters)) if (value !== undefined) query.set(key, String(value));
+    return this.#request<PendingDocumentsPage>("GET", `/v1/dte/pendientes${query.size ? `?${query}` : ""}`, undefined, options);
+  }
+
+  /**
+   * Finish a pending document WITHOUT creating a new one (`POST /v1/dte/{cg}/reintentar`, scope
+   * `issue`, carries the signing key). Facta asks Hacienda first and resends the SAME signed bytes
+   * only if Hacienda never received them; it never signs or numbers anything. A 202
+   * (`estado: "pendiente"`) means Hacienda did not answer: call again later. Safe to repeat.
+   * Throws `mh_rejected` when Hacienda refuses, `document_not_retryable` for documents the app
+   * issued, and retries `retry_in_progress` / `service_unavailable` itself, honouring `retryAfterSeconds`.
+   */
+  retryDocument(generationCode: string, options: { signal?: AbortSignal; debug?: DebugOptions } = {}): Promise<RetryResult> {
+    return this.#request<RetryResult>("POST", `/v1/dte/${encodeURIComponent(generationCode)}/reintentar`, undefined, options);
+  }
+
+  /**
+   * Opt-in recovery of the documents Facta signed but Hacienda has not answered: call it at
+   * process start-up or on a schedule. It lists `GET /v1/dte/pendientes` and, for each retryable
+   * document, calls `retryDocument()` with this client's own keys (the signing key is required).
+   * `retryDocument()` asks Hacienda first and resends the SAME signed bytes only if Hacienda never
+   * received them: this never signs, numbers or issues anything.
+   *
+   * It never throws for a document; each ends as `sealed`, `rejected`, `pending`, `not_retryable`
+   * or `error` in the report, and the run goes on, oldest first, one at a time. It throws only when
+   * the list itself cannot be read (for example a revoked key) or when `signal` aborts.
+   */
+  async recoverServerPending(options: RecoverServerPendingOptions = {}): Promise<RecoverServerPendingReport> {
+    const limit = Math.max(1, Math.min(Math.floor(options.limit ?? 50), 500));
+    const signal = options.signal;
+    const report: RecoverServerPendingReport = {
+      examined: 0, sealed: 0, rejected: 0, pending: 0, notRetryable: 0, errors: 0, results: [], truncated: false,
+    };
+    let cursor: string | undefined;
+    for (;;) {
+      throwIfAborted(signal);
+      const page = await this.listPendingDocuments(
+        {
+          estado: "firmado",
+          limit: Math.min(100, limit - report.examined),
+          ...(options.tipoDte === undefined ? {} : { tipoDte: options.tipoDte }),
+          ...(cursor === undefined ? {} : { cursor }),
+        },
+        signal ? { signal } : {},
+      );
+      for (const doc of page.pendientes) {
+        if (report.examined >= limit) {
+          report.truncated = true;
+          return report;
+        }
+        throwIfAborted(signal);
+        report.examined++;
+        const base = { codigoGeneracion: doc.codigoGeneracion, numeroControl: doc.numeroControl, tipoDte: doc.tipoDte };
+        if (!doc.reintentable) {
+          report.notRetryable++;
+          report.results.push({ ...base, outcome: "not_retryable", motivo: doc.motivoNoReintentable ?? null });
+          continue;
+        }
+        try {
+          const result = await this.retryDocument(doc.codigoGeneracion, signal ? { signal } : {});
+          if (result.estado === "sellado") {
+            report.sealed++;
+            report.results.push({
+              ...base, outcome: "sealed", via: result.via,
+              ...(result.selloRecibido === undefined ? {} : { selloRecibido: result.selloRecibido }),
+            });
+          } else {
+            report.pending++;
+            report.results.push({ ...base, outcome: "pending" });
+          }
+        } catch (error) {
+          if (signal?.aborted) throw error;
+          if (error instanceof FactaError && error.isRejection) {
+            report.rejected++;
+            report.results.push({ ...base, outcome: "rejected", errorCode: error.code, message: error.message });
+          } else if (error instanceof FactaError && error.code === "retry_in_progress") {
+            report.pending++;
+            report.results.push({ ...base, outcome: "pending", errorCode: error.code });
+          } else if (error instanceof FactaError && error.code === "document_not_retryable") {
+            report.notRetryable++;
+            report.results.push({
+              ...base, outcome: "not_retryable",
+              motivo: ((error.details as { motivo?: PendingNotRetryableReason } | undefined)?.motivo) ?? null,
+            });
+          } else {
+            report.errors++;
+            report.results.push({
+              ...base, outcome: "error",
+              errorCode: error instanceof FactaError ? error.code : "unknown",
+              message: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+      }
+      if (page.siguiente === null || page.siguiente === undefined || page.pendientes.length === 0) return report;
+      if (report.examined >= limit) {
+        report.truncated = true;
+        return report;
+      }
+      cursor = page.siguiente;
+    }
   }
 
   /** List sealed/reconciliable documents using the server cursor. */
@@ -2512,7 +2744,8 @@ export class Facta {
     result: InvalidationResult,
     archive: InvalidationArchive,
   ): Promise<InvalidationArchiveResult> {
-    if (result.codigoGeneracion !== targetCodigoGeneracion) {
+    // The server answers a document's code in lower case once it is indexed; the caller may hold either spelling.
+    if (typeof result.codigoGeneracion !== "string" || result.codigoGeneracion.toUpperCase() !== targetCodigoGeneracion.toUpperCase()) {
       const detail = "Invalidation response identifies a different document than the requested one.";
       await archive.markInvalidationNeedsAttention(operationId, detail, result).catch(() => undefined);
       throw new FactaError(
@@ -2573,12 +2806,14 @@ export class Facta {
     if (options.source === "managed" && downloaded.storageSource !== "managed") {
       throw new FactaError(downloaded.storageSource === undefined ? "storage_unsupported" : "storage_contract_invalid", "API did not return the explicitly requested managed copy.", 502);
     }
+    const { plantilla: appliedTemplate, ...rest } = downloaded;
     return {
-      ...downloaded,
+      ...rest,
       codigoGeneracion: generationCode,
       kind,
       ...(downloaded.storageSource === undefined ? {} : { storageSource: downloaded.storageSource }),
       ...(kind === "json" && downloaded.jsonFormat !== undefined ? { jsonFormat: downloaded.jsonFormat } : {}),
+      ...(kind !== "json" && appliedTemplate !== undefined ? { plantilla: appliedTemplate } : {}),
       ...(kind === "ticket" ? { paperWidthMm: paperWidthMm ?? 80 } : {}),
     };
   }
@@ -2598,6 +2833,140 @@ export class Facta {
     return this.#request<HoldingPage>("GET", `/v1/dte/holding?limit=${encodeURIComponent(String(limit))}`);
   }
 
+  // --- Catalogue changes and webhooks (scope `catalog:read`) --------------------------------------
+
+  /**
+   * What changed in the company catalogue since revision `since` (0 to start): ids, revisions and
+   * who did it, never the content (read the record with `getCustomer` / `getProduct`). Follow `next`
+   * while `hasMore`, and send back the `generation` you got. When Facta can no longer continue from
+   * your cursor it throws `FactaError` `catalog_cursor_expired` (HTTP 410) and `error.details` carries
+   * `reason` (`generation_changed`, `history_pruned`, `cursor_ahead` or `too_many`), `cabeza` and
+   * `generacion`: read everything again, then continue from there.
+   */
+  async listCatalogChanges(options: CatalogChangesOptions = {}): Promise<CatalogChangesPage> {
+    const query = new URLSearchParams({ since: String(options.since ?? 0) });
+    if (options.generation !== undefined && options.generation !== null) query.set('generacion', options.generation);
+    if (options.limit !== undefined) query.set('limite', String(options.limit));
+    const payload = await this.#request<unknown>('GET', `/v1/catalog/changes?${query}`, undefined, options.signal ? { signal: options.signal } : {});
+    return catalogChangesOf(payload);
+  }
+
+  /** Register a webhook. The returned `secret` is shown ONCE: store it to verify deliveries. */
+  async createWebhook(input: WebhookInput, options: CallOptions = {}): Promise<WebhookWithSecret> {
+    const payload = await this.#request<unknown>('POST', '/v1/webhooks', webhookBody(input, true), options);
+    return webhookOf(payload, true);
+  }
+
+  /** The key's webhooks (never with their secrets). */
+  async listWebhooks(options: CallOptions = {}): Promise<Webhook[]> {
+    const payload = await this.#request<unknown>('GET', '/v1/webhooks', undefined, options);
+    const rows = isRecord(payload) && Array.isArray(payload['webhooks']) ? payload['webhooks'] : [];
+    return rows.map((row) => webhookOf(row, false));
+  }
+
+  /** One webhook of this key. */
+  async getWebhook(webhookId: string, options: CallOptions = {}): Promise<Webhook> {
+    return webhookOf(await this.#request<unknown>('GET', `/v1/webhooks/${encodeURIComponent(requireId(webhookId, 'webhook'))}`, undefined, options), false);
+  }
+
+  /** Change a webhook's URL, events, description, or switch it on and off (`active: true` clears a failure shutdown). */
+  async updateWebhook(webhookId: string, changes: WebhookChanges, options: CallOptions = {}): Promise<Webhook> {
+    return webhookOf(await this.#request<unknown>('PATCH', `/v1/webhooks/${encodeURIComponent(requireId(webhookId, 'webhook'))}`, webhookBody(changes, false), options), false);
+  }
+
+  /** Delete a webhook, its secret and whatever it had queued. */
+  async deleteWebhook(webhookId: string, options: CallOptions = {}): Promise<void> {
+    await this.#request<unknown>('DELETE', `/v1/webhooks/${encodeURIComponent(requireId(webhookId, 'webhook'))}`, undefined, options);
+  }
+
+  /** Replace the signing secret. The old one stops verifying at once; the new one is shown ONCE. */
+  async rotateWebhookSecret(webhookId: string, options: CallOptions = {}): Promise<WebhookWithSecret> {
+    return webhookOf(await this.#request<unknown>('POST', `/v1/webhooks/${encodeURIComponent(requireId(webhookId, 'webhook'))}/rotate-secret`, {}, options), true);
+  }
+
+  /** Queue a signed `webhook.test` delivery (it leaves within the next minute). */
+  async testWebhook(webhookId: string, options: CallOptions = {}): Promise<{ deliveryId: string; event: 'webhook.test' }> {
+    const payload = await this.#request<unknown>('POST', `/v1/webhooks/${encodeURIComponent(requireId(webhookId, 'webhook'))}/test`, {}, options);
+    const row = isRecord(payload) ? payload : {};
+    return { deliveryId: String(row['entregaId'] ?? ''), event: 'webhook.test' };
+  }
+
+  // --- Drafts (scope `draft`; issuing also needs `issue` and the signing password) ---------------
+
+  /**
+   * Leave an invoice as a draft for a person of the company to review and issue. Pass the same
+   * request as `issue` (plus your own `id` and `reference` if you like). No control number is spent.
+   * Repeating the call with the same `idempotencyKey` returns the same draft; a different body under
+   * that key is `idempotency_key_reuse`. `drafts_not_ready` (409) means the owner has not opened Facta
+   * with their vault since the company began sharing its data key: ask them to open it once.
+   */
+  async createDraft(input: DraftInput, options: CallOptions = {}): Promise<Draft> {
+    assertNonTaxedLines(input);
+    let warningHeader: string | null = null;
+    const payload = await this.#request<unknown>("POST", "/v1/drafts", draftBody(input), {
+      ...options, onHeaders: (headers) => { warningHeader = headers.get("facta-warning"); },
+    });
+    return withWarnings(draftOf(payload), warningHeader);
+  }
+
+  /** The drafts this key left, newest first, with filters. Follow `next` for more. */
+  async listDrafts(options: ListDraftsOptions = {}): Promise<DraftPage> {
+    const query = new URLSearchParams();
+    if (options.state !== undefined) query.set("estado", options.state);
+    if (options.reference !== undefined) query.set("referencia", options.reference);
+    if (options.limit !== undefined) query.set("limite", String(options.limit));
+    if (options.cursor !== undefined) query.set("cursor", options.cursor);
+    if (options.include !== undefined) query.set("include", options.include);
+    const suffix = query.size === 0 ? "" : `?${query}`;
+    return draftPageOf(await this.#request<unknown>("GET", `/v1/drafts${suffix}`, undefined, options.signal ? { signal: options.signal } : {}));
+  }
+
+  /** One draft and, when it was issued, the document it became. */
+  async getDraft(draftId: string, options: CallOptions = {}): Promise<Draft> {
+    return draftOf(await this.#request<unknown>("GET", `/v1/drafts/${encodeURIComponent(requireId(draftId, "draft"))}`, undefined, options));
+  }
+
+  /** Follow draft → invoice without knowing the generation code: read a draft by the `idempotencyKey` it was created with. */
+  async getDraftByKey(idempotencyKey: string, options: CallOptions = {}): Promise<Draft> {
+    return draftOf(await this.#request<unknown>("GET", `/v1/drafts/by-key/${encodeURIComponent(draftKey(idempotencyKey))}`, undefined, options));
+  }
+
+  /** Save a new version of a draft that is still pending. `version` is the one you read (`If-Match`). */
+  async updateDraft(draftId: string, version: number, input: DraftInput, options: CallOptions = {}): Promise<Draft> {
+    assertNonTaxedLines(input);
+    let warningHeader: string | null = null;
+    const payload = await this.#request<unknown>("PUT", `/v1/drafts/${encodeURIComponent(requireId(draftId, "draft"))}`, draftBody(input), {
+      ...options,
+      headers: { "If-Match": String(draftVersion(version)) },
+      onHeaders: (headers) => { warningHeader = headers.get("facta-warning"); },
+    });
+    return withWarnings(draftOf(payload), warningHeader);
+  }
+
+  /** Cancel a draft that is still pending and closed. */
+  async cancelDraft(draftId: string, options: CallOptions = {}): Promise<Draft> {
+    return draftOf(await this.#request<unknown>("DELETE", `/v1/drafts/${encodeURIComponent(requireId(draftId, "draft"))}`, undefined, options));
+  }
+
+  /**
+   * Issue a draft through the same road as `issue` (needs the `issue` scope and the signing password;
+   * spends a control number). `version` is the draft's current version. One door prevents double
+   * issuing: `draft_issuing` or `draft_claimed` (409) spent nothing. A Hacienda rejection counts as
+   * issued and the draft is not reopened. The result is the one of `issue` plus `borradorId`.
+   */
+  async issueDraft(draftId: string, version: number, request: DteRequest, options: IssueOptions = {}): Promise<IssueResult & { borradorId: string }> {
+    throwIfAborted(options.signal);
+    assertNonTaxedLines(request);
+    const { deliver, ...call } = options;
+    const resolved = withDelivery(request, deliver);
+    const body = { ...resolved, version: draftVersion(version) };
+    let warningHeader: string | null = null;
+    const result = await this.#request<IssueResult & { borradorId: string }>("POST", `/v1/drafts/${encodeURIComponent(requireId(draftId, "draft"))}/issue`, body, {
+      ...call, onHeaders: (headers) => { warningHeader = headers.get("facta-warning"); },
+    });
+    return withWarnings(await this.#guard(result, []), warningHeader);
+  }
+
   /** Fetch the server's published OpenAPI JSON contract. */
   getContract(): Promise<unknown> { return this.#request("GET", "/v1/openapi.json"); }
 
@@ -2612,10 +2981,11 @@ export class Facta {
     const headers: Record<string, string> = { "X-Facta-Key": this.#apiKey };
     // Sent ONLY where it is needed. A password that rides along on every
     // request is a password in every proxy log the request passes through.
-    if (this.#signKey !== null && method === "POST" && (SIGNING_PATHS.has(path) || SIGNING_EVENT_PATH.test(path))) {
+    if (this.#signKey !== null && method === "POST" && (SIGNING_PATHS.has(path) || SIGNING_EVENT_PATH.test(path) || SIGNING_DRAFT_PATH.test(path) || SIGNING_RETRY_PATH.test(path))) {
       headers["X-Facta-Sign-Key"] = this.#signKey;
     }
     if (body !== undefined) headers["Content-Type"] = "application/json";
+    if (options.headers !== undefined) Object.assign(headers, options.headers);
     // A debugging aid: asked for per client or per call, never by default.
     const timings = options.debug?.timings ?? this.#debug.timings ?? false;
     if (timings) headers[DEBUG_HEADER] = DEBUG_TIMINGS;
@@ -2632,12 +3002,20 @@ export class Facta {
     let lastError: FactaError | null = null;
     for (let attempt = 0; attempt <= this.#maxRetries; attempt++) {
       throwIfAborted(options.signal);
-      if (attempt > 0) await sleep(Math.min(250 * 2 ** (attempt - 1), 4_000), options.signal);
+      if (attempt > 0) {
+        // The server's own `retryAfterSeconds` (503 and retry_in_progress carry it) wins over our backoff, capped.
+        const asked = lastError?.retryAfterSeconds ?? null;
+        const backoff = Math.min(250 * 2 ** (attempt - 1), 4_000);
+        await sleep(asked === null ? backoff : Math.max(backoff, Math.min(asked, 15) * 1000), options.signal);
+      }
       throwIfAborted(options.signal);
       try {
-        return await this.#attempt<T>(method, path, headers, body, binary, options.signal, timings);
+        return await this.#attempt<T>(method, path, headers, body, binary, options.signal, timings, this.#timeoutMs, options.onHeaders);
       } catch (cause) {
         if (!(cause instanceof FactaError) || !RETRYABLE.has(cause.code)) throw cause;
+        // Signed but not transmitted: the key is bound to that document and replays this same 503.
+        // Another attempt changes nothing; the caller finishes it with `retryDocument`.
+        if (cause.signedNotTransmitted !== null) throw cause;
         lastError = cause;
       }
     }
@@ -2653,6 +3031,7 @@ export class Facta {
     signal?: AbortSignal,
     timings = false,
     timeoutMs = this.#timeoutMs,
+    onHeaders?: (headers: Headers) => void,
   ): Promise<T> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -2681,6 +3060,7 @@ export class Facta {
         0,
       );
     }
+    onHeaders?.(response.headers);
     const served = response.headers.get("x-sb-edge-region");
     if (served !== null && REGION_PATTERN.test(served)) this.#servedRegion = served;
 
@@ -2689,12 +3069,14 @@ export class Facta {
         if (!response.ok) return await this.#parseError(response);
         const storageSource = response.headers.get("x-facta-storage-source");
         const jsonFormat = response.headers.get("x-facta-json-format");
+        const plantilla = response.headers.get("x-facta-plantilla");
         return {
           bytes: new Uint8Array(await response.arrayBuffer()),
           contentType: response.headers.get("content-type") ?? "application/octet-stream",
           filename: response.headers.get("content-disposition")?.match(/filename="?([^";]+)\"?/)?.[1] ?? null,
           ...(isStorageSource(storageSource) ? { storageSource } : {}),
           ...(jsonFormat === "archivo-dte" || jsonFormat === "raw" ? { jsonFormat } : {}),
+          ...(plantilla !== null && TEMPLATE_TAG.test(plantilla) ? { plantilla } : {}),
         } as T;
       } finally {
         clearTimeout(timer); signal?.removeEventListener("abort", abort);
@@ -2761,6 +3143,26 @@ export class Facta {
       redactErrorValue(error?.details, this.#secrets),
     );
   }
+}
+
+/** The `If-Match` value for a revision: the API's ETag is the quoted revision (`"7"`). */
+function ifMatchHeader(value: string | number): string {
+  const text = String(value).trim();
+  if (text === '*') return text;
+  const bare = text.replace(/^W\//, '').replace(/^"(.*)"$/, '$1');
+  if (!/^\d+$/.test(bare)) throw new TypeError('ifMatch must be the revision number read from the record (for example 7).');
+  return `"${bare}"`;
+}
+
+/** The catalogue revision of a record, from `Facta-Catalog-Revision` or the ETag (shared catalogue only). */
+function catalogRevisionOf(headers: Headers): number | null {
+  const raw = headers.get('facta-catalog-revision') ?? headers.get('etag');
+  const match = raw === null ? null : /(\d+)/.exec(raw);
+  return match === null ? null : Number(match[1]);
+}
+
+function withRevision<T extends { id: string }>(record: T, revision: number | null): T {
+  return revision === null ? record : { ...record, revision };
 }
 
 /** Both spellings on a record read through the API; the path says what kind it is. */

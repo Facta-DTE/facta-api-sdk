@@ -51,7 +51,7 @@ window), `/browser` (credential-free headless client), `/react` and
 | --- | --- | --- | --- |
 | `apiKey` / `FACTA_API_KEY` | `facta_test_…` or `facta_live_…` | Identifies the integration, carries its scopes, allowed DTE types, limits and its environment. Sent as `X-Facta-Key`. | Server only |
 | `signKey` / `FACTA_SIGN_KEY` | `factask_…` | Second factor that opens the signing vault. Sent only on `issue`, `sign`, `invalidate`, `registerReturn`. Not needed for `prepare`, queries, downloads or delivery. | Server only; only the process that signs |
-| `unlockKey` / `FACTA_UNLOCK_KEY` | `factauk_…` | Decrypts, **locally**, the published catalog and storage-destination snapshots. **Never sent to the API.** Not needed for plain/readable catalogs or if you send complete data. | Server only |
+| `unlockKey` / `FACTA_UNLOCK_KEY` | `factauk_…` | Decrypts, **locally**, the published storage-destination snapshot (BYOS). **Never sent to the API.** Not needed for the catalog (since 0.6 the server reads it) or if you send complete data. | Server only |
 
 Rules:
 
@@ -110,7 +110,7 @@ import { Facta } from "@facta-dte/api";
 const facta = new Facta({
   apiKey: process.env.FACTA_API_KEY!,
   signKey: process.env.FACTA_SIGN_KEY,      // omit in processes that never sign
-  // unlockKey: process.env.FACTA_UNLOCK_KEY, // only for encrypted catalogs / BYOS snapshots
+  // unlockKey: process.env.FACTA_UNLOCK_KEY, // only for BYOS destination snapshots
   // Do not set baseUrl: the default is Facta's public API (both environments).
   timeoutMs: 60_000, // default; includes reading the body
   maxRetries: 3,     // default; only explicitly retryable codes (see errors.md)
@@ -124,7 +124,7 @@ const facta = new Facta({
 | `clock`, `clockFetch` | Reference clock for archive timestamps and S3 signing. Default on; `false` uses the device clock. Archive methods wait for its first calibration (≈6 s worst case when the clock service is unreachable). |
 | `debug` | `{ timings: true }`; see debugging.md. |
 | `config` | `FactaConfigV1` (`version: 1`), scalar, no secrets: `expectedEnvironment`, `requiredScopes`, `region`, `baseUrl`, ticket width… Flat options win. |
-| `runtime` | `FactaRuntimeConfigV1` (`version: 1`): `archive`, `invalidationArchive`, `remoteDestinations`, `printTransport`, `emergencyStore`, `onEmergency`. See storage-and-emergency.md. |
+| `runtime` | `FactaRuntimeConfigV1` (`version: 1`): `archive`, `invalidationArchive`, `remoteDestinations`, `printTransport`, `emergencyStore`, `onEmergency`, `confirmArchive`. See storage-and-emergency.md. |
 | `fetch` | Custom fetch, for tests or an owning runtime. |
 
 Node can load the scalar config from an explicit file:
@@ -170,7 +170,8 @@ TypeScript and JavaScript; other SDKs are pending). The authoritative contract i
   contract.
 - `Idempotency-Key` is **mandatory** on `POST /v1/dte`, `/v1/dte/prepare`,
   `/v1/dte/sign`, `/v1/dte/{codigoGeneracion}/invalidate` and
-  `/v1/dte/{codigoGeneracion}/return`; scope `(API key, key)`, TTL 24 h.
+  `/v1/dte/{codigoGeneracion}/return`; scope `(API key, key)`. The stored answer lasts
+  7 days; the key stays bound to its sale for ever.
 - Rate-limit headers on every response: `RateLimit-Limit`, `RateLimit-Remaining`,
   `RateLimit-Reset`, `RateLimit-Policy`; `Retry-After` when you must wait.
 - Routes: `GET /v1/status`, `POST /v1/dte`, `GET /v1/dte` (list, cursor
@@ -178,7 +179,9 @@ TypeScript and JavaScript; other SDKs are pending). The authoritative contract i
   `POST /v1/dte/sign`, `GET /v1/dte/{codigoGeneracion}`,
   `POST …/invalidate`, `POST …/return`, `GET …/file?kind=json|pdf|ticket`,
   `POST …/entrega/correo`, `POST …/entrega/whatsapp`, `GET …/entrega`,
-  `GET /v1/dte/holding`, and the `storage` and `vault` routes.
+  `GET /v1/dte/holding`, `GET /v1/storage/unconfirmed` (documents whose temporary copy is
+  not yet reported stored, with their deletion date), `POST …/storage-confirmation` (body
+  `{ donde, sha256 }`: report a document stored), and the other `storage` and `vault` routes.
 - The issuer, environment, establishment and point of sale come from the key;
   the client cannot name them.
 - With a direct call, send complete receiver and item data: only the TypeScript

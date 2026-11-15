@@ -26,8 +26,7 @@ Vienen del contrato publicado de la API:
 - **Misma llave, otro cuerpo**: `422 idempotency_key_reuse`.
 - **Mientras la primera petición sigue trabajando**: `409 idempotency_in_flight`;
   no se encola.
-- **Vigencia de 24 horas.** Después la llave queda libre: la misma petición un
-  día después es una **venta nueva**, no un reintento.
+- **La llave queda atada a su venta para siempre** (más estricto desde el 30-oct-2026). La respuesta guardada dura 7 días; después solo se borra la respuesta, y Facta sigue sabiendo a qué solicitud y documento pertenece la llave. La misma llave con el mismo cuerpo pasados los 7 días devuelve el documento que ya existe, reconstruido desde sus copias (estado, sello, totales; `Idempotency-Replay-Source: rebuilt`), nunca uno nuevo. La misma llave con otro cuerpo es `422 idempotency_key_reuse` siempre. Use **una llave por venta, para siempre**: no la reutilice para otra venta ni invente una nueva para reintentar la misma.
 
 ## Qué hace el SDK por usted
 
@@ -44,31 +43,23 @@ Vienen del contrato publicado de la API:
   el siguiente intento lleva otra llave. **Por eso conviene que usted ponga la
   suya.**
 
-## La huella de la petición
+## La huella de la petición (retirada en la 0.6)
 
-En `POST /v1/dte` (`issue`, `issueAndArchive`, `recoverOperation`) y en
-`POST /v1/dte/prepare` (`prepare`) el SDK envía además
-`X-Facta-Request-Fingerprint`: el SHA-256 (hexadecimal en minúsculas) de la
-forma canónica RFC 8785 de **su petición tal como usted la escribió**, antes de
-que cualquier `customerId` / `productId` se reemplace con datos del catálogo, e
-incluyendo las opciones de entrega. El servidor compara ese valor y no los bytes
-del cuerpo, de modo que:
+Los SDK 0.3 a 0.5 enviaban `X-Facta-Request-Fingerprint` en `POST /v1/dte` y
+`POST /v1/dte/prepare` porque el SDK reemplazaba `customerId` / `productId` con datos del
+catálogo antes de enviar, y el cuerpo cambiaba cuando cambiaba el catálogo. Desde la 0.6 el
+**servidor** resuelve esos ids y el SDK envía su petición intacta: el encabezado ya no se
+envía y el servidor reclama por el hash del cuerpo. Cada reintento de una llamada reenvía los
+mismos bytes.
 
-- Una edición del catálogo (un precio, la dirección de un cliente) entre un
-  intento y su reintento ya no termina en `422 idempotency_key_reuse`: el
-  reintento devuelve el documento del primer intento. Antes, el SDK resolvía de
-  nuevo los ids, armaba otro cuerpo y el servidor lo rechazaba.
-- Si cambia algo que **usted** escribió (una cantidad, una nota, `deliver`),
-  sigue siendo otra petición y sigue respondiendo `422 idempotency_key_reuse`.
-- El cuerpo no cambia y cada reintento automático de una llamada reenvía
-  exactamente los mismos bytes. Nada más de la petición se modifica.
-
-Las operaciones anotadas en el diario por una versión anterior del SDK se
-reclamaron por cuerpo. El diario registra qué modo usó cada operación
-(`idempotencyHash`) y `recoverOperation` reenvía el encabezado solo en las que lo
-usaron, así que actualizar el SDK en medio de una ventana de 24 horas es seguro.
-La definición exacta, con vectores de prueba para otros lenguajes, está en
-[`conformance/fingerprint-v1.md`](https://github.com/Facta-DTE/facta-api-sdk/blob/main/conformance/fingerprint-v1.md).
+- Si cambia algo que **usted** escribió (una cantidad, una nota, `deliver`), es otra
+  petición y responde `422 idempotency_key_reuse`.
+- Reintentar a través de la actualización es seguro: el diario registra qué modo usó cada
+  operación (`idempotencyHash`) y `recoverOperation` sigue enviando la huella guardada de las
+  que empezó un cliente 0.5, y ningún encabezado en las demás.
+- La definición de la huella y sus vectores siguen publicados en
+  [`conformance/fingerprint-v1.md`](https://github.com/Facta-DTE/facta-api-sdk/blob/main/conformance/fingerprint-v1.md)
+  para los clientes que todavía la envían.
 
 ## Patrón: una llave por operación de negocio
 
@@ -103,8 +94,9 @@ debajo de unos cientos de caracteres.
 Cuando `issue` termina lanzando `network_error` (u otro código reintentable
 después de los reintentos del SDK), usted no sabe si el servidor emitió el
 documento, y tampoco tiene su `codigoGeneracion`. Repita **la misma petición
-con la misma llave** dentro de las 24 horas: recibe la respuesta guardada,
-incluido el código. Después use `getDocumentStatus` para lo que pase más
+con la misma llave**: dentro de 7 días recibe la respuesta guardada; después, el
+documento que ya existe, reconstruido. En ambos casos recibe el código y nunca un
+segundo documento. Después use `getDocumentStatus` para lo que pase más
 adelante (que se selle una contingencia, por ejemplo).
 
 ```ts
@@ -190,8 +182,10 @@ ese número lo maneja el servidor y los registros de Facta, así que guarde
 - **`idempotency_in_flight` (409)** después de todos los reintentos: la primera
   petición sigue trabajando (Hacienda puede tardar unos 40 s). Espere y repita
   la misma llave.
-- **Repetir después de 24 horas**: emite un segundo documento. Concilie antes
-  con `getDocumentStatus` / `listDocuments`.
+- **Repetir después de 7 días**: devuelve el documento que ya existe
+  (reconstruido: estado, sello, totales), no uno segundo. El peligro es el
+  contrario: una llave **nueva** para la misma venta emite un segundo
+  documento. Vea [documentos pendientes](pending-documents.es.md).
 - **`AbortSignal`**: cancelar detiene la espera y los reintentos locales; no
   prueba que el servidor no aceptó la petición. Repita la llave para saberlo.
 - **Llaves aleatorias en un proceso sin estado**: una caída pierde la llave.

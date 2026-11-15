@@ -70,6 +70,114 @@ export interface LineItem {
   codigo?: string | null;
   tipoItem?: 1 | 2 | 3 | 4;
   uniMedida?: number;
+  /** Explicit FSE per-line withholding selection; available only in per-line mode. */
+  applyIncomeWithholding?: never;
+  /**
+   * Discount of THIS line, in money (not a percentage), in the same VAT basis as `precioUni`.
+   * Between 0 and `cantidad × precioUni`, otherwise `400`. The exact spelling matters: `descuento`,
+   * `discount` or `descu` do not exist and come back as a `campo_desconocido` warning that suggests
+   * `montoDescu`. For a discount on the whole sale use `descuentoGlobal` on the request (01, 03, 11, 14).
+   */
+  montoDescu?: number;
+  /**
+   * How this line treats VAT: `gravada` (the default, 13 %), `exenta` (`ventaExenta` column) or `no_sujeta`
+   * (`ventaNoSuj` column). Chosen by you, never deduced by Facta. Valid in 01, 03, 05 and 06; on 11 and 14 the
+   * server refuses it (`422 validation_failed`) even when it says `gravada`, so leave it out there. In a note
+   * use the class the corrected line had. With `productId` the product's class does not reach the API yet:
+   * send `tipoVenta` on the line. `aplicarReteRenta` next to an `exenta` or `no_sujeta` line is
+   * `422 retention_mixed_class_unsupported`.
+   */
+  tipoVenta?: SaleType;
+  /** A sale line never carries `noGravado`: a non-taxed charge or credit is its own line ({@link NonTaxedLine}). */
+  noGravado?: never;
+}
+
+/**
+ * A charge or credit that does not affect the tax base («Cargos/Abonos que no afectan la base imponible»,
+ * Manual Funcional del Sistema de Transmisión v2.0 §XII): its OWN line of the document, accepted on 01, 03,
+ * 05, 06 and 11. Facta writes it as the Manual says (cantidad 1, `uniMedida` 99, `precioUni` 0, every
+ * sale column and tax 0, `tributos` null) and adds `noGravado` to `resumen.totalNoGravado` and
+ * `totalPagar` ONLY: VAT, subtotal, `montoTotalOperacion`, discounts and the withholding/perception bases do
+ * not move. Read the sum in `totales.totalNoGravado`.
+ *
+ * - `noGravado` > 0 is a charge (adds to the total to pay); < 0 is a credit (subtracts). Never 0, at most
+ *   8 decimals. A total to pay below zero is `400 non_taxed_total_negative`.
+ * - It cannot be combined with `cantidad`, `precioUni`, `montoDescu`, `tipoVenta` or `productId`
+ *   (`400 invalid_request` naming the field); the type forbids them. `uniMedida`, if sent, must be 99.
+ * - The document needs at least one sale line (gravada, exenta or no sujeta) with an amount above zero:
+ *   `400 non_taxed_requires_sale_line`. On 14 (FSE) it is `400 non_taxed_not_supported`.
+ * - In an export (11) every good or service sold is a sale line (taxed at 0 %); only a charge that is not a
+ *   sale (a reimbursement, for example) goes as `noGravado`.
+ *
+ * The SDK checks these rules locally before sending (a {@link FactaError} with the same code and status 0),
+ * so nothing is reserved. Gate on `status().capabilities?.noGravado`: an older API does not know the field.
+ */
+export interface NonTaxedLine {
+  /** What the charge or credit is («Capital», «Reembolso de gastos de envío»). */
+  descripcion: string;
+  /** Positive: charge. Negative: credit (abono). Not zero, at most 8 decimals. */
+  noGravado: number;
+  /** Required, never defaulted (Hacienda's item-type catalogue): 1 bien, 2 servicio, 3 ambos. */
+  tipoItem: 1 | 2 | 3;
+  /** Your own code for the charge, or `null`. */
+  codigo?: string | null;
+  /** 05/06: the corrected document this line belongs to, when the note corrects several. */
+  numeroDocumento?: string;
+  cantidad?: never;
+  precioUni?: never;
+  montoDescu?: never;
+  tipoVenta?: never;
+  productId?: never;
+  /** Optional; when present it must be 99 (Facta writes 99 anyway). Any other unit is `400 invalid_request`. */
+  uniMedida?: 99;
+}
+
+/** A line of 01, 03, 05, 06 or 11: a sale line, or a non-taxed charge/credit line. */
+export type DocumentLine = LineItem | NonTaxedLine;
+
+
+export interface PerLineWithholdingItem extends Omit<LineItem, "applyIncomeWithholding"> {
+  applyIncomeWithholding: boolean;
+}
+
+/** One row of `pagos[]`: a payment method and the amount paid with it. */
+export interface Pago {
+  /** Payment-method code of the Ministry's catalogue (e.g. "01"); the server checks it (`422 validation_failed`, `details.supported`). */
+  codigo: string;
+  /** Paid with this method, at most two decimals, greater than zero. */
+  montoPago: number;
+  /** Voucher, cheque number, etc. (at most 50 characters). */
+  referencia?: string | null;
+}
+
+/** A server warning in the sealed response (`advertencias`). Only the fields of its code are present. */
+export interface ServerWarning {
+  codigo?: string;
+  code?: string;
+  mensaje?: string;
+  detalle?: string;
+  /** `campo_desconocido`: exact path of the ignored field (`items[2].descuento`). `plantilla_no_aplicada`: the template field. */
+  campo?: string;
+  /** `campo_desconocido` only: the field the caller probably meant (`items[2].montoDescu`). */
+  sugerencia?: string;
+  /** `plantilla_no_aplicada` only: `plan`, `no_existe` or `incompatible`. */
+  motivo?: string;
+  [field: string]: unknown;
+}
+
+/** A request field Facta DTE does not know: it was ignored and is NOT part of the document. */
+export interface UnknownFieldWarning {
+  codigo: "campo_desconocido";
+  campo: string;
+  mensaje: string;
+  sugerencia?: string;
+}
+
+/** The parsed `Facta-Warning` response header (`campo_desconocido; campos=2`). */
+export interface FactaWarningHeader {
+  code: string;
+  /** The `campos=N` parameter, when the header carries it. */
+  count: number | null;
 }
 
 export type DteType = "01" | "03" | "05" | "06" | "11" | "14";
@@ -83,62 +191,176 @@ export type RelatedDocument =
 export interface ExportDetails {
   tipoItemExpor: 1 | 2 | 3;
   incoterms?: string | null;
+  /** Customs-precinct code; a code outside the catalogue is `422 validation_failed`. */
   recintoFiscal?: string | null;
+  /** Regime type code (`EX-1`, `EX-2`, `EX-3`, `TA-1`); checked like `recintoFiscal`. */
   tipoRegimen?: string | null;
+  /** Regime code, or the composite `<type>.<regime>`; checked like `recintoFiscal`. */
   regimen?: string | null;
   flete?: number;
   seguro?: number;
 }
 
+/** `descuentoGlobal`: one discount for the whole sale, in dollars or in percentage points. */
+export interface GlobalDiscount {
+  /** `monto`: dollars, in the VAT basis of `precioUni`. `porcentaje`: points (10 = 10 %). Required: there is no default. */
+  modo: "monto" | "porcentaje";
+  /** Greater than zero, at most two decimals. A percentage is at most 100. */
+  valor: number;
+}
+
+/** Per-sale values printed only on the graphical representation (sheet and ticket); never in the signed DTE. */
+export interface RepresentationData {
+  mesa?: string; mesero?: string; cajero?: string; pedido?: string; bomba?: string; placa?: string;
+  /** Integer, 1 to 999. */
+  comensales?: number | string;
+  puntos?: number | string; kilometraje?: number | string;
+  /** Exactly four digits, as text (the last four of a card). */
+  tarjetaUltimos4?: string;
+  /** 0 to 99,999.99. */
+  propinaSugerida?: number | string;
+  paciente?: string; expediente?: string; proximaCita?: string; medico?: string; registroProfesional?: string;
+  ordenTrabajo?: string; entrega?: string; evento?: string; fechaEvento?: string; comentario?: string;
+  proyecto?: string; entregable?: string; periodo?: string;
+  /** `Nombre:desde-hasta;…` over the lines' number, for the grouped-table looks. */
+  secciones?: string;
+  /** Up to ten free label/value rows (label up to 30 characters, value up to 80). A label may not imitate a fiscal field. */
+  filas?: RepresentationRow[];
+}
+
+export interface RepresentationRow { etiqueta: string; valor: string }
+
+/** Template choice for one document: a catalogue id or `custom:<uuid>` of a published template of the company. */
+export interface RepresentationTemplateChoice {
+  carta?: string;
+  ticket?: string;
+}
+
+/** What the request sends as `representacion`. */
+export interface Representation {
+  datos?: RepresentationData;
+  /** Needs a server that supports it; list the options with `listTemplates`. A refused choice is not an error: see `plantilla_no_aplicada`. */
+  plantilla?: RepresentationTemplateChoice;
+}
+
+/** The answer's `advertencias` entry when a requested template was not used (the company template was used instead). */
+export interface TemplateNotAppliedWarning {
+  /** The API's field name is `codigo` (like its other warnings). */
+  codigo: "plantilla_no_aplicada";
+  /** E.g. `representacion.plantilla.carta`. */
+  campo: string;
+  motivo: "plan" | "no_existe" | "incompatible";
+  mensaje: string;
+}
+
+/** One entry of `GET /v1/representacion/plantillas`. */
+export interface RepresentationTemplate {
+  id: string;
+  tipo: "carta" | "ticket";
+  nombre: string;
+  origen: "catalogo" | "propia";
+  /** False when the company's plan does not allow it (see `motivo`). */
+  permitida: boolean;
+  motivo?: string;
+  /** DTE types it can draw; absent means all. */
+  tiposDte?: DteType[];
+  /** The `representacion.datos` keys this template prints. */
+  clavesDatos: string[];
+}
+
+export interface RepresentationTemplates {
+  predeterminada: { carta: string | null; ticket: string | null };
+  plantillas: RepresentationTemplate[];
+}
+
 interface DteRequestBase {
-  items: LineItem[];
+  /** Sale lines and, except on 14, non-taxed charge/credit lines ({@link NonTaxedLine}). */
+  items: DocumentLine[];
+  /** Per-sale values and the template choice for the graphical representation. */
+  representacion?: Representation;
   condicionOperacion?: 1 | 2 | 3;
   plazo?: "01" | "02" | "03" | null;
   periodo?: number | null;
+  /** Payment-method code. A code outside the catalogue is `422 validation_failed` (`details.field`, `details.supported`). Not combined with `pagos`. */
   formaPago?: string;
+  /**
+   * Several payment methods for one document (01, 03, 11, 14): 1 to 10 rows whose `montoPago` add up to the
+   * total to pay, to the cent. Refused (`400`) together with `formaPago` and on 05/06; refused (`422`) with
+   * `condicionOperacion` 2 (credit).
+   */
+  pagos?: Pago[];
+  /**
+   * The discount of the WHOLE sale, as the Facta app writes it (01, 03, 11 and 14 only). Applied after
+   * the line discounts (`items[].montoDescu`) and allocated by Facta:
+   *
+   * - `porcentaje`: the same percentage on every sale class (gravada, exenta, no sujeta); it is also
+   *   written to `resumen.porcentajeDescuento`.
+   * - `monto`: dollars in the SAME VAT basis as `precioUni` of that type (VAT included on 01, excluded on
+   *   03 and 11). Over several sale classes it is split in proportion and adds up to the cent;
+   *   `porcentajeDescuento` stays 0.
+   * - On 11 it all goes to `descuGravada`; on 14 to `resumen.descu`.
+   *
+   * Everything after it (VAT, `aplicarRetencionIva`, `aplicarPercepcionIva`, `aplicarReteRenta`,
+   * `totalPagar` and the sum `pagos[]` must match) is computed on the discounted amounts. Read the result in
+   * `resumen.descuNoSuj` / `descuExenta` / `descuGravada` (or `descu` on 14) and `totalDescu`.
+   *
+   * A discount above the subtotal is `400 invalid_request` (`details.field: "descuentoGlobal"`,
+   * `details.subtotal`); a bad `modo`, a `valor` out of range or any other key is `400` on that field. On a
+   * credit (05) or debit (06) note it is `400 global_discount_not_supported`: a note's amounts come from the
+   * document it corrects. None of these spends a control number. `null` is the same as leaving it out.
+   * Check `status().capabilities?.descuentoGlobal` first: an older API ignores the field and only warns
+   * about it as `campo_desconocido`.
+   */
+  descuentoGlobal?: GlobalDiscount | null;
   observaciones?: string | null;
+}
+
+/** Explicit opt-in to per-line income withholding for FSE requests. */
+export interface IncomeWithholdingPerLine {
+  mode: "per_line";
+}
+
+type PerLineFseRequestBase = Omit<DteRequestBase, "items"> & {
+  tipoDte: "14";
+  items: PerLineWithholdingItem[];
+  incomeWithholding: IncomeWithholdingPerLine;
+  aplicarReteRenta?: never;
+};
+
+/** Own fields of other types: the server answers `400` (not a silent ignore) when a type receives them. */
+interface VatOwnFieldsNever {
+  aplicarRetencionIva?: never;
+  aplicarPercepcionIva?: never;
+}
+
+/** 01 and 03: the 1 % VAT withholding the RECEIVER practises (art. 162 CT) on the taxable net after discounts. Never automatic: you ask for it. */
+interface VatWithholdingField {
+  aplicarRetencionIva?: boolean;
 }
 
 /** DTE request union. DTE-specific fields are available only on their type. */
 export type DteRequest =
-  | (DteRequestBase & { tipoDte: "01"; receptor?: Recipient | null; documentosRelacionados?: never; exportacion?: never; aplicarReteRenta?: never; numPagoElectronico?: never })
-  | (DteRequestBase & { tipoDte: "03"; receptor?: Recipient | null; documentosRelacionados?: never; exportacion?: never; aplicarReteRenta?: never; numPagoElectronico?: never })
-  | (DteRequestBase & { tipoDte: "05"; receptor?: Recipient | null; documentosRelacionados: RelatedDocument[]; exportacion?: never; aplicarReteRenta?: never; numPagoElectronico?: never })
-  | (DteRequestBase & { tipoDte: "06"; receptor?: Recipient | null; documentosRelacionados: RelatedDocument[]; numPagoElectronico?: string | null; exportacion?: never; aplicarReteRenta?: never })
-  | (DteRequestBase & { tipoDte: "11"; receptor: ExportRecipient; exportacion: ExportDetails; documentosRelacionados?: never; aplicarReteRenta?: never; numPagoElectronico?: never })
-  | (DteRequestBase & { tipoDte: "14"; receptor: ExcludedSubjectRecipient; aplicarReteRenta?: boolean; documentosRelacionados?: never; exportacion?: never; numPagoElectronico?: never });
-
-export interface CatalogSnapshot {
-  version: 1;
-  customers: CatalogCustomer[];
-  products: CatalogProduct[];
-}
+  | (DteRequestBase & VatWithholdingField & { aplicarPercepcionIva?: never; tipoDte: "01"; receptor?: Recipient | null; documentosRelacionados?: never; exportacion?: never; aplicarReteRenta?: never; incomeWithholding?: never; numPagoElectronico?: never })
+  | (DteRequestBase & VatWithholdingField & {
+    tipoDte: "03"; receptor?: Recipient | null; documentosRelacionados?: never; exportacion?: never; aplicarReteRenta?: never; incomeWithholding?: never; numPagoElectronico?: never;
+    /**
+     * Only 03. The 1 % VAT perception (art. 163 CT) on the taxable net of the GOODS lines (`tipoItem` 1) after
+     * the proportional share of any global discount; services are not in the base. Added to the total to pay,
+     * not part of `montoTotalOperacion`. Never automatic: you ask for it.
+     */
+    aplicarPercepcionIva?: boolean;
+  })
+  | (Omit<DteRequestBase, "pagos"> & VatOwnFieldsNever & { pagos?: never; tipoDte: "05"; receptor?: Recipient | null; documentosRelacionados: RelatedDocument[]; exportacion?: never; aplicarReteRenta?: never; incomeWithholding?: never; numPagoElectronico?: never })
+  | (Omit<DteRequestBase, "pagos"> & VatOwnFieldsNever & { pagos?: never; tipoDte: "06"; receptor?: Recipient | null; documentosRelacionados: RelatedDocument[]; numPagoElectronico?: string | null; exportacion?: never; aplicarReteRenta?: never; incomeWithholding?: never })
+  | (DteRequestBase & VatOwnFieldsNever & { tipoDte: "11"; receptor: ExportRecipient; exportacion: ExportDetails; documentosRelacionados?: never; aplicarReteRenta?: never; incomeWithholding?: never; numPagoElectronico?: never })
+  | (Omit<DteRequestBase, "items"> & VatOwnFieldsNever & { items: LineItem[]; tipoDte: "14"; receptor: ExcludedSubjectRecipient; aplicarReteRenta?: boolean; incomeWithholding?: never; documentosRelacionados?: never; exportacion?: never; numPagoElectronico?: never })
+  | (PerLineFseRequestBase & VatOwnFieldsNever & { aplicarPercepcionIva?: never; receptor: ExcludedSubjectRecipient; documentosRelacionados?: never; exportacion?: never; numPagoElectronico?: never });
 
 /** How the key's company stores the catalog the API can see. */
 export type CatalogMode = "encrypted" | "readable" | "plain";
 
-/** Public synchronization facts for this process-local catalog cache. */
-export interface CatalogState {
-  /**
-   * How this key reaches the catalog, from `/v1/status`: `encrypted` (decrypt the key's snapshot
-   * with `unlockKey`), `readable` (the owner published a readable snapshot) or `plain` (the company
-   * catalog is stored unencrypted and is read and written through the API). `null` when the
-   * server did not say (older API) or status could not be read.
-   */
-  catalogMode: CatalogMode | null;
-  /** `plain` reads are always live, so they report `fresh`. */
-  freshness: "fresh" | "stale" | "missing";
-  localRevision: number | null;
-  fetchedAt: string | null;
-  desiredRevision: number | null;
-  publishedRevision: number | null;
-  syncStatus: string | null;
-  /** Safe error code when the API could not be reached; never includes response data. */
-  statusError: string | null;
-}
-
-/** Explicit opt-in for non-fiscal catalog reads from the last process-local snapshot. */
 export interface CatalogReadOptions {
+  /** @deprecated No effect since 0.6: catalogue reads are always live (there is no local snapshot). */
   allowStale?: boolean;
   /** Include deactivated records (`active: false`). Default false. */
   includeInactive?: boolean;
@@ -150,6 +372,12 @@ export interface CatalogReadOptions {
 export interface CatalogWriteOptions {
   /** Create only: reuse the same key to make a retried create safe. One is minted when omitted. */
   idempotencyKey?: string;
+  /**
+   * Update only: apply the change only if the record is still at this revision (the `revision` you read).
+   * Otherwise `FactaError` `catalog_revision_conflict` (409) with `details.revisionActual`. Honoured by a
+   * company that shares its data key; a plain-catalogue company ignores it (last write wins per field).
+   */
+  ifMatch?: number | string;
   signal?: AbortSignal;
 }
 
@@ -234,7 +462,7 @@ export interface ProductInput {
 }
 
 /**
- * A customer, as the API returns it (Ministry names) and as an encrypted snapshot holds it
+ * A customer, as the API returns it (Ministry names) and as the stored record holds it
  * (stored names). Every record the SDK returns carries both spellings, so code written
  * against either keeps working in every catalog mode.
  */
@@ -260,6 +488,8 @@ export interface CatalogCustomer {
   phone?: string | null;
   email?: string | null;
   active?: boolean;
+  /** The record's catalogue revision, on single reads and writes of a company that shares its data key. Pass it as `ifMatch`. */
+  revision?: number;
   [field: string]: unknown;
 }
 
@@ -287,6 +517,8 @@ export interface CatalogProduct {
   unit_price?: number | null;
   vat_included?: boolean | null;
   active?: boolean;
+  /** See `CatalogCustomer.revision`. */
+  revision?: number;
   [field: string]: unknown;
 }
 
@@ -305,6 +537,17 @@ export interface Totals {
   montoTotalOperacion: number;
   totalPagar: number;
   totalLetras: string;
+  /** Type 14 only: the income-tax withholding at the current rate (10 % today) on the whole subtotal, already subtracted from `totalPagar`; 0 when not requested. Absent against a server that does not report it yet. */
+  reteRenta?: number;
+  /** 01 and 03: the 1 % VAT withheld by the receiver, already subtracted from `totalPagar`; 0 when not requested. */
+  ivaRete?: number;
+  /** 03 only: the 1 % VAT perception, already added to `totalPagar`; 0 when not requested. */
+  ivaPerci?: number;
+  /**
+   * 01, 03, 05, 06 and 11: the sum of the non-taxed lines (`resumen.totalNoGravado`), already in `totalPagar`
+   * (charges add, credits subtract); 0 when there is none. Absent against a server that does not report it.
+   */
+  totalNoGravado?: number;
 }
 
 // --- Debug timings (a debugging aid, off by default) ----------------------------
@@ -365,7 +608,11 @@ export interface SealedDte {
   /** Only with `debug: { timings: true }`. */
   debug?: DebugInfo;
   /** Server warnings (e.g. `sin_almacenamiento_duradero`); the emergency safeguard reads them. */
-  advertencias?: Array<string | { codigo?: string; code?: string; mensaje?: string; detalle?: string }>;
+  advertencias?: Array<string | ServerWarning | TemplateNotAppliedWarning>;
+  /** The `campo_desconocido` warnings of `advertencias`, ready to read. Present only when the request carried a field Facta DTE does not know. */
+  unknownFields?: UnknownFieldWarning[];
+  /** The `Facta-Warning` response header, parsed. Present only when the server sent it. */
+  factaWarning?: FactaWarningHeader;
   /** Present only when the emergency safeguard ran. */
   emergency?: import("./emergency.ts").EmergencyReport;
   /** SDK-side notices; `emergency_saved` / `emergency_failed`. */
@@ -394,7 +641,11 @@ export interface DteInContingency {
   /** Only with `debug: { timings: true }`. */
   debug?: DebugInfo;
   /** Server warnings (e.g. `sin_almacenamiento_duradero`); the emergency safeguard reads them. */
-  advertencias?: Array<string | { codigo?: string; code?: string; mensaje?: string; detalle?: string }>;
+  advertencias?: Array<string | ServerWarning | TemplateNotAppliedWarning>;
+  /** The `campo_desconocido` warnings of `advertencias`, ready to read. Present only when the request carried a field Facta DTE does not know. */
+  unknownFields?: UnknownFieldWarning[];
+  /** The `Facta-Warning` response header, parsed. Present only when the server sent it. */
+  factaWarning?: FactaWarningHeader;
   /** Present only when the emergency safeguard ran. */
   emergency?: import("./emergency.ts").EmergencyReport;
   /** SDK-side notices; `emergency_saved` / `emergency_failed`. */
@@ -444,7 +695,13 @@ export interface ManagedStorageStatus {
   supportedKinds: Array<"json" | "pdf" | "invalidation" | (string & {})>;
   unsupportedKinds: Array<"ticket" | "invalidation" | (string & {})>;
   /** Absent on servers that predate the capability. `byosCopyReport: 1` accepts BYOS copy reports. */
-  capabilities?: { byosCopyReport?: number };
+  capabilities?: { byosCopyReport?: number; invalidationFile?: number; storageConfirmation?: number };
+  /**
+   * Sealed documents that still depend on Facta's temporary encrypted copy, and the earliest deletion
+   * date. `null` when the server could not count them now; absent on servers that predate the rule.
+   * The list is `listUnconfirmedDocuments()`.
+   */
+  sinConfirmar?: { total: number; primeroSeBorraEl: string | null } | null;
 }
 
 export interface ManagedDocumentCopy {
@@ -457,6 +714,8 @@ export interface ManagedDocumentCopy {
   sha256: string;
   issuedDate: string;
   storedAt: string | null;
+  /** The document's stored mark (not this file's): who and when. `null` while unmarked; absent on older servers. */
+  confirmado?: { en: string; por: "facta_managed" | "facta_byos" | "sdk_report" | "api_report" | "app_report" | "admin" } | null;
 }
 
 export interface ManagedDocumentCopies {
@@ -475,6 +734,12 @@ export interface PreparedDte {
   prepareToken: string;
   /** Only with `debug: { timings: true }`. */
   debug?: DebugInfo;
+  /** Server warnings, e.g. `campo_desconocido`. Present only when there is something to review. */
+  advertencias?: Array<string | ServerWarning>;
+  /** The `campo_desconocido` warnings of `advertencias`. Present only when the request carried a field Facta DTE does not know. */
+  unknownFields?: UnknownFieldWarning[];
+  /** The `Facta-Warning` response header, parsed. Present only when the server sent it. */
+  factaWarning?: FactaWarningHeader;
 }
 
 export interface DocumentStatus {
@@ -721,6 +986,12 @@ export interface DownloadedDocument {
   jsonFormat?: "archivo-dte" | "raw";
   /** Present for tickets; defaults to 80 mm when not requested. */
   paperWidthMm?: number;
+  /**
+   * PDF and ticket downloads, from `X-Facta-Plantilla`: the template the sheet was drawn with, a
+   * catalogue id (`letter-clasica`) or `custom:<uuid>@<version>`. Missing on servers that predate
+   * the header and on JSON downloads.
+   */
+  plantilla?: string;
 }
 
 export interface RateLimitWindow {
@@ -741,13 +1012,27 @@ export interface ApiSyncStatus {
   environment?: "00" | "01";
   sign?: SyncRevision;
   destinations?: SyncRevision;
+  /** @deprecated Retired in 0.6: the server no longer publishes a catalogue snapshot. */
   catalog?: SyncRevision;
+}
+
+/** `GET /v1/status` → `capabilities`: features an integration can detect before relying on them. */
+export interface StatusCapabilities {
+  /** The server reads `descuentoGlobal` on 01, 03, 11 and 14. Without it an older API ignores the field (and warns `campo_desconocido`). */
+  descuentoGlobal?: boolean;
+  /** The server accepts the explicit FSE per-line income withholding (`incomeWithholding: { mode: "per_line" }`). */
+  fseIncomeWithholdingPerLine?: boolean;
+  /** The server accepts non-taxed charge/credit lines (`items[].noGravado`) on 01, 03, 05, 06 and 11. */
+  noGravado?: boolean;
+  [capability: string]: unknown;
 }
 
 export interface Status {
   ok: boolean;
   version: string;
   ambiente: string;
+  /** Behaviour the API confirms; absent when the server advertises nothing. A flag that is not `true` means «not supported». */
+  capabilities?: StatusCapabilities;
   /** Functions region the API runs in (e.g. `us-west-2`); absent on older APIs. */
   region?: string;
   /** Region that served this very call, when the API reports it. */
@@ -762,10 +1047,9 @@ export interface Status {
     venceEl: string | null;
     /**
      * `plain`: the company catalog is unencrypted and the API reads and writes it.
-     * `readable`: the owner enabled «Catálogo legible por la API», so the
-     * server resolves `customerId` / `productId` and the SDK just sends the
-     * ids. `encrypted` (or absent on older servers): the SDK resolves them
-     * locally from the encrypted catalog and needs the unlock key.
+     * Since 0.6 the server resolves `customerId` / `productId` in every mode
+     * (also when the company keeps the catalog encrypted at rest) and the SDK
+     * just sends the ids; this field is informational.
      */
     catalogMode?: CatalogMode;
     /** true when the company stores its catalog unencrypted: the API reads and writes it. Advertised alongside `catalogMode: "readable"` for older SDKs. */
@@ -790,7 +1074,7 @@ export interface Status {
       environment: string | null;
     } | null;
   };
-  /** Published/current revisions for signing, storage destinations, and the encrypted catalog. */
+  /** Published/current revisions for signing, and storage destinations. */
   sincronizacion?: ApiSyncStatus | null;
   /** Absent on older servers; use getStorageStatus() to negotiate the contract. */
   storage?: ManagedStorageStatus;
@@ -909,3 +1193,129 @@ export interface WaitForDeliveryOptions {
 export interface WaitedDelivery extends DeliveryStatus {
   settled: boolean;
 }
+
+// ── Pending documents (GET /v1/dte/pendientes, POST /v1/dte/{cg}/reintentar) ──
+
+/** Why the API cannot finish a pending document (`reintentable: false`). */
+export type PendingNotRetryableReason =
+  | "rechazado"
+  | "documento_de_la_aplicacion"
+  | "sin_copia_firmada"
+  | "sin_documento_firmado";
+
+/**
+ * A document Facta signed whose number is spent but that Hacienda has not answered (or refused).
+ * Metadata only: never the document or the receiver.
+ */
+export interface PendingDocument {
+  codigoGeneracion: string;
+  numeroControl: string;
+  tipoDte: DteType;
+  estado: "firmado" | "rechazado";
+  modo?: "transitorio" | "contingencia";
+  fecEmi?: string | null;
+  totalPagar?: number | null;
+  firmadoEn?: string | null;
+  antiguedadSegundos?: number | null;
+  /** How many times `retryDocument()` was called for it. */
+  intentos?: number;
+  /** The last thing Hacienda said without deciding (or its reason for refusing). */
+  ultimaRespuestaMh?: { descripcionMsg: string | null; observaciones: string[]; consultadoEn?: string | null } | null;
+  /** `requiereContingencia` is true after 24 hours: declare the contingency event from the app. */
+  plazo?: { venceEn: string | null; vencido: boolean; requiereContingencia: boolean } | null;
+  /** True when `retryDocument()` can finish it. */
+  reintentable: boolean;
+  motivoNoReintentable?: PendingNotRetryableReason | null;
+}
+
+export interface ListPendingDocumentsFilters {
+  /** `firmado` (default): pending. `rechazado`: refused by Hacienda, awaiting correction. */
+  estado?: "firmado" | "rechazado";
+  tipoDte?: DteType;
+  limit?: number;
+  cursor?: string;
+}
+
+export interface PendingDocumentsPage {
+  pendientes: PendingDocument[];
+  /** Opaque cursor for the next page; `null` when there is none. */
+  siguiente: string | null;
+}
+
+/** Options of `recoverServerPending()`. */
+export interface RecoverServerPendingOptions {
+  /** The most documents to examine in this run (default 50, at most 500). */
+  limit?: number;
+  /** Narrow to one DTE type. */
+  tipoDte?: DteType;
+  signal?: AbortSignal;
+}
+
+/** What `recoverServerPending()` did with one pending document. It never carries the document or the receiver. */
+export interface ServerPendingOutcome {
+  codigoGeneracion: string;
+  numeroControl: string;
+  tipoDte: DteType;
+  /**
+   * `sealed`: Hacienda has it (`via` says how). `rejected`: Hacienda refused it. `pending`: Hacienda
+   * did not answer, or another retry is running; nothing changed, run again later. `not_retryable`:
+   * the API cannot finish it (`motivo`; documents the app issued are retried from the app).
+   * `error`: the call failed (`errorCode` / `message`); nothing was issued.
+   */
+  outcome: "sealed" | "rejected" | "pending" | "not_retryable" | "error";
+  via?: "consulta" | "retransmision" | "ya_asentado";
+  selloRecibido?: string;
+  motivo?: PendingNotRetryableReason | null;
+  errorCode?: string;
+  message?: string;
+}
+
+export interface RecoverServerPendingReport {
+  /** Pending documents examined in this run. */
+  examined: number;
+  sealed: number;
+  rejected: number;
+  pending: number;
+  notRetryable: number;
+  errors: number;
+  /** One entry per document, oldest first. */
+  results: ServerPendingOutcome[];
+  /** True when more pending documents were left because `limit` was reached. */
+  truncated: boolean;
+}
+
+/** `retryDocument()` found the document sealed. `via` says how. */
+export interface RetrySealed {
+  estado: "sellado";
+  /** `consulta`: Hacienda already had it. `retransmision`: the same bytes were resent. `ya_asentado`: it was already finished. */
+  via: "consulta" | "retransmision" | "ya_asentado";
+  codigoGeneracion: string;
+  numeroControl: string;
+  tipoDte: DteType;
+  ambiente: string;
+  fecEmi?: string;
+  selloRecibido?: string;
+  fhProcesamiento?: string | null;
+  observaciones?: string[];
+  /** `indice_pendiente` / `reserva_sin_asentar`: keep `documento` and `jws`, then call `retryDocument()` again. */
+  advertencias?: Array<string | ServerWarning>;
+  documento?: Record<string, unknown>;
+  jws?: string;
+}
+
+/** Hacienda did not answer (or did not decide). Nothing changed: try again later; never issue a new document. */
+export interface RetryPending {
+  estado: "pendiente";
+  via: "retransmision";
+  codigoGeneracion: string;
+  numeroControl: string;
+  tipoDte: DteType;
+  ambiente: string;
+  /** False: Hacienda was not reached. True: it answered without deciding. */
+  mhRespondio: boolean;
+  detalle: string | null;
+  observaciones: string[];
+  siguientePaso?: string;
+}
+
+export type RetryResult = RetrySealed | RetryPending;

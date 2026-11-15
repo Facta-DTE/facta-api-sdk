@@ -202,7 +202,7 @@ Google Drive, OneDrive y el puente necesitan una sesión interactiva y no se
 escriben sin ella: cada uno se informa como aviso `byos_not_replicated`. Los
 adaptadores que usted construye conservan la ruta que les indique.
 
-Tras una escritura verificada en un destino sincronizado, el SDK avisa a Facta
+Tras una escritura correcta en un destino sincronizado, el SDK la informa a Facta (un informe, no una verificación: Facta no puede leer su bucket)
 (`POST /v1/storage/copies/{codigoGeneracion}/byos`) para que la app muestre la
 copia. Solo lo hace si `GET /v1/storage/status` anuncia
 `capabilities.byosCopyReport`; un servidor anterior no recibe reporte ni error.
@@ -215,3 +215,18 @@ una vez sellado el documento; aparece en `result.warnings`:
 el PDF) y `copy_report_failed` (la copia existe pero Facta no fue avisada). La
 operación sigue en `listPendingOperations()`; `recoverOperation(operationId)`
 reintenta sin reescribir lo ya guardado.
+
+## Confirmar la copia
+
+Facta guarda una **copia temporal** cifrada de cada documento sellado y la borra
+**2 días después de que el documento se marca como guardado**, o **30 días
+después de sellado** si nadie lo marca; el dueño de la empresa recibe un correo
+desde el primer día con la tabla de lo que se borrará y cuándo. Una copia que
+`issueAndArchive()` escribe en un destino sincronizado la informa el SDK a Facta y
+marca el documento. Cualquier otro lugar (un adaptador propio, su disco, el
+archivo local, el almacenamiento de emergencia) es invisible para Facta hasta que
+usted lo diga con `confirmDocumentStorage()`; `runtime.confirmArchive: true` lo
+hace por el archivo local, y `storeAndConfirmUnconfirmed()` vacía lo que siga en
+`listUnconfirmedDocuments()`. El recorrido completo, las tres capas (retención de
+una hora, copia temporal, almacenamiento de emergencia) y ejemplos están en
+[la copia temporal](temporary-copy.es.md).

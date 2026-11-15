@@ -65,34 +65,15 @@ function plainRoutes(call: Call): Response | undefined {
 // --- Mode detection ----------------------------------------------------------------------------
 
 for (const mode of ["encrypted", "readable", "plain"] as const) {
-  Deno.test(`catalogState and diagnose report catalogMode "${mode}"`, async () => {
+  Deno.test(`diagnose reports catalogMode "${mode}"`, async () => {
     const { facta } = harness(mode);
-    assertEquals((await facta.catalogState()).catalogMode, mode);
     assertEquals((await facta.diagnose()).catalogMode, mode);
   });
 }
 
-Deno.test("the real server advertises a plain company as readable + catalogoSinCifrar: the SDK reads it as plain", async () => {
-  const { facta } = harness("readable", plainRoutes, {}, { catalogoSinCifrar: true, catalogoEscritura: true });
-  assertEquals((await facta.catalogState()).catalogMode, "plain");
-  assertEquals((await facta.getCustomer("c1"))?.id, "c1");
-});
-
 Deno.test("an older server that does not advertise a mode reports null", async () => {
   const { facta } = harness(undefined);
-  assertEquals((await facta.catalogState()).catalogMode, null);
-});
-
-Deno.test("the mode comes from the same /v1/status read as the region: one request at init", async () => {
-  const { calls, facta } = harness("plain", plainRoutes);
-  await facta.listCustomers();
-  await facta.getCustomer("c1");
-  assertEquals(calls.filter((call) => call.path === "/v1/status").length, 1);
-});
-
-Deno.test("a plain catalog reports fresh with no local revision", async () => {
-  const state = await harness("plain").facta.catalogState();
-  assertEquals([state.freshness, state.localRevision, state.syncStatus], ["fresh", null, null]);
+  assertEquals((await facta.diagnose()).catalogMode, null);
 });
 
 // --- Reads -------------------------------------------------------------------------------------
@@ -151,17 +132,15 @@ Deno.test("readable without a customers route and without unlockKey surfaces the
   await assertRejects(() => facta.listCustomers(), FactaError, "no");
 });
 
-Deno.test("encrypted: reads keep the snapshot path (and still need the unlock key)", async () => {
+Deno.test("encrypted: reads go through the API too, with no unlockKey (the server reads the catalogue)", async () => {
   const { calls, facta } = harness("encrypted", plainRoutes);
-  const error = await facta.listCustomers().then(() => null, (cause) => cause as FactaError);
-  assertEquals(error?.code, "unauthorized");
-  assertEquals(calls.some((call) => call.path === "/v1/customers"), false);
+  assertEquals((await facta.listCustomers()).length, 1);
+  assert(calls.some((call) => call.path === "/v1/customers"));
 });
 
-Deno.test("an unknown mode keeps the snapshot path", async () => {
-  const { calls, facta } = harness(undefined, plainRoutes);
-  await facta.getProduct("p1").catch(() => null);
-  assertEquals(calls.some((call) => call.path === "/v1/products/p1"), false);
+Deno.test("an unknown mode reads through the API as well", async () => {
+  const { facta } = harness(undefined, plainRoutes);
+  assertEquals((await facta.getProduct("p1"))?.id, "p1");
 });
 
 Deno.test("a plain catalog reaches the server for issue(): ids travel as they are", async () => {

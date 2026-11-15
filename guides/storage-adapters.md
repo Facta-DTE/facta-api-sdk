@@ -316,7 +316,7 @@ written headlessly; each one is reported as a `byos_not_replicated` warning.
 Adapters you build yourself keep whatever path you give them (the old default
 `api-invoices/{codigoGeneracion}/{kind}` still applies to them).
 
-After a verified write to a synced destination, the SDK tells Facta about it
+After a successful write to a synced destination, the SDK reports it to Facta (a report, not a verification: Facta cannot read your bucket)
 (`POST /v1/storage/copies/{codigoGeneracion}/byos`) so the app shows the copy
 instead of «sin copia». It does this only when `GET /v1/storage/status`
 advertises `capabilities.byosCopyReport`; an older server gets no report and no
@@ -335,3 +335,18 @@ Both leave the operation in `listPendingOperations()` (with the built-in
 `FileInvoiceArchive`; a custom archive must treat a remote copy with
 `report: "failed"` as pending). Call `recoverOperation(operationId)` to retry:
 bytes already stored are not rewritten, and only the missing report is resent.
+
+## Confirm the copy
+
+Facta keeps an encrypted **temporary copy** of every sealed document and deletes
+it **2 days after the document is marked as stored**, or **30 days after
+sealing** if nobody marks it; the company owner is mailed from day one with the
+table of what will be deleted and when. A copy that `issueAndArchive()` writes to
+a synced destination is reported to Facta by the SDK and marks the document.
+Every other place (a custom adapter, your own disk, the local archive, the
+emergency store) is invisible to Facta until you say so with
+`confirmDocumentStorage()`; `runtime.confirmArchive: true` does it for the local
+archive, and `storeAndConfirmUnconfirmed()` drains whatever is still on
+`listUnconfirmedDocuments()`. The whole flow, the three layers (one-hour holding,
+temporary copy, emergency store) and examples are in
+[the temporary copy](temporary-copy.md).

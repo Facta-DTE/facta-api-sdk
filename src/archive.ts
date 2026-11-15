@@ -173,14 +173,32 @@ export interface InvalidationArchiveResult {
 
 /** Non-fatal problem after a document was sealed. The sealed document is never affected. */
 export interface ArchiveWarning {
-  code: "byos_not_replicated" | "copy_report_failed" | "emergency_saved" | "emergency_failed";
+  code: "byos_not_replicated" | "copy_report_failed" | "emergency_saved" | "emergency_failed" | "confirmation_failed";
   /** Destination the warning is about; absent when the destinations could not be resolved at all. */
   destinationId?: string;
   /** Safe, credential-free explanation. */
   detail: string;
 }
 
+/**
+ * Whether Facta was told this document is stored, so its temporary encrypted copy is deleted 2 days
+ * later instead of at 30 days. `confirmed`: marked (`by` says by whom). `pending`: nothing stored it
+ * where Facta could see it; call `confirmDocumentStorage` or drain `storeAndConfirmUnconfirmed`
+ * before the temporary copy is deleted (the 30th day after sealing). `failed`: the confirm call itself failed (see the warning). `unsupported`: the server predates the rule and deletes nothing.
+ */
+export interface ArchiveConfirmation {
+  state: "confirmed" | "pending" | "failed" | "unsupported";
+  /** Who marked it; present when `confirmed`. */
+  by?: import("./confirm-storage.ts").ConfirmedBy;
+  /** When the temporary copy is deleted, when the confirm call answered it. */
+  borradoEl?: string | null;
+  /** What to do next; present when `pending` or `unsupported`. */
+  detail?: string;
+}
+
 export interface ArchiveEmissionResult {
+  /** See `ArchiveConfirmation`. Absent when the document has no generation code yet or the archive needs attention. */
+  confirmation?: ArchiveConfirmation;
   /** Present only when the emergency safeguard ran (see `runtime.emergencyStore`). */
   emergency?: import("./emergency.ts").EmergencyReport;
   /** Typed, non-throwing problems with BYOS replication or reporting; retry with `recoverOperation`. */

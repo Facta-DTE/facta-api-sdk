@@ -1,0 +1,54 @@
+name: Publish agent skill (staging)
+
+# Keeps the STAGING variant of the skill (facta-dte-api-staging, for `@facta-dte/api@next` and the
+# staging API) current: every change to skills/ or skills-staging/ on dev refreshes the `skill-staging` release (marked prerelease, never «latest»),
+# whose asset URL never changes:
+# https://github.com/Facta-DTE/facta-api-sdk/releases/download/skill-staging/facta-dte-api-staging-skill.zip
+on:
+  push:
+    branches: [dev]
+    paths:
+      - "skills/**"
+      - "skills-staging/**"
+      - "scripts/pack-skill.mjs"
+      - "scripts/pack-skill-staging.mjs"
+      - "scripts/build-skill-recipes.mjs"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: skill-staging
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Refresh skill-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm skill:check
+      - run: pnpm skill:pack-staging
+      - name: Replace the skill-staging release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          gh release delete skill-staging --yes --cleanup-tag 2>/dev/null || true
+          gh release create skill-staging dist/facta-dte-api-staging-skill.zip \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "Agent skill facta-dte-api-staging (staging, SDK ${version})" \
+            --notes "STAGING variant of the agent skill, ready to test with TypeScript (npm i @facta-dte/api@next, staging API, facta_test_ key; nothing reaches production), as of ${GITHUB_SHA::7} on dev. Unzip into ~/.claude/skills/ or a project's .claude/skills/. The production skill is the skill-latest release."

@@ -102,9 +102,8 @@ if (result.estado === "sellado") {
 ```
 
 The `01` example is a final-consumer invoice without a customer record. For a
-CCF (`03`), provide the required recipient inline or use a `customerId` already
-in that key’s snapshot. Inline data needs no catalog unlock key and does not
-create or update customer records. Reuse the same idempotency key when retrying
+CCF (`03`), provide the required recipient inline or send a `customerId` (the server
+resolves it). Inline data does not create or update customer records. Reuse the same idempotency key when retrying
 the same sale.
 
 If `result.estado` is `contingencia`, the document was signed, but the MH did
@@ -113,27 +112,23 @@ result later; do not issue another invoice with a new key.
 
 ## Catalog and vaults
 
-When syncing from the web app, the key owner publishes an encrypted snapshot.
-To read it from Deno, grant access to `FACTA_UNLOCK_KEY` and set `unlockKey`:
+Customers and products are read through the API; the server resolves `customerId` and
+`productId` itself, also when the company keeps its catalog encrypted, so no
+`FACTA_UNLOCK_KEY` is needed for the catalog (it is still used to open BYOS destinations
+locally and is never sent over HTTP):
 
 ```ts
 const facta = new Facta({
   apiKey: Deno.env.get("FACTA_API_KEY")!,
   signKey: Deno.env.get("FACTA_SIGN_KEY")!,
-  unlockKey: Deno.env.get("FACTA_UNLOCK_KEY")!,
 });
 
-await facta.syncCatalog();
 const customers = await facta.listCustomers();
 const products = await facta.listProducts();
 ```
 
-The unlock key is never sent over HTTP. Later catalog reads compare the
-snapshot revision with `/v1/status`; if it changed, the SDK downloads and opens
-the new snapshot. The SDK keeps the snapshot in memory only. New customers
-imported from CSV appear in a later snapshot according to the key’s selection;
-the encrypted-snapshot path does not write to the catalog (catalog writes need a
-plain-text catalog: see the [catalog write guide](catalog-write.md)).
+Catalog writes need `catalog:write` and the company's switch (see the
+[catalog write guide](catalog-write.md)).
 
 Before reserving a control number, `diagnose()` also checks the associated
 certificate’s public status. It uses only the fingerprint, validity, NIT, and

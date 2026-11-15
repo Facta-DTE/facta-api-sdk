@@ -210,13 +210,11 @@ if (!informe.canIssueAndArchive) {
 }
 ```
 
-### Clientes y productos sincronizados
+### Clientes y productos
 
-El SDK descifra el snapshot en el proceso del integrador. Los métodos de
-búsqueda filtran localmente los registros autorizados a esa llave; no exponen
-un endpoint de escritura ni crean clientes/productos. Cada llamada compara la
-revisión publicada con la revisión local y vuelve a sincronizar si cambió.
-Requieren `unlockKey`.
+Desde la 0.6 las lecturas siempre van por el API y no requieren `unlockKey`: el servidor
+lee solo el catálogo, también cuando la empresa lo guarda cifrado, y resuelve
+`customerId` / `productId` al emitir. No existe copia local que sincronizar.
 
 ```typescript
 const cliente = await facta.getCustomer("cliente-id");
@@ -227,46 +225,40 @@ const todoElCatalogoActivo = await facta.listProducts();
 
 | Método | Resultado y comportamiento |
 | --- | --- |
-| `listCustomers(options?)` | Devuelve los clientes autorizados; `allowStale` es opt-in; `includeInactive` incluye los desactivados. Lee el snapshot (`encrypted`) o el API (`readable`, `plain`). |
-| `getCustomer(id, options?)` | Busca por ID y devuelve `null` si no existe en el snapshot. |
+| `listCustomers(options?)` | Devuelve los clientes autorizados; `includeInactive` incluye los desactivados. |
+| `getCustomer(id, options?)` | Busca por ID y devuelve `null` si no existe. En una empresa con clave de datos compartida el registro trae `revision` (páselo como `ifMatch`). |
 | `searchCustomers(query, options?)` | Busca nombre, documento, NRC y correo; límite 1–500, 50 por defecto. |
 | `listProducts(options?)` | Devuelve productos activos; `includeInactive` los incluye todos. |
 | `getProduct(id, options?)` | Devuelve `null` si no existe o está inactivo. |
 | `searchProducts(query, options?)` | Busca descripción, código y código de barras de productos activos; límite 1–500, 50 por defecto. |
 | `createCustomer(input, options?)` | Crea un cliente (`name` obligatorio; DUI 9 dígitos, NIT 14, NRC 1–8). `idempotencyKey` evita duplicados al reintentar. Requiere `catalog:write` y catálogo en texto plano. |
-| `updateCustomer(id, changes, options?)` | Cambia solo los campos indicados (`PATCH`); `null` borra un campo opcional. |
+| `updateCustomer(id, changes, options?)` | Cambia solo los campos indicados (`PATCH`); `null` borra un campo opcional. `ifMatch` (la `revision` que leyó) hace que una empresa con clave de datos compartida rechace una edición vieja con `catalog_revision_conflict`; un catálogo en texto plano lo ignora. |
 | `deactivateCustomer(id, options?)` | Desactiva al cliente (`DELETE`); no existe borrado definitivo. `updateCustomer(id, { activo: true })` lo reactiva. |
 | `createProduct(input, options?)` | Crea un producto (`description`, `item_type` 1/2/3 y `unit_price` obligatorios; el tipo nunca se supone). |
-| `updateProduct(id, changes, options?)` | Cambia solo los campos indicados. |
+| `updateProduct(id, changes, options?)` | Cambia solo los campos indicados; `ifMatch` como en `updateCustomer`. |
+| `listCatalogChanges(options?)` | Lee qué cambió en el catálogo desde `since` (ids, revisiones, operación y actor; nunca el contenido). Siga `next` mientras `hasMore`. `catalog_cursor_expired` (410) conserva `reason`, `cabeza` y `generacion` en `error.details`: lea todo otra vez y siga desde `cabeza`. Requiere `catalog:read`. |
+| `createWebhook(input, options?)` | Registra un webhook (`url`, `events`, `description`); el `secret` se devuelve una sola vez. Hasta 5 por llave. Ver la [guía de webhooks](webhooks.es.md). |
+| `listWebhooks()`, `getWebhook(id)` | Los webhooks de la llave, sin secretos. |
+| `updateWebhook(id, cambios)` | Cambia dirección, eventos, descripción o `active` (`true` lo enciende y borra la cuenta de fallos). |
+| `deleteWebhook(id)` | Lo borra con su secreto y lo que tuviera en cola. |
+| `rotateWebhookSecret(id)` | Cambia el secreto: el anterior deja de servir al instante; el nuevo se muestra una vez. |
+| `testWebhook(id)` | Pone en cola una entrega `webhook.test` firmada. |
 | `deactivateProduct(id, options?)` | Desactiva el producto; los documentos ya emitidos no cambian. |
 
-Las lecturas eligen su camino según `catalogMode`, que el SDK aprende una vez de `/v1/status`: con `encrypted` descifran el snapshot con `unlockKey`; con `readable` o `plain` leen por el API y no necesitan `unlockKey`. Las escrituras se explican en la [guía de escritura del catálogo](catalog-write.es.md).
+Las escrituras se explican en la [guía de escritura del catálogo](catalog-write.es.md).
 
-Las búsquedas ignoran mayúsculas y acentos, y solo consultan los campos
-descargados en el snapshot local.
+### `syncDestinations()`
 
-### `syncDestinations()`, `syncCatalog()` y `catalogState()`
-
-El dueño sincroniza los destinos y el catálogo desde la aplicación web. El SDK
+El dueño sincroniza los destinos desde la aplicación web. El SDK
 usa `unlockKey` para abrir las envolturas localmente en el proceso integrador;
 la contraseña no se envía a Facta. `syncDestinations()` devuelve la
-configuración descifrada en memoria y no sube facturas a esos destinos.
-`syncCatalog()` reemplaza la copia local por el snapshot publicado más
-reciente. Ambos fallan si falta `unlockKey` o la revisión que necesitan aún
-no se publicó desde la aplicación. Un error criptográfico con una clave
-incorrecta puede venir de Web Crypto; no es una respuesta de la API.
-
-`catalogState()` compara la revisión local con el estado público y devuelve
-`missing`, `fresh` o `stale`, las revisiones disponibles y un código de error
-seguro; nunca devuelve datos de clientes o productos. Las llamadas de lectura
-se actualizan al detectar una revisión nueva. `allowStale: true` sirve solo
-para búsquedas y lecturas informativas cuando no se puede getDocumentStatus el estado;
-el SDK nunca resuelve referencias fiscales con un snapshot viejo.
+configuración descifrada en memoria y no sube facturas a esos destinos. Falla si
+falta `unlockKey` o la revisión aún no se publicó desde la aplicación. Un error
+criptográfico con una clave incorrecta puede venir de Web Crypto; no es una
+respuesta de la API. (`syncCatalog()` y `catalogState()` se eliminaron en la 0.6.)
 
 ```typescript
 const { destinos } = await facta.syncDestinations();
-const { customers, products } = await facta.syncCatalog();
-const estadoCatalogo = await facta.catalogState();
 ```
 
 El paquete tiene adaptadores de archivo para S3/S3-compatible, Supabase
@@ -558,7 +550,7 @@ fiscal antes de volver a actuar.
 
 **No manda la llave de firma.** Devuelve `DownloadedDocument`.
 
-Devuelve los bytes exactos de `json`, `pdf` o `ticket`, sin parsearlos ni volver a serializarlos. El tipo predeterminado es `json`; exige el alcance `download`. **El JSON es el Archivo DTE por defecto** (documento + `firmaElectronica` + `selloRecibido`) y `jsonFormat` informa `archivo-dte` o `raw` según `X-Facta-Json-Format`; `raw: true` (solo JSON) devuelve el original guardado `{codigoGeneracion, ambiente, jws}`. Un documento sin sello (contingencia) contesta `409 not_sealed`; repita con `raw: true`. Un resultado sellado trae además `archivoDte`, y `archivoDteOf(resultado)` lo arma con `documento`, `jws` y `selloRecibido` cuando la API aún no lo envía. `storageSource` informa `managed`, `holding` o `archive` si el servidor identifica el origen. El ticket se genera desde un DTE ya sellado y admite `paperWidthMm` entero de 40 a 120 (80 por defecto), sin issue de nuevo. Esta regeneración está disponible para DTE emitidos por la API, no para los que se emitieron desde la app web. El área de retención dura una hora desde la firma, pero **pasada esa hora la ruta sigue contestando**: el documento se rearma desde la reserva, que guarda el JWS sellado.
+Devuelve los bytes exactos de `json`, `pdf` o `ticket`, sin parsearlos ni volver a serializarlos. El tipo predeterminado es `json`; exige el alcance `download`. **El JSON es el Archivo DTE por defecto** (documento + `firmaElectronica` + `selloRecibido`) y `jsonFormat` informa `archivo-dte` o `raw` según `X-Facta-Json-Format`; `raw: true` (solo JSON) devuelve el original guardado `{codigoGeneracion, ambiente, jws}`. Un documento sin sello (contingencia) contesta `409 not_sealed`; repita con `raw: true`. Un resultado sellado trae además `archivoDte`, y `archivoDteOf(resultado)` lo arma con `documento`, `jws` y `selloRecibido` cuando la API aún no lo envía. `storageSource` informa `managed`, `holding` o `archive` si el servidor identifica el origen. Las descargas `pdf` y `ticket` traen además `plantilla` (de `X-Facta-Plantilla`): la plantilla con que se dibujó la hoja, un id del catálogo o `custom:<uuid>@<versión>`. El ticket se genera desde un DTE ya sellado y admite `paperWidthMm` entero de 40 a 120 (80 por defecto), sin issue de nuevo. Esta regeneración está disponible para DTE emitidos por la API, no para los que se emitieron desde la app web. El área de retención dura una hora desde la firma, pero **pasada esa hora la ruta sigue contestando**: el documento se rearma desde la reserva, que guarda el JWS sellado.
 
 ```typescript
 const archivo = await facta.downloadDocument(dte.codigoGeneracion, "json");
@@ -584,6 +576,10 @@ if (result.state === "unknown") {
 }
 ```
 
+### `listUnconfirmedDocuments`, `confirmDocumentStorage` y `storeAndConfirmUnconfirmed`
+
+**No mandan la llave de firma.** Facta guarda una copia temporal cifrada de cada documento sellado y la borra **2 días después de que usted informa que lo guardó**, o **30 días después de sellado** si nadie lo informa; el dueño de la empresa recibe un correo con la tabla completa desde el primer día (solo en producción). `listUnconfirmedDocuments({ limit?, cursor? })` (`download`) lista lo que falta con su fecha de borrado; `confirmDocumentStorage(codigoGeneracion, { where, sha256 | bytes })` (`issue`) informa un documento (hash equivocado: `storage_hash_mismatch`; servidor sin `capabilities.storageConfirmation`: `storage_unsupported`); `storeAndConfirmUnconfirmed({ store })` hace la ronda completa con tope. `runtime.emergencyStore` por sí solo no informa. Todo el recorrido, con ejemplos: [la copia temporal](temporary-copy.es.md).
+
 ### `listHolding(limit?)`
 
 **No manda la llave de firma.** Devuelve `HoldingPage`.
@@ -596,6 +592,37 @@ const pagina = await facta.listHolding(50);
 for (const fila of pagina.documentos) {
   console.log(fila.codigoGeneracion, fila.whereLanded, fila.expiresAt);
 }
+```
+
+### `listPendingDocuments(filtros?)`
+
+**No manda la llave de firma.** Devuelve `PendingDocumentsPage`.
+
+Documentos que Facta firmó, cuyo número ya se gastó y que Hacienda todavía no ha contestado (o negó). Solo metadatos, del más antiguo al más nuevo. Mírelo después de cualquier emisión dudosa, **antes** de emitir otra vez. Vea [documentos pendientes](pending-documents.es.md).
+
+```typescript
+const { pendientes } = await facta.listPendingDocuments({ estado: "firmado" });
+```
+
+### `retryDocument(codigoGeneracion)`
+
+**Manda la llave de firma** (las credenciales de Hacienda viven en ese vault). Devuelve `RetryResult`.
+
+Termina un documento pendiente **sin crear uno nuevo**: le pregunta a Hacienda primero y reenvía los MISMOS bytes firmados solo si nunca los recibió; no firma ni numera nada. `estado: "pendiente"` (HTTP 202) significa que Hacienda no contestó: llame de nuevo más tarde.
+
+```typescript
+const resultado = await facta.retryDocument(codigoGeneracion);
+```
+
+### `recoverServerPending(opciones?)`
+
+**Manda la llave de firma** (cada reintento la necesita). Devuelve `RecoverServerPendingReport`.
+
+Recuperación opcional de los documentos que Facta firmó y Hacienda no ha contestado. Lee `GET /v1/dte/pendientes` (50 por defecto, máximo 500, del más antiguo al más nuevo) y llama `retryDocument()` por cada uno reintentable, de a uno, con las llaves de este cliente. **No lanza error por un documento**: cada uno termina como `sealed`, `rejected`, `pending`, `not_retryable` o `error` en el informe. Solo lanza si no puede leer la lista o si `signal` cancela. Nunca firma, numera ni emite. Llámela al arrancar su proceso o en un horario. Vea [documentos pendientes](pending-documents.es.md).
+
+```typescript
+const informe = await facta.recoverServerPending({ limit: 50 });
+console.log(informe.sealed, informe.pending, informe.errors);
 ```
 
 ### `getContract()`
@@ -671,6 +698,36 @@ El cliente reintenta **solo donde reintentar es seguro**, con espera creciente: 
 La `Idempotency-Key` se acuña **una vez, fuera del bucle**. Generar una nueva por intento es exactamente el error que esa cabecera existe para evitar: quemaría un segundo correlativo.
 
 Y un `202` no es un error, así que no pasa por aquí: llega como un resultado con `estado: "contingencia"`. Lo cuenta entera la guía [Contingencia y resultados inciertos](/guias/contingencia-y-resultados-inciertos/).
+
+## Probar en staging (`0.6.0`)
+
+Instale el SDK de staging con `npm i @facta-dte/api@next` y apunte el cliente a la API de staging con una llave `facta_test_` creada en https://staging.factadte.com. El `baseUrl` por defecto es el de PRODUCCIÓN, así que en staging hay que ponerlo explícito; una llave de staging enviada al servidor por defecto falla con `401`, y las llaves de producción nunca van a staging.
+
+```ts
+import { Facta, FACTA_STAGING_BASE_URL } from "@facta-dte/api";
+const facta = new Facta({
+  apiKey: process.env.FACTA_API_KEY!, signKey: process.env.FACTA_SIGN_KEY,
+  baseUrl: FACTA_STAGING_BASE_URL, // https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1
+  config: { version: 1, expectedEnvironment: "00" },
+});
+```
+
+| Campo / ayudante | Qué hace |
+|---|---|
+| `NonTaxedLine` / `isNonTaxedLine` / `assertNonTaxedLines` | `{ descripcion, noGravado, tipoItem, codigo? }`: un cargo (+) o abono (−) que no afecta la base imponible, línea propia en 01, 03, 05, 06 y 11; solo mueve `totalNoGravado` y `totalPagar`. Sin campos de venta; `tipoItem` obligatorio; necesita una línea de venta (`non_taxed_requires_sale_line`); `non_taxed_not_supported` en el 14. Se revisa localmente antes de enviar. Revise `status().capabilities?.noGravado`. Vea [payments-export-renta.es.md](payments-export-renta.es.md#líneas-no-gravadas-nogravado). |
+| `LineItem.tipoVenta` | Tratamiento de IVA de la línea: `gravada` (por omisión), `exenta` o `no_sujeta`. Lo elige usted; Facta no lo deduce. Solo 01, 03, 05 y 06; en 11 y 14 es `422`. |
+| `DteRequest.aplicarRetencionIva` / `aplicarPercepcionIva` | Retención (01, 03) y percepción (solo 03, líneas de bienes) de IVA del 1 %. Nunca automáticas; `400` en otros tipos y el compilador las rechaza. |
+| `LineItem.montoDescu` | Descuento de una línea en dinero, entre 0 y `cantidad × precioUni`, en la misma base de IVA que `precioUni`. Para toda la venta use `descuentoGlobal`. |
+| `DteRequest.descuentoGlobal` / `GlobalDiscount` | `{ modo: "monto" \| "porcentaje", valor }`: un descuento para toda la venta, después de los descuentos por línea, en 01, 03, 11 y 14 (`400 global_discount_not_supported` en 05/06). Revise `status().capabilities?.descuentoGlobal`. Vea [payments-export-renta.es.md](payments-export-renta.es.md#descuento-global-descuentoglobal). |
+| `DteRequest.formaPago` / `plazo` / `periodo` | Cómo se informa el pago: contado con un medio, `pagos[]` para varios, crédito con `formaPago` + `plazo` + `periodo` (nunca `pagos`), nada en 05/06. Vea [payments-export-renta.es.md](payments-export-renta.es.md). |
+| `DteRequest.pagos` / `Pago` | De 1 a 10 filas `{ codigo, montoPago, referencia? }` (01, 03, 11, 14) que suman el total a pagar al centavo. No junto a `formaPago`, no en 05/06 (los tipos lo rechazan), no con `condicionOperacion` 2 (`422`). |
+| `result.unknownFields`, `unknownFieldWarnings(source)` | Las advertencias `campo_desconocido` de `advertencias`: un campo que Facta DTE no conoce se ignora y no está en el documento. Cada una trae `campo` y, si es obvio, `sugerencia`. |
+| `result.factaWarning`, `parseFactaWarning(header)` | La cabecera `Facta-Warning: campo_desconocido; campos=N`, convertida a `{ code, count }`. |
+| `draft.unknownFields`, `draft.factaWarning` | Lo mismo en `createDraft` / `updateDraft`. El campo nombrado **no** queda en el borrador: corríjalo y guarde una versión nueva. |
+| `error.signedNotTransmitted` | `{ codigoGeneracion, numeroControl, estado: "firmado_sin_transmitir", confirmado, siguientePaso }` en el `503` de un documento firmado y no enviado; nunca se reintenta. No emita otra vez: `retryDocument(codigoGeneracion)`. |
+| `FACTA_STAGING_BASE_URL` | La API base de staging. |
+
+Un código que no es del catálogo del Ministerio (`formaPago`, `exportacion.recintoFiscal`, `.regimen`, `.tipoRegimen`) responde `422 validation_failed` con `details.field`, `details.catalog` y `details.supported`, antes de gastar un correlativo.
 
 ## Tipos
 

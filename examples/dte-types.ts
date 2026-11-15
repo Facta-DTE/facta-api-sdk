@@ -75,7 +75,11 @@ export const exportInvoice: DteRequest = {
   },
   exportacion: {
     tipoItemExpor: 1,
-    incoterms: "FOB",
+    incoterms: "09", // CAT-031 code (the description is filled in by the server)
+    // Goods: Hacienda requires these three even though its schema marks them optional.
+    recintoFiscal: "02", // CAT-027: Marítima de Acajutla
+    tipoRegimen: "EX-1", // CAT-033: definitive export
+    regimen: "1000.000", // CAT-028
   },
   items: [{ descripcion: "Coffee beans", cantidad: 10, precioUni: 15 }],
 };

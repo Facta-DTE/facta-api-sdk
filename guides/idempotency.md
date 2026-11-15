@@ -26,8 +26,14 @@ These come from the published API contract:
 - **Same key, different body**: `422 idempotency_key_reuse`.
 - **While the first request is still running**: `409 idempotency_in_flight`; it
   is not queued.
-- **TTL 24 hours.** After that the key is free again: the same request a day
-  later is a **new sale**, not a retry.
+- **A key is bound to its sale forever** (stricter since 30-Oct-2026). The stored
+  answer is kept 7 days; after that only the answer is dropped, and Facta still
+  remembers which request and which document the key belongs to. The same key
+  and the same body after 7 days returns the document that already exists, rebuilt
+  from its copies (state, seal, totals; `Idempotency-Replay-Source: rebuilt`),
+  never a new one. The same key with a different body is `422 idempotency_key_reuse`
+  forever. Use **one key per sale, for ever**: never reuse a key for another sale,
+  and never invent a new key to retry the same sale.
 
 ## What the SDK does for you
 
@@ -42,30 +48,22 @@ These come from the published API contract:
 - A minted key lives only in memory. If your process restarts, the next attempt
   gets a different key. **That is why you should supply your own.**
 
-## The request fingerprint
+## The request fingerprint (retired in 0.6)
 
-On `POST /v1/dte` (`issue`, `issueAndArchive`, `recoverOperation`) and
-`POST /v1/dte/prepare` (`prepare`) the SDK also sends
-`X-Facta-Request-Fingerprint`: the SHA-256 (lowercase hex) of the RFC 8785
-canonical form of **your request as you wrote it**, before any `customerId` /
-`productId` is replaced by catalog data, and including delivery options. The
-server compares that value instead of the bytes of the body, so:
+SDK 0.3 to 0.5 sent `X-Facta-Request-Fingerprint` on `POST /v1/dte` and `POST /v1/dte/prepare`
+because the SDK replaced `customerId` / `productId` with catalog data before sending, so the
+body changed whenever the catalog did. Since 0.6 the **server** resolves those ids and the SDK
+sends your request untouched: the header is no longer sent and the server's claim hashes the
+body. A retry of one call resends identical bytes.
 
-- A catalog edit (a price, a customer's address) between an attempt and its
-  retry no longer ends in `422 idempotency_key_reuse`: the retry replays the
-  document of the first attempt. Before, the SDK resolved the ids again, built a
-  different body and the server refused it.
-- Changing something **you** wrote (a quantity, a note, `deliver`) is still a
-  different request and still answers `422 idempotency_key_reuse`.
-- The body is unchanged and every automatic retry of one call resends identical
-  bytes. Nothing else about the request changes.
-
-Operations journaled by an older SDK version were claimed by body. The journal
-records which mode each operation used (`idempotencyHash`), and
-`recoverOperation` resends the header only for operations that used it, so an
-upgrade in the middle of a 24-hour window is safe. The exact definition, with
-test vectors for other languages, is in
-[`conformance/fingerprint-v1.md`](https://github.com/Facta-DTE/facta-api-sdk/blob/main/conformance/fingerprint-v1.md).
+- Changing something **you** wrote (a quantity, a note, `deliver`) is a different request and
+  answers `422 idempotency_key_reuse`.
+- Mixed retries across the upgrade are safe: the journal records which mode each operation used
+  (`idempotencyHash`), and `recoverOperation` still sends the stored fingerprint for operations
+  that a 0.5 client began, and no header for the rest.
+- The fingerprint definition and its test vectors stay published in
+  [`conformance/fingerprint-v1.md`](https://github.com/Facta-DTE/facta-api-sdk/blob/main/conformance/fingerprint-v1.md)
+  for clients that still send it.
 
 ## Pattern: one key per business operation
 
@@ -98,7 +96,8 @@ printable strings; keep them well under a few hundred characters.
 When `issue` finally throws `network_error` (or another retryable code after the
 SDK's retries), you do not know whether the server issued the document, and you
 do not have its `codigoGeneracion` either. Replay **the same request with the
-same key** within 24 hours: you get the stored answer, including the code. Then
+same key**: within 7 days you get the stored answer, after that the existing
+document rebuilt; either way you get the code and never a second document. Then
 use `getDocumentStatus` for anything that happens afterwards (a contingency
 being sealed, for example).
 
@@ -181,8 +180,9 @@ records, so keep `error.spent` with your order for reconciliation.
   `deliver`). Find the bug; do not switch to a new key to hide it.
 - **`idempotency_in_flight` (409)** after all retries: the first request is still
   working (Hacienda can take ~40 s). Wait and replay the same key.
-- **Replaying after 24 hours**: issues a second document. Reconcile with
-  `getDocumentStatus` / `listDocuments` first.
+- **Replaying after 7 days**: returns the existing document (rebuilt: state, seal,
+  totals), not a second one. The danger is the opposite: a **new** key for the same
+  sale issues a second document. See [pending documents](pending-documents.md).
 - **`AbortSignal`**: aborting stops waiting and retries locally; it does not
   prove the server did not accept the request. Replay the key to find out.
 - **Random keys in a stateless worker**: a crash loses the key. Derive keys from

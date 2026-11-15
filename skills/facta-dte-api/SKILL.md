@@ -1,6 +1,6 @@
 ---
 name: facta-dte-api
-description: Use when integrating Facta DTE electronic invoicing for El Salvador (Hacienda DTE: Factura, Crédito Fiscal, notas, exportación, sujeto excluido) into an application, through the TypeScript/JavaScript SDK `@facta-dte/api` or the Facta HTTP API (`X-Facta-Key`, `/v1/dte`). Covers setup and keys, issuing each DTE type, idempotency, contingency, invalidation and returns, PDF/JSON/ticket files, e-mail and WhatsApp delivery, catalog, storage, errors, debugging and the production checklist. Do not use for other countries' e-invoicing or for the Hacienda portal itself.
+description: Use when integrating Facta DTE electronic invoicing for El Salvador (Hacienda DTE: Factura, Crédito Fiscal, notas, exportación, sujeto excluido) into an application, through the TypeScript/JavaScript SDK `@facta-dte/api` or the Facta HTTP API (`X-Facta-Key`, `/v1/dte`). Covers setup and keys, issuing each DTE type, idempotency, contingency, invalidation and returns, PDF/JSON/ticket files, e-mail and WhatsApp delivery, catalog, storage, errors, debugging, the production checklist and a call budget (every request counts against the key's rate limits, so pick the flow with the fewest calls). Do not use for other countries' e-invoicing or for the Hacienda portal itself.
 ---
 
 # Facta DTE API / SDK integration
@@ -26,7 +26,9 @@ sources, it is not in the skill: say so to the developer instead of guessing.
    survives restarts (order number, ticket, payment id). One key per fiscal
    operation; `prepare` and `sign` get **different** keys.
 3. **An uncertain answer is never a reason to issue again with a new key.**
-   Replay the same request with the same key, then ask `getDocumentStatus`.
+   Replay the same request with the same key, then `listPendingDocuments()` and
+   `retryDocument()` for whatever is pending (see the "after emission" step
+   below), then ask `getDocumentStatus`.
 4. **Branch on `FactaError.code`, never on `message`.** Messages are prose and
    change.
 5. **`mh_rejected` spent a control number; a contingency (`estado:
@@ -41,6 +43,25 @@ sources, it is not in the skill: say so to the developer instead of guessing.
    producción (`01`). Never switch by URL.
 9. **Do not invent.** If a method, field or code is not in the references, check
    `src/types.ts` / `src/client.ts` in the installed package before using it.
+10. **Storing is not enough: report it.** Facta deletes its temporary encrypted copy of a
+    sealed document **30 days after sealing** (2 days after you report it stored). After
+    every emission either let `issueAndArchive` write to a synced destination, or store the
+    JSON yourself and call `confirmDocumentStorage`; and run `storeAndConfirmUnconfirmed`
+    (or poll `GET /v1/storage/unconfirmed`) **daily**. `runtime.emergencyStore` saves the
+    files but does **not** confirm. The company owner is mailed from day one (production
+    only). See [references/storage-and-emergency.md](references/storage-and-emergency.md).
+
+11. **Count your calls.** Facta counts EVERY request against the key's per-hour and per-day
+    ceilings, not only emissions. **Before writing any sync, loop, scheduled job or per-record
+    code**, open [references/call-budget.md](references/call-budget.md), write down the calls each
+    business operation will make and choose the flow with the fewest. In particular: no
+    read-before-write (no list/get before create or update); upsert customers and products with
+    `createCustomer` / `createProduct` and a stable `idempotencyKey` built from the ERP's own id
+    (one call per changed record); use what `issue()` already returned (JSON, PDF) instead of
+    downloading it; no polling per document (`listPendingDocuments()`, one paginated
+    `listDocuments`); no `status()` before each call; no re-downloading files already received;
+    honour `Retry-After` and never retry in a tight loop. Compare calls per hour with the key's
+    `status().limites` before finishing.
 
 ## Ambientes (pruebas and producción)
 
@@ -67,12 +88,16 @@ put one in a test job, a seed script or a developer machine.
 | --- | --- |
 | install the SDK, get keys, choose environment, configure the client, call the HTTP API without the SDK | [references/setup-and-keys.md](references/setup-and-keys.md) |
 | issue a Factura, Crédito Fiscal, nota de crédito/débito, exportación or sujeto excluido; know what each needs; prepare then sign | [references/issuing-dte-types.md](references/issuing-dte-types.md) |
+| write ANY sync, loop, scheduled job or bulk code; keep calls under the key's hourly/daily ceiling (`rate_limited`, 429); update customers or products from an ERP | [references/call-budget.md](references/call-budget.md) |
 | make issuing safe against retries, timeouts and duplicate webhooks; order-to-invoice | [references/idempotency-and-recovery.md](references/idempotency-and-recovery.md) |
 | handle contingency, cancel (invalidate) a document, register a return | [references/contingency-invalidation-return.md](references/contingency-invalidation-return.md) |
 | give the customer the JSON/PDF/ticket, list documents, send by e-mail or WhatsApp | [references/files-and-delivery.md](references/files-and-delivery.md) |
 | use saved customers/products, or manage them from the API | [references/catalog.md](references/catalog.md) |
+| leave an invoice as a draft for a person of the company to review and issue | [references/drafts.md](references/drafts.md) |
 | keep copies of the documents, or survive a storage failure | [references/storage-and-emergency.md](references/storage-and-emergency.md) |
+| report a document as stored, drain the «documents unconfirmed after N days» list, understand the 30-day deadline and the owner mails, or use the emergency store correctly | [references/storage-and-emergency.md](references/storage-and-emergency.md) |
 | show a checkout/invoice window in a web page (server handler, browser client, React) | [references/browser-and-react.md](references/browser-and-react.md) |
+| handle an emission that ended uncertain (`202`, `503`, a dropped connection, `indice_pendiente`): list what is pending and retry it without issuing twice | [references/pending-documents.md](references/pending-documents.md) |
 | understand or handle an error code | [references/errors.md](references/errors.md) |
 | find out why a call is slow or a key is not ready | [references/debugging.md](references/debugging.md) |
 | go live | [references/production-checklist.md](references/production-checklist.md) |
@@ -105,7 +130,8 @@ try {
   if (result.estado === "sellado") {
     // Hacienda sealed it: result.numeroControl, result.selloRecibido, result.archivoDte, PDF in result.representacionGrafica
   } else {
-    // "contingencia": signed, Hacienda did not answer; Facta retransmits. Not an error.
+    // "contingencia": signed, Hacienda did not answer. Not an error: finish it later with
+    // facta.retryDocument(result.codigoGeneracion) (see pending-documents.md). Never issue again.
   }
 } catch (error) {
   if (!(error instanceof FactaError)) throw error;
@@ -113,6 +139,13 @@ try {
   else console.error(error.code, error.status); // see references/errors.md
 }
 ```
+
+## After every emission (mandatory)
+
+Store the result, and if the outcome was uncertain follow
+[references/pending-documents.md](references/pending-documents.md): replay the same
+key, then `listPendingDocuments()` and `retryDocument()`. Never re-issue with a new
+code. Idempotency keys are bound to their sale for ever (stricter since 30-Oct-2026).
 
 ## Before you write code, ask (or check)
 

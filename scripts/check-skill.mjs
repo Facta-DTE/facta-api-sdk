@@ -13,6 +13,7 @@ import { createHash } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { packSkill, SKILL_DIR, SKILL_NAME } from "./pack-skill.mjs";
+import { packStagingSkill, STAGING_SKILL_NAME } from "./pack-skill-staging.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const problems = [];
@@ -86,6 +87,27 @@ const b = packSkill(join(dir, "b.zip"));
 const sha = (p) => createHash("sha256").update(readFileSync(p)).digest("hex");
 if (sha(a.out) !== sha(b.out)) fail("the zip is not deterministic.");
 if (a.files !== files.length) fail(`the zip has ${a.files} files, the skill has ${files.length}.`);
+
+// 7. Staging variant: builds (every rewrite matches), names itself, and sets the staging base everywhere it matters.
+try {
+  const staging = packStagingSkill(join(dir, "staging.zip"));
+  const byName = new Map(staging.entries.map((e) => [e.name, e.data.toString("utf8")]));
+  const stagingSkill = byName.get(`${STAGING_SKILL_NAME}/SKILL.md`) ?? "";
+  if (!/^name: facta-dte-api-staging$/m.test(stagingSkill)) fail("staging SKILL.md must be named facta-dte-api-staging.");
+  for (const needle of ["listo para probar con TypeScript", "npm i @facta-dte/api@next", "eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1", 'expectedEnvironment: "00"', "references/staging.md"]) {
+    if (!stagingSkill.includes(needle)) fail(`staging SKILL.md should mention «${needle}».`);
+  }
+  const stagingRef = byName.get(`${STAGING_SKILL_NAME}/references/staging.md`) ?? "";
+  for (const heading of ["## Disponible ahora en staging", "## En la próxima versión"]) {
+    if (!stagingRef.includes(heading)) fail(`staging.md is missing «${heading}».`);
+  }
+  for (const [name, text] of byName) {
+    if (/facta_(?:test|live)_[A-Za-z0-9]{6,}\.|factask_[A-Za-z0-9]{8,}|factauk_[A-Za-z0-9]{8,}/.test(text)) fail(`${name}: contains something that looks like a real key.`);
+    if (/never configure a staging|There is no staging or internal URL/.test(text)) fail(`${name}: still forbids a staging URL.`);
+  }
+} catch (error) {
+  fail(`staging skill: ${error.message}`);
+}
 
 if (problems.length > 0) {
   console.error(problems.map((p) => `- ${p}`).join("\n"));

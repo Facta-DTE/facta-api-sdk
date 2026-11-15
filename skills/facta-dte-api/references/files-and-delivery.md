@@ -37,6 +37,14 @@ console.log(file.jsonFormat, original.jsonFormat);                      // "arch
 - Never re-serialize `documento` yourself: the signature covers the JWS bytes.
 - A document issued from the Facta web app may not be re-armable by the API
   (`not_found`).
+- PDF and ticket downloads report the template used in `file.plantilla` (header
+  `X-Facta-Plantilla`: a catalogue id or `custom:<uuid>@<version>`); it is absent
+  on servers that predate the header and on JSON downloads. To choose a template
+  per document, call `facta.listTemplates({ tipoDte })` and send
+  `representacion: { plantilla: { carta, ticket }, datos }` on `issue` (or on
+  `sign`; `prepare` rejects it). A template the plan or document cannot use is
+  not an error: the document is issued with the company's template and
+  `advertencias` carries `{ codigo: "plantilla_no_aplicada", campo, motivo, mensaje }`.
 - Save `file.bytes` (`Uint8Array`) as is; `file.filename` is the suggested name.
 
 ## PDF and ticket
@@ -55,7 +63,10 @@ console.log(file.jsonFormat, original.jsonFormat);                      // "arch
   `ticketPaperWidthMm` (and `includeTicket: false` to skip the ticket).
 - `downloadDocument(code, "pdf", { source: "managed" })` demands the managed copy
   (no fallback); an old server answers `storage_unsupported`. `file.storageSource`
-  reports `managed`, `holding` or `archive`.
+  reports `managed`, `holding` or `archive`. After the temporary copy is deleted (2 days after
+  the document was reported stored, 30 days after sealing otherwise) the file route answers
+  `410 temporary_copy_expired` unless Facta Storage holds it, so keep and report your own copy
+  (storage-and-emergency.md).
 - `facta.print(downloadedPdfOrTicket, transport)` submits to **your**
   `PrintTransport`; the result is `submitted` or `unknown`, never "printed", and an
   `unknown` job is not retried automatically.

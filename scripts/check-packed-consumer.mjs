@@ -356,7 +356,7 @@ const fake = {
   diagnose: () => record('diagnose', { canIssue: true, storageReady: null }),
   issue: (_request: unknown, options: { idempotencyKey: string }) => record('issue:' + options.idempotencyKey, { estado: 'sellado' }),
   issueAndArchive: () => record('archive'), recoverOperation: () => record('recover'), replicateArchive: () => record('byos'),
-  syncCatalog: () => record('catalog'), getCustomer: () => record('customer', {}), getProduct: () => record('product', {}),
+  getCustomer: () => record('customer', {}), getProduct: () => record('product', {}),
   downloadDocument: () => record('ticket'), invalidateAndArchive: () => record('invalidate'),
 } as unknown as Facta;
 const archive = {} as InvoiceArchive;

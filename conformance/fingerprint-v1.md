@@ -21,7 +21,11 @@ the RFC 8785 (JCS) serialization of the caller's request.
 - Nothing is added that the caller did not supply (no generated defaults, no
   idempotency key, no timestamps).
 
-The SDK sends it in the header `X-Facta-Request-Fingerprint`, only on
+> **Status (TypeScript SDK 0.6):** the TypeScript SDK no longer sends this header: the server
+> resolves catalogue ids, so the body is the request. The definition and vectors remain for
+> clients that still send it and for recovering journals written by SDK 0.3 to 0.5.
+
+The SDK (up to 0.5) sends it in the header `X-Facta-Request-Fingerprint`, only on
 `POST /v1/dte` and `POST /v1/dte/prepare`. The server stores it as the
 idempotency hash of that claim instead of hashing the raw body. Because it does
 not depend on the bytes actually sent, a catalog edit between an attempt and

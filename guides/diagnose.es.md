@@ -81,29 +81,12 @@ solo de consulta lee `overall: "blocked"` porque no puede emitir, mientras que
 | `certificate-metadata`, `certificate-identity`, `certificate-environment`, `certificate-validity` | Datos públicos del certificado: huella, que el NIT coincida con el emisor, ambiente registrado, vigencia (aviso dentro de 30 días). |
 | `signing`, `sign-sync` | Hay un vault de firma provisionado y sincronizado. |
 | `destinations-sync` | La foto de destinos BYOS está sincronizada (opcional cuando el almacenamiento administrado está listo). |
-| `catalog-sync` | La foto del catálogo está sincronizada; solo puede ser `ok` o `warning`. |
 | `managed-storage` | El almacenamiento administrado o un destino BYOS verificado está listo; `unknown` cuando el servidor o la llave no lo exponen. |
 | `archive`, `archive-pending` | Con archivo: puede leer y escribir, y cuántas operaciones hay pendientes. |
 | `emergency-store` | Informativo: si `runtime.emergencyStore` está configurado. Siempre `ok` y nunca cambia `overall`. |
 
 Los mensajes son texto en inglés para los registros y pueden cambiar; decida
 con `id` y `state`.
-
-## `catalogState()`
-
-`catalogState()` compara la foto local del catálogo con lo que publica el
-servidor, sin devolver nada del contenido del catálogo:
-
-```ts
-const catalog = await facta.catalogState();
-// { catalogMode, freshness: "fresh" | "stale" | "missing", localRevision, fetchedAt,
-//   desiredRevision, publishedRevision, syncStatus, statusError }
-if (catalog.catalogMode === "encrypted" && catalog.freshness !== "fresh") await facta.syncCatalog();
-```
-
-Un catálogo `plain` se lee en vivo desde la API y siempre informa `fresh`.
-Cuando no se puede leer el estado, `statusError` trae un código de error seguro
-y la llamada no lanza. Vea [catalog.es.md](catalog.es.md).
 
 ## `diagnoseDestinations(operationId, archive, destinations, options?)`
 

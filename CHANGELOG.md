@@ -1,5 +1,169 @@
 # Changelog
 
+## Unreleased
+
+No changes yet.
+
+## 0.6.0 (2026-11-14)
+
+**Stable release.** It collects 0.6.0-next.1 to 0.6.0-next.4 (read those entries below for the shared-data-key breaking changes, drafts, webhooks, `pagos`, pending documents and the temporary copy) and adds the items listed here. The API features it relies on are in production. Install with `npm i @facta-dte/api` (dist-tag `latest`); a 0.5.x integration must read «Breaking removals» under 0.6.0-next.1 before upgrading: `syncCatalog()` and `catalogState()` are gone, the server resolves `customerId` / `productId`.
+
+Not included, on purpose: Google Drive copies from the destinations vault (`driveToken`, Drive entries in `issueAndArchive`). Google Drive is not available for the API, so that code stays out of the package.
+
+### Global discount (`descuentoGlobal`)
+
+- **`DteRequest.descuentoGlobal?: GlobalDiscount | null`**, `{ modo: "monto" | "porcentaje", valor: number }`: one discount for the whole sale, after the line discounts, on 01, 03, 11 and 14, in `issue`, `prepare`, `issueAndArchive`, `createDraft` and `updateDraft`. A `monto` is in the VAT basis of `precioUni` (VAT included on 01, excluded on 03 and 11); Facta allocates it over the sale classes and everything after it (VAT, withholdings, perception, `totalPagar`, `pagos[]`) is computed discounted. `null` is the same as leaving it out.
+- New error code **`global_discount_not_supported`** (HTTP 400) when it is sent on a credit (05) or debit (06) note. A discount above the subtotal is `400 invalid_request` with `details.field: "descuentoGlobal"` and `details.subtotal`. None of these spends a number.
+- **`Status.capabilities`** is typed (`StatusCapabilities`): `descuentoGlobal` and `fseIncomeWithholdingPerLine`. Without `capabilities.descuentoGlobal`, an older API ignores the field and only warns `campo_desconocido`.
+- Documented in `payments-export-renta` (English and Spanish), the method reference and the agent skill. The `LineItem.montoDescu` docs no longer say there is no global discount.
+
+### Non-taxed lines (`noGravado`)
+
+- **`NonTaxedLine`** `{ descripcion, noGravado, tipoItem, codigo?, numeroDocumento? }`: a charge (positive) or credit (negative) that does not affect the tax base (Manual Funcional v2.0 §XII), as its own line in `items[]` of 01, 03, 05, 06 and 11. `DteRequest.items` is now `DocumentLine[]` (`LineItem | NonTaxedLine`) on those types and stays `LineItem[]` on 14. The types refuse `cantidad`, `precioUni`, `montoDescu`, `tipoVenta` and `productId` on a non-taxed line, accept `uniMedida` only as 99, and require `tipoItem` (1, 2 or 3); `LineItem.noGravado` is `never`.
+- **Local checks** (`assertNonTaxedLines`, run by `issue`, `prepare`, `issueAndArchive`, `createDraft`, `updateDraft` and `issueDraft`), only when a line carries `noGravado`: `non_taxed_not_supported` outside 01/03/05/06/11, `invalid_request` with `details.field` in the server's order — a `noGravado` that is 0, not finite, at or above 1e11 in absolute value or over 8 decimals; a sale field (`cantidad`, `precioUni`, `montoDescu`, `tipoVenta`, `productId`, `applyIncomeWithholding`); a `uniMedida` other than 99; a missing `descripcion` or `tipoItem`; a non-string `codigo`; a `numeroDocumento` outside a note (05/06) —, and `non_taxed_requires_sale_line` when no sale line has `cantidad × precioUni − montoDescu` above zero. They are `FactaError`s with the server's code, `status` 0 and `details.local: true`; nothing is sent. A request without non-taxed lines is not inspected.
+- New server error codes **`non_taxed_requires_sale_line`**, **`non_taxed_not_supported`** and **`non_taxed_total_negative`** (HTTP 400, nothing spent). Only the server raises the last one: it knows the total.
+- **`Totals.totalNoGravado`** (already inside `totalPagar`) and **`StatusCapabilities.noGravado`**. Exported helpers `isNonTaxedLine` and `NON_TAXED_DTE_TYPES`.
+- Example [`examples/non-taxed-lines.ts`](examples/non-taxed-lines.ts): a CCF with an exempt interest line plus a «Capital» non-taxed line, and an export (11) with a non-taxed reimbursement. In an export every good or service sold is a sale line at 0 %; only a charge that is not a sale goes as `noGravado`. Documented in `payments-export-renta`, `reference`, `errors` (English and Spanish) and the skill.
+- Server requirement: the API that advertises `capabilities.noGravado` (being built for API staging); an older API does not know the field.
+
+### FSE per-line withholding
+
+- **`incomeWithholding: { mode: "per_line" }`** on an FSE (14) with a strict boolean **`applyIncomeWithholding`** on every item: you choose which lines carry the 10 % income-tax withholding. It is exclusive with the legacy `aplicarReteRenta` (the types refuse both and the runtime rejects a mix, a missing or a non-boolean decision before anything is sent or archived). The legacy flag keeps its whole-discounted-subtotal behaviour. Gate on `status().capabilities.fseIncomeWithholdingPerLine`; new-mode issuance checks it first, including when recovering after a rollback. Guide: [`docs/fse-per-line-withholding-sdk.md`](docs/fse-per-line-withholding-sdk.md) and `payments-export-renta`.
+- The six `fse_withholding_*` error codes are typed and documented.
+
+### Per-document graphical representation
+
+- **`representacion`** on `issue`, `issueAndArchive` and `sign(prepared, { representacion })`: `datos` (per-sale values a template prints: mesa, mesero, comensales, paciente, proximaCita, ... and up to ten free `filas` of `{ etiqueta, valor }`) and `plantilla: { carta?, ticket? }` (a catalogue id or `custom:<uuid>`). The values appear only on the sheet or ticket, never in the signed document. `prepare` strips `representacion` (the API rejects it there). Types `Representation`, `RepresentationData`, `RepresentationRow`, `RepresentationTemplateChoice`.
+- **`listTemplates({ tipoDte? })`** (`GET /v1/representacion/plantillas`): the templates the company can choose, with `permitida`, the reason when not, the DTE types they draw and the `datos` keys each prints.
+- **`TemplateNotAppliedWarning`**: a template the plan, company or DTE type does not allow is not an error; the document is issued with the company template and `advertencias` carries `{ codigo: "plantilla_no_aplicada", campo, motivo, mensaje }`. The browser handler forwards these to the window.
+- **`DownloadedDocument.plantilla`** on PDF and ticket downloads, from `X-Facta-Plantilla`.
+
+### Agent skill
+
+- New non-negotiable rule «Count your calls» and `references/call-budget.md`: an integration counts the requests per business operation before writing a sync or loop (no read-before-write, no per-document polling, upsert by idempotency key for catalogue sync).
+
+### Contract snapshot
+
+- `test/fixtures/openapi.yaml` refreshed from the final API contract of the 2-Nov integration. It also lists the six FSE per-line withholding codes (`fse_withholding_mode_invalid`, `fse_withholding_legacy_conflict`, `fse_withholding_not_supported`, `fse_withholding_selection_required`, `fse_withholding_selection_invalid`, `fse_withholding_mode_required`), now in `FactaErrorCode` and the error guides; the controls themselves are the next section.
+
+### Drafts warn about misspelled fields
+
+- `createDraft` and `updateDraft` now return **`draft.unknownFields`** (`campo_desconocido`, with `sugerencia`) and **`draft.factaWarning`** (the parsed `Facta-Warning` header), like `issue()`. The field named was ignored and is **not part of the draft**: fix it and save a new version. A replay with the same `idempotencyKey` reports them again; a refused draft carries them in `error.unknownFields`.
+- `issueDraft` now surfaces `unknownFields` / `factaWarning` exactly like `issue()`.
+- Server requirement: draft warnings need the API from 2-Nov-2026 (API staging); older servers simply send none.
+
+### Signed but not transmitted: never issue again
+
+- The `503 service_unavailable` of `POST /v1/dte` (and of a draft issue) whose `details.estado` is `firmado_sin_transmitir` means the document is signed (or, with `confirmado: false`, may be), its number is spent (`details.codigoGeneracion`, `details.numeroControl`) and it was not sent to Hacienda. The `Idempotency-Key` stays bound to it and a retry with it replays the same answer.
+- New getter **`FactaError.signedNotTransmitted`** (`SignedNotTransmitted`: `codigoGeneracion`, `numeroControl`, `estado`, `confirmado`, `siguientePaso`), `null` for any other error. `error.spent` returns the number too.
+- **Behaviour change:** the SDK no longer retries that one `503` (another attempt only replayed it). Every other `503 service_unavailable` is still retried. Do not issue again with any key; finish it with `retryDocument(codigoGeneracion)` (after `getDocumentStatus` when `confirmado` is `false`), or let `recoverServerPending()` pick it up. Documented in `errors` and `pending-documents` (English and Spanish) and the skill.
+
+## 0.6.0-next.4 (2026-11-01)
+
+Additive. Every call, type and default of 0.6.0-next.3 keeps working. Server behaviour that integrators will notice is listed first.
+
+### Endpoint constants
+
+- Exported `FACTA_PRODUCTION_BASE_URL` from the package root. `DEFAULT_BASE_URL` now refers to this constant and keeps the existing production URL; staging and custom `baseUrl` overrides remain unchanged.
+
+### Idempotency is stricter (server, 30-Oct-2026)
+
+- **A key is bound to its sale for ever.** Once an `Idempotency-Key` has produced a document it is never released. The stored answer is kept **7 days** (it used to be 24 hours); after that only the answer is dropped.
+- **The same key and the same body after 7 days returns the document that already exists**, rebuilt from its copies (state, seal and totals; download the file with `downloadDocument`). The response carries `Idempotency-Replayed: true` and `Idempotency-Replay-Source: rebuilt`. It never issues a new document.
+- **The same key with a different body is `422 idempotency_key_reuse` for ever** (before, it could be accepted again after 24 hours).
+- Practical rule: one key per sale, for ever. A lost response means replay the same key and body, or look the document up; never invent a new key for the same sale.
+
+### Uncertain emissions: pending documents and manual retry
+
+- **`listPendingDocuments({ estado?, tipoDte?, limit?, cursor? })`** (`GET /v1/dte/pendientes`, scope `query`): documents Facta signed whose number is spent but that Hacienda has not answered (or refused), oldest first, metadata only. Each row says whether it is `reintentable` and, if not, why. `plazo.requiereContingencia` turns `true` 24 hours after signing.
+- **`retryDocument(codigoGeneracion)`** (`POST /v1/dte/{codigoGeneracion}/reintentar`, scope `issue`, sends the signing key): finishes a pending document **without creating a new one**. Facta asks Hacienda first and resends the same signed bytes only if Hacienda never received them; it never signs or numbers. Results: `sellado` (`via: "consulta" | "retransmision" | "ya_asentado"`), `pendiente` (HTTP 202, no answer: try again), or `mh_rejected`. Safe to repeat; two at once transmit once.
+- New types `PendingDocument`, `PendingDocumentsPage`, `ListPendingDocumentsFilters`, `RetryResult`, `RetrySealed`, `RetryPending`. New error codes `document_not_retryable` (409, `details.motivo`) and `retry_in_progress` (409, retried by the SDK). Documents emitted by the app are listed but must be retried from the app.
+- **`FactaError.retryAfterSeconds`** reads `details.retryAfterSeconds`; the retry loop waits at least that long (at most 15 s) instead of only its own backoff.
+- Guide `pending-documents` (English and Spanish), runnable example `examples/pending-documents.ts`, and a mandatory "after every emission" step in the agent skill.
+
+### Start-up recovery of server-side pending documents
+
+- **`recoverServerPending({ limit?, tipoDte?, signal? })`** (opt-in): lists `GET /v1/dte/pendientes` and calls `retryDocument()` for every retryable document with the client's own keys (the signing key is required), oldest first, one at a time. Returns a report `{ examined, sealed, rejected, pending, notRetryable, errors, results[], truncated }` and **never throws for a single document**; it throws only if the list cannot be read or `signal` aborts. It never signs, numbers or issues. Call it when your process starts and on a schedule (every 10 to 15 minutes). `limit` defaults to 50 (at most 500).
+- New types `RecoverServerPendingOptions`, `RecoverServerPendingReport`, `ServerPendingOutcome`. Documented in the `pending-documents` guide, the method reference, the agent skill and `examples/pending-documents.ts`.
+
+### Signed documents are recorded before they are sent (server)
+
+- If Facta cannot record the signed document, **nothing is sent to Hacienda**: the answer is `503 service_unavailable` with `Retry-After`, and the control number is handed back. Replay the same request with the same `Idempotency-Key`; it is safe.
+- A sealed document is closed as `sellado` only once Facta DTE's own record of it exists. If that record could not be written the answer is still `200` and carries the warning `indice_pendiente` (with `documento` and `jws`: keep them); if only closing the number failed, `reserva_sin_asentar`. Neither is a reason to issue again: call `retryDocument()` to complete the record.
+
+### Temporary copy: confirmation and the emergency store
+
+**How the temporary copy works.** Facta keeps an encrypted temporary copy of every sealed document. It deletes it **2 days after the document is marked as stored**, or **30 days after sealing** if nobody marks it. The company owner is mailed from day one (production only) with the full table of what will be deleted and when, then weekly, 7 days before and 1 day before. A document is marked when Facta verified a copy of its own, when the SDK reported a copy it wrote to a synced destination, or when you report it. `runtime.emergencyStore` protects against the one-hour holding copy and does **not** mark anything: report after it. New guide: [the temporary copy, the confirmation and the emergency store](guides/temporary-copy.md).
+
+- **`listUnconfirmedDocuments({ limit?, cursor? })`** (`GET /v1/storage/unconfirmed`, scope `download`): the documents that still depend on the temporary copy, each with `borradoEl` (the deletion date) and `diasRestantes`.
+- **`confirmDocumentStorage(code, { where, sha256 | bytes })`** (`POST /v1/dte/{codigoGeneracion}/storage-confirmation`, scope `issue`): report a document stored. Pass the SHA-256 of the JSON you stored, or the bytes and the SDK hashes them. Idempotent. Throws `storage_unsupported` unless the server advertises `capabilities.storageConfirmation`.
+- **`storeAndConfirmUnconfirmed({ store, ... })`**: lists, downloads the JSON and PDF, calls your `store`, confirms with the hash of the bytes you received. Bounded (`limit`, `maxFailures`), never throws for one bad document, returns a report (`stopped`, `results`, `remaining`, `firstDeletionAt`). Run it daily. See `examples/drain-unconfirmed.ts`.
+- **`issueAndArchive` / `recoverOperation`** now return `confirmation` (`confirmed`, `pending`, `failed` or `unsupported`). A copy reported to a synced destination, or a Facta Storage copy, counts as confirmed. `runtime.confirmArchive: true` (or `{ confirmArchive: true }` per call) reports the local archive as the stored copy; it is off by default because only you know whether the archive is durable. A failed confirmation adds the warning `confirmation_failed`; `pending` is not a warning.
+- **New error codes:** `temporary_copy_expired` (410: the copy was deleted), `nothing_to_repair_from` (409: `retryDocumentStorage` after deletion) and `storage_hash_mismatch` (422: the hash is not the document's).
+- **Types:** `ManagedStorageStatus.sinConfirmar` (`{ total, primeroSeBorraEl }`) and `capabilities.storageConfirmation`; `ManagedDocumentCopy.confirmado` (`{ en, por }`).
+- **Fix:** the copy report to `/v1/storage/copies/{cg}/byos` is now sent when the server advertises `byosCopyReport` 1 **or higher** (it was `=== 1`, which silently disabled it on servers that advertise 2).
+- **Wording:** the report to Facta of a copy you wrote is a report, not a verification (Facta cannot read your bucket). The guides and the skill no longer say «verified copy» for it.
+- Agent skill `facta-dte-api`: after every emission, store and report, or poll the unconfirmed list daily; the deadline, the owner mails and the emergency store's limits are in `references/storage-and-emergency.md`.
+- Contract snapshot refreshed with the two routes, the new errors and the new fields.
+
+### Documentation and types (payments, goods exports, income-tax withholding)
+
+- **New guide `payments-export-renta`** (English and Spanish): how payment is reported (`formaPago`, `pagos[]`, credit with `plazo` + `periodo`, nothing on 05/06) with the resulting `resumen.pagos`; what Hacienda requires of a goods export (`tipoRegimen`, `regimen`, `recintoFiscal`, which Facta does not enforce yet); and what `aplicarReteRenta` does today (current rate on the whole subtotal after line discounts; no partial base).
+- **`Totals.reteRenta`, `ivaRete`, `ivaPerci`** (optional): the API now returns them in `totales` when the document has the field.
+- Fixed the CAT-017 code `14` wording («giro bancario», not gift vouchers) in the contract snapshot and the skill; the `dte-types` export example used `incoterms: "FOB"` (not a CAT-031 code) and left out the goods-export fields; the skill's `issuing-dte-types` reference was out of date on `formaPago`, `pagos` and `tipoVenta`.
+- The SDK's own `recoverOperation` window (23 hours) is unchanged; widening it to match the permanent keys is planned.
+
+## 0.6.0-next.3 (2026-10-29)
+
+**Pre-release** (`npm i @facta-dte/api@next`; `latest` stays on 0.5.3). Additive only: every 0.5.3 / 0.6.0-next.1 / 0.6.0-next.2 call, type and default keeps working (`test/compat-0.6.0-next.2.test.ts` pins the old surface).
+
+- **`LineItem.tipoVenta`** (`gravada` | `exenta` | `no_sujeta`): the VAT treatment of a line (01, 03, 05, 06; `422` on 11 and 14). Chosen by you, never deduced.
+- **`DteRequest.aplicarRetencionIva`** (01, 03) and **`aplicarPercepcionIva`** (03 only): the 1 % VAT withholding and perception. Typed per `tipoDte`: the other types declare them `never`, matching the server's `400`.
+- **Warnings reach more places**: `prepare()` results carry `advertencias`, `unknownFields` and `factaWarning` (only when there is something to report), and `FactaError.unknownFields` reads `details.advertencias`.
+- Unknown request fields are, and stay, warnings (`campo_desconocido`); they are never rejected. The staging skill says so in «Disponible ahora» and no longer lists it under «próxima versión», and its lists were refreshed.
+- Contract snapshot refreshed from staging.
+
+## 0.6.0-next.2 (2026-10-29)
+
+**Pre-release** (`npm i @facta-dte/api@next`; `latest` stays on 0.5.3). Matches the staging API after its 29-Oct release.
+
+- **`LineItem.montoDescu`**: discount of one line, in money (0 to `cantidad × precioUni`). No global discount on the wire yet.
+- **`pagos` and the `Pago` type**: 1 to 10 payment rows (01, 03, 11, 14) that add up to the total to pay; the types refuse `pagos` on 05/06. `formaPago`, `exportacion.recintoFiscal`, `.tipoRegimen` and `.regimen` are checked against the Ministry's catalogues by the server (`422 validation_failed` with `details.field`, `details.catalog`, `details.supported`).
+- **`campo_desconocido` warnings**: `ServerWarning` (with `campo`, `sugerencia`, `motivo`), `UnknownFieldWarning`, `result.unknownFields` and `unknownFieldWarnings()`; the `Facta-Warning` response header is read into `result.factaWarning` (`FactaWarningHeader`) and `parseFactaWarning()`. Both members exist on `issue()` results only when there is something to report. These warnings never trigger the emergency safeguard.
+- **`FACTA_STAGING_BASE_URL`**: the staging API base. The client still defaults to the production host, so staging needs `baseUrl` explicitly; the README and guides no longer say there is no staging URL.
+- Agent skill, staging variant `facta-dte-api-staging` (release `skill-staging`): ready to test with TypeScript on staging, with «Disponible ahora» and «En la próxima versión».
+
+## 0.6.0-next.1 (2026-10-28)
+
+**Pre-release.** Published to npm under the `next` dist-tag only; `latest` stays on 0.5.3 until the shared data key is in production. Install with `npm i @facta-dte/api@next`. The notes below are the planned 0.6.0 notes.
+
+The shared data key: the server resolves catalogue ids, so the SDK no longer carries a copy of the catalogue.
+
+### Breaking removals
+
+- **`syncCatalog()` is removed**, with the per-key catalogue snapshot it opened (`CatalogSnapshot`, the in-memory cache and `src/catalog.ts`). `customerId` / `productId` are sent to the API untouched and the server resolves them in every catalogue mode (`encrypted` at rest, `readable`, `plain`). An unknown id answers `not_found` with `details.reason: "catalog_unknown_id"`.
+- **`catalogState()` and the `CatalogState` type are removed**: there is no local revision to compare.
+- **`allowStale` (per call) and `allowStaleCatalogReads` (config) no longer do anything.** Both are still accepted and ignored so existing calls and saved configs keep compiling; remove them at your convenience.
+- **`listCustomers`, `getCustomer`, `searchCustomers` and the product reads always call the API** (`GET /v1/customers`, `GET /v1/products`). They no longer need `unlockKey` for an encrypted catalogue, and no longer fail with `unauthorized` when it is missing.
+- **`diagnose()` no longer reports a `catalog-sync` check**, and `DiagnosticsReport.revisions` no longer has `catalog`. `Status.sincronizacion.catalog` is deprecated and optional.
+- **No `X-Facta-Request-Fingerprint` header** on `issue`, `issueAndArchive`, `recoverOperation` and `prepare`: the SDK no longer rewrites the body, so the server's idempotency claim hashes the body again (AP-07). New journal records are `idempotencyHash: "body"` with no `requestFingerprint`. Journals written by 0.3 to 0.5 still recover: a `"fingerprint-v1"` record resends its stored fingerprint. `fingerprintV1` stays internal for that purpose and `conformance/fingerprint-v1.*` stays published for other clients. A 0.5 journal of an encrypted-catalogue company that held a locally resolved body must be recovered without passing a new `request` (the saved one is used).
+- The sealed catalogue inbox (`/v1/catalog/changes`) and the per-key snapshot are retired on the server (`inbox_retired`, HTTP 410); `GET /v1/vault/destinations` may still carry a `vault.catalog` item with `syncStatus: "retired"` (and `Deprecation`/`Sunset` headers until 1-Jan-2027), which the SDK ignores. `GET /v1/catalog/changes?since=` is the change feed and works; drafts (`/v1/drafts`) are unaffected and now have client methods.
+
+### Added
+
+- Error codes the server now returns: `catalog_revision_conflict`, `catalog_record_inactive`, `catalog_search_too_broad`, `catalog_cursor_expired`, `data_grant_unavailable`, `data_grant_revoked`, `data_epoch_stale`, `inbox_retired` (typed, documented in `guides/errors*.md` and the skill).
+- **`listCatalogChanges({ since, generation, limit })`** (`GET /v1/catalog/changes`): ids, revisions, operation and actor of what changed in the company catalogue. An expired cursor is `catalog_cursor_expired` with `reason`, `cabeza` and `generacion` kept in `error.details`.
+- **Webhook management**: `createWebhook`, `listWebhooks`, `getWebhook`, `updateWebhook`, `deleteWebhook`, `rotateWebhookSecret`, `testWebhook` (`WebhookWithSecret.secret` is returned once). New codes `webhook_limit_reached` and `webhook_duplicate`.
+- **Drafts** (scope `draft`): `createDraft`, `listDrafts`, `getDraft`, `getDraftByKey`, `updateDraft` (`version` sent as `If-Match`), `cancelDraft`, `issueDraft` (carries the signing key, returns the `issue` result plus `borradorId`). New codes: `drafts_not_ready`, `version_mismatch`, `draft_claimed`, `draft_issuing`, `draft_issued`, `draft_not_issuable`, `item_final`, `id_conflict`, `inbox_cap_reached`, `content_hash_mismatch`, `catalog_write_test_key`. Guide: `guides/drafts.md`.
+- **Every code the server can answer is a typed `FactaErrorCode`**, including `mh_auth_failed` (424), `paid_plan_required` (402) and the Drive broker codes. `catalog_snapshot_retired` is removed: the server never sent it. Tests compare the code union with the contract snapshot in both directions, and the client's retry set with the one the errors guide marks as retried (it caught `data_grant_unavailable` / `data_epoch_stale` missing the **yes** marker).
+- **Contract coverage test**: every operation of the contract snapshot (`test/fixtures/openapi.yaml`, refreshed from staging) is wrapped by a client method or listed as deliberately not wrapped (`GET /v1/representacion/plantillas` and `DELETE …/return/{evento}` have no method yet).
+- Docs follow the staging contract: a production key (`facta_live_`) is refused with `environment_not_allowed` on emission and on the company-level routes (customers, products, webhooks, the change feed, drafts, destinations, templates) unless the company is in production; a read-only key hears `forbidden_scope` before `catalog_encrypted`, whose `details.hint` says whether the key lacks access or the catalogue is simply not shared.
+- **Receiver-side verifier**, dependency-free (WebCrypto): `verifyWebhook`, `constructWebhookEvent` (throws `WebhookVerificationError`), `signWebhook`, `MemoryWebhookReplayStore`, `WEBHOOK_EVENTS`. Guide: `guides/webhooks.md`.
+- **`revision` on single catalogue records and `ifMatch` on `updateCustomer` / `updateProduct`** (read from `Facta-Catalog-Revision` / `ETag`). Honoured by a company that shares its data key; a plain catalogue ignores `If-Match` (last write wins per field sent).
+- **Fix: `invalidateAndArchive` / `recoverInvalidation` no longer fail with `internal_error` when the server echoes the document code in lower case** (it does once the document is indexed, while `issue` returned it in upper case). The target code is compared case-insensitively. Found by the staging live run.
+- **`data_grant_unavailable` and `data_epoch_stale` are now retried** like the other 503s (the docs already said so); `data_grant_revoked` (403, the owner's decision) is never retried.
+- Docs: `guides/catalog*.md` rewritten as "Catalog reads and id resolution"; the reference, README, Deno/Node guides and the skill no longer describe a local catalogue snapshot.
+
 ## 0.5.3 (2026-10-20)
 
 - **Storage status and copies stay readable whatever kinds the server lists.** `getStorageStatus` and `getDocumentCopies` now accept any kind lists that include `json` and `pdf`, have no duplicate and put no kind in both lists, and copy entries may carry `invalidation`. On 20-Oct the API briefly listed `invalidation` as a supported kind, which 0.5.2 rejected with `storage_contract_invalid`; the API has since frozen its answer (`["json","pdf"]` / `["ticket","invalidation"]`, plus `capabilities.invalidationFile`), so 0.5.2 works again, and 0.5.3 no longer depends on the exact lists.

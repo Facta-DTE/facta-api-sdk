@@ -18,11 +18,11 @@ if (!report.canIssue) for (const c of report.checks) if (c.state === "blocked") 
 - Options: `archive`, `dteType`, `expectedEnvironment`, `requiredScopes` (also from
   `config`). Check ids include `api`, `issuer`, `scope-*`, `environment`,
   `issue-quota`, `key-expiry`, `dte-type`, `certificate-*`, `signing`, `sign-sync`,
-  `destinations-sync`, `catalog-sync`, `managed-storage`, `archive`, `emergency-store`.
+  `destinations-sync`, `managed-storage`, `archive`, `emergency-store`.
   Switch on `id` and `state` (`ok | warning | blocked | unknown`), never on message text.
 - Typical blocks: `signing` → key has no signing vault (re-mint); `managed-storage` →
   no ready destination; `configured-environment` → live key where you expected `00`.
-- `catalogState()` for the catalog; `diagnoseDestinations()` for remote copies.
+- `diagnoseDestinations()` for remote copies.
 
 ## Slow call: `X-Facta-Debug: timings`
 

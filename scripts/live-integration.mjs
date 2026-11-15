@@ -4,8 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createValidationResults, renderLiveReport, safeFailureCode } from "./live-report.mjs";
 import { validateLiveManagedStorage } from "./live-managed-storage.mjs";
+import { validateLiveTemplates } from "./live-templates.mjs";
 import { emailDeliveryReportState, emailDeliveryVerdict, emailDeliveryWarningLines } from "./live-delivery.mjs";
-import { requireLiveSnapshots, validateLiveCatalogReads, validateLiveCatalogWriteGate } from "./live-preflight.mjs";
+import { requireLiveSnapshots, validateLiveCatalogChanges, validateLiveCatalogReads, validateLiveCatalogWriteGate } from "./live-preflight.mjs";
 import {
   assertRelatedTestDocuments,
   assertLiveRunWithinIdempotencyWindow,
@@ -25,6 +26,8 @@ const reportDir = process.env.FACTA_LIVE_REPORT_DIR;
 const liveMode = process.env.FACTA_LIVE_MODE ?? "emit-test-fe";
 // Optional: the inbox the e-mail delivery check sends to. Unset means the check
 // is reported as not run; nothing is sent.
+// Opt-in: one more test FE that chooses a template and fills per-sale data.
+const liveTemplates = process.env.FACTA_LIVE_TEMPLATES === "true";
 const deliveryInbox = process.env.STAGING_FACTA_DELIVERY_EMAIL?.trim() || undefined;
 const EXPECTED_STAGING_API_BASE_URL =
   "https://eobxzotnqzgtpuqvmpkc.supabase.co/functions/v1/api-v1";
@@ -138,10 +141,11 @@ try {
   const storageCapability = await facta.getStorageStatus();
   assert(storageCapability.managed.ready, "Full managed live validation requires ready managed storage.");
   const snapshots = await requireLiveSnapshots(facta, checks, (check) => { currentCheck = check; }, storageCapability.managed.ready && !storageCapability.byos.ready);
-  await validateLiveCatalogReads(facta, snapshots.catalog, checks, (check) => { currentCheck = check; });
+  await validateLiveCatalogReads(facta, checks, (check) => { currentCheck = check; });
   await validateLiveCatalogWriteGate(facta, checks, (check) => { currentCheck = check; });
+  await validateLiveCatalogChanges(facta, checks, (check) => { currentCheck = check; });
   console.log(`${checks["catalog-write-gate"].startsWith("Warning") ? "WARN" : "PASS"} catalog write gate: ${checks["catalog-write-gate"]}`);
-  console.log("PASS snapshots: catalog and required BYOS destinations verified locally");
+  console.log("PASS snapshots: required BYOS destinations verified locally");
   currentCheck = "preflight";
 
   if (!diagnostics.canIssue || !diagnostics.canQuery || !diagnostics.canDownload || !diagnostics.canIssueAndArchive) {
@@ -312,6 +316,20 @@ try {
     console.log("SKIP e-mail delivery: STAGING_FACTA_DELIVERY_EMAIL is not configured");
   } else {
     await validateLiveEmailDelivery(facta, request);
+  }
+
+  currentCheck = "templates";
+  if (!liveTemplates) {
+    checks.templates = "Not run (not requested)";
+    console.log("SKIP templates: not requested (FACTA_LIVE_TEMPLATES is not true)");
+  } else {
+    try {
+      checks.templates = await validateLiveTemplates(facta, { runId });
+    } catch (error) {
+      // An SDK error keeps its stable code; anything else is reported under a fixed category.
+      if (typeof error?.code !== "string" || error.name === "AssertionError") error.code = "templates_failed";
+      throw error;
+    }
   }
 } catch (error) {
   checks[currentCheck] = "Failed";

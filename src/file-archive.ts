@@ -429,7 +429,7 @@ export class FileInvoiceArchive implements InvoiceArchive, InvalidationArchive {
     }
     await this.#exclusive(async () => {
       const operation = await this.#requireInvalidation(id);
-      if (result.codigoGeneracion !== operation.targetCodigoGeneracion) {
+      if (typeof result.codigoGeneracion !== "string" || result.codigoGeneracion.toUpperCase() !== operation.targetCodigoGeneracion.toUpperCase()) {
         throw new Error("Invalidation response targets a different generation code.");
       }
       const bytes = new TextEncoder().encode(result.jws);

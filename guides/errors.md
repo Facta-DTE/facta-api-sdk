@@ -49,9 +49,10 @@ tokens from `message` and `details`, and drops credential-named fields from
 
 The SDK retries automatically, with the same `Idempotency-Key`, only these
 codes: `idempotency_in_flight`, `network_error`, `service_unavailable`,
-`correlative_unavailable`, `mh_unreachable` and `storage_unavailable`. It makes
+`correlative_unavailable`, `mh_unreachable`, `storage_unavailable`,
+`data_grant_unavailable`, `data_epoch_stale` and `retry_in_progress`. It makes
 up to `maxRetries` extra attempts (default 3), waiting 250 ms, 500 ms, 1 s…
-(capped at 4 s). When they are exhausted you receive the last error; the outcome
+(capped at 4 s), or what the server asks in `details.retryAfterSeconds` (the `Retry-After` twin; at most 15 s) when that is longer. When they are exhausted you receive the last error; the outcome
 of a POST is then **uncertain**: replay the same request with the same key (see
 [idempotency.md](idempotency.md)). Every other code is final for that request.
 
@@ -61,7 +62,7 @@ In the tables, "Retried" means retried automatically by the SDK.
 
 | Code | HTTP | Retried | Meaning | What to do |
 | --- | --- | --- | --- | --- |
-| `unauthorized` | 401 (0 locally) | no | No `X-Facta-Key` reached the API. Locally: `apiKey` missing, an unlock key (`factauk_`) passed as `signKey`, a malformed `unlockKey`, or `syncCatalog`/`syncDestinations` without `unlockKey`. | Configure the credential named in the message. |
+| `unauthorized` | 401 (0 locally) | no | No `X-Facta-Key` reached the API. Locally: `apiKey` missing, an unlock key (`factauk_`) passed as `signKey`, a malformed `unlockKey`, or `syncDestinations` without `unlockKey`. | Configure the credential named in the message. |
 | `invalid_api_key` | 401 | no | The key does not exist, is mistyped, or its secret does not match. | Copy the whole key, including the dot. |
 | `key_revoked` | 403 | no | Revoked from the app. | Mint a new key. |
 | `key_expired` | 403 | no | Past its expiry date. | Mint a new key. |
@@ -69,7 +70,7 @@ In the tables, "Retried" means retried automatically by the SDK.
 | `forbidden_scope` | 403 | no | The key lacks the route's scope (`details.required`, `details.granted`). | Mint a key with that scope; scopes cannot be edited. |
 | `dte_type_not_allowed` | 403 | no | The key may not issue that `tipoDte` (`details.allowed`). | Mint a key that includes the type. |
 | `ip_not_allowed` | 403 | no | The key has an IP allow-list and the caller is not in it. | Add the address or CIDR range when minting. |
-| `environment_not_allowed` | 403 | no | Key prefix and key row disagree, or the key's environment differs from its company's. | Use a production key for a company already in production. |
+| `environment_not_allowed` | 403 | no | Key prefix and key row disagree, or a production key (`facta_live_`) reaches a company that is not in production yet: emission and the company-level routes (customers, products, webhooks, the catalogue feed, drafts, destinations, templates) refuse it, while a test key is always allowed and document reads are filtered to the key's environment. | Use a production key only for a company already in production; keep using the test key until the owner completes the step to production. |
 | `sign_key_required` | 401 | no | A signing route without `X-Facta-Sign-Key`, or with the unlock key. | Pass `signKey` (`factask_…`). |
 | `sign_key_invalid` | 401 | no | The signing key does not open the vault (`details.intentosRestantes`). | Fix the key before the vault locks. |
 | `sign_vault_locked` | 403 | no | Five failed attempts in an hour; the key is suspended. | Reactivate it in the app; waiting does not help. |
@@ -81,15 +82,53 @@ In the tables, "Retried" means retried automatically by the SDK.
 | --- | --- | --- | --- | --- |
 | `invalid_request` | 400 (422 locally) | no | Missing or non-JSON body, over 1 MB, a field with the wrong shape, or a non-UUID generation code (`details.field`). Locally (422): a catalog product with an invalid item type, unit of measure, or a VAT basis that does not match the DTE. | Fix the request. No number was spent. |
 | `include_limit_exceeded` | 400 | no | `listDocuments` with `include: ["dte"]` asked for more than 25 rows (`details.maximo`). | Ask for 25 or fewer and follow `siguiente`. |
-| `validation_failed` | 422 | no | The document fails Hacienda's official schema (`details.issues`). Also thrown locally (422, before any request) by catalog writes. | Fix the listed fields. No number was spent. |
+| `fse_withholding_mode_invalid` | 400 | no | FSE (14) per-line withholding: `incomeWithholding.mode` is not `per_line`, or the object carries an unknown key. No number was spent. | Send only `{ mode: "per_line" }`. |
+| `fse_withholding_legacy_conflict` | 400 | no | `incomeWithholding` or per-line decisions combined with `aplicarReteRenta`. No number was spent. | Choose one withholding mode. |
+| `fse_withholding_not_supported` | 400 | no | Per-line FSE withholding controls on a type other than 14. No number was spent. | Remove `incomeWithholding` and `applyIncomeWithholding`. |
+| `fse_withholding_selection_required` | 400 | no | Per-line mode with no lines, or a line without its `applyIncomeWithholding` decision. No number was spent. | Send a boolean decision on every line. |
+| `fse_withholding_selection_invalid` | 400 | no | An `applyIncomeWithholding` decision that is not a boolean. No number was spent. | Send `true` or `false`, without converting other values. |
+| `fse_withholding_mode_required` | 400 | no | `applyIncomeWithholding` sent without the per-line mode. No number was spent. | Add `incomeWithholding.mode: "per_line"` or remove the decisions. |
+| `global_discount_not_supported` | 400 | no | `descuentoGlobal` on a credit (05) or debit (06) note: a note's amounts come from the document it corrects. No number was spent. | Adjust the line values and leave `descuentoGlobal` out. |
+| `non_taxed_requires_sale_line` | 400 | no | A non-taxed line (`items[].noGravado`) on a document with no sale line (gravada, exenta or no sujeta) above zero (Manual Funcional §XII). The SDK also refuses it locally (status 0, `details.local: true`). No number was spent. | Add at least one sale line with an amount. |
+| `non_taxed_not_supported` | 400 | no | A non-taxed line on a type whose schema has no `noGravado`: 14 (FSE), and 07/15. The SDK also refuses it locally (status 0). No number was spent. | Remove the line; only 01, 03, 05, 06 and 11 accept it. |
+| `non_taxed_total_negative` | 400 | no | The non-taxed credits (negative `noGravado`) leave the total to pay below zero. Only the server knows the total. No number was spent. | Reduce the credit, or issue a credit note instead. |
+| `validation_failed` | 422 | no | The document fails Hacienda's official schema (`details.issues`), a code is not in its catalogue, `pagos` does not add up to the total, or `pagos` was sent on a credit sale. Also thrown locally (422, before any request) by catalog writes. | Fix the listed fields. No number was spent. For `pagos` on a credit sale use `formaPago` + `plazo` + `periodo`; see [payments-export-renta.md](payments-export-renta.md). |
 | `retention_mixed_class_unsupported` | 422 | no | `aplicarReteRenta` was requested on a document with an `exenta` or `no_sujeta` line (`items[].tipoVenta`). | Nothing was signed and no number was spent. Issue the exempt or non-subject lines in another document, or do not apply the withholding. |
-| `not_found` | 404 | no | No such document, customer, product or route for this key's company. Also thrown locally when a `customerId`/`productId` is not in the catalog snapshot. | Check the identifier and the key's company; sync the catalog. |
+| `not_found` | 404 | no | No such document, customer, product or route for this key's company. Also returned when a `customerId`/`productId` does not exist for this key (`details.reason: "catalog_unknown_id"`). | Check the identifier and the key's company; sync the catalog. |
 | `method_not_allowed` | 405 | no | The route exists, but not with that method. | Only seen when calling the API outside the SDK's methods. |
 | `prepare_token_invalid` | 422 | no | The `prepareToken` expired (15 min), belongs to another key, or the document changed. | Call `prepare` again. See [prepare-sign.md](prepare-sign.md). |
 | `not_sealed` | 409 | no | Default JSON download of a document with no seal yet (contingency). | Use `{ raw: true }` or wait for the seal. See [archivo-dte.md](archivo-dte.md). |
 | `catalog_write_disabled` | 403 | no | The company did not enable «Permitir administrar clientes y productos desde el API». | Enable it in the app. See [catalog-write.md](catalog-write.md). |
-| `catalog_encrypted` | 409 | no | The company catalog is still encrypted, so the API cannot write it. | Switch the catalog to plain text in the app. |
+| `catalog_encrypted` | 409 | no | The company catalog is still encrypted at rest and this key has no access to it: the company does not share its data key with the API (or this key was never granted it), so the API can neither read nor write it. The scope of the key is judged first: a read-only key hears `forbidden_scope` before this. `details.hint` says which of the two applies. | Ask the owner to give the key access to the shared data (Account → API), or to switch the catalog to plain text. |
 | `catalog_duplicate` | 409 | no | A customer with that document, or a product with that code, already exists. | `details.id` names it; edit it, or reactivate it if it is deactivated. |
+| `catalog_revision_conflict` | 409 | no | The record changed since the `If-Match` revision you sent. | `details.revisionActual` is the current revision; read it again and re-apply the change. |
+| `catalog_record_inactive` | 409 | no | An edit of a deactivated record that did not send `activo: true`. | Reactivate it explicitly, or leave it. |
+| `catalog_search_too_broad` | 422 | no | A text search over more rows than the server searches in memory. | Search by document (`documento`) instead. |
+| `catalog_cursor_expired` | 410 | no | `listCatalogChanges` cannot continue from your `since`. `details.reason` is `generation_changed`, `history_pruned`, `cursor_ahead` or `too_many`; `details.cabeza` and `details.generacion` are the current head and generation. | Read the catalogue again in full, then continue from `details.cabeza` with `details.generacion`. |
+| `data_grant_unavailable` | 503 | yes | The server could not open the key's access to the encrypted catalogue right now. | Retry shortly; it never counts against your key. |
+| `data_grant_revoked` | 403 | no | The owner removed this key's access to the catalogue data. | Ask the owner to restore it, or mint a new key. |
+| `data_epoch_stale` | 503 | yes | The company's data key is rotating. | Retry after a few seconds. |
+| `webhook_limit_reached` | 409 | no | The key already has 5 webhooks. | Delete one with `deleteWebhook`, or reuse it with `updateWebhook`. |
+| `webhook_duplicate` | 409 | no | This key already has a webhook with that URL. | Use `listWebhooks` and `updateWebhook` on the existing one. |
+| `inbox_retired` | 410 | no | The sealed catalogue inbox (`POST /v1/catalog/changes` and `/v1/catalog/changes/{id}`, `by-key/{key}`) was retired; `GET /v1/catalog/changes?since=` is the change feed and still works. | Write the catalogue with `createCustomer`, `updateCustomer` and the product equivalents. |
+
+## Drafts
+
+Scope `draft` (issuing also needs `issue` and the signing key). See [drafts.md](drafts.md).
+
+| Code | HTTP | Retried | Meaning | What to do |
+| --- | --- | --- | --- | --- |
+| `drafts_not_ready` | 409 | no | The company has no draft-box key for its current data key yet: its owner has not opened Facta with their vault since the company began sharing it. | Ask the owner to open Facta once, then repeat the same call. |
+| `version_mismatch` | 409 | no | The `version` (or `If-Match`) is not the draft's current one. | Read the draft again with `getDraft` and re-apply. |
+| `draft_claimed` | 409 | no | A person of the company has the draft open in the app. Nothing was spent. | Wait, or read it again later. |
+| `draft_issuing` | 409 | no | The draft is being issued right now. Nothing was spent. | Read it with `getDraft`; do not issue it again. |
+| `draft_issued` | 409 | no | The draft already became a document. | `getDraft` returns the document (`generationCode`). |
+| `draft_not_issuable` | 409 | no | The draft is cancelled, expired or otherwise not in a state that can be issued. | Create a new draft. |
+| `item_final` | 409 | no | The draft is already resolved and cannot be changed or cancelled. | Read it with `getDraft`. |
+| `id_conflict` | 409 | no | That draft `id` is taken by another item. | Pick another UUID, or omit `id`. |
+| `inbox_cap_reached` | 429 | no | The key or the company holds the maximum number of open drafts (500 per company). | Cancel or issue some; they also expire after 30 days. |
+| `content_hash_mismatch` | 422 | no | Legacy sealed drafts only: the plaintext does not hash to `contentHash`. | Send the plain request instead (`createDraft`). |
+| `catalog_write_test_key` | 403 | no | A test key tried to write after the company went live. | Use the production key. |
 
 ## Idempotency
 
@@ -125,20 +164,40 @@ See [return-event.md](return-event.md).
 | `mh_rejected` | 422 | no | Hacienda read the document and refused it. The control number **was spent** (`error.spent`). | Read `error.mhObservations`, fix the data. A replay of the same key returns the same rejection. |
 | `mh_unreachable` | 502 | **yes** | Reserved: the current API never returns it on issuance, where a transport failure becomes a 202 contingency. On invalidation it means nothing was invalidated. | Replay the same key. |
 | `correlative_unavailable` | 503 | **yes** | The control number could not be reserved. No number spent. | Replay the same key. |
-| `service_unavailable` | 503 | **yes** | A Facta dependency did not answer. Also thrown locally (503) when a vault or catalog envelope fails its digest or format check. | Replay the same key; for a local envelope error, re-sync from the app. |
+| `service_unavailable` | 503 | **yes** | A Facta dependency did not answer, or Facta could not record the signed document before sending it (then **nothing was sent to Hacienda** and the number was handed back). Also thrown locally (503) when a vault or catalog envelope fails its digest or format check. `retryAfterSeconds` says how long to wait. | Wait, then replay the **same** request with the **same** key; never a new key. If the emission had already signed and you do not know what happened, call `listPendingDocuments()` before anything else. For a local envelope error, re-sync from the app. **Exception, not retried:** `details.estado: "firmado_sin_transmitir"` (read `error.signedNotTransmitted`) means the document is signed, or may be, its number is spent (`details.codigoGeneracion`, `details.numeroControl`) and it was not sent to Hacienda; the same key only replays this answer. **Do not issue again** with any key: call `retryDocument(codigoGeneracion)` (after `getDocumentStatus` when `confirmado` is `false`). |
+| `document_not_retryable` | 409 | no | `retryDocument()` on a document the API cannot finish. `details.motivo`: `documento_de_la_aplicacion` (the app issued it), `sin_copia_firmada`, `sin_documento_firmado`. | For an app document, retry it from Documentos → Pendientes con Hacienda in the app. Never issue a new one. |
+| `retry_in_progress` | 409 | **yes** | Another `retryDocument()` of the same document is running; nothing was sent. | The SDK waits `retryAfterSeconds` and replays; or read `getDocumentStatus`. |
+| `mh_auth_failed` | 424 | no | Hacienda answered the login and refused the company's own transmission credentials (not your Facta key). | The owner updates the credentials in the app; retrying cannot fix it. |
+| `paid_plan_required` | 402 | no | An extra company of a multi-company owner on a free or trial plan, issuing in production. | The owner chooses a paid plan. |
 | `internal_error` | 500 | no | An unexpected failure. Also thrown locally when a response is not valid JSON, an invalidation response names another document, or a catalog response lacks its record. | If it repeats, contact support with the time and your `keyId`. |
 
 A contingency (`estado: "contingencia"`, HTTP 202) is **not** an error: the
-document is signed and Facta will retransmit it.
+document is signed and owed to Hacienda. Finish it with
+`retryDocument()` (see [pending documents](pending-documents.md)); never by
+issuing again.
 
 ## Storage
 
 | Code | HTTP | Retried | Meaning | What to do |
 | --- | --- | --- | --- | --- |
-| `no_storage_destination` | 422 | no | The company has no storage destination connected and verified in the last 30 days. Checked before reserving. Also thrown locally (422) by `syncDestinations` when the destination snapshot is not published, and by `syncCatalog` when the catalog is out of sync (`details.reason: "catalog_out_of_sync"`). | Connect or re-sync a destination (or the catalog) in the app. |
+| `no_storage_destination` | 422 | no | The company has no storage destination connected and verified in the last 30 days. Checked before reserving. Also thrown locally (422) by `syncDestinations` when the destination snapshot is not published. | Connect or re-sync a destination in the app. |
 | `storage_unsupported` | 501 | no | The server does not expose the managed-storage route (the SDK also maps 404 to it), or a `source: "managed"` download got no source proof. | Update the server before depending on it. |
+| `temporary_copy_expired` | 410 | no | The temporary encrypted copy was deleted (2 days after the document was marked stored, or 30 days after sealing) and Facta Storage has no copy. | Look in your own storage. To prevent it, report every document with `confirmDocumentStorage` and drain `storeAndConfirmUnconfirmed` daily ([guide](temporary-copy.md)). |
+| `nothing_to_repair_from` | 409 | no | `retryDocumentStorage` on a document whose temporary copy is gone: nothing is left to rewrite from. | Recover the JSON from your own storage. |
+| `storage_hash_mismatch` | 422 | no | The `sha256` of `confirmDocumentStorage` is not the one of that document's JSON (truncated file, another document). Nothing was recorded. | Download again with `downloadDocument` and hash the bytes you stored. |
 | `storage_unavailable` | 503 | **yes** | The managed copy could not be read or repaired right now. | Retry only the storage operation; never re-issue. |
 | `storage_contract_invalid` | 502 (SDK) | no | A storage response or receipt is malformed. On a successful issue it appears as `result.storageErrorCode` instead, with the sealed result intact. | Repair the copy later (`recoverOperation` / `retryDocumentStorage`). |
+
+## Google Drive token broker
+
+Only for `GET`/`POST /v1/destinations/{id}/drive-token`, which the SDK does not wrap. Drive does not count as API storage.
+
+| Code | HTTP | Retried | Meaning | What to do |
+| --- | --- | --- | --- | --- |
+| `drive_not_available_for_api` | 403 | no | Drive is switched off for the API. | Use Facta Storage or another destination. |
+| `drive_not_configured` | 503 | no | This deployment has no Google OAuth client. | Nothing the caller can fix. |
+| `drive_reauthorization_required` | 409 | no | Google retired the grant. | A person confirms Google again in the app. |
+| `drive_token_failed` | 502 | no | Google failed or refused for another reason. | Try later. |
 
 ## Delivery
 
@@ -158,6 +217,12 @@ These never come from the server; `status` is `0`.
 | Code | Retried | Meaning | What to do |
 | --- | --- | --- | --- |
 | `network_error` | **yes** | No usable answer: connection failure or the SDK's own `timeoutMs`. | After retries, replay the same request and key. |
+| `fse_withholding_mode_invalid` | no | Local preflight rejected an unsupported `incomeWithholding.mode` or extra control property. This proposed mode is unpublished and the current API does not support it. | Use only `{ mode: "per_line" }`; wait for verified API support before using this mode. |
+| `fse_withholding_legacy_conflict` | no | `aplicarReteRenta` is an own property together with per-line mode, including when `false` or `undefined`. | Choose one request mode. |
+| `fse_withholding_not_supported` | no | A new withholding control is used outside FSE, or the server does not advertise per-line support. | Use type 14 and an API deployment that explicitly supports the new mode. No issuance POST is sent when capability verification fails. |
+| `fse_withholding_selection_required` | no | Per-line mode has no items or an item is missing `applyIncomeWithholding`. | Provide a boolean selection for every item. |
+| `fse_withholding_selection_invalid` | no | An item selection is not a boolean. | Pass `true` or `false`; values are never coerced. |
+| `fse_withholding_mode_required` | no | An item has `applyIncomeWithholding` without the opt-in mode. | Add `incomeWithholding: { mode: "per_line" }` to an FSE request. |
 | `operation_outcome_unknown` | no | An invalidation may have completed, but its signed event cannot be recovered (safe window expired, or the API only confirms it was already invalidated). | Reconcile manually; do not invalidate again. |
 | `archive_integrity_error` | no | Local archive data failed an identity or digest check, or the API identity (endpoint, key, issuer, environment) differs from the one an operation was journaled with. | Keep the encrypted files; inspect before repairing. Use the original client and credentials. |
 

@@ -1,11 +1,25 @@
 # Create, edit and deactivate customers and products
 
-[Spanish guide](catalog-write.es.md) · [Catalog snapshots](catalog.md) · [English README](../README.md)
+[Spanish guide](catalog-write.es.md) · [Catalog reads](catalog.md) · [English README](../README.md)
 
 From 0.5.0 the SDK can manage the company's customers and products through the
 API: `createCustomer`, `updateCustomer`, `deactivateCustomer`, `createProduct`,
 `updateProduct` and `deactivateProduct`. This is off until the company turns it
 on, because it changes who can read the catalog.
+
+## Concurrent edits: `ifMatch`
+
+When the company shares its data key, a record you read one at a time carries `revision`.
+Pass it back as `ifMatch` and the edit applies only if nobody changed the record since:
+
+```ts
+const customer = await facta.getCustomer(id);
+await facta.updateCustomer(id, { telefono: "22223333" }, { ifMatch: customer!.revision! });
+// a stale revision throws FactaError catalog_revision_conflict; details.revisionActual is the current one
+```
+
+A plain-text catalogue has no revision to compare: it ignores `ifMatch` and the last write wins
+per field you send.
 
 ## What you need
 
@@ -23,7 +37,7 @@ change:
 | Error | HTTP | Meaning |
 |---|---|---|
 | `catalog_write_disabled` | 403 | The company did not enable catalog administration from the API. |
-| `catalog_encrypted` | 409 | The catalog is still encrypted; the API cannot write to it. |
+| `catalog_encrypted` | 409 | The catalog is encrypted and this key has no access to it (`details.hint`): the owner shares the data with the key (Account → API), or stores the catalog unencrypted. A read-only key hears `forbidden_scope` first. |
 | `forbidden_scope` | 403 | The key does not carry `catalog:write`. |
 | `validation_failed` | 422 | A field breaks a rule (the SDK checks the same rules before sending). |
 
@@ -39,31 +53,15 @@ everywhere else. Invoices already issued keep their own privacy rules.
 
 ## Reading works in every mode
 
-You do not have to choose a path. The SDK asks `/v1/status` once, together with the
-region discovery it already does, and uses:
+Since 0.6 the read methods always go through the API (`GET /v1/customers`, `GET /v1/products`),
+whatever the company's catalog mode, and need no `unlockKey`: the server reads an encrypted
+catalog itself. `diagnose()` still reports the `catalogMode` the key advertises, for information.
 
-| `catalogMode` | How `listCustomers`, `getCustomer`, `searchCustomers` and the product reads work |
-|---|---|
-| `encrypted` | Decrypts the key's snapshot locally with `unlockKey`, as before. |
-| `readable` | Reads through the API (`GET /v1/customers`, `GET /v1/products`); no `unlockKey`. Falls back to the snapshot only if the routes are missing and an `unlockKey` is set. |
-| `plain` | Reads through the API; always live; no `unlockKey`. |
-
-```ts
-const state = await facta.catalogState();
-console.log(state.catalogMode); // "encrypted" | "readable" | "plain" | null
-```
-
-**The result is the same in every mode; only the latency differs.** Every customer and
-product has the same fields whichever way it was read: both spellings of each name
-(`nombre` and `name`...), the product's VAT treatment (`tipoVenta` / `sale_class`),
-the whole address (`distrito`, and `pais` when there is one), numbers as numbers and
-`activo` always present. `customerId` / `productId` at issue time resolve to the same
-line and receiver in all three modes (the SDK resolves locally from the decrypted
-snapshot, or the server does it). An encrypted catalog is slower: the SDK downloads and
-decrypts the snapshot. Without an `unlockKey` it fails with `unauthorized`, naming
-`unlockKey` in `details.missing`; it never returns a partial record.
-The only field that can differ is a timestamp (`creadoEn`, `actualizadoEn`), which a
-snapshot never held and which reads `null` there.
+**The result is the same in every mode.** Every customer and product has the same fields
+whichever way the company stores it: both spellings of each name (`nombre` and `name`...),
+the product's VAT treatment (`tipoVenta` / `sale_class`), the whole address (`distrito`, and
+`pais` when there is one), numbers as numbers and `activo` always present. `customerId` /
+`productId` at issue time are resolved by the server.
 
 `diagnose()` reports the same `catalogMode`. Deactivated records are left out of
 lists and searches; pass `includeInactive: true` to see them.

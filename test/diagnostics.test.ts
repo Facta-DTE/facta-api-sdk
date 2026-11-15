@@ -69,7 +69,6 @@ Deno.test("diagnostics distinguish issue readiness from optional durable archive
   assertEquals(withArchive.revisions, {
     sign: { desiredRevision: 1, publishedRevision: 1, status: "ready" },
     destinations: { desiredRevision: 2, publishedRevision: 2, status: "ready" },
-    catalog: { desiredRevision: 5, publishedRevision: 5, status: "ready" },
   });
   assertEquals(withArchive.overall, "ready");
 });
@@ -114,10 +113,8 @@ Deno.test("pending destinations block issuance while an outdated catalog permits
   }));
   assertEquals(report.canIssue, false);
   assertEquals(report.canQuery, true);
-  assertEquals(
-    report.checks.find((check) => check.id === "catalog-sync")?.state,
-    "warning",
-  );
+  // The catalogue snapshot was retired in 0.6: no check is made on it any more.
+  assertEquals(report.checks.some((check) => check.id === "catalog-sync"), false);
 });
 
 Deno.test("missing signing provision and an expired key block issuance without hiding queries", async () => {
