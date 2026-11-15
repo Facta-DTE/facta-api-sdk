@@ -58,6 +58,7 @@ import {
   draftVersion,
 } from "./drafts.ts";
 import { validateFactaConfig } from "./config-validation.ts";
+import { validateFseWithholdingRequest } from "./fse-withholding.ts";
 import {
   confirmationBody,
   isStorageConfirmation,
@@ -157,6 +158,9 @@ import type {
   ManagedStorageStatus,
   InvalidationRequest,
   DteRequest,
+  DteType,
+  Representation,
+  RepresentationTemplates,
   ReturnResult,
   ReturnRequest,
   Status,
@@ -294,6 +298,11 @@ export interface FactaInvalidationArchiveOptions {
 export interface DebugOptions {
   /** Ask for per-step processing times (`X-Facta-Debug: timings`). */
   timings?: boolean;
+}
+
+export interface SignOptions extends CallOptions {
+  /** Per-sale values and template choice for the graphical representation of the signed document. */
+  representacion?: Representation;
 }
 
 export interface CallOptions {
@@ -572,6 +581,7 @@ function catalogSearchLimit(value: number | undefined): number {
  */
 const DEFAULT_REGIONS = { test: "us-west-2", live: "us-west-2" } as const;
 const REGION_PATTERN = /^[a-z]{2}(?:-[a-z]+)+-\d+$/;
+const TEMPLATE_TAG = /^(?:[A-Za-z0-9][A-Za-z0-9_-]{0,63}|custom:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}@[1-9][0-9]{0,8})$/;
 const REGION_DISCOVERY_TIMEOUT_MS = 5_000;
 const REGION_RETRY_MS = 60_000;
 
@@ -1362,8 +1372,10 @@ export class Facta {
 
   /** Emit in one call: correlative, signature, transmission and index. */
   async issue(request: DteRequest, options: IssueOptions = {}): Promise<IssueResult> {
+    validateFseWithholdingRequest(request);
     throwIfAborted(options.signal);
     assertNonTaxedLines(request);
+    await this.#assertFseWithholdingSupported(request, options.signal);
     const { deliver, ...call } = options;
     // `customerId` / `productId` travel as given: the server resolves them, so the body is the
     // request and the server's idempotency claim hashes the body (no fingerprint header, AP-07).
@@ -1428,6 +1440,8 @@ export class Facta {
    * even if archival later fails; callers must inspect `archive.state`.
    */
   async issueAndArchive(request: DteRequest, options: FactaArchiveEmissionOptions): Promise<ArchiveEmissionResult> {
+    validateFseWithholdingRequest(request);
+    await this.#assertFseWithholdingSupported(request, options.signal);
     const archive = options.archive ?? this.#runtime.archive;
     if (!archive) throw new TypeError("issueAndArchive requires archive or runtime.archive.");
     const { operationId, idempotencyKey, signal } = options;
@@ -1509,6 +1523,7 @@ export class Facta {
     } = {},
   ): Promise<ArchiveEmissionResult> {
     const request = options.request;
+    if (request !== undefined) validateFseWithholdingRequest(request);
     const archive = options.archive ?? this.#runtime.archive;
     const signal = options.signal;
     const remote: RemoteOptions = {
@@ -1522,6 +1537,8 @@ export class Facta {
     throwIfAborted(signal);
     const operation = await archive.find(operationId);
     if (operation === null) throw new Error("Archive operation not found: " + operationId + ".");
+    const savedRequest = request ?? operation.request;
+    if (savedRequest !== undefined) validateFseWithholdingRequest(savedRequest);
     const identity = await this.#archiveIdentity(signal);
     this.#assertArchiveIdentity(operation.identity, identity, operationId);
     throwIfAborted(signal);
@@ -1605,6 +1622,7 @@ export class Facta {
         await archive.markNeedsAttention(operationId, detail);
         throw new Error(detail);
       }
+      await this.#assertFseWithholdingSupported(recoveryRequest, signal);
       // `idempotencyHash` says how the server claim was hashed. "fingerprint-v1" sends the stored
       // fingerprint; "body" sends no header. A record without it (written by an older SDK, or the
       // field was dropped by a custom archive) is ambiguous: try without the header first, and if
@@ -2290,13 +2308,30 @@ export class Facta {
 
   /** Reserve the correlative and get the canonical document, unsigned. */
   async prepare(request: DteRequest, options: CallOptions = {}): Promise<PreparedDte> {
+    validateFseWithholdingRequest(request);
     throwIfAborted(options.signal);
     assertNonTaxedLines(request);
+    await this.#assertFseWithholdingSupported(request, options.signal);
     let warningHeader: string | null = null;
-    const prepared = await this.#request<PreparedDte>("POST", "/v1/dte/prepare", request, {
+    // `representacion` belongs to sign/issue; prepare rejects it, so a request shared between the two flows is stripped here.
+    const { representacion: _representacion, ...forPrepare } = request as DteRequest & { representacion?: Representation };
+    const prepared = await this.#request<PreparedDte>("POST", "/v1/dte/prepare", forPrepare, {
       ...options, onHeaders: (headers) => { warningHeader = headers.get("facta-warning"); },
     });
     return withWarnings(prepared, warningHeader);
+  }
+
+  /** Recheck every per-line operation so a stale positive result cannot hide a rollback. */
+  async #assertFseWithholdingSupported(request: DteRequest, signal?: AbortSignal): Promise<void> {
+    if (request.incomeWithholding?.mode !== "per_line") return;
+    throwIfAborted(signal);
+    const status = await this.status(signal ? { signal } : {});
+    throwIfAborted(signal);
+    if (status.capabilities?.fseIncomeWithholdingPerLine !== true) {
+      throw new FactaError("fse_withholding_not_supported",
+        "Esta versión de la API no confirma soporte para retención de renta por línea. No se emitió el documento.",
+        0, { field: "incomeWithholding" });
+    }
   }
 
   /**
@@ -2305,11 +2340,25 @@ export class Facta {
    * Pass the document through UNCHANGED. The server checks a MAC over its
    * canonical hash, so a single altered cent is refused instead of signed.
    */
-  async sign(prepared: PreparedDte, options: CallOptions = {}): Promise<IssueResult> {
+  async sign(prepared: PreparedDte, options: SignOptions = {}): Promise<IssueResult> {
+    const { representacion, ...call } = options;
     return await this.#guard(await this.#request<IssueResult>("POST", "/v1/dte/sign", {
       prepareToken: prepared.prepareToken,
       documento: prepared.documento,
-    }, options), []);
+      ...(representacion === undefined ? {} : { representacion }),
+    }, call), []);
+  }
+
+  /**
+   * Templates the key's company can choose per document (`representacion.plantilla`), with the `datos`
+   * keys each one prints. Free plans see only free templates as `permitida: true`; pass `tipoDte` to
+   * list only those that can draw that type.
+   * Throws a `FactaError` with status 404 on an API server that does not have the endpoint yet.
+   */
+  listTemplates(options: { tipoDte?: DteType } & CallOptions = {}): Promise<RepresentationTemplates> {
+    const { tipoDte, ...call } = options;
+    const query = tipoDte === undefined ? "" : `?tipoDte=${encodeURIComponent(tipoDte)}`;
+    return this.#request<RepresentationTemplates>("GET", `/v1/representacion/plantillas${query}`, undefined, call);
   }
 
   /**
@@ -2757,12 +2806,14 @@ export class Facta {
     if (options.source === "managed" && downloaded.storageSource !== "managed") {
       throw new FactaError(downloaded.storageSource === undefined ? "storage_unsupported" : "storage_contract_invalid", "API did not return the explicitly requested managed copy.", 502);
     }
+    const { plantilla: appliedTemplate, ...rest } = downloaded;
     return {
-      ...downloaded,
+      ...rest,
       codigoGeneracion: generationCode,
       kind,
       ...(downloaded.storageSource === undefined ? {} : { storageSource: downloaded.storageSource }),
       ...(kind === "json" && downloaded.jsonFormat !== undefined ? { jsonFormat: downloaded.jsonFormat } : {}),
+      ...(kind !== "json" && appliedTemplate !== undefined ? { plantilla: appliedTemplate } : {}),
       ...(kind === "ticket" ? { paperWidthMm: paperWidthMm ?? 80 } : {}),
     };
   }
@@ -3018,12 +3069,14 @@ export class Facta {
         if (!response.ok) return await this.#parseError(response);
         const storageSource = response.headers.get("x-facta-storage-source");
         const jsonFormat = response.headers.get("x-facta-json-format");
+        const plantilla = response.headers.get("x-facta-plantilla");
         return {
           bytes: new Uint8Array(await response.arrayBuffer()),
           contentType: response.headers.get("content-type") ?? "application/octet-stream",
           filename: response.headers.get("content-disposition")?.match(/filename="?([^";]+)\"?/)?.[1] ?? null,
           ...(isStorageSource(storageSource) ? { storageSource } : {}),
           ...(jsonFormat === "archivo-dte" || jsonFormat === "raw" ? { jsonFormat } : {}),
+          ...(plantilla !== null && TEMPLATE_TAG.test(plantilla) ? { plantilla } : {}),
         } as T;
       } finally {
         clearTimeout(timer); signal?.removeEventListener("abort", abort);

@@ -12,6 +12,7 @@ export {
   type FactaOptions,
   type FactaRuntimeConfigV1,
   type IssueOptions,
+  type SignOptions,
 } from "./src/client.ts";
 export { sha256OfBytes } from "./src/confirm-storage.ts";
 export type {

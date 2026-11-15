@@ -6,7 +6,9 @@ import { assert, assertEquals } from "jsr:@std/assert@1";
  * lacks makes `error.code === "..."` fail to compile for integrators, so the
  * two lists are compared here.
  */
-function contractCodes(yaml: string): string[] {
+function contractCodes(source: string): string[] {
+  // A Windows checkout (core.autocrlf) makes the fixture CRLF; the parser below is line based.
+  const yaml = source.split(String.fromCharCode(13)).join("");
   const start = yaml.indexOf("\n    Error:\n");
   assert(start > 0, "Error schema not found in the contract");
   const enumStart = yaml.indexOf("enum:\n", start);
@@ -36,7 +38,18 @@ Deno.test("every error code in the API contract is a FactaErrorCode", async () =
 });
 
 // Codes the SDK raises itself; the server never sends them.
-const LOCAL_ONLY = ["archive_integrity_error", "network_error", "operation_outcome_unknown", "storage_contract_invalid"];
+const LOCAL_ONLY = [
+  "archive_integrity_error",
+  "fse_withholding_legacy_conflict",
+  "fse_withholding_mode_invalid",
+  "fse_withholding_mode_required",
+  "fse_withholding_not_supported",
+  "fse_withholding_selection_invalid",
+  "fse_withholding_selection_required",
+  "network_error",
+  "operation_outcome_unknown",
+  "storage_contract_invalid",
+];
 
 Deno.test("every FactaErrorCode is in the API contract or is a local-only code", async () => {
   const contract = new Set(contractCodes(await Deno.readTextFile("test/fixtures/openapi.yaml")));

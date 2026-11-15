@@ -70,6 +70,8 @@ export interface LineItem {
   codigo?: string | null;
   tipoItem?: 1 | 2 | 3 | 4;
   uniMedida?: number;
+  /** Explicit FSE per-line withholding selection; available only in per-line mode. */
+  applyIncomeWithholding?: never;
   /**
    * Discount of THIS line, in money (not a percentage), in the same VAT basis as `precioUni`.
    * Between 0 and `cantidad × precioUni`, otherwise `400`. The exact spelling matters: `descuento`,
@@ -132,6 +134,11 @@ export interface NonTaxedLine {
 
 /** A line of 01, 03, 05, 06 or 11: a sale line, or a non-taxed charge/credit line. */
 export type DocumentLine = LineItem | NonTaxedLine;
+
+
+export interface PerLineWithholdingItem extends Omit<LineItem, "applyIncomeWithholding"> {
+  applyIncomeWithholding: boolean;
+}
 
 /** One row of `pagos[]`: a payment method and the amount paid with it. */
 export interface Pago {
@@ -202,9 +209,75 @@ export interface GlobalDiscount {
   valor: number;
 }
 
+/** Per-sale values printed only on the graphical representation (sheet and ticket); never in the signed DTE. */
+export interface RepresentationData {
+  mesa?: string; mesero?: string; cajero?: string; pedido?: string; bomba?: string; placa?: string;
+  /** Integer, 1 to 999. */
+  comensales?: number | string;
+  puntos?: number | string; kilometraje?: number | string;
+  /** Exactly four digits, as text (the last four of a card). */
+  tarjetaUltimos4?: string;
+  /** 0 to 99,999.99. */
+  propinaSugerida?: number | string;
+  paciente?: string; expediente?: string; proximaCita?: string; medico?: string; registroProfesional?: string;
+  ordenTrabajo?: string; entrega?: string; evento?: string; fechaEvento?: string; comentario?: string;
+  proyecto?: string; entregable?: string; periodo?: string;
+  /** `Nombre:desde-hasta;…` over the lines' number, for the grouped-table looks. */
+  secciones?: string;
+  /** Up to ten free label/value rows (label up to 30 characters, value up to 80). A label may not imitate a fiscal field. */
+  filas?: RepresentationRow[];
+}
+
+export interface RepresentationRow { etiqueta: string; valor: string }
+
+/** Template choice for one document: a catalogue id or `custom:<uuid>` of a published template of the company. */
+export interface RepresentationTemplateChoice {
+  carta?: string;
+  ticket?: string;
+}
+
+/** What the request sends as `representacion`. */
+export interface Representation {
+  datos?: RepresentationData;
+  /** Needs a server that supports it; list the options with `listTemplates`. A refused choice is not an error: see `plantilla_no_aplicada`. */
+  plantilla?: RepresentationTemplateChoice;
+}
+
+/** The answer's `advertencias` entry when a requested template was not used (the company template was used instead). */
+export interface TemplateNotAppliedWarning {
+  /** The API's field name is `codigo` (like its other warnings). */
+  codigo: "plantilla_no_aplicada";
+  /** E.g. `representacion.plantilla.carta`. */
+  campo: string;
+  motivo: "plan" | "no_existe" | "incompatible";
+  mensaje: string;
+}
+
+/** One entry of `GET /v1/representacion/plantillas`. */
+export interface RepresentationTemplate {
+  id: string;
+  tipo: "carta" | "ticket";
+  nombre: string;
+  origen: "catalogo" | "propia";
+  /** False when the company's plan does not allow it (see `motivo`). */
+  permitida: boolean;
+  motivo?: string;
+  /** DTE types it can draw; absent means all. */
+  tiposDte?: DteType[];
+  /** The `representacion.datos` keys this template prints. */
+  clavesDatos: string[];
+}
+
+export interface RepresentationTemplates {
+  predeterminada: { carta: string | null; ticket: string | null };
+  plantillas: RepresentationTemplate[];
+}
+
 interface DteRequestBase {
   /** Sale lines and, except on 14, non-taxed charge/credit lines ({@link NonTaxedLine}). */
   items: DocumentLine[];
+  /** Per-sale values and the template choice for the graphical representation. */
+  representacion?: Representation;
   condicionOperacion?: 1 | 2 | 3;
   plazo?: "01" | "02" | "03" | null;
   periodo?: number | null;
@@ -242,6 +315,18 @@ interface DteRequestBase {
   observaciones?: string | null;
 }
 
+/** Explicit opt-in to per-line income withholding for FSE requests. */
+export interface IncomeWithholdingPerLine {
+  mode: "per_line";
+}
+
+type PerLineFseRequestBase = Omit<DteRequestBase, "items"> & {
+  tipoDte: "14";
+  items: PerLineWithholdingItem[];
+  incomeWithholding: IncomeWithholdingPerLine;
+  aplicarReteRenta?: never;
+};
+
 /** Own fields of other types: the server answers `400` (not a silent ignore) when a type receives them. */
 interface VatOwnFieldsNever {
   aplicarRetencionIva?: never;
@@ -255,9 +340,9 @@ interface VatWithholdingField {
 
 /** DTE request union. DTE-specific fields are available only on their type. */
 export type DteRequest =
-  | (DteRequestBase & VatWithholdingField & { aplicarPercepcionIva?: never; tipoDte: "01"; receptor?: Recipient | null; documentosRelacionados?: never; exportacion?: never; aplicarReteRenta?: never; numPagoElectronico?: never })
+  | (DteRequestBase & VatWithholdingField & { aplicarPercepcionIva?: never; tipoDte: "01"; receptor?: Recipient | null; documentosRelacionados?: never; exportacion?: never; aplicarReteRenta?: never; incomeWithholding?: never; numPagoElectronico?: never })
   | (DteRequestBase & VatWithholdingField & {
-    tipoDte: "03"; receptor?: Recipient | null; documentosRelacionados?: never; exportacion?: never; aplicarReteRenta?: never; numPagoElectronico?: never;
+    tipoDte: "03"; receptor?: Recipient | null; documentosRelacionados?: never; exportacion?: never; aplicarReteRenta?: never; incomeWithholding?: never; numPagoElectronico?: never;
     /**
      * Only 03. The 1 % VAT perception (art. 163 CT) on the taxable net of the GOODS lines (`tipoItem` 1) after
      * the proportional share of any global discount; services are not in the base. Added to the total to pay,
@@ -265,10 +350,11 @@ export type DteRequest =
      */
     aplicarPercepcionIva?: boolean;
   })
-  | (Omit<DteRequestBase, "pagos"> & VatOwnFieldsNever & { pagos?: never; tipoDte: "05"; receptor?: Recipient | null; documentosRelacionados: RelatedDocument[]; exportacion?: never; aplicarReteRenta?: never; numPagoElectronico?: never })
-  | (Omit<DteRequestBase, "pagos"> & VatOwnFieldsNever & { pagos?: never; tipoDte: "06"; receptor?: Recipient | null; documentosRelacionados: RelatedDocument[]; numPagoElectronico?: string | null; exportacion?: never; aplicarReteRenta?: never })
-  | (DteRequestBase & VatOwnFieldsNever & { tipoDte: "11"; receptor: ExportRecipient; exportacion: ExportDetails; documentosRelacionados?: never; aplicarReteRenta?: never; numPagoElectronico?: never })
-  | (Omit<DteRequestBase, "items"> & VatOwnFieldsNever & { items: LineItem[]; tipoDte: "14"; receptor: ExcludedSubjectRecipient; aplicarReteRenta?: boolean; documentosRelacionados?: never; exportacion?: never; numPagoElectronico?: never });
+  | (Omit<DteRequestBase, "pagos"> & VatOwnFieldsNever & { pagos?: never; tipoDte: "05"; receptor?: Recipient | null; documentosRelacionados: RelatedDocument[]; exportacion?: never; aplicarReteRenta?: never; incomeWithholding?: never; numPagoElectronico?: never })
+  | (Omit<DteRequestBase, "pagos"> & VatOwnFieldsNever & { pagos?: never; tipoDte: "06"; receptor?: Recipient | null; documentosRelacionados: RelatedDocument[]; numPagoElectronico?: string | null; exportacion?: never; aplicarReteRenta?: never; incomeWithholding?: never })
+  | (DteRequestBase & VatOwnFieldsNever & { tipoDte: "11"; receptor: ExportRecipient; exportacion: ExportDetails; documentosRelacionados?: never; aplicarReteRenta?: never; incomeWithholding?: never; numPagoElectronico?: never })
+  | (Omit<DteRequestBase, "items"> & VatOwnFieldsNever & { items: LineItem[]; tipoDte: "14"; receptor: ExcludedSubjectRecipient; aplicarReteRenta?: boolean; incomeWithholding?: never; documentosRelacionados?: never; exportacion?: never; numPagoElectronico?: never })
+  | (PerLineFseRequestBase & VatOwnFieldsNever & { aplicarPercepcionIva?: never; receptor: ExcludedSubjectRecipient; documentosRelacionados?: never; exportacion?: never; numPagoElectronico?: never });
 
 /** How the key's company stores the catalog the API can see. */
 export type CatalogMode = "encrypted" | "readable" | "plain";
@@ -522,7 +608,7 @@ export interface SealedDte {
   /** Only with `debug: { timings: true }`. */
   debug?: DebugInfo;
   /** Server warnings (e.g. `sin_almacenamiento_duradero`); the emergency safeguard reads them. */
-  advertencias?: Array<string | ServerWarning>;
+  advertencias?: Array<string | ServerWarning | TemplateNotAppliedWarning>;
   /** The `campo_desconocido` warnings of `advertencias`, ready to read. Present only when the request carried a field Facta DTE does not know. */
   unknownFields?: UnknownFieldWarning[];
   /** The `Facta-Warning` response header, parsed. Present only when the server sent it. */
@@ -555,7 +641,7 @@ export interface DteInContingency {
   /** Only with `debug: { timings: true }`. */
   debug?: DebugInfo;
   /** Server warnings (e.g. `sin_almacenamiento_duradero`); the emergency safeguard reads them. */
-  advertencias?: Array<string | ServerWarning>;
+  advertencias?: Array<string | ServerWarning | TemplateNotAppliedWarning>;
   /** The `campo_desconocido` warnings of `advertencias`, ready to read. Present only when the request carried a field Facta DTE does not know. */
   unknownFields?: UnknownFieldWarning[];
   /** The `Facta-Warning` response header, parsed. Present only when the server sent it. */
@@ -900,6 +986,12 @@ export interface DownloadedDocument {
   jsonFormat?: "archivo-dte" | "raw";
   /** Present for tickets; defaults to 80 mm when not requested. */
   paperWidthMm?: number;
+  /**
+   * PDF and ticket downloads, from `X-Facta-Plantilla`: the template the sheet was drawn with, a
+   * catalogue id (`letter-clasica`) or `custom:<uuid>@<version>`. Missing on servers that predate
+   * the header and on JSON downloads.
+   */
+  plantilla?: string;
 }
 
 export interface RateLimitWindow {
